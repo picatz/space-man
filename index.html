@@ -9,6 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
      <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <link rel='icon' type='image/png' href='/space-man/favicon.png'>
+    <link rel="manifest" href="/space-man/manifest.json">
     <style>
         /* Common styling */
         body {
@@ -1432,6 +1433,21 @@
         window.onload = () => {
             displayHighScores();
         };
+    </script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/space-man/service-worker.js')
+              .then(registration => {
+                console.log('ServiceWorker registration successful with scope: ', registration.scope);
+              })
+              .catch(err => {
+                console.log('ServiceWorker registration failed: ', err);
+              });
+          });
+        }
     </script>
 </body>
 </html>
