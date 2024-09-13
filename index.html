@@ -391,10 +391,6 @@
 </head>
 <body>
     <!-- Landing Page -->
-    <div id="landingPage">
-        <h1>Space Man</h1>
-        <input type="text" id="playerNameInput" placeholder="Enter your name" maxlength="15">
-        <button id="startGameButton" disabled>Start Game</button>
     <div id="landingPage" class="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white bg-gradient-to-b from-gray-900 via-gray-800 to-black relative overflow-hidden">
         <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-50"></div>
         <h1 class="text-4xl font-bold mb-4 z-10">Space Man</h1>
@@ -1342,8 +1338,6 @@
             startGame();
         });
 
-        function startGame() {
-            resetGame();
         function startGame(reset = true) {
             if (reset) {
                 resetGame();
