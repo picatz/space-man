@@ -625,11 +625,14 @@
 
         function createPlatforms() {
             platforms = [];
-
+            const maxVerticalDistance = 150; // Maximum vertical distance between platforms
+        
             // Generate initial platforms
+            let previousY = window.innerHeight * 0.5;
             for (let i = -10; i < 10; i++) {
                 const x = i * 400;
-                const y = 300 - Math.random() * 150;
+                let y = previousY + (Math.random() * maxVerticalDistance * 2 - maxVerticalDistance);
+                y = Math.max(0, Math.min(window.innerHeight - 20, y)); // Ensure y is within screen bounds
                 const platformData = {
                     x: x,
                     y: y,
@@ -647,8 +650,9 @@
                 world.appendChild(platform);
                 platformData.element = platform;
                 platforms.push(platformData);
+                previousY = y;
             }
-
+        
             // Ensure there's a platform at the starting position
             const startPlatform = platforms.find(p => player.x >= p.x && player.x <= p.x + p.width);
             if (!startPlatform) {
@@ -1195,11 +1199,15 @@
         }
 
         function generatePlatforms() {
+            const maxVerticalDistance = 150; // Maximum vertical distance between platforms
+            const screenHeight = window.innerHeight;
+        
             // Generate platforms ahead of the player
             const lastPlatform = platforms[platforms.length - 1];
             if (lastPlatform && lastPlatform.x < player.x + 1000) {
                 const newPlatformX = lastPlatform.x + Math.random() * 200 + 200;
-                const newPlatformY = Math.random() * 200 + 50;
+                let newPlatformY = lastPlatform.y + (Math.random() * maxVerticalDistance * 2 - maxVerticalDistance);
+                newPlatformY = Math.max(screenHeight * 0.4, Math.min(screenHeight * 0.7, newPlatformY)); // Centered and weighted lower
                 const platformData = {
                     x: newPlatformX,
                     y: newPlatformY,
@@ -1218,12 +1226,13 @@
                 platformData.element = platform;
                 platforms.push(platformData);
             }
-
+        
             // Generate platforms behind the player
             const firstPlatform = platforms[0];
             if (firstPlatform && firstPlatform.x > player.x - 1000) {
                 const newPlatformX = firstPlatform.x - (Math.random() * 200 + 200);
-                const newPlatformY = Math.random() * 200 + 50;
+                let newPlatformY = firstPlatform.y + (Math.random() * maxVerticalDistance * 2 - maxVerticalDistance);
+                newPlatformY = Math.max(screenHeight * 0.4, Math.min(screenHeight * 0.7, newPlatformY)); // Centered and weighted lower
                 const platformData = {
                     x: newPlatformX,
                     y: newPlatformY,
