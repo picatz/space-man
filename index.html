@@ -395,6 +395,9 @@
         <h1>Space Man</h1>
         <input type="text" id="playerNameInput" placeholder="Enter your name" maxlength="15">
         <button id="startGameButton" disabled>Start Game</button>
+        <button id="startGameButton" disabled class="p-2 bg-blue-500 rounded text-white hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 z-10">
+            Start Game
+        </button>
     </div>
 
     <!-- Game Screen -->
@@ -412,6 +415,15 @@
                     <p id="finalScore">Your score: 0</p>
                     <button id="playAgainButton">Play Again</button>
                 </div>
+
+                <!-- Pause Screen Overlay -->
+                <div id="pauseScreen" class="hidden absolute top-0 left-0 w-full h-full bg-black bg-opacity-75 flex flex-col items-center justify-center z-10">
+                    <h2 class="text-4xl text-white mb-4">Game Paused</h2>
+                    <!-- Say [ESC] to resume -->
+                    <p class="text-white mb-4">Press <kbd>ESC</kbd> to resume</p>
+                </div>
+            </div>
+
             </div>
             <!-- High Score Table -->
             <div id="highScoreSection" class="mt-6">
@@ -1210,6 +1222,23 @@
             if (gameOverActive && e.key === 'Enter') {
                 playAgainButton.click();
             }
+
+            // Pause game with Escape key
+            if (e.key === 'Escape') {
+                if (gameOverActive) return;
+                if (gameInterval) {
+                    clearInterval(gameInterval);
+                    clearInterval(enemySpawnInterval);
+                    clearInterval(ammoDropInterval);
+                    gameInterval = null;
+
+                    // Show pause screen
+                    document.getElementById('pauseScreen').classList.remove('hidden');
+                } else {
+                    document.getElementById('pauseScreen').classList.add('hidden');
+                    startGame(false);
+                }
+            }
         });
 
         document.addEventListener('keyup', e => {
@@ -1280,6 +1309,10 @@
 
         function startGame() {
             resetGame();
+        function startGame(reset = true) {
+            if (reset) {
+                resetGame();
+            }
             clearInterval(gameInterval);
             clearInterval(enemySpawnInterval);
             clearInterval(ammoDropInterval);
