@@ -440,7 +440,7 @@
     </div>
 
     <!-- Game Screen -->
-    <div id="gameScreen">
+    <div id="gameScreen" class="hidden">
         <div id="gameArea">
             <div id="gameContainer" class="mt-4">
                 <div id="stars"></div>
@@ -1405,9 +1405,17 @@
 
         startGameButton.addEventListener('click', () => {
             player.name = playerNameInput.value.trim().substring(0, 15);
+            landingPage.classList.add('hidden'); // Hide landing page
             landingPage.style.display = 'none';
+            gameScreen.classList.remove('hidden'); // Show game screen
             gameScreen.style.display = 'flex';
             startGame();
+        });
+
+        // On refresh, hide game screen
+        window.addEventListener('beforeunload', () => {
+            gameScreen.style.display = 'none';
+            landingPage.style.display = 'flex';
         });
 
         // Play Again button event listener
