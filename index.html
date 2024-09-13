@@ -395,9 +395,37 @@
         #highScoreSection {
             width: 480px;
         }
+
+        /* Updated Controls styling */
+        #controls {
+            margin-top: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            background-color: rgba(55, 65, 81, 0.5);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+
+        .control-group span {
+            margin-right: 0.25rem;
+        }
+
+        /* Hide controls on narrow screens */
+        @media (max-width: 500px) {
+            #controls {
+                display: none;
+            }
+        }
     </style>
 </head>
-<body>
+<body class="min-h-screen items-center justify-center bg-gray-900 mt-2">
     <!-- Landing Page -->
     <div id="landingPage" class="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white bg-gradient-to-b from-gray-900 via-gray-800 to-black relative overflow-hidden">
         <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-50"></div>
@@ -454,30 +482,24 @@
             </div>
 
             <!-- Show controls -->
-            <div id="controls" class="mt-2 flex flex-col items-center justify-center">
-                <div class="flex flex-wrap space-x-1 text-gray-300">
-                    <div class="flex items-center space-x-1">
-                        <span class="text-xs">Move Left:</span>
-                        <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs">A</kbd>
-                        <span class="text-xs">or</span>
-                        <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs">←</kbd>
-                    </div>
-                    <div class="flex items-center space-x-1">
-                        <span class="text-xs">Move Right:</span>
-                        <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs">D</kbd>
-                        <span class="text-xs">or</span>
-                        <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs">→</kbd>
-                    </div>
-                    <div class="flex items-center space-x-1">
-                        <span class="text-xs">Jump:</span>
-                        <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs">Space</kbd>
-                        <span class="text-xs">or</span>
-                        <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs">↑</kbd>
-                    </div>
-                    <div class="flex items-center space-x-1">
-                        <span class="text-xs">Shoot:</span>
-                        <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs">F</kbd>
-                    </div>
+            <div id="controls" class="mt-2">
+                <div class="control-group">
+                    <span class="text-xs">Move:</span>
+                    <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs m-1">A</kbd>
+                    <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs m-1">D</kbd>
+                    <span class="text-xs m-1">or</span>
+                    <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs m-1">←</kbd>
+                    <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs m-1">→</kbd>
+                </div>
+                <div class="control-group">
+                    <span class="text-xs">Jump:</span>
+                    <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs m-1">SPACE</kbd>
+                    <span class="text-xs m-1">or</span>
+                    <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs m-1">↑</kbd>
+                </div>
+                <div class="control-group">
+                    <span class="text-xs">Shoot:</span>
+                    <kbd class="bg-gray-700 text-gray-300 px-1 py-0.5 rounded text-xs m-1">F</kbd>
                 </div>
             </div>
         </div>
@@ -537,23 +559,54 @@
         let planets = [];
         let galaxies = [];
 
-        function createStars() {
-            // Clear existing stars
-            starsContainer.innerHTML = '';
+        let currentPlatform = null;
 
-            // Generate random stars
-            for (let i = 0; i < 500; i++) {
-                const star = document.createElement('div');
-                star.classList.add('star');
-                star.style.left = Math.random() * 10000 + 'px';
-                star.style.top = Math.random() * gameContainer.offsetHeight + 'px';
-                star.style.animationDelay = Math.random() * 2 + 's';
-                const size = Math.random() * 2 + 1;
-                star.style.width = size + 'px';
-                star.style.height = size + 'px';
-                star.style.opacity = 0.8;
-                starsContainer.appendChild(star);
+        let stars = [];
+        const STAR_COUNT = 200;
+        const STAR_AREA_WIDTH = 9000; // Width of the area where stars are generated
+
+        function createStars() {
+            stars = [];
+            for (let i = 0; i < STAR_COUNT; i++) {
+                createStar();
             }
+        }
+
+        function createStar() {
+            const star = document.createElement('div');
+            star.classList.add('star');
+            const size = Math.random() * 2 + 1;
+            star.style.width = size + 'px';
+            star.style.height = size + 'px';
+            star.style.opacity = Math.random() * 0.5 + 0.3;
+            
+            // Position the star within the visible area plus some buffer
+            const x = Math.random() * STAR_AREA_WIDTH;
+            const y = Math.random() * gameContainer.offsetHeight;
+            
+            star.style.left = x + 'px';
+            star.style.top = y + 'px';
+            
+            starsContainer.appendChild(star);
+            stars.push({ element: star, x: x, y: y });
+        }
+
+        function updateStars() {
+            const visibleLeft = camera.x - gameContainer.offsetWidth / 2;
+            const visibleRight = camera.x + gameContainer.offsetWidth * 1.5;
+
+            stars.forEach((star, index) => {
+                // If star is too far to the left, move it to the right
+                if (star.x < visibleLeft) {
+                    star.x += STAR_AREA_WIDTH;
+                    star.element.style.left = star.x + 'px';
+                }
+                // If star is too far to the right, move it to the left
+                else if (star.x > visibleRight) {
+                    star.x -= STAR_AREA_WIDTH;
+                    star.element.style.left = star.x + 'px';
+                }
+            });
         }
 
         // Animations for planets and galaxies
@@ -625,14 +678,17 @@
 
         function createPlatforms() {
             platforms = [];
-            const maxVerticalDistance = 150; // Maximum vertical distance between platforms
-        
+            const screenHeight = window.innerHeight;
+            const minPlatformY = screenHeight * 0.3; // Lower bound at 30% of screen height
+            const maxPlatformY = screenHeight * 0.7; // Upper bound at 70% of screen height
+            const platformRange = maxPlatformY - minPlatformY;
+
             // Generate initial platforms
-            let previousY = window.innerHeight * 0.5;
+            let previousY = (minPlatformY + maxPlatformY) / 2; // Start in the middle
             for (let i = -10; i < 10; i++) {
                 const x = i * 400;
-                let y = previousY + (Math.random() * maxVerticalDistance * 2 - maxVerticalDistance);
-                y = Math.max(0, Math.min(window.innerHeight - 20, y)); // Ensure y is within screen bounds
+                let y = previousY + (Math.random() * platformRange * 0.4 - platformRange * 0.2);
+                y = Math.max(minPlatformY, Math.min(maxPlatformY, y));
                 const platformData = {
                     x: x,
                     y: y,
@@ -652,13 +708,13 @@
                 platforms.push(platformData);
                 previousY = y;
             }
-        
+
             // Ensure there's a platform at the starting position
             const startPlatform = platforms.find(p => player.x >= p.x && player.x <= p.x + p.width);
             if (!startPlatform) {
                 const platformData = {
                     x: player.x - 150,
-                    y: 250,
+                    y: (minPlatformY + maxPlatformY) / 2, // Place at the vertical center
                     width: 300,
                     height: 20,
                     type: 'static',
@@ -686,8 +742,15 @@
         }
 
         function spawnGroundEnemy() {
-            // Find a platform to place the ground enemy
-            const platform = platforms[Math.floor(Math.random() * platforms.length)];
+            // **Filter out the currentPlatform**
+            const availablePlatforms = platforms.filter(p => p !== currentPlatform);
+
+            // If no platforms are available (all platforms are excluded), do not spawn an enemy
+            if (availablePlatforms.length === 0) return;
+
+            // Select a random platform from the available platforms
+            const platform = availablePlatforms[Math.floor(Math.random() * availablePlatforms.length)];
+
             const enemy = {
                 x: platform.x + Math.random() * (platform.width - 30),
                 y: platform.y - 30,
@@ -819,8 +882,10 @@
             const startPlatform = platforms.find(p => player.x >= p.x && player.x <= p.x + p.width);
             if (startPlatform) {
                 player.y = startPlatform.y - player.height;
+                currentPlatform = startPlatform; // **Initialize currentPlatform**
             } else {
                 player.y = 250; // Fallback position
+                currentPlatform = null;
             }
 
             player.velocityX = 0;
@@ -891,6 +956,7 @@
 
         function gameLoop() {
             update();
+            updateStars();
             render();
         }
 
@@ -933,6 +999,7 @@
 
             // Collision detection with platforms
             let onPlatform = false;
+            currentPlatform = null; // Reset currentPlatform at the start of each update
             platforms.forEach(platform => {
                 if (
                     player.x < platform.x + platform.width &&
@@ -945,6 +1012,7 @@
                     player.velocityY = 0;
                     player.jumping = false;
                     onPlatform = true;
+                    currentPlatform = platform; // **Set currentPlatform**
                 }
             });
 
@@ -1195,61 +1263,53 @@
 
             // Update world position for camera scrolling
             world.style.transform = `translateX(${-camera.x}px)`;
-            starsContainer.style.transform = `translateX(${-camera.x * 0.2}px)`; // Parallax effect for stars
+            
+            // Update star container position
+            starsContainer.style.transform = `translateX(${-camera.x * 0.7}px)`; // Adjusted parallax effect
         }
 
         function generatePlatforms() {
-            const maxVerticalDistance = 150; // Maximum vertical distance between platforms
             const screenHeight = window.innerHeight;
-        
+            const minPlatformY = screenHeight * 0.3; // Lower bound at 30% of screen height
+            const maxPlatformY = screenHeight * 0.7; // Upper bound at 70% of screen height
+            const platformRange = maxPlatformY - minPlatformY;
+
+            function createPlatform(x, y) {
+                const platformData = {
+                    x: x,
+                    y: y,
+                    width: Math.random() * 100 + 200, // Platforms between 200 and 300 wide
+                    height: 20,
+                    type: 'static',
+                    element: null
+                };
+                const platform = document.createElement('div');
+                platform.classList.add('platform');
+                platform.style.left = platformData.x + 'px';
+                platform.style.top = platformData.y + 'px';
+                platform.style.width = platformData.width + 'px';
+                platform.style.height = platformData.height + 'px';
+                world.appendChild(platform);
+                platformData.element = platform;
+                return platformData;
+            }
+
             // Generate platforms ahead of the player
             const lastPlatform = platforms[platforms.length - 1];
             if (lastPlatform && lastPlatform.x < player.x + 1000) {
                 const newPlatformX = lastPlatform.x + Math.random() * 200 + 200;
-                let newPlatformY = lastPlatform.y + (Math.random() * maxVerticalDistance * 2 - maxVerticalDistance);
-                newPlatformY = Math.max(screenHeight * 0.4, Math.min(screenHeight * 0.7, newPlatformY)); // Centered and weighted lower
-                const platformData = {
-                    x: newPlatformX,
-                    y: newPlatformY,
-                    width: Math.random() * 150 + 100,
-                    height: 15,
-                    type: 'static',
-                    element: null
-                };
-                const platform = document.createElement('div');
-                platform.classList.add('platform');
-                platform.style.left = platformData.x + 'px';
-                platform.style.top = platformData.y + 'px';
-                platform.style.width = platformData.width + 'px';
-                platform.style.height = platformData.height + 'px';
-                world.appendChild(platform);
-                platformData.element = platform;
-                platforms.push(platformData);
+                let newPlatformY = lastPlatform.y + (Math.random() * platformRange * 0.4 - platformRange * 0.2);
+                newPlatformY = Math.max(minPlatformY, Math.min(maxPlatformY, newPlatformY));
+                platforms.push(createPlatform(newPlatformX, newPlatformY));
             }
-        
+
             // Generate platforms behind the player
             const firstPlatform = platforms[0];
             if (firstPlatform && firstPlatform.x > player.x - 1000) {
                 const newPlatformX = firstPlatform.x - (Math.random() * 200 + 200);
-                let newPlatformY = firstPlatform.y + (Math.random() * maxVerticalDistance * 2 - maxVerticalDistance);
-                newPlatformY = Math.max(screenHeight * 0.4, Math.min(screenHeight * 0.7, newPlatformY)); // Centered and weighted lower
-                const platformData = {
-                    x: newPlatformX,
-                    y: newPlatformY,
-                    width: Math.random() * 150 + 100,
-                    height: 15,
-                    type: 'static',
-                    element: null
-                };
-                const platform = document.createElement('div');
-                platform.classList.add('platform');
-                platform.style.left = platformData.x + 'px';
-                platform.style.top = platformData.y + 'px';
-                platform.style.width = platformData.width + 'px';
-                platform.style.height = platformData.height + 'px';
-                world.appendChild(platform);
-                platformData.element = platform;
-                platforms.unshift(platformData);
+                let newPlatformY = firstPlatform.y + (Math.random() * platformRange * 0.4 - platformRange * 0.2);
+                newPlatformY = Math.max(minPlatformY, Math.min(maxPlatformY, newPlatformY));
+                platforms.unshift(createPlatform(newPlatformX, newPlatformY));
             }
         }
 
