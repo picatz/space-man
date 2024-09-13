@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Space Man</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Meta tags for responsiveness -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Common styling */
+        body {
+            background-color: #0d1b2a;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden; /* Hide scrollbars */
+        }
+
+        /* Landing page styling */
+        #landingPage {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            text-align: center;
+        }
+
+        #landingPage h1 {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        #landingPage input {
+            padding: 0.5rem 1rem;
+            margin-bottom: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #ccc;
+            outline: none;
+            width: 250px;
+            text-align: center;
+            background-color: white;
+            color: black;
+        }
+
+        #landingPage button {
+            padding: 0.5rem 1rem;
+            background-color: #3b82f6; /* Tailwind blue-500 */
+            border: none;
+            border-radius: 0.5rem;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 150px;
+        }
+
+        /* Game container styling */
+        #gameContainer {
+            position: relative;
+            width: 480px;
+            height: 320px;
+            background: radial-gradient(circle at bottom, #0d1b2a, #000000);
+            overflow: hidden;
+            border: 4px solid #4B5563; /* Tailwind gray-700 */
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        /* Stars styling */
+        #stars {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 10000px; /* Extended width for scrolling background */
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+
+        /* Player styling */
+        .player {
+            position: absolute;
+            width: 30px;
+            height: 50px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.1s;
+            z-index: 3;
+        }
+
+        /* Head styling */
+        .head {
+            width: 24px;
+            height: 24px;
+            background-color: #ffffff; /* White helmet */
+            border-radius: 50%;
+            position: relative;
+            z-index: 2;
+            border: 2px solid #ccc;
+            overflow: hidden;
+        }
+
+        /* Visor styling */
+        .visor {
+            width: 20px;
+            height: 12px;
+            background-color: #3B82F6; /* Blue visor */
+            position: absolute;
+            top: 6px;
+            left: 2px;
+            border-radius: 6px;
+        }
+
+        /* Body styling */
+        .body {
+            width: 26px;
+            height: 28px;
+            background-color: #ffffff; /* White suit */
+            position: relative;
+            border-radius: 4px;
+            z-index: 1;
+            border: 2px solid #ccc;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* Arm styling */
+        .arm {
+            width: 6px;
+            height: 18px;
+            background-color: #ffffff;
+            position: absolute;
+            top: 2px;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+        }
+
+        .arm.left {
+            left: -6px;
+            transform-origin: top left;
+        }
+
+        .arm.right {
+            right: -6px;
+            transform-origin: top right;
+        }
+
+        /* Leg styling */
+        .leg {
+            width: 8px;
+            height: 16px;
+            background-color: #ffffff;
+            position: absolute;
+            bottom: -16px;
+            border-radius: 2px;
+            border: 1px solid #ccc;
+        }
+
+        .leg.left {
+            left: 3px;
+            transform-origin: top left;
+        }
+
+        .leg.right {
+            right: 3px;
+            transform-origin: top right;
+        }
+
+        /* Boot styling */
+        .boot {
+            width: 8px;
+            height: 4px;
+            background-color: #4B5563; /* Gray boots */
+            position: absolute;
+            bottom: 0;
+            border-radius: 1px;
+        }
+
+        /* Platform styling */
+        .platform {
+            position: absolute;
+            background-color: rgba(59, 130, 246, 0.8);
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+            z-index: 1;
+        }
+
+        /* Enemy styling */
+        .enemy {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background-color: #10B981; /* Green aliens */
+            border-radius: 50%;
+            z-index: 1;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Alien eyes */
+        .alien-eye {
+            width: 6px;
+            height: 6px;
+            background-color: #ffffff;
+            border-radius: 50%;
+            position: absolute;
+            top: 10px;
+        }
+
+        .alien-eye.left {
+            left: 8px;
+        }
+
+        .alien-eye.right {
+            right: 8px;
+        }
+
+        /* Antennas */
+        .antenna {
+            width: 2px;
+            height: 10px;
+            background-color: #ffffff;
+            position: absolute;
+            top: -10px;
+            border-radius: 2px;
+        }
+
+        .antenna.left {
+            left: 8px;
+        }
+
+        .antenna.right {
+            right: 8px;
+        }
+
+        /* Enemy Bullet styling */
+        .enemy-bullet {
+            position: absolute;
+            width: 5px;
+            height: 5px;
+            background-color: #EF4444;
+            border-radius: 50%;
+            z-index: 1;
+        }
+
+        /* Ammo styling */
+        .ammo {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background-color: #F59E0B;
+            border-radius: 50%;
+            box-shadow: 0 0 5px rgba(245, 158, 11, 0.8);
+            z-index: 1;
+        }
+
+        /* Bullet styling */
+        .bullet {
+            position: absolute;
+            width: 5px;
+            height: 5px;
+            background-color: #FBBF24;
+            border-radius: 50%;
+            z-index: 2;
+        }
+
+        /* Animation for running */
+        @keyframes run {
+            0%   { transform: rotate(0deg); }
+            50%  { transform: rotate(20deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        /* Animation for jumping */
+        @keyframes jump {
+            0%   { transform: translateY(0); }
+            50%  { transform: translateY(-15px); }
+            100% { transform: translateY(0); }
+        }
+
+        /* Star twinkle animation */
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 0.2; }
+        }
+
+        /* Star styling */
+        .star {
+            position: absolute;
+            background-color: white;
+            border-radius: 50%;
+            animation: twinkle 2s infinite;
+        }
+
+        /* Score styling */
+        #scoreBoard {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            z-index: 4;
+        }
+
+        /* High Score Table */
+        #highScoreSection {
+            margin-top: 20px;
+            color: white;
+        }
+
+        #highScoreTable {
+            color: white;
+        }
+
+        #highScoreTable th, #highScoreTable td {
+            padding: 5px 10px;
+            border: 1px solid #4B5563;
+        }
+
+        #highScoreTable th {
+            background-color: #1F2937;
+        }
+
+        #highScoreTable td {
+            background-color: #111827;
+        }
+
+        /* Game Over Screen */
+        #gameOverScreen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%; /* Adjusted width */
+            height: 100%; /* Adjusted height */
+            background-color: rgba(0, 0, 0, 0.8);
+            z-index: 5;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #gameOverScreen h2 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        #gameOverScreen button {
+            padding: 0.5rem 1rem;
+            background-color: #3b82f6;
+            border: none;
+            border-radius: 0.5rem;
+            color: white;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 1rem;
+        }
+
+        /* Adjustments for always visible high scores */
+        #gameScreen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #gameArea {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #gameContent {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #highScoreSection {
+            width: 480px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Landing Page -->
+    <div id="landingPage">
+        <h1>Space Man</h1>
+        <input type="text" id="playerNameInput" placeholder="Enter your name" maxlength="15">
+        <button id="startGameButton" disabled>Start Game</button>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen">
+        <div id="gameArea">
+            <div id="gameContainer" class="mt-4">
+                <div id="stars"></div>
+                <div id="world">
+                    <!-- Game elements go here -->
+                </div>
+                <div id="scoreBoard">Score: 0 | Ammo: 5</div>
+                <!-- Game Over Screen -->
+                <div id="gameOverScreen">
+                    <h2>Game Over!</h2>
+                    <p id="finalScore">Your score: 0</p>
+                    <button id="playAgainButton">Play Again</button>
+                </div>
+            </div>
+            <!-- High Score Table -->
+            <div id="highScoreSection" class="mt-6">
+                <h2 class="text-2xl font-bold text-white mb-2">High Scores</h2>
+                <table id="highScoreTable" class="w-full text-left">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Name</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="highScoreBody">
+                        <!-- High scores will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const landingPage = document.getElementById('landingPage');
+        const playerNameInput = document.getElementById('playerNameInput');
+        const startGameButton = document.getElementById('startGameButton');
+
+        const gameScreen = document.getElementById('gameScreen');
+        const gameContainer = document.getElementById('gameContainer');
+        const starsContainer = document.getElementById('stars');
+        const world = document.getElementById('world');
+        const scoreBoard = document.getElementById('scoreBoard');
+        const highScoreBody = document.getElementById('highScoreBody');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreElement = document.getElementById('finalScore');
+        const playAgainButton = document.getElementById('playAgainButton');
+
+        let player = {
+            element: null,
+            x: 0,
+            y: 250,
+            width: 30,
+            height: 50,
+            speed: 3,
+            velocityX: 0,
+            velocityY: 0,
+            acceleration: 0.5,
+            maxSpeed: 6,
+            friction: 0.9,
+            jumping: false,
+            direction: 'right',
+            moving: false,
+            ammo: 5,
+            score: 0,
+            name: ''
+        };
+
+        let camera = {
+            x: 0,
+            y: 0
+        };
+
+        let keys = {};
+        let gravity = 0.5;
+        let platforms = [];
+        let enemies = [];
+        let bullets = [];
+        let enemyBullets = [];
+        let ammoDrops = [];
+        let gameInterval;
+        let enemySpawnInterval;
+        let ammoDropInterval;
+        let gameOverActive = false;
+        let planets = [];
+        let galaxies = [];
+
+        function createStars() {
+            // Clear existing stars
+            starsContainer.innerHTML = '';
+
+            // Generate random stars
+            for (let i = 0; i < 500; i++) {
+                const star = document.createElement('div');
+                star.classList.add('star');
+                star.style.left = Math.random() * 10000 + 'px';
+                star.style.top = Math.random() * gameContainer.offsetHeight + 'px';
+                star.style.animationDelay = Math.random() * 2 + 's';
+                const size = Math.random() * 2 + 1;
+                star.style.width = size + 'px';
+                star.style.height = size + 'px';
+                star.style.opacity = 0.8;
+                starsContainer.appendChild(star);
+            }
+        }
+
+        // Animations for planets and galaxies
+        const styleSheet = document.styleSheets[0];
+        styleSheet.insertRule(`
+            @keyframes movePlanet {
+                0% { transform: translateX(0); }
+                100% { transform: translateX(-10000px); }
+            }
+        `, styleSheet.cssRules.length);
+
+        styleSheet.insertRule(`
+            @keyframes moveGalaxy {
+                0% { transform: translateX(0); }
+                100% { transform: translateX(-10000px); }
+            }
+        `, styleSheet.cssRules.length);
+
+        function createPlayer() {
+            // Create player container
+            player.element = document.createElement('div');
+            player.element.classList.add('player');
+
+            // Create head
+            const head = document.createElement('div');
+            head.classList.add('head');
+
+            // Create visor
+            const visor = document.createElement('div');
+            visor.classList.add('visor');
+            head.appendChild(visor);
+
+            player.element.appendChild(head);
+
+            // Create body
+            const body = document.createElement('div');
+            body.classList.add('body');
+
+            // Create arms
+            const armLeft = document.createElement('div');
+            armLeft.classList.add('arm', 'left');
+            const armRight = document.createElement('div');
+            armRight.classList.add('arm', 'right');
+            body.appendChild(armLeft);
+            body.appendChild(armRight);
+
+            // Create legs
+            const legLeft = document.createElement('div');
+            legLeft.classList.add('leg', 'left');
+            const bootLeft = document.createElement('div');
+            bootLeft.classList.add('boot');
+            legLeft.appendChild(bootLeft);
+
+            const legRight = document.createElement('div');
+            legRight.classList.add('leg', 'right');
+            const bootRight = document.createElement('div');
+            bootRight.classList.add('boot');
+            legRight.appendChild(bootRight);
+
+            body.appendChild(legLeft);
+            body.appendChild(legRight);
+
+            player.element.appendChild(body);
+
+            player.element.style.left = player.x + 'px';
+            player.element.style.top = player.y + 'px';
+            world.appendChild(player.element);
+        }
+
+        function createPlatforms() {
+            platforms = [];
+
+            // Generate initial platforms
+            for (let i = -10; i < 10; i++) {
+                const x = i * 400;
+                const y = 300 - Math.random() * 150;
+                const platformData = {
+                    x: x,
+                    y: y,
+                    width: 300,
+                    height: 20,
+                    type: 'static',
+                    element: null
+                };
+                const platform = document.createElement('div');
+                platform.classList.add('platform');
+                platform.style.left = platformData.x + 'px';
+                platform.style.top = platformData.y + 'px';
+                platform.style.width = platformData.width + 'px';
+                platform.style.height = platformData.height + 'px';
+                world.appendChild(platform);
+                platformData.element = platform;
+                platforms.push(platformData);
+            }
+
+            // Ensure there's a platform at the starting position
+            const startPlatform = platforms.find(p => player.x >= p.x && player.x <= p.x + p.width);
+            if (!startPlatform) {
+                const platformData = {
+                    x: player.x - 150,
+                    y: 250,
+                    width: 300,
+                    height: 20,
+                    type: 'static',
+                    element: null
+                };
+                const platform = document.createElement('div');
+                platform.classList.add('platform');
+                platform.style.left = platformData.x + 'px';
+                platform.style.top = platformData.y + 'px';
+                platform.style.width = platformData.width + 'px';
+                platform.style.height = platformData.height + 'px';
+                world.appendChild(platform);
+                platformData.element = platform;
+                platforms.push(platformData);
+            }
+        }
+
+        function spawnEnemy() {
+            const enemyType = Math.random() < 0.5 ? 'ground' : 'shooting';
+            if (enemyType === 'ground') {
+                spawnGroundEnemy();
+            } else {
+                spawnShootingEnemy();
+            }
+        }
+
+        function spawnGroundEnemy() {
+            // Find a platform to place the ground enemy
+            const platform = platforms[Math.floor(Math.random() * platforms.length)];
+            const enemy = {
+                x: platform.x + Math.random() * (platform.width - 30),
+                y: platform.y - 30,
+                width: 30,
+                height: 30,
+                speed: 1 + Math.random(),
+                direction: Math.random() < 0.5 ? -1 : 1,
+                type: 'ground',
+                element: document.createElement('div')
+            };
+            enemy.element.classList.add('enemy');
+            enemy.element.style.left = enemy.x + 'px';
+            enemy.element.style.top = enemy.y + 'px';
+
+            // Add alien features
+            const eyeLeft = document.createElement('div');
+            eyeLeft.classList.add('alien-eye', 'left');
+            const eyeRight = document.createElement('div');
+            eyeRight.classList.add('alien-eye', 'right');
+            const antennaLeft = document.createElement('div');
+            antennaLeft.classList.add('antenna', 'left');
+            const antennaRight = document.createElement('div');
+            antennaRight.classList.add('antenna', 'right');
+
+            enemy.element.appendChild(eyeLeft);
+            enemy.element.appendChild(eyeRight);
+            enemy.element.appendChild(antennaLeft);
+            enemy.element.appendChild(antennaRight);
+
+            world.appendChild(enemy.element);
+            enemies.push(enemy);
+        }
+
+        function spawnShootingEnemy() {
+            const enemy = {
+                x: player.x + (Math.random() * 800 + 400) * (Math.random() < 0.5 ? -1 : 1),
+                y: Math.random() * 100 + 50,
+                width: 30,
+                height: 30,
+                speed: 0, // Stationary
+                type: 'shooting',
+                shootCooldown: Math.random() * 100 + 50,
+                element: document.createElement('div')
+            };
+            enemy.element.classList.add('enemy');
+            enemy.element.style.left = enemy.x + 'px';
+            enemy.element.style.top = enemy.y + 'px';
+
+            // Add alien features
+            const eyeLeft = document.createElement('div');
+            eyeLeft.classList.add('alien-eye', 'left');
+            const eyeRight = document.createElement('div');
+            eyeRight.classList.add('alien-eye', 'right');
+            const antennaLeft = document.createElement('div');
+            antennaLeft.classList.add('antenna', 'left');
+            const antennaRight = document.createElement('div');
+            antennaRight.classList.add('antenna', 'right');
+
+            enemy.element.appendChild(eyeLeft);
+            enemy.element.appendChild(eyeRight);
+            enemy.element.appendChild(antennaLeft);
+            enemy.element.appendChild(antennaRight);
+
+            world.appendChild(enemy.element);
+            enemies.push(enemy);
+        }
+
+        function spawnAmmoDropAt(x, y) {
+            const ammo = {
+                x: x,
+                y: y,
+                width: 15,
+                height: 15,
+                speed: 0,
+                element: document.createElement('div')
+            };
+            ammo.element.classList.add('ammo');
+            ammo.element.style.left = ammo.x + 'px';
+            ammo.element.style.top = ammo.y + 'px';
+            world.appendChild(ammo.element);
+            ammoDrops.push(ammo);
+        }
+
+        function spawnAmmoDrop() {
+            const ammo = {
+                x: player.x + (Math.random() * 1000 + 500) * (Math.random() < 0.5 ? -1 : 1),
+                y: 0,
+                width: 15,
+                height: 15,
+                speed: 2,
+                element: document.createElement('div')
+            };
+            ammo.element.classList.add('ammo');
+            ammo.element.style.left = ammo.x + 'px';
+            ammo.element.style.top = ammo.y + 'px';
+            world.appendChild(ammo.element);
+            ammoDrops.push(ammo);
+        }
+
+        function shootBullet() {
+            if (player.ammo > 0) {
+                player.ammo--;
+                const bullet = {
+                    x: player.x + player.width / 2 - 2.5,
+                    y: player.y + player.height / 2,
+                    width: 5,
+                    height: 5,
+                    speed: 7,
+                    direction: player.direction,
+                    element: document.createElement('div')
+                };
+                bullet.element.classList.add('bullet');
+                bullet.element.style.left = bullet.x + 'px';
+                bullet.element.style.top = bullet.y + 'px';
+                world.appendChild(bullet.element);
+                bullets.push(bullet);
+                updateScoreBoard();
+            }
+        }
+
+        function resetGame() {
+            // Clear previous elements
+            world.innerHTML = '';
+            createStars();
+            player.x = 0;
+
+            // Ensure player spawns on a platform
+            createPlatforms();
+            const startPlatform = platforms.find(p => player.x >= p.x && player.x <= p.x + p.width);
+            if (startPlatform) {
+                player.y = startPlatform.y - player.height;
+            } else {
+                player.y = 250; // Fallback position
+            }
+
+            player.velocityX = 0;
+            player.velocityY = 0;
+            player.jumping = false;
+            player.ammo = 5;
+            player.score = 0;
+            createPlayer();
+
+            enemies = [];
+            bullets = [];
+            enemyBullets = [];
+            ammoDrops = [];
+            updateScoreBoard();
+            gameOverScreen.style.display = 'none';
+            gameOverActive = false;
+
+            // Append scoreBoard and gameOverScreen to gameContainer
+            gameContainer.appendChild(scoreBoard);
+            gameContainer.appendChild(gameOverScreen);
+        }
+
+        function updateScoreBoard() {
+            scoreBoard.innerText = `Score: ${player.score} | Ammo: ${player.ammo}`;
+        }
+
+        function saveHighScore() {
+            let highScores = JSON.parse(localStorage.getItem('highScores')) || [];
+            highScores.push({ name: player.name, score: player.score });
+            highScores.sort((a, b) => b.score - a.score);
+            highScores = highScores.slice(0, 5); // Keep top 5 scores
+            localStorage.setItem('highScores', JSON.stringify(highScores));
+            displayHighScores();
+        }
+
+        function displayHighScores() {
+            const highScores = JSON.parse(localStorage.getItem('highScores')) || [];
+            highScoreBody.innerHTML = '';
+            highScores.forEach((entry, index) => {
+                const row = document.createElement('tr');
+                const rankCell = document.createElement('td');
+                rankCell.innerText = index + 1;
+                const nameCell = document.createElement('td');
+                nameCell.innerText = entry.name || 'Anonymous';
+                const scoreCell = document.createElement('td');
+                scoreCell.innerText = entry.score !== undefined ? entry.score : '0';
+                row.appendChild(rankCell);
+                row.appendChild(nameCell);
+                row.appendChild(scoreCell);
+                highScoreBody.appendChild(row);
+            });
+        }
+
+        function gameOver() {
+            clearInterval(gameInterval);
+            clearInterval(enemySpawnInterval);
+            clearInterval(ammoDropInterval);
+
+            // Save high score
+            saveHighScore();
+
+            // Display Game Over Screen
+            finalScoreElement.innerText = `Your score: ${player.score}`;
+            gameOverScreen.style.display = 'flex';
+            playAgainButton.focus();
+            gameOverActive = true;
+        }
+
+        function gameLoop() {
+            update();
+            render();
+        }
+
+        function update() {
+            player.moving = false;
+
+            // Horizontal movement with acceleration and friction
+            if (keys['ArrowRight'] || keys['d']) {
+                player.velocityX += player.acceleration;
+                player.direction = 'right';
+                player.moving = true;
+            }
+            if (keys['ArrowLeft'] || keys['a']) {
+                player.velocityX -= player.acceleration;
+                player.direction = 'left';
+                player.moving = true;
+            }
+
+            // Apply friction when no keys are pressed
+            if (!keys['ArrowLeft'] && !keys['a'] && !keys['ArrowRight'] && !keys['d']) {
+                player.velocityX *= player.friction;
+                if (Math.abs(player.velocityX) < 0.1) {
+                    player.velocityX = 0;
+                }
+            }
+
+            // Cap velocityX to maxSpeed
+            if (player.velocityX > player.maxSpeed) {
+                player.velocityX = player.maxSpeed;
+            } else if (player.velocityX < -player.maxSpeed) {
+                player.velocityX = -player.maxSpeed;
+            }
+
+            // Update player's position
+            player.x += player.velocityX;
+
+            // Apply gravity
+            player.velocityY += gravity;
+            player.y += player.velocityY;
+
+            // Collision detection with platforms
+            let onPlatform = false;
+            platforms.forEach(platform => {
+                if (
+                    player.x < platform.x + platform.width &&
+                    player.x + player.width > platform.x &&
+                    player.y + player.height > platform.y &&
+                    player.y + player.height < platform.y + platform.height &&
+                    player.velocityY >= 0
+                ) {
+                    player.y = platform.y - player.height;
+                    player.velocityY = 0;
+                    player.jumping = false;
+                    onPlatform = true;
+                }
+            });
+
+            if (!onPlatform) {
+                player.jumping = true;
+            }
+
+            // Update camera position
+            camera.x = player.x - gameContainer.offsetWidth / 2 + player.width / 2;
+            camera.y = 0;
+
+            // Boundaries
+            if (player.y + player.height > gameContainer.offsetHeight) {
+                gameOver();
+                return;
+            }
+
+            // Update enemies
+            enemies.forEach((enemy, index) => {
+                if (enemy.type === 'ground') {
+                    // Move enemy along platform
+                    enemy.x += enemy.speed * enemy.direction;
+
+                    // Reverse direction at platform edges
+                    const platform = platforms.find(p =>
+                        enemy.x + enemy.width > p.x &&
+                        enemy.x < p.x + p.width &&
+                        enemy.y + enemy.height === p.y
+                    );
+                    if (
+                        !platform ||
+                        enemy.x <= platform.x ||
+                        enemy.x + enemy.width >= platform.x + platform.width
+                    ) {
+                        enemy.direction *= -1;
+                    }
+
+                    enemy.element.style.left = enemy.x + 'px';
+                } else if (enemy.type === 'shooting') {
+                    // Shooting enemy logic
+                    enemy.shootCooldown--;
+                    if (enemy.shootCooldown <= 0) {
+                        enemy.shootCooldown = Math.random() * 100 + 50;
+                        // Fire bullet towards player
+                        const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+                        const enemyBullet = {
+                            x: enemy.x + enemy.width / 2,
+                            y: enemy.y + enemy.height / 2,
+                            width: 5,
+                            height: 5,
+                            speedX: Math.cos(angle) * 3,
+                            speedY: Math.sin(angle) * 3,
+                            element: document.createElement('div')
+                        };
+                        enemyBullet.element.classList.add('enemy-bullet');
+                        enemyBullet.element.style.left = enemyBullet.x + 'px';
+                        enemyBullet.element.style.top = enemyBullet.y + 'px';
+                        world.appendChild(enemyBullet.element);
+                        enemyBullets.push(enemyBullet);
+                    }
+                }
+
+                // Enemy-player collision
+                if (
+                    player.x < enemy.x + enemy.width &&
+                    player.x + player.width > enemy.x &&
+                    player.y < enemy.y + enemy.height &&
+                    player.y + player.height > enemy.y
+                ) {
+                    // Check if jumping on enemy
+                    if (player.velocityY > 0 && player.y + player.height - enemy.y < 20) {
+                        // Remove enemy
+                        eliminateEnemy(enemy, index);
+                        player.velocityY = -10;
+                        player.score += 20;
+                        updateScoreBoard();
+                    } else {
+                        // Game over
+                        gameOver();
+                        return;
+                    }
+                }
+
+                // Remove enemy if it goes off-screen
+                if (enemy.y > gameContainer.offsetHeight + 1000 || enemy.x < player.x - 2000 || enemy.x > player.x + 2000) {
+                    world.removeChild(enemy.element);
+                    enemies.splice(index, 1);
+                }
+            });
+
+            // Update enemy bullets
+            enemyBullets.forEach((bullet, index) => {
+                bullet.x += bullet.speedX;
+                bullet.y += bullet.speedY;
+                bullet.element.style.left = bullet.x + 'px';
+                bullet.element.style.top = bullet.y + 'px';
+
+                // Bullet-player collision
+                if (
+                    bullet.x < player.x + player.width &&
+                    bullet.x + bullet.width > player.x &&
+                    bullet.y < player.y + player.height &&
+                    bullet.y + bullet.height > player.y
+                ) {
+                    // Game over
+                    gameOver();
+                    return;
+                }
+
+                // Remove bullet if it goes off-screen
+                if (
+                    bullet.x < camera.x - 100 || bullet.x > camera.x + gameContainer.offsetWidth + 100 ||
+                    bullet.y > gameContainer.offsetHeight + 1000 || bullet.y < -1000
+                ) {
+                    world.removeChild(bullet.element);
+                    enemyBullets.splice(index, 1);
+                }
+            });
+
+            // Update player bullets
+            bullets.forEach((bullet, index) => {
+                bullet.x += bullet.speed * (bullet.direction === 'right' ? 1 : -1);
+                bullet.element.style.left = bullet.x + 'px';
+
+                // Bullet-enemy collision
+                enemies.forEach((enemy, eIndex) => {
+                    if (
+                        bullet.x < enemy.x + enemy.width &&
+                        bullet.x + bullet.width > enemy.x &&
+                        bullet.y < enemy.y + enemy.height &&
+                        bullet.y + bullet.height > enemy.y
+                    ) {
+                        // Remove enemy and bullet
+                        eliminateEnemy(enemy, eIndex);
+                        world.removeChild(bullet.element);
+                        bullets.splice(index, 1);
+                        player.score += 20;
+                        updateScoreBoard();
+                    }
+                });
+
+                // Remove bullet if it goes off-screen
+                if (bullet.x < camera.x - 100 || bullet.x > camera.x + gameContainer.offsetWidth + 100) {
+                    world.removeChild(bullet.element);
+                    bullets.splice(index, 1);
+                }
+            });
+
+            // Update ammo drops
+            ammoDrops.forEach((ammo, index) => {
+                ammo.y += ammo.speed;
+                ammo.element.style.top = ammo.y + 'px';
+
+                // Ammo-player collision
+                if (
+                    player.x < ammo.x + ammo.width &&
+                    player.x + player.width > ammo.x &&
+                    player.y < ammo.y + ammo.height &&
+                    player.y + player.height > ammo.y
+                ) {
+                    // Collect ammo
+                    world.removeChild(ammo.element);
+                    ammoDrops.splice(index, 1);
+                    player.ammo += 5;
+                    updateScoreBoard();
+                }
+
+                // Remove ammo if it goes off-screen
+                if (ammo.y > gameContainer.offsetHeight + 1000) {
+                    world.removeChild(ammo.element);
+                    ammoDrops.splice(index, 1);
+                }
+            });
+
+            // Generate new platforms ahead
+            generatePlatforms();
+
+            // Remove platforms that are far behind
+            platforms = platforms.filter(platform => {
+                if (platform.x + platform.width < camera.x - 1000) {
+                    world.removeChild(platform.element);
+                    return false;
+                }
+                return true;
+            });
+        }
+
+        function eliminateEnemy(enemy, index) {
+            world.removeChild(enemy.element);
+            enemies.splice(index, 1);
+
+            // 50% chance to drop ammo
+            if (Math.random() < 0.5) {
+                spawnAmmoDropAt(enemy.x + enemy.width / 2 - 7.5, enemy.y + enemy.height / 2 - 7.5);
+            }
+        }
+
+        function render() {
+            // Update player position
+            player.element.style.left = player.x + 'px';
+            player.element.style.top = player.y + 'px';
+
+            // Flip player based on direction
+            if (player.direction === 'left') {
+                player.element.style.transform = 'scaleX(-1)';
+            } else {
+                player.element.style.transform = 'scaleX(1)';
+            }
+
+            // Add animation classes
+            const legs = player.element.querySelectorAll('.leg');
+            const arms = player.element.querySelectorAll('.arm');
+
+            if (player.moving && !player.jumping) {
+                // Running animation
+                legs.forEach(leg => {
+                    leg.style.animation = 'run 0.3s infinite';
+                });
+                arms.forEach(arm => {
+                    arm.style.animation = 'run 0.3s infinite';
+                });
+            } else {
+                // Stop animation
+                legs.forEach(leg => {
+                    leg.style.animation = '';
+                });
+                arms.forEach(arm => {
+                    arm.style.animation = '';
+                });
+            }
+
+            if (player.jumping) {
+                player.element.style.animation = 'jump 0.5s';
+            } else {
+                player.element.style.animation = '';
+            }
+
+            // Update bullets position
+            bullets.forEach(bullet => {
+                bullet.element.style.left = bullet.x + 'px';
+            });
+
+            // Update enemy bullets position
+            enemyBullets.forEach(bullet => {
+                bullet.element.style.left = bullet.x + 'px';
+                bullet.element.style.top = bullet.y + 'px';
+            });
+
+            // Update world position for camera scrolling
+            world.style.transform = `translateX(${-camera.x}px)`;
+            starsContainer.style.transform = `translateX(${-camera.x * 0.2}px)`; // Parallax effect for stars
+        }
+
+        function generatePlatforms() {
+            // Generate platforms ahead of the player
+            const lastPlatform = platforms[platforms.length - 1];
+            if (lastPlatform && lastPlatform.x < player.x + 1000) {
+                const newPlatformX = lastPlatform.x + Math.random() * 200 + 200;
+                const newPlatformY = Math.random() * 200 + 50;
+                const platformData = {
+                    x: newPlatformX,
+                    y: newPlatformY,
+                    width: Math.random() * 150 + 100,
+                    height: 15,
+                    type: 'static',
+                    element: null
+                };
+                const platform = document.createElement('div');
+                platform.classList.add('platform');
+                platform.style.left = platformData.x + 'px';
+                platform.style.top = platformData.y + 'px';
+                platform.style.width = platformData.width + 'px';
+                platform.style.height = platformData.height + 'px';
+                world.appendChild(platform);
+                platformData.element = platform;
+                platforms.push(platformData);
+            }
+
+            // Generate platforms behind the player
+            const firstPlatform = platforms[0];
+            if (firstPlatform && firstPlatform.x > player.x - 1000) {
+                const newPlatformX = firstPlatform.x - (Math.random() * 200 + 200);
+                const newPlatformY = Math.random() * 200 + 50;
+                const platformData = {
+                    x: newPlatformX,
+                    y: newPlatformY,
+                    width: Math.random() * 150 + 100,
+                    height: 15,
+                    type: 'static',
+                    element: null
+                };
+                const platform = document.createElement('div');
+                platform.classList.add('platform');
+                platform.style.left = platformData.x + 'px';
+                platform.style.top = platformData.y + 'px';
+                platform.style.width = platformData.width + 'px';
+                platform.style.height = platformData.height + 'px';
+                world.appendChild(platform);
+                platformData.element = platform;
+                platforms.unshift(platformData);
+            }
+        }
+
+        // Event listeners for controls
+        document.addEventListener('keydown', e => {
+            keys[e.key] = true;
+
+            if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') && !player.jumping) {
+                player.velocityY = -12;
+                player.jumping = true;
+            }
+
+            if (e.key === 'Control' || e.key === 'f') {
+                shootBullet();
+            }
+
+            // Restart game with Enter key on Game Over screen
+            if (gameOverActive && e.key === 'Enter') {
+                playAgainButton.click();
+            }
+        });
+
+        document.addEventListener('keyup', e => {
+            keys[e.key] = false;
+        });
+
+        // Touch controls for mobile devices
+        let touchStartX = null;
+        let touchStartY = null;
+
+        gameContainer.addEventListener('touchstart', e => {
+            const touch = e.touches[0];
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+        });
+
+        gameContainer.addEventListener('touchend', e => {
+            if (!touchStartX || !touchStartY) return;
+
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+
+            const diffX = touchEndX - touchStartX;
+            const diffY = touchEndY - touchStartY;
+
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                // Horizontal swipe
+                if (diffX > 0) {
+                    // Swipe right
+                    player.velocityX += player.acceleration * 5;
+                    player.direction = 'right';
+                } else {
+                    // Swipe left
+                    player.velocityX -= player.acceleration * 5;
+                    player.direction = 'left';
+                }
+            } else {
+                // Vertical swipe
+                if (diffY < 0 && !player.jumping) {
+                    // Swipe up
+                    player.velocityY = -12;
+                    player.jumping = true;
+                }
+            }
+
+            // Tap to shoot
+            if (Math.abs(diffX) < 10 && Math.abs(diffY) < 10) {
+                shootBullet();
+            }
+
+            touchStartX = null;
+            touchStartY = null;
+        });
+
+        // Landing page event listeners
+        playerNameInput.addEventListener('input', () => {
+            startGameButton.disabled = playerNameInput.value.trim() === '';
+        });
+
+        startGameButton.addEventListener('click', () => {
+            player.name = playerNameInput.value.trim().substring(0, 15);
+            landingPage.style.display = 'none';
+            gameScreen.style.display = 'flex';
+            startGame();
+        });
+
+        // Play Again button event listener
+        playAgainButton.addEventListener('click', () => {
+            startGame();
+        });
+
+        function startGame() {
+            resetGame();
+            clearInterval(gameInterval);
+            clearInterval(enemySpawnInterval);
+            clearInterval(ammoDropInterval);
+            gameInterval = setInterval(gameLoop, 20);
+            enemySpawnInterval = setInterval(spawnEnemy, 3000); // Increased spawn rate
+            ammoDropInterval = setInterval(spawnAmmoDrop, 7000);
+            displayHighScores();
+        }
+
+        // Initialize game on load
+        window.onload = () => {
+            displayHighScores();
+        };
+    </script>
+</body>
+</html>
