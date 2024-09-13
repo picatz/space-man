@@ -1226,40 +1226,37 @@
             touchStartY = touch.clientY;
         });
 
-        gameContainer.addEventListener('touchend', e => {
+        gameContainer.addEventListener('touchmove', e => {
             if (!touchStartX || !touchStartY) return;
 
-            const touchEndX = e.changedTouches[0].clientX;
-            const touchEndY = e.changedTouches[0].clientY;
-
-            const diffX = touchEndX - touchStartX;
-            const diffY = touchEndY - touchStartY;
+            const touch = e.touches[0];
+            const diffX = touch.clientX - touchStartX;
+            const diffY = touch.clientY - touchStartY;
 
             if (Math.abs(diffX) > Math.abs(diffY)) {
                 // Horizontal swipe
                 if (diffX > 0) {
-                    // Swipe right
-                    player.velocityX += player.acceleration * 5;
-                    player.direction = 'right';
+                    keys['ArrowRight'] = true;
+                    keys['ArrowLeft'] = false;
                 } else {
-                    // Swipe left
-                    player.velocityX -= player.acceleration * 5;
-                    player.direction = 'left';
+                    keys['ArrowLeft'] = true;
+                    keys['ArrowRight'] = false;
                 }
             } else {
                 // Vertical swipe
                 if (diffY < 0 && !player.jumping) {
-                    // Swipe up
                     player.velocityY = -12;
                     player.jumping = true;
                 }
             }
 
-            // Tap to shoot
-            if (Math.abs(diffX) < 10 && Math.abs(diffY) < 10) {
-                shootBullet();
-            }
+            touchStartX = touch.clientX;
+            touchStartY = touch.clientY;
+        });
 
+        gameContainer.addEventListener('touchend', e => {
+            keys['ArrowRight'] = false;
+            keys['ArrowLeft'] = false;
             touchStartX = null;
             touchStartY = null;
         });
