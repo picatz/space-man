@@ -1363,34 +1363,22 @@
             const touch = e.touches[0];
             touchStartX = touch.clientX;
             touchStartY = touch.clientY;
-        });
 
-        gameContainer.addEventListener('touchmove', e => {
-            if (!touchStartX || !touchStartY) return;
-
-            const touch = e.touches[0];
-            const diffX = touch.clientX - touchStartX;
-            const diffY = touch.clientY - touchStartY;
-
-            if (Math.abs(diffX) > Math.abs(diffY)) {
-                // Horizontal swipe
-                if (diffX > 0) {
-                    keys['ArrowRight'] = true;
-                    keys['ArrowLeft'] = false;
-                } else {
-                    keys['ArrowLeft'] = true;
-                    keys['ArrowRight'] = false;
-                }
+            // Determine touch region for controls
+            const screenWidth = window.innerWidth;
+            if (touchStartX < screenWidth * 0.33) {
+                // Left third of the screen: move left
+                keys['ArrowLeft'] = true;
+            } else if (touchStartX > screenWidth * 0.66) {
+                // Right third of the screen: move right
+                keys['ArrowRight'] = true;
             } else {
-                // Vertical swipe
-                if (diffY < 0 && !player.jumping) {
+                // Middle third of the screen: jump
+                if (!player.jumping) {
                     player.velocityY = -12;
                     player.jumping = true;
                 }
             }
-
-            touchStartX = touch.clientX;
-            touchStartY = touch.clientY;
         });
 
         gameContainer.addEventListener('touchend', e => {
