@@ -143,7 +143,16 @@
   }
 
   .row { display: flex; gap: 10px; }
-  .row .btn { margin: 6px 0; }
+  .row .btn { margin: 6px 0; min-width: 0; padding: 14px 10px; }
+
+  /* attract card sits low so the canvas wordmark + idle astronaut own the upper scene */
+  .attract-anchor { justify-content: flex-end; }
+
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 4px 14px rgba(56, 225, 255, 0.35); transform: scale(1); }
+    50% { box-shadow: 0 6px 26px rgba(56, 225, 255, 0.7); transform: scale(1.02); }
+  }
+  .btn.pulse { animation: pulseGlow 1.6s ease-in-out infinite; }
 
   .toggle-row {
     display: flex;
@@ -268,12 +277,11 @@
 <canvas id="game"></canvas>
 
 <!-- Attract / landing -->
-<div class="overlay" id="ovAttract">
+<div class="overlay attract-anchor" id="ovAttract">
   <div class="panel">
-    <div class="sub" style="margin-bottom:14px;letter-spacing:3px;">SPACE MAN</div>
-    <div id="attractBest" class="title-lg" style="font-size:16px;letter-spacing:2px;color:var(--gold);">BEST 0</div>
-    <div id="attractMedals" class="sub" style="margin:8px 0 16px;font-size:18px;letter-spacing:4px;"></div>
-    <button class="btn" id="btnPlay">Tap to Start</button>
+    <div id="attractBest" class="title-lg" style="font-size:17px;letter-spacing:2px;color:var(--gold);margin-bottom:4px;">BEST 0</div>
+    <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
+    <button class="btn pulse" id="btnPlay">Tap to Start</button>
     <div class="row">
       <button class="btn ghost" id="btnTrophy">Scores</button>
       <button class="btn ghost" id="btnSettings">Settings</button>
@@ -670,7 +678,7 @@ function layoutTouch() {
   const inset = 16 + safeInset('left');
   const sbR = view.isTablet ? 40 : 32;
   input.shootBtn.r = sbR;
-  input.shootBtn.cx = settings.lefty ? inset + sbR : w - 16 - sbR - safeInset('right');
+  input.shootBtn.cx = settings.lefty ? inset + 8 + sbR : w - 24 - sbR - safeInset('right');
   const landscape = w > h;
   input.shootBtn.cy = landscape ? h * 0.42 : h - (safeInset('bottom') + 88 + sbR);
 }
@@ -862,6 +870,7 @@ function resetRun(seed) {
   G.newBest = false; G.celebrate = 0; G.deathSeq = 0; G.deathZoom = 1; G.deathCardShown = false;
   G.vignette = 0; G.edgePulse = 0; G.stinger = 0; G.deep1000 = false;
   G.pbPassed = false; G.helmet = null; G.starTimer = 0; G.shootingStar = null;
+  G.attractBase = undefined;
   G.frameCount = 0; G.runStart = G.time; G.prevBest = bestScore; G.mercy = stats.mercy;
   G.pbFlagX = stats.bestDist > 0 ? G.startX + stats.bestDist * 10 : null;
   G.hints = [];
@@ -1116,7 +1125,10 @@ function updateFlare() {
 function updateCamera() {
   const p = G.player;
   G.camXprev = G.camX; G.camYprev = G.camY;
-  const targetX = p.x + p.vx * 14 + p.facing * 70 - view.w * 0.42;
+  // Lookahead scales with viewport so the player never leaves the safe band
+  // (fixed 70px lookahead exceeds half the screen on narrow portrait phones).
+  const look = clamp(p.vx * 14 + p.facing * 70, -view.w * 0.2, view.w * 0.24);
+  const targetX = p.x + look - view.w * 0.42;
   G.camX += (targetX - G.camX) * 0.08;
   if (G.camX < G.flare.x - 40) G.camX = G.flare.x - 40;
   if (p.onGround && p.groundPlat) {
@@ -1203,6 +1215,20 @@ function update() {
     if (G.shootingStar) { G.shootingStar.x += G.shootingStar.vx; G.shootingStar.y += G.shootingStar.vy; if (--G.shootingStar.life <= 0) G.shootingStar = null; }
     G.dispScore += (G.score - G.dispScore) * 0.2;
     Audio.tickMusic(STEP, G.band, 1 << G.chain);
+  } else if (G.mode === 'attract') {
+    // Live hero scene: idle astronaut breathing on its platform, gentle parallax sway.
+    const p = G.player;
+    if (p) { p.idle += STEP; p.glint += STEP; p.facing = 1; p.onGround = true; p.vx = 0; p.vy = 0; }
+    if (G.attractBase === undefined && p) G.attractBase = { x: p.x - view.w * 0.46, y: G.groundY - view.h * 0.5 };
+    if (G.attractBase) {
+      G.camXprev = G.camX; G.camYprev = G.camY;
+      G.camX = G.attractBase.x + Math.sin(G.time * 0.28) * 26;
+      G.camY = G.attractBase.y + Math.sin(G.time * 0.4) * 7;
+    }
+    if (p && G.frameCount % 9 === 0) spawnP(p.x - 8, p.y + 6, -rnd(0.2, 0.6), rnd(0.3, 0.9), 20, 1.6, 'rgba(255,180,84,0.7)', 0.03, false, 0);
+    G.starTimer += STEP;
+    if (G.starTimer > 8 && !G.shootingStar) { G.starTimer = 0; G.shootingStar = { x: G.camX + view.w, y: rnd(20, 110), life: 72, vx: -11, vy: 4 }; }
+    if (G.shootingStar) { G.shootingStar.x += G.shootingStar.vx; G.shootingStar.y += G.shootingStar.vy; if (--G.shootingStar.life <= 0) G.shootingStar = null; }
   }
   finishTick();
 }
@@ -1280,16 +1306,44 @@ function render(alpha) {
   drawBullets();
   if (G.player) drawPlayer(alpha);
   drawParticles();
-  drawHints();
+  drawHints(iCamX);
   ctx.restore();
 
   drawPopups(iCamX, iCamY);
   drawForeground(iCamX);
   drawVignette();
+  if (G.mode === 'attract') drawWordmark();
   if (G.mode === 'play' || G.mode === 'pause' || (G.player && G.player.dead)) drawHUD();
   if ((FORCE_TOUCH || input.usingTouch) && G.mode === 'play') drawTouchControls();
   drawCelebration();
   ctx.restore();
+}
+
+/* ---- SPACE MAN wordmark: 900-weight canvas text, cyan-glow underlay + white fill,
+   slight skew, chromatic offset shadows (cyan left, coral right). ---- */
+function drawWordmark() {
+  const text = 'SPACE MAN';
+  const cy = Math.max(52, view.h * 0.19);
+  let size = clamp(view.w * 0.13, 18, 68);
+  ctx.font = '900 ' + size + 'px ' + FONT;
+  const w = ctx.measureText(text).width;
+  const maxW = view.w * 0.86;
+  if (w > maxW) { size = Math.max(14, size * maxW / w); ctx.font = '900 ' + size + 'px ' + FONT; }
+  const cx = view.w / 2 + cy * 0.08;       // compensate the skew's x-shift so it stays centered
+  ctx.save();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.transform(1, 0, -0.08, 1, 0, 0);
+  ctx.fillStyle = '#38E1FF'; ctx.globalAlpha = 0.85; ctx.fillText(text, cx - 3, cy);      // cyan chroma left
+  ctx.fillStyle = '#FF4F66'; ctx.fillText(text, cx + 3, cy);                              // coral chroma right
+  ctx.globalAlpha = 0.55; ctx.fillStyle = '#38E1FF'; ctx.fillText(text, cx, cy + 2.5);    // cyan glow underlay
+  ctx.globalAlpha = 1; ctx.fillStyle = '#F4F7FF'; ctx.fillText(text, cx, cy);             // white top layer
+  ctx.restore();
+  // tagline pulse under the wordmark
+  ctx.globalAlpha = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(G.time * 3));
+  ctx.fillStyle = '#9FF1FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.font = '700 ' + clamp(size * 0.2, 9, 13) + 'px ' + FONT;
+  ctx.fillText('OUTRUN THE FLARE', view.w / 2, cy + size * 0.62);
+  ctx.globalAlpha = 1;
 }
 
 /* ---- background parallax ---- */
@@ -1297,10 +1351,13 @@ let nebulaCanvas = null, nebulaHue = -1;
 function buildNebula(hue) {
   const c = makeCanvas(view.w, view.h), g = c.getContext('2d');
   for (let i = 0; i < 4; i++) {
-    const x = (i * 0.27 + 0.1) * view.w, y = (i % 2 ? 0.35 : 0.6) * view.h, r = view.w * (0.3 + i * 0.05);
-    const grd = g.createRadialGradient(x, y, 0, x, y, r);
-    grd.addColorStop(0, `hsla(${hue + i * 8}, 60%, 30%, 0.5)`); grd.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = grd; g.fillRect(0, 0, view.w, view.h);
+    const bx = (i * 0.27 + 0.1) * view.w, y = (i % 2 ? 0.35 : 0.6) * view.h, r = view.w * (0.3 + i * 0.05);
+    // Draw each blob wrapped at ±W so the tile edges match and no seam shows.
+    for (const x of [bx - view.w, bx, bx + view.w]) {
+      const grd = g.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, `hsla(${hue + i * 8}, 60%, 30%, 0.5)`); grd.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, view.w, view.h);
+    }
   }
   return c;
 }
@@ -1566,14 +1623,16 @@ function drawParticles() {
 }
 
 /* ---- hints ---- */
-function drawHints() {
-  if (!G.player) return;
+function drawHints(camX) {
+  if (!G.player || G.mode !== 'play') return;   // teaching hints belong to the run, not the attract scene
   for (const h of G.hints) {
     const fade = clamp((h.x + 180 - G.player.x) / 180, 0, 1);
     if (fade <= 0) continue;
     ctx.globalAlpha = fade * 0.6; ctx.fillStyle = '#CFE3FF';
     ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
-    ctx.fillText(h.text, h.x, h.y);
+    // Clamp into the visible frame so hint text never clips at a screen edge.
+    const hw = ctx.measureText(h.text).width / 2;
+    ctx.fillText(h.text, clamp(h.x, camX + hw + 10, camX + view.w - hw - 10), h.y);
   }
   ctx.globalAlpha = 1;
 }
@@ -1668,31 +1727,34 @@ function drawCelebration() {
 /* ---- touch controls ---- */
 function drawTouchControls() {
   layoutTouch();
-  const toX = window.innerWidth, toY = window.innerHeight;
-  const sx = input.shootBtn.cx / toX * view.w, sy = input.shootBtn.cy / toY * view.h;
-  const r = input.shootBtn.r / toX * view.w;
+  // Draw in CSS-pixel space (layoutTouch works in CSS px): converting through
+  // logical units mixed coordinate systems and pushed the pip ring off-screen.
+  ctx.save();
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r;
   ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU);
   ctx.fillStyle = input.shootBtn.pressed ? 'rgba(255,201,60,0.35)' : 'rgba(255,201,60,0.16)'; ctx.fill();
   ctx.strokeStyle = 'rgba(255,201,60,0.7)'; ctx.lineWidth = 2; ctx.stroke();
   for (let i = 0; i < CFG.ammoCap; i++) {
     const a = -Math.PI / 2 + (i / CFG.ammoCap) * TAU;
     ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.2)';
-    const pr = r + 6 + G.ammoPulse * 3;
-    ctx.beginPath(); ctx.arc(sx + Math.cos(a) * pr, sy + Math.sin(a) * pr, 2.2, 0, TAU); ctx.fill();
+    const pr = r + 8 + G.ammoPulse * 4;
+    ctx.beginPath(); ctx.arc(sx + Math.cos(a) * pr, sy + Math.sin(a) * pr, 2.6, 0, TAU); ctx.fill();
   }
   ctx.fillStyle = G.ammo > 0 ? 'rgba(255,201,60,0.9)' : 'rgba(255,255,255,0.3)';
-  ctx.font = '900 12px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('FIRE', sx, sy + 4);
+  ctx.font = '900 13px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('FIRE', sx, sy + 5);
   if (input.stick.active || FORCE_TOUCH) {
-    const gx = input.stick.active ? input.stick.cx / toX * view.w : view.w * (settings.lefty ? 0.8 : 0.2);
-    const gy = input.stick.active ? input.stick.cy / toY * view.h : view.h * 0.72;
+    const cssW = window.innerWidth, cssH = window.innerHeight;
+    const gx = input.stick.active ? input.stick.cx : cssW * (settings.lefty ? 0.8 : 0.2);
+    const gy = input.stick.active ? input.stick.cy : cssH * 0.72;
     ctx.globalAlpha = 0.3; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(gx, gy, 28, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(gx, gy, 34, 0, TAU); ctx.stroke();
     if (input.stick.active) {
-      const tx = input.stick.x / toX * view.w;
-      ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(clamp(tx, gx - 28, gx + 28), gy, 10, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(clamp(input.stick.x, gx - 34, gx + 34), gy, 12, 0, TAU); ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
+  ctx.restore();
 }
 
 /* ---------------------------------------------------------------------------
@@ -1910,6 +1972,7 @@ function runShot() {
    ------------------------------------------------------------------------- */
 function boot() {
   resize();
+  booted = true;
   syncSwitches();
   Audio.setMute(!settings.sound);
   if (SHOT) { runShot(); return; }
