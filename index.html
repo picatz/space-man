@@ -1305,7 +1305,11 @@ function finalizeDeath() {
   // Hints retire after three runs, or individually once the action is performed
   // (per-action flag sets live in the physics/combat code) — never all at once.
   if (stats.runs >= 3) { flags.taughtRun = true; flags.taughtJump = true; flags.taughtStomp = true; }
+  const wasFull = top5.length >= 5;
   G.qualifies = (top5.length < 5 || fs > top5[top5.length - 1].score) && fs > 0 && !SHOT;
+  // The blocking picker only appears when a genuinely FULL table is cracked — the
+  // first five runs auto-commit silently so onboarding restart speed stays sacred.
+  G.showPicker = G.qualifies && wasFull;
   // Auto-commit the qualifying entry immediately with the last-used initials so a
   // panic restart can never lose it; the picker merely edits this entry's initials.
   justAdded = null;
@@ -1973,7 +1977,7 @@ function showDeathCard() {
   finalizeDeath();
   G.mode = 'dead'; G.deadShownAt = G.time;
   if (settings.sound && G.runMedal) setTimeout(() => Audio.sfx.medal(G.runMedal.name === 'BRONZE' ? 1 : G.runMedal.name === 'SILVER' ? 2 : 3), 300);
-  if (G.qualifies) { showInitials(); return; }
+  if (G.showPicker) { showInitials(); return; }   // only a full-table crack blocks; else auto-committed
   renderDeathCard();
 }
 function renderDeathCard() {
