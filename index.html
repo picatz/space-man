@@ -1460,7 +1460,8 @@ function render(alpha) {
   drawForeground(iCamX);
   drawVignette();
   if (G.mode === 'attract') drawWordmark();
-  if (G.mode === 'play' || G.mode === 'pause' || G.mode === 'resume' || (G.player && G.player.dead)) drawHUD();
+  // HUD hides once the death card is up — the card owns the screen.
+  if (G.mode === 'play' || G.mode === 'pause' || G.mode === 'resume' || (G.player && G.player.dead && !G.deathCardShown)) drawHUD();
   if ((FORCE_TOUCH || input.usingTouch) && (G.mode === 'play' || G.mode === 'resume')) drawTouchControls();
   if (G.mode === 'resume') {
     ctx.textAlign = 'center';
@@ -1924,9 +1925,11 @@ function drawTouchControls() {
     const gy = input.stick.active ? input.stick.cy : cssH * 0.72;
     ctx.globalAlpha = 0.3; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(gx, gy, 34, 0, TAU); ctx.stroke();
-    if (input.stick.active) {
-      ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(clamp(input.stick.x, gx - 34, gx + 34), gy, 12, 0, TAU); ctx.fill();
-    }
+    // Inner knob always renders — direction/magnitude feedback is the whole
+    // point of a floating stick (rests centered when idle).
+    const kx = input.stick.active ? clamp(input.stick.x, gx - 34, gx + 34) : gx;
+    ctx.globalAlpha = input.stick.active ? 0.55 : 0.22;
+    ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(kx, gy, 12, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1;
   }
   ctx.restore();
