@@ -529,6 +529,7 @@ function resize() {
   }
   nebulaCanvas = null;                            // rebuild sized cache
   starsBuilt = false;
+  readSafeInsets();                               // cache env() insets (avoid getComputedStyle per frame)
   // Setting canvas.width above clears the bitmap. In shot mode there is no live
   // render loop, so repaint synchronously — otherwise a post-load resize can leave
   // the canvas blank until the next rAF (which some headless captures never wait for).
@@ -1561,9 +1562,12 @@ function drawBackground(camX) {
   const spd = Math.abs(G.player ? G.player.vx : 0);
   for (const s of starfield.near) {
     const x = ((s.x - camX * 0.5) % W + W) % W;
-    ctx.globalAlpha = 0.85 * (0.6 + 0.4 * Math.sin(G.time * 1.2 + s.ph));
+    const tw = Math.sin(G.time * 1.2 + s.ph);
+    ctx.globalAlpha = 0.85 * (0.6 + 0.4 * tw);
     ctx.fillStyle = '#E8F4FF'; ctx.fillRect(x, s.y, 3, 3);
     if (spd > 3) { ctx.globalAlpha = 0.3; ctx.fillRect(x, s.y + 1, spd * 0.8, 1); }
+    // occasional 4-point sparkle at the twinkle peak
+    else if (tw > 0.95) { ctx.globalAlpha = (tw - 0.95) * 18; ctx.fillRect(x - 2, s.y + 1, 7, 1); ctx.fillRect(x + 1, s.y - 2, 1, 7); }
   }
   ctx.globalAlpha = 1;
   if (G.shootingStar) {
@@ -1756,17 +1760,22 @@ function drawPlayer(alpha) {
   ctx.scale(p.sqX + breathe, p.sqY - breathe);
   const hw = p.w / 2, hh = p.h / 2;
 
+  // Legs: two capsules in a cooler shade so they separate from the white torso
+  // instead of merging into one blob; back leg a touch darker for depth.
   const legSwing = p.onGround ? Math.sin(p.runCycle) * Math.min(Math.abs(p.vx) * 1.2, 6) : (p.vy < 0 ? -4 : 4);
-  ctx.strokeStyle = '#DCE6FF'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-3, hh - 12); ctx.lineTo(-3 + legSwing * 0.5, hh - 1); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(4, hh - 12); ctx.lineTo(4 - legSwing * 0.5, hh - 1); ctx.stroke();
+  ctx.lineWidth = 4.5; ctx.lineCap = 'round';
+  ctx.strokeStyle = '#9FB3E0';
+  ctx.beginPath(); ctx.moveTo(4, hh - 13); ctx.lineTo(4 - legSwing * 0.5, hh - 1); ctx.stroke();   // back leg
+  ctx.strokeStyle = '#C6D4F5';
+  ctx.beginPath(); ctx.moveTo(-4, hh - 13); ctx.lineTo(-4 + legSwing * 0.5, hh - 1); ctx.stroke();  // front leg
 
   ctx.fillStyle = '#FFB454'; roundRect(-hw - 1, -6, 7, 16, 3); ctx.fill();
   ctx.fillStyle = '#F4F7FF'; roundRect(-8, -4, 16, 16, 6); ctx.fill();
 
-  ctx.strokeStyle = '#F4F7FF'; ctx.lineWidth = 4;
-  const armSwing = p.onGround ? Math.sin(p.runCycle + Math.PI) * 3 : 2;
-  ctx.beginPath(); ctx.moveTo(2, 0); ctx.lineTo(8, 4 + armSwing); ctx.stroke();
+  // Arm: a short capsule hugging the torso side — no outward spike.
+  ctx.strokeStyle = '#E4ECFF'; ctx.lineWidth = 3.5;
+  const armSwing = p.onGround ? Math.sin(p.runCycle + Math.PI) * 2 : 1.5;
+  ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(6.5, 6 + armSwing); ctx.stroke();
 
   ctx.drawImage(GLOW.white, -20, -hh - 4, 40, 40);
   ctx.fillStyle = '#F4F7FF'; ctx.beginPath(); ctx.arc(0, -hh + 8, 11, 0, TAU); ctx.fill();
@@ -1872,7 +1881,14 @@ function drawGlowText(text, x, y, size, glow, fill) {
   ctx.globalAlpha = 1; ctx.fillStyle = fill; ctx.fillText(text, x, y);
   ctx.restore();
 }
-function safeInset(side) { const v = getComputedStyle(document.documentElement).getPropertyValue('--sa-' + side); return parseFloat(v) || 0; }
+// Safe-area insets are cached on resize/orientation — reading getComputedStyle on
+// the hot render path (5×/frame) forces a style flush on the low-end phones we target.
+const _safeInsets = { top: 0, left: 0, right: 0, bottom: 0 };
+function readSafeInsets() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const s of ['top', 'left', 'right', 'bottom']) _safeInsets[s] = parseFloat(cs.getPropertyValue('--sa-' + s)) || 0;
+}
+function safeInset(side) { return _safeInsets[side] || 0; }
 
 /* ---- vignette / stingers ---- */
 function drawVignette() {
