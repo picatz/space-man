@@ -35,7 +35,8 @@
     --coral: #FF4F66;
     --gold: #FFC93C;
     --ui: #CFE3FF;
-    --panel: rgba(10, 14, 32, 0.72);
+    --panel: rgba(10, 14, 32, 0.86);
+    --font-num: ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif;
     --font: 'Orbitron', ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif;
   }
 
@@ -201,6 +202,19 @@
   }
   table.scores td.rank { color: var(--cyan); font-weight: 700; width: 28px; }
   table.scores td.sc { text-align: right; font-weight: 700; color: var(--suit); }
+
+  /* Numeric strings use the system stack — Orbitron's slashed zero reads as Ø
+     on exactly the lines that matter most (the delta line, scores, stats). */
+  #deadScore, #deadDelta, #deadStats, #attractBest, #attractStats, #trophyStats, table.scores td.sc { font-family: var(--font-num); }
+
+  /* Compact cards for short (phone-landscape) viewports. */
+  @media (max-height: 430px) {
+    .overlay { padding: calc(env(safe-area-inset-top) + 10px) 16px calc(env(safe-area-inset-bottom) + 10px); }
+    .panel { padding: 10px 18px; max-height: calc(100vh - 24px); overflow-y: auto; border-radius: 14px; }
+    .title-lg { font-size: 18px; margin-bottom: 2px; }
+    .panel .btn { padding: 8px 14px; }
+    table.scores td, table.scores th { padding: 2px 8px; font-size: 11px; }
+  }
   table.scores tr.me td { color: var(--gold); }
 
   .stats-line {
@@ -392,7 +406,7 @@ const FORCE_TOUCH = HASH.touch == '1' || HASH.touch === true;
    ------------------------------------------------------------------------- */
 const STEP = 1 / 60;
 const CFG = {
-  logicalH: 360, tabletH: 400, dprCap: 2,
+  logicalH: 360, tabletH: 400, portraitW: 420, dprCap: 2,
   accelGround: 0.85, accelAir: 0.5, maxRun: 6.8,
   fricGround: 0.8, fricAir: 0.95, turnMult: 2,
   jumpVel: -13.2, gravRise: 0.5, gravFall: 0.8, varJumpCut: 0.45, maxFall: 14,
@@ -402,7 +416,7 @@ const CFG = {
   ammoStart: 5, ammoCap: 9, killDropChance: 0.5, killDropAmt: 5,
   pw: 24, ph: 34,
   flareStartBehind: 900,
-  scoreStomp: 20, scoreShoot: 15, scoreInterrupt: 10, scoreGraze: 5, scoreAmmo: 2,
+  scoreStomp: 30, scoreShoot: 20, scoreInterrupt: 10, scoreGraze: 5, scoreAmmo: 2,
   chainCap: 3,                                  // index cap → x1/x2/x4/x8
 };
 
@@ -420,9 +434,9 @@ const BANDS = [
 const BAND_HUE = [218, 232, 250, 268, 286, 312, 340, 356];
 
 const MEDALS = [
-  { name: 'PLATINUM', v: 15000, c: '#DCE9FF' },
-  { name: 'GOLD',     v: 6000,  c: '#FFC93C' },
-  { name: 'SILVER',   v: 2500,  c: '#CBD6E6' },
+  { name: 'PLATINUM', v: 10000, c: '#DCE9FF' },
+  { name: 'GOLD',     v: 4500,  c: '#FFC93C' },
+  { name: 'SILVER',   v: 2200,  c: '#CBD6E6' },
   { name: 'BRONZE',   v: 750,   c: '#D98A48' },
 ];
 
@@ -460,6 +474,7 @@ let stats = Object.assign(
 );
 let flags = Object.assign({ taughtRun: false, taughtJump: false, taughtStomp: false, installDismissed: false, initials: 'AAA' }, loadJSON(LS.flags, {}));
 let top5 = loadJSON(LS.top5, null);
+if (top5 !== null && !Array.isArray(top5)) top5 = null;   // corrupt/tampered JSON → re-migrate
 
 // One-time migration of legacy 'highScores' → sm2.top5.
 (function migrate() {
@@ -501,9 +516,17 @@ function resize() {
   canvas.height = Math.round(cssH * dpr);
   canvas.style.width = cssW + 'px';
   canvas.style.height = cssH + 'px';
-  view.scale = canvas.height / logicalH;
-  view.h = logicalH;
-  view.w = canvas.width / view.scale;
+  if (cssH > cssW) {
+    // Portrait: scale from WIDTH (420 logical px shows a full max-jump arc plus
+    // lookahead). Height-derived scale left ~166px of view — blind jumps.
+    view.scale = canvas.width / CFG.portraitW;
+    view.w = CFG.portraitW;
+    view.h = canvas.height / view.scale;
+  } else {
+    view.scale = canvas.height / logicalH;
+    view.h = logicalH;
+    view.w = canvas.width / view.scale;
+  }
   nebulaCanvas = null;                            // rebuild sized cache
   starsBuilt = false;
   // Setting canvas.width above clears the bitmap. In shot mode there is no live
@@ -628,7 +651,9 @@ const Audio = (() => {
     }
   }
   return {
-    ensure, resume() { if (ac && ac.state === 'suspended') ac.resume(); },
+    // state !== 'running' also covers WebKit's 'interrupted' (call/Siri/background)
+    // or audio stays dead for the session on iOS.
+    ensure, resume() { if (ac && ac.state !== 'running') { try { ac.resume().catch(() => {}); } catch (e) {} } },
     sfx: SFX, tickMusic,
     setMute(mute) { if (sfxGain) sfxGain.gain.value = mute ? 0 : 1; if (musicGain) musicGain.gain.value = mute ? 0 : 0.5; },
     get on() { return started; },
@@ -667,7 +692,14 @@ function onKey(e, down) {
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleSetting('sound');
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
-    else if (G.mode === 'dead' && (k === ' ' || k === 'enter' || k === 'r')) tryRestart();
+    else if (G.mode === 'dead') {
+      if ($('ovInitials').classList.contains('show')) {
+        // Enter confirms initials; a restart key skips the picker but the entry
+        // is already committed, so nothing is ever lost.
+        if (k === 'enter') commitInitials();
+        else if (k === ' ' || k === 'r') { commitInitials(); tryRestart(); }
+      } else if (k === ' ' || k === 'enter' || k === 'r') tryRestart();
+    }
   }
 }
 window.addEventListener('keydown', (e) => onKey(e, true));
@@ -688,6 +720,9 @@ function isMoveHalf(p) { const half = window.innerWidth * 0.45; return settings.
 
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
+  // Capture so pointerup always reaches us even if the pointer is released
+  // over an overlay or outside the window — otherwise inputs stick.
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
   input.usingTouch = true; input.usingKeys = false;
   Audio.ensure(); Audio.resume();
   const p = pointerPos(e);
@@ -720,8 +755,10 @@ function endPointer(e) {
   if (e.pointerId === input.jumpZone.id) { input.jumpZone.active = false; input.jumpZone.id = -1; input.jumpHeld = false; }
   if (e.pointerId === input.shootBtn.id) { input.shootBtn.pressed = false; input.shootBtn.id = -1; }
 }
-canvas.addEventListener('pointerup', endPointer);
-canvas.addEventListener('pointercancel', endPointer);
+window.addEventListener('pointerup', endPointer);
+window.addEventListener('pointercancel', endPointer);
+// Held keys latch across focus loss (keyup is delivered elsewhere) — clear and pause.
+window.addEventListener('blur', () => { clearInput(); if (G.mode === 'play' && !(G.player && G.player.dead)) togglePause(); });
 
 /* ---------------------------------------------------------------------------
    10. PARTICLE POOL (~160 cap, no allocation in the hot loop)
@@ -786,12 +823,16 @@ const G = {
 function bandFor(dist) { let b = 0; for (let i = 0; i < BANDS.length; i++) if (dist >= BANDS[i].m) b = i; return b; }
 function newPlatform(x, y, w) { return { x, y, w, h: 40 }; }
 
-function addEnemyOn(plat, distHere) {
+function patrolAt(plat, x, dir, speed) {
+  return { type: 'patrol', x, y: plat.y - 22, w: 24, h: 22, dir, speed,
+    dead: false, squash: 0, walkPhase: rng() * TAU, minX: plat.x + 14, maxX: plat.x + plat.w - 14, lookX: 0, lookY: 0 };
+}
+function addEnemyOn(plat, distHere, mercyOn) {
   const B = BANDS[G.band];
   // Budget keys off the PLATFORM's distance (not the player's transient G.dist) so worldgen
   // is fully seed-deterministic regardless of how far ahead the current viewport generates.
   const budget = lerp(1.0, 2.4, clamp(distHere / 2000, 0, 1));
-  if (rng() > budget / 3) return;
+  if (rng() > (budget / 2.4) * (mercyOn ? 0.75 : 1)) return;
   let type = 'patrol';
   if (B.shooter && rng() < 0.4) {
     let ok = true;
@@ -800,15 +841,26 @@ function addEnemyOn(plat, distHere) {
   }
   const ex = plat.x + rnd(plat.w * 0.25, plat.w * 0.75);
   if (type === 'shoot') {
-    G.enemies.push({ type: 'shoot', x: ex, y: plat.y - 34, baseY: plat.y - 34, w: 26, h: 24, dir: 1,
+    // At high bands some shooters hover at stomp-bounce height near the lip —
+    // a routable stomp→bounce→shooter chain link.
+    const high = G.band >= 4 && rng() < 0.3;
+    const sy = plat.y - (high ? 90 : 34);
+    const sx = high ? plat.x + (rng() < 0.5 ? plat.w * 0.12 : plat.w * 0.88) : ex;
+    G.enemies.push({ type: 'shoot', x: sx, y: sy, baseY: sy, w: 26, h: 24, dir: 1,
       fireT: rnd(0.6, B.shootIvl), telegraph: 0, dead: false, squash: 0, bob: rng() * TAU, lookX: 0, lookY: 0 });
   } else {
     const walk = rnd(1.0, 2.0);
-    G.enemies.push({ type: 'patrol', x: ex, y: plat.y - 22, w: 24, h: 22, dir: rng() < 0.5 ? -1 : 1, speed: walk,
-      dead: false, squash: 0, walkPhase: rng() * TAU, minX: plat.x + 14, maxX: plat.x + plat.w - 14, lookX: 0, lookY: 0 });
+    // Chain trains: converging patroller groups make ×2/×4 air chains routable.
+    if (G.band >= 2 && plat.w > 260 && rng() < 0.25) {
+      const n = rng() < 0.5 ? 2 : 3, spacing = rnd(60, 90);
+      const x0 = plat.x + plat.w / 2 - spacing * (n - 1) / 2;
+      for (let i = 0; i < n; i++)
+        G.enemies.push(patrolAt(plat, x0 + i * spacing, i < n / 2 ? 1 : -1, walk * rnd(0.8, 1.1)));
+      return;
+    }
+    G.enemies.push(patrolAt(plat, ex, rng() < 0.5 ? -1 : 1, walk));
     if (G.band >= 3 && plat.w > 220 && rng() < 0.4)
-      G.enemies.push({ type: 'patrol', x: plat.x + plat.w - (ex - plat.x), y: plat.y - 22, w: 24, h: 22, dir: -1, speed: walk,
-        dead: false, squash: 0, walkPhase: rng() * TAU, minX: plat.x + 14, maxX: plat.x + plat.w - 14, lookX: 0, lookY: 0 });
+      G.enemies.push(patrolAt(plat, plat.x + plat.w - (ex - plat.x), -1, walk));
   }
 }
 
@@ -821,10 +873,17 @@ function generateAhead() {
     G.band = bandFor((G.genX - G.startX) / 10);
     const B = BANDS[G.band];
     const last = G.platforms[G.platforms.length - 1];
-    const gap = rnd(B.gMin, B.gMax);
+    const distNext = (G.genX - G.startX) / 10;
+    // Invisible mercy: after 3 quick deaths the opening stretch rolls gentler
+    // gaps and fewer enemies — never announced, expires by ~180m.
+    const mercyOn = G.mercy && distNext < 180;
+    const gap = rnd(B.gMin, B.gMax) * (mercyOn ? 0.9 : 1);
     let w = rnd(B.wMin, B.wMax), narrow = false;
     if (B.narrow > 0 && rng() < B.narrow) { w = rnd(110, 140); narrow = true; }
-    const y = clamp(last.y + rnd(-B.dy, B.dy), G.groundY - 200, G.groundY + 24);
+    let y = clamp(last.y + rnd(-B.dy, B.dy), G.groundY - 200, G.groundY + 24);
+    // A near-max gap that also climbs steeply is a frame-perfect jump — reads
+    // as unfair, not hard. Correlate the rolls: big gap ⇒ modest climb.
+    if (gap > B.gMax - 25) y = Math.max(y, last.y - 40);
     const x = last.x + last.w + gap;
     const plat = newPlatform(x, y, w);
     G.platforms.push(plat);
@@ -833,7 +892,7 @@ function generateAhead() {
     const wasMaxGap = gap > B.gMax * 0.92;
     if (distHere > 15 && !wasMaxGap) {
       if (narrow) G.pickups.push({ type: 'ammo', x: plat.x + plat.w / 2, y: plat.y - 26, vy: 0, amt: CFG.killDropAmt, parachute: false, bob: rng() * TAU, grabbed: false });
-      else addEnemyOn(plat, distHere);
+      else addEnemyOn(plat, distHere, mercyOn);
     }
     if (distHere > 40 && rng() < 0.05)
       G.pickups.push({ type: 'ammo', x: plat.x + plat.w / 2, y: plat.y - 150, vy: 0.4, amt: CFG.killDropAmt, parachute: true, bob: rng() * TAU, grabbed: false });
@@ -884,20 +943,38 @@ function resetRun(seed) {
   G.hints = [];
   if (!flags.taughtRun) G.hints.push({ x: G.player.x + 70, y: G.groundY - 56, text: 'MOVE →' });
   if (!flags.taughtJump) G.hints.push({ x: G.player.x + 330, y: G.groundY - 96, text: 'HOLD TO JUMP HIGHER' });
-  if (!flags.taughtStomp) G.hints.push({ x: G.player.x + 640, y: G.groundY - 96, text: 'STOMP ENEMIES' });
+  if (!flags.taughtStomp) {
+    // Teach the stomp against a real target: one slow patroller on the last
+    // starter platform, hint planted just before it. Fixed values — no rng.
+    const tp = G.platforms[3];
+    G.enemies.push({ type: 'patrol', x: tp.x + tp.w / 2, y: tp.y - 22, w: 24, h: 22, dir: -1, speed: 1.0,
+      dead: false, squash: 0, walkPhase: 0, minX: tp.x + 14, maxX: tp.x + tp.w - 14, lookX: 0, lookY: 0 });
+    G.hints.push({ x: tp.x - 40, y: tp.y - 96, text: 'STOMP ENEMIES' });
+  }
   generateAhead();
 }
 
 function startRun() {
   Audio.ensure(); Audio.resume(); hideAllOverlays();
   const seed = SHOT_SEED !== null ? SHOT_SEED : (Math.random() * 1e9) | 0;
+  // Drop any buffered jump/held keys from the restart keypress itself, or the
+  // astronaut performs an involuntary full jump on frame 1 of every run.
+  clearInput();
   resetRun(seed);
   G.mode = 'play'; buzz('light');
 }
 function tryRestart() {
   if (G.mode !== 'dead') return;
+  if ($('ovInitials').classList.contains('show')) return;  // picker owns input until confirmed/skipped
   if (G.time - G.deadShownAt < 0.4) return;      // guard so panic taps don't skip the card
   startRun();
+}
+function clearInput() {
+  input.left = input.right = input.jumpHeld = input.jumpPressed = input.shoot = false;
+  input.stickX = 0;
+  input.stick.active = false; input.stick.id = -1;
+  input.jumpZone.active = false; input.jumpZone.id = -1;
+  input.shootBtn.pressed = false; input.shootBtn.id = -1;
 }
 
 /* ---------------------------------------------------------------------------
@@ -962,7 +1039,7 @@ function updatePlayer() {
         p.sqX = 1.2; p.sqY = 0.8; p.landDip = clamp(impact / 14, 0, 1) * 6;
         burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, 'rgba(159,241,255,0.7)', 0.08, 0);
         if (G.mode === 'play') { Audio.sfx.land(impact); if (impact > 9) buzz('light'); }
-        if (G.chain > 0) { G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain); G.chain = 0; }
+        if (G.chain > 0) G.chain = 0;   // landing banks the chain (best already recorded per kill)
       }
     }
   }
@@ -1035,6 +1112,12 @@ function updateBullets() {
       if (e.dead) continue;
       if (Math.abs(b.x - e.x) < e.w * 0.6 && Math.abs(b.y - e.y) < e.h * 0.7) {
         killEnemy(e, 'shoot', e.type === 'shoot' && e.telegraph > 0);
+        // Airborne shot kills extend the air chain too — every kill without
+        // touching the ground doubles the multiplier, stomp or shot alike.
+        if (G.player && !G.player.onGround && !G.player.dead) {
+          G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
+          G.chain = Math.min(G.chain + 1, CFG.chainCap);
+        }
         G.bullets.splice(i, 1); break;
       }
     }
@@ -1088,15 +1171,19 @@ function collisions() {
     if (!(pfeet > e.y - e.h / 2 && p.y < e.y + e.h / 2)) continue;
     const topGap = pfeet - (e.y - e.h / 2);
     if (p.vy > 0 && topGap < CFG.stompOverlap) {
-      G.chain = Math.min(G.chain + 1, CFG.chainCap);
-      G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
-      stats.bestChain = Math.max(stats.bestChain, 1 << G.chain);
+      // Kill scores at the CURRENT multiplier (first kill = x1), then the chain
+      // grows for the next one. Recording bestChain here keeps it honest.
       killEnemy(e, 'stomp', false);
+      G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
+      G.chain = Math.min(G.chain + 1, CFG.chainCap);
       p.vy = input.jumpHeld ? CFG.stompBounceHeld : CFG.stompBounce;
       p.jumping = input.jumpHeld;
       p.y = e.y - e.h / 2 - p.h;
       G.punchZoom = 1.05; G.punchTimer = 0.1;
       if (G.chain >= 2) G.edgePulse = 1;
+      // The bounce moved the player; iterating on with stale feet would read a
+      // second overlapping enemy as side contact and kill the player unfairly.
+      break;
     } else { die('contact'); return; }
   }
   if (p.y > G.groundY + 340) { die('void'); return; }   // fixed threshold → view-independent
@@ -1127,20 +1214,35 @@ function updateFlare() {
   let target = B.flare;
   if (G.mercy && (G.time - G.runStart) < 30) target *= 0.9;
   G.flare.speed += (target - G.flare.speed) * 0.01;
-  G.flare.x += G.flare.speed;
+  // Rubber-band: the flare is the game's forward pressure. A player at max run
+  // speed (6.8) outruns every band speed, so without catch-up the chase stops
+  // existing after the opening seconds. Surge when far behind and hard-floor
+  // the gap so hesitation always summons the dread vignette within ~2s.
+  const gapNow = G.player.x - G.flare.x;
+  G.flare.x += G.flare.speed * (gapNow > 700 ? 1.6 : 1);
+  if (G.flare.x < G.maxX - 1400) G.flare.x = G.maxX - 1400;
   const gap = G.player.x - G.flare.x;
   G.vignette = clamp(1 - gap / 400, 0, 1);
   if (gap < 300) G.trauma = Math.max(G.trauma, 0.1 * (1 - gap / 300));
+  // Rising coral embers below the platform line — falling should read as death.
+  if (G.frameCount % 18 === 0)
+    spawnP(G.player.x + rnd(-view.w * 0.5, view.w * 0.6), G.groundY + rnd(90, 280), rnd(-0.2, 0.2), -rnd(0.3, 0.9), 60, 2, 'rgba(255,110,90,0.5)', -0.005, false, 0);
+  // Flare wall embers + crackle jitter (moved out of render: refresh-rate independent).
+  if (G.frameCount % 2 === 0)
+    spawnP(G.flare.x - rnd(0, 30), G.camY + rnd(0, view.h), rnd(-0.5, 0.5), -rnd(1, 3), 30, 2.5, 'rgba(255,180,120,0.9)', -0.02, false, 0);
+  if (G.frameCount % 3 === 0) G.crackle = rng();
 }
 
 function updateCamera() {
   const p = G.player;
   G.camXprev = G.camX; G.camYprev = G.camY;
-  // Lookahead scales with viewport so the player never leaves the safe band
-  // (fixed 70px lookahead exceeds half the screen on narrow portrait phones).
-  const look = clamp(p.vx * 14 + p.facing * 70, -view.w * 0.2, view.w * 0.24);
+  // Lookahead scales with viewport width so it never dominates a narrow portrait screen.
+  const look = p.vx * 14 + p.facing * Math.min(70, view.w * 0.18);
   const targetX = p.x + look - view.w * 0.42;
   G.camX += (targetX - G.camX) * 0.08;
+  // HARD BAND CLAMP: guarantee the player's rendered x stays within [15%,60%] of the
+  // viewport regardless of lookahead overshoot or lerp lag (critical on narrow portrait).
+  G.camX = clamp(G.camX, p.x - view.w * 0.60, p.x - view.w * 0.15);
   if (G.camX < G.flare.x - 40) G.camX = G.flare.x - 40;
   if (p.onGround && p.groundPlat) {
     const tY = p.groundPlat.y - view.h * 0.58, dy = tY - G.camY;
@@ -1156,14 +1258,16 @@ function updateDistance() {
     const m = Math.floor((G.maxX - G.startX) / 10);
     if (m > G.dist) { G.score += (m - G.dist); G.dist = m; }
   }
-  if (G.pbFlagX !== null && !G.pbPassed && p.x >= G.pbFlagX) { G.pbPassed = true; triggerNewBest(); }
-  if (!G.newBest && bestScore > 0 && G.score > bestScore) triggerNewBest();
+  // Passing the distance flag celebrates, but only a genuine score record sets
+  // newBest — the death card's delta line must never lie.
+  if (G.pbFlagX !== null && !G.pbPassed && p.x >= G.pbFlagX) { G.pbPassed = true; celebrate('PAST YOUR FLAG!'); }
+  if (!G.newBest && bestScore > 0 && G.score > bestScore) { G.newBest = true; celebrate('NEW BEST!'); }
   if (!G.deep1000 && G.dist >= 1000) { G.deep1000 = true; G.stinger = 2.4; }
 }
 
-function triggerNewBest() {
-  if (G.newBest) return;
-  G.newBest = true; G.celebrate = 1.6; G.trauma = Math.min(1, G.trauma + 0.2);
+function celebrate(text) {
+  if (G.celebrate > 0) return;
+  G.celebrate = 1.6; G.celebrateText = text; G.trauma = Math.min(1, G.trauma + 0.2);
   burst(G.player.x, G.player.y, 24, 3, 40, 3, 'rgba(255,201,60,0.9)', 0.08, 2);
   Audio.sfx.medal(3); buzz('celebrate');
 }
@@ -1174,6 +1278,10 @@ function triggerNewBest() {
 function die(cause) {
   const p = G.player; if (p.dead) return;
   p.dead = true; G.deathSeq = 0; G.deathCause = cause;
+  // One canonical final score from the instant of death — HUD, card, and
+  // top-5 all read this so they can never disagree.
+  G.finalScore = Math.floor(G.score);
+  G.score = G.finalScore; G.dispScore = G.finalScore;
   G.freeze = 0.25; G.trauma = 1; G.timescale = 0.15; G.slowTimer = 0.6;
   buzz('warn');
   burst(p.x, p.y + p.h / 2, 8, 3, 50, 3.5, 'rgba(244,247,255,0.95)', 0.25, 2);
@@ -1182,20 +1290,33 @@ function die(cause) {
 }
 
 function finalizeDeath() {
+  const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
   stats.runs++;
-  bestScore = Math.max(bestScore, Math.floor(G.score));
+  bestScore = Math.max(bestScore, fs);
   stats.bestScore = bestScore;
   stats.bestDist = Math.max(stats.bestDist, G.dist);
   stats.bestChain = Math.max(stats.bestChain, G.bestChainRun);
   if ((G.time - G.runStart) < 20) stats.deadStreak++; else stats.deadStreak = 0;
   stats.mercy = stats.deadStreak >= 3;
   let medal = null;
-  for (const md of MEDALS) if (G.score >= md.v) { medal = md; break; }
+  for (const md of MEDALS) if (fs >= md.v) { medal = md; break; }
   if (medal) stats.medals[medal.name] = (stats.medals[medal.name] || 0) + 1;
   G.runMedal = medal;
-  flags.taughtRun = true; flags.taughtJump = true; flags.taughtStomp = true;
-  G.qualifies = (top5.length < 5 || G.score > top5[top5.length - 1].score) && G.score > 0;
-  persistAll();
+  // Hints retire after three runs, or individually once the action is performed
+  // (per-action flag sets live in the physics/combat code) — never all at once.
+  if (stats.runs >= 3) { flags.taughtRun = true; flags.taughtJump = true; flags.taughtStomp = true; }
+  G.qualifies = (top5.length < 5 || fs > top5[top5.length - 1].score) && fs > 0 && !SHOT;
+  // Auto-commit the qualifying entry immediately with the last-used initials so a
+  // panic restart can never lose it; the picker merely edits this entry's initials.
+  justAdded = null;
+  if (G.qualifies) {
+    justAdded = { initials: flags.initials, score: fs, dist: G.dist, chain: G.bestChainRun };
+    top5.push(justAdded);
+    top5.sort((a, b) => b.score - a.score);
+    top5 = top5.slice(0, 5);
+    if (top5.indexOf(justAdded) < 0) justAdded = null;
+  }
+  if (!SHOT) persistAll();   // QA bot runs must never write scores/stats
 }
 
 /* ---------------------------------------------------------------------------
@@ -1209,6 +1330,7 @@ function update() {
     updatePlayer();
     updateEnemies();
     updateBullets();
+    updatePickups();
     collisions();
     if (G.player.dead) { finishTick(); return; }
     updateFlare();
@@ -1271,6 +1393,8 @@ function frame(now) {
   if (dt > 0.25) dt = 0.25;
   G.time += dt;
 
+  if (G.mode === 'resume') { G.resumeT -= dt; if (G.resumeT <= 0) G.mode = 'play'; }
+
   if (G.player && G.player.dead) {
     G.deathSeq += dt;
     if (G.deathZoom < 1.3) G.deathZoom += dt * 1.5;
@@ -1285,6 +1409,9 @@ function frame(now) {
     if (G.mode === 'play' || G.mode === 'attract') update();
     acc -= STEP; steps++;
   }
+  // Drop unpayable debt after the step cap or a slow device spirals: 6 updates
+  // per render forever, with simulation lagging real input.
+  if (acc > STEP) acc = STEP;
   render(clamp(acc / STEP, 0, 1));
 }
 
@@ -1310,6 +1437,11 @@ function render(alpha) {
   ctx.translate(-iCamX, -iCamY);
 
   drawFlare(iCamX);
+  // The void below the platform line darkens — falling must read as death.
+  const dg = ctx.createLinearGradient(0, G.groundY + 60, 0, G.groundY + 330);
+  dg.addColorStop(0, 'rgba(4,5,16,0)'); dg.addColorStop(1, 'rgba(4,5,16,0.85)');
+  ctx.fillStyle = dg;
+  ctx.fillRect(iCamX - view.w, G.groundY + 60, view.w * 3, 600);
   drawPlatforms(iCamX);
   drawPickups();
   drawPBFlag();
@@ -1324,8 +1456,12 @@ function render(alpha) {
   drawForeground(iCamX);
   drawVignette();
   if (G.mode === 'attract') drawWordmark();
-  if (G.mode === 'play' || G.mode === 'pause' || (G.player && G.player.dead)) drawHUD();
-  if ((FORCE_TOUCH || input.usingTouch) && G.mode === 'play') drawTouchControls();
+  if (G.mode === 'play' || G.mode === 'pause' || G.mode === 'resume' || (G.player && G.player.dead)) drawHUD();
+  if ((FORCE_TOUCH || input.usingTouch) && (G.mode === 'play' || G.mode === 'resume')) drawTouchControls();
+  if (G.mode === 'resume') {
+    ctx.textAlign = 'center';
+    drawGlowText(String(clamp(Math.ceil(G.resumeT / 0.434), 1, 3)), view.w / 2, view.h / 2, 46, '#38E1FF', '#F4F7FF');
+  }
   drawCelebration();
   ctx.restore();
 }
@@ -1360,16 +1496,23 @@ function drawWordmark() {
 /* ---- background parallax ---- */
 let nebulaCanvas = null, nebulaHue = -1;
 function buildNebula(hue) {
-  const c = makeCanvas(view.w, view.h), g = c.getContext('2d');
-  for (let i = 0; i < 4; i++) {
-    const bx = (i * 0.27 + 0.1) * view.w, y = (i % 2 ? 0.35 : 0.6) * view.h, r = view.w * (0.3 + i * 0.05);
-    // Draw each blob wrapped at ±W so the tile edges match and no seam shows.
-    for (const x of [bx - view.w, bx, bx + view.w]) {
+  const W = view.w, H = view.h;
+  const c = makeCanvas(W, H), g = c.getContext('2d');
+  // Evenly-spaced overlapping blobs give uniform coverage (no flat gaps that read as an
+  // edge). Each is drawn wrapped at ±W so the tile repeats seamlessly with no visible seam.
+  const blobs = [
+    [0.06, 0.56, 0.44], [0.26, 0.30, 0.38], [0.44, 0.66, 0.42],
+    [0.62, 0.36, 0.40], [0.80, 0.60, 0.46], [0.98, 0.34, 0.36],
+  ];
+  blobs.forEach((b, i) => {
+    const bx = b[0] * W, y = b[1] * H, r = W * b[2];
+    for (const x of [bx - W, bx, bx + W]) {
       const grd = g.createRadialGradient(x, y, 0, x, y, r);
-      grd.addColorStop(0, `hsla(${hue + i * 8}, 60%, 30%, 0.5)`); grd.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = grd; g.fillRect(0, 0, view.w, view.h);
+      grd.addColorStop(0, `hsla(${hue + i * 6}, 62%, 32%, 0.32)`);
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grd; g.fillRect(0, 0, W, H);
     }
-  }
+  });
   return c;
 }
 const starfield = { far: [], mid: [], near: [] };
@@ -1425,9 +1568,9 @@ function drawBackground(camX) {
   }
 }
 function drawPlanet(camX) {
-  const x = ((260 - camX * 0.25) % 2400 + 2400) % 2400 - 400, py = 88;
+  const x = ((260 - camX * 0.25) % 1700 + 1700) % 1700 - 300, py = 88;
   if (x < -120 || x > view.w + 120) return;
-  ctx.save(); ctx.globalAlpha = 0.5;
+  ctx.save(); ctx.globalAlpha = 0.65;
   const grd = ctx.createRadialGradient(x - 12, py - 12, 4, x, py, 46);
   grd.addColorStop(0, '#3a3f80'); grd.addColorStop(1, '#191c40');
   ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(x, py, 46, 0, TAU); ctx.fill();
@@ -1453,15 +1596,12 @@ function drawFlare(camX) {
   grd.addColorStop(0.85, 'rgba(255,140,90,0.75)');
   grd.addColorStop(1, 'rgba(255,220,180,0.95)');
   ctx.fillStyle = grd; ctx.fillRect(fx - 120, G.camY - 100, 130, view.h + 400);
-  if (G.frameCount % 3 === 0) G.crackle = Math.random();
   ctx.strokeStyle = 'rgba(255,235,200,0.7)'; ctx.lineWidth = 1.5;
   for (let i = 0; i < 3; i++) {
     ctx.beginPath(); ctx.moveTo(fx - 4, G.camY);
     for (let y = G.camY; y < G.camY + view.h; y += 40) ctx.lineTo(fx - 4 + Math.sin(y * 0.3 + G.crackle * 10 + i) * 10, y);
     ctx.stroke();
   }
-  if (G.mode === 'play' && G.frameCount % 2 === 0)
-    spawnP(fx - rnd(0, 30), G.camY + rnd(0, view.h), rnd(-0.5, 0.5), -rnd(1, 3), 30, 2.5, 'rgba(255,180,120,0.9)', -0.02, false, 0);
   ctx.restore();
 }
 
@@ -1479,33 +1619,46 @@ function drawPlatforms(camX) {
     const grd = ctx.createLinearGradient(0, y, 0, y + 44);
     grd.addColorStop(0, '#38E1FF'); grd.addColorStop(1, '#123A6B');
     ctx.fillStyle = grd; roundRect(x, y, w, 40, 8); ctx.fill();
-    ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(x + 5, y + 1); ctx.lineTo(x + w - 5, y + 1); ctx.stroke();
-    ctx.fillStyle = '#DFFBFF'; ctx.fillRect(x + 3, y, 7, 3); ctx.fillRect(x + w - 10, y, 7, 3);
-    ctx.fillStyle = '#153a63';
+    // Continuous bright top edge with flush end-caps — the surface line must
+    // read at speed (high contrast against the cyan fill, following the corners).
+    ctx.strokeStyle = '#E9FDFF'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(x + 4, y + 2); ctx.lineTo(x + w - 4, y + 2); ctx.stroke();
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x + 2, y + 1, 10, 3.5); ctx.fillRect(x + w - 12, y + 1, 10, 3.5);
+    // Crystal stalactites hang flush from the slab underside in its dark tone.
+    ctx.fillStyle = '#123A6B';
     const n = w > 200 ? 3 : 2;
     for (let i = 0; i < n; i++) {
       const sx = x + (i + 0.5) * (w / n);
-      ctx.beginPath(); ctx.moveTo(sx - 8, y + 38); ctx.lineTo(sx + 8, y + 38); ctx.lineTo(sx, y + 38 + 16 + (i % 2) * 6); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(sx - 8, y + 36); ctx.lineTo(sx + 8, y + 36); ctx.lineTo(sx, y + 38 + 16 + (i % 2) * 6); ctx.closePath(); ctx.fill();
     }
-    ctx.fillStyle = 'rgba(56,225,255,0.12)'; ctx.fillRect(x + 10, y + 42, w - 20, 4);
+    // Feathered under-glow (stretched radial sprite, no hard-edged bar).
+    ctx.globalAlpha = 0.4;
+    ctx.drawImage(GLOW.cyan, x - 14, y + 26, w + 28, 52);
+    ctx.globalAlpha = 1;
   }
 }
 
-/* ---- pickups ---- */
-function drawPickups() {
+/* ---- pickups: state ticks in update() (fixed 60Hz), drawing stays pure ---- */
+function updatePickups() {
   for (const k of G.pickups) {
     if (k.grabbed) continue;
     if (k.parachute) {
       k.y += k.vy; k.bob += 0.05; k.x += Math.sin(k.bob) * 0.4;
       const gp = platformUnder(k.x, k.y + 20, 30); if (gp && k.y > gp.y - 20) { k.y = gp.y - 20; k.parachute = false; k.vy = 0; }
+    } else {
+      k.bob = (k.bob || 0) + 0.08;
+      if (k.vy) { k.vy += 0.2; k.y += k.vy; const gp = platformUnder(k.x, k.y, 30); if (gp && k.y > gp.y - 10) { k.y = gp.y - 10; k.vy = 0; } }
+    }
+  }
+}
+function drawPickups() {
+  for (const k of G.pickups) {
+    if (k.grabbed) continue;
+    if (k.parachute) {
       ctx.fillStyle = 'rgba(255,201,60,0.85)';
       ctx.beginPath(); ctx.arc(k.x, k.y - 16, 12, Math.PI, 0); ctx.fill();
       ctx.strokeStyle = 'rgba(255,201,60,0.6)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(k.x - 10, k.y - 16); ctx.lineTo(k.x, k.y); ctx.moveTo(k.x + 10, k.y - 16); ctx.lineTo(k.x, k.y); ctx.stroke();
-    } else {
-      k.bob = (k.bob || 0) + 0.08;
-      if (k.vy) { k.vy += 0.2; k.y += k.vy; const gp = platformUnder(k.x, k.y, 30); if (gp && k.y > gp.y - 10) { k.y = gp.y - 10; k.vy = 0; } }
     }
     const by = k.y + Math.sin(k.bob || 0) * 2;
     ctx.drawImage(GLOW.gold, k.x - 34, by - 34, 68, 68);
@@ -1668,18 +1821,25 @@ function drawHUD() {
   const us = clamp(view.w / 560, 0.72, 1);          // shrink HUD on narrow (portrait) views
   const top = 12 + safeInset('top'), left = 12 + safeInset('left');
 
-  // pause icon — top-left corner (two bars)
-  const bw = 4 * us, bh = 15 * us;
-  ctx.fillStyle = 'rgba(207,227,255,0.8)';
-  ctx.fillRect(left, top, bw, bh); ctx.fillRect(left + bw + 4 * us, top, bw, bh);
-  const iw = bw * 2 + 4 * us;
-  G._pauseHit = {
-    x0: (left - 10) / view.w * window.innerWidth, x1: (left + iw + 12) / view.w * window.innerWidth,
-    y0: (top - 10) / view.h * window.innerHeight, y1: (top + bh + 14) / view.h * window.innerHeight,
+  // pause button — enclosed rounded square so it reads as tappable, not as
+  // part of the odometer; hidden once the player is dead (nothing to pause).
+  const dead = G.player && G.player.dead;
+  const ps = 30 * us;
+  if (!dead) {
+    ctx.fillStyle = 'rgba(10,14,32,0.72)';
+    roundRect(left, top - 4 * us, ps, ps, 8 * us); ctx.fill();
+    ctx.strokeStyle = 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+    const bw = 3.5 * us, bh = 13 * us, bx = left + ps / 2 - bw - 2 * us, by = top - 4 * us + (ps - bh) / 2;
+    ctx.fillStyle = '#CFE3FF';
+    ctx.fillRect(bx, by, bw, bh); ctx.fillRect(bx + bw + 4 * us, by, bw, bh);
+  }
+  G._pauseHit = dead ? null : {
+    x0: (left - 8) / view.w * window.innerWidth, x1: (left + ps + 10) / view.w * window.innerWidth,
+    y0: (top - 12) / view.h * window.innerHeight, y1: (top + ps + 8) / view.h * window.innerHeight,
   };
 
-  // odometer + score, indented past the pause icon
-  const ox = left + iw + 12 * us;
+  // odometer + score, indented past the pause button
+  const ox = left + (dead ? 0 : ps + 14 * us);
   ctx.textAlign = 'left';
   drawGlowText(Math.floor(G.dist) + 'm', ox, top + 15 * us, 20 * us, '#38E1FF', '#F4F7FF');
   drawGlowText(String(Math.floor(G.dispScore)).padStart(5, '0'), ox, top + 34 * us, 13 * us, '#38E1FF', '#CFE3FF');
@@ -1731,7 +1891,7 @@ function drawCelebration() {
   ctx.strokeStyle = 'rgba(255,201,60,' + clamp(t, 0, 1) * 0.9 + ')'; ctx.lineWidth = 10;
   ctx.strokeRect(5, 5, view.w - 10, view.h - 10);
   ctx.textAlign = 'center'; ctx.globalAlpha = clamp(t * 2, 0, 1);
-  drawGlowText('NEW BEST!', view.w / 2, view.h * 0.3, 30, '#FFC93C', '#FFE59A');
+  drawGlowText(G.celebrateText || 'NEW BEST!', view.w / 2, view.h * 0.3, 30, '#FFC93C', '#FFE59A');
   ctx.globalAlpha = 1;
 }
 
@@ -1748,7 +1908,7 @@ function drawTouchControls() {
   ctx.strokeStyle = 'rgba(255,201,60,0.7)'; ctx.lineWidth = 2; ctx.stroke();
   for (let i = 0; i < CFG.ammoCap; i++) {
     const a = -Math.PI / 2 + (i / CFG.ammoCap) * TAU;
-    ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.2)';
+    ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.35)';
     const pr = r + 8 + G.ammoPulse * 4;
     ctx.beginPath(); ctx.arc(sx + Math.cos(a) * pr, sy + Math.sin(a) * pr, 2.6, 0, TAU); ctx.fill();
   }
@@ -1786,6 +1946,7 @@ function medalGlyphs() {
 
 function showAttract() {
   hideAllOverlays();
+  $('btnPlay').textContent = matchMedia('(pointer: coarse)').matches ? 'Tap to Start' : 'Press Space';
   $('attractBest').textContent = 'BEST ' + bestScore.toLocaleString();
   $('attractMedals').innerHTML = medalGlyphs();
   $('attractStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m · BEST CHAIN ×${stats.bestChain}`;
@@ -1795,8 +1956,16 @@ function showAttract() {
 }
 
 function togglePause() {
-  if (G.mode === 'play') { G.mode = 'pause'; syncSwitches(); showOverlay('ovPause'); }
-  else if (G.mode === 'pause') { hideAllOverlays(); G.mode = 'play'; }
+  if (G.mode === 'play') {
+    if (G.player && G.player.dead) return;     // death sequence owns the screen
+    clearInput();
+    G.mode = 'pause'; syncSwitches(); showOverlay('ovPause');
+  } else if (G.mode === 'pause') {
+    hideAllOverlays(); Audio.resume(); clearInput();
+    // Touch players need thumb-repositioning time; desktop resumes instantly.
+    if (input.usingTouch) { G.mode = 'resume'; G.resumeT = 1.3; }
+    else G.mode = 'play';
+  }
 }
 
 function showDeathCard() {
@@ -1808,10 +1977,13 @@ function showDeathCard() {
   renderDeathCard();
 }
 function renderDeathCard() {
-  $('deadScore').textContent = Math.floor(G.score).toLocaleString();
+  const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
+  $('deadScore').textContent = fs.toLocaleString();
   $('deadMedal').innerHTML = G.runMedal ? `<span style="color:${G.runMedal.c}">${G.runMedal.name} MEDAL</span>` : '';
-  if (G.newBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${Math.max(0, Math.floor(G.score) - G.prevBest).toLocaleString()}</span>`;
-  else $('deadDelta').textContent = Math.max(0, bestScore - Math.floor(G.score)) + ' TO BEAT';
+  // Delta strictly vs the pre-run best (bestScore is already updated by now) —
+  // a first-ever run is a NEW BEST, and the gold line never shows a stale +0.
+  if (fs > G.prevBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${(fs - G.prevBest).toLocaleString()}</span>`;
+  else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
   $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · BEST CHAIN ×${G.bestChainRun}`;
   renderScoreTable('deadScores', true);
   const chip = $('installChip');
@@ -1821,7 +1993,7 @@ function renderDeathCard() {
 function renderScoreTable(id, highlight) {
   let html = '';
   for (let i = 0; i < 5; i++) {
-    const e = top5[i], me = highlight && e && e._justAdded;
+    const e = top5[i], me = highlight && e && e === justAdded;
     html += `<tr class="${me ? 'me' : ''}"><td class="rank">${i + 1}</td><td>${e ? e.initials : '---'}</td><td class="sc">${e ? e.score.toLocaleString() : '—'}</td></tr>`;
   }
   $(id).innerHTML = html;
@@ -1829,6 +2001,7 @@ function renderScoreTable(id, highlight) {
 
 /* ---- initials picker ---- */
 let initialsChars = ['A', 'A', 'A'];
+let justAdded = null;   // runtime ref to this run's top-5 entry (never persisted as a flag)
 function nextChar(c, d) { let code = c.charCodeAt(0) - 65 + d; code = (code + 26) % 26; return String.fromCharCode(65 + code); }
 function showInitials() {
   initialsChars = flags.initials.split('');
@@ -1845,11 +2018,9 @@ function showInitials() {
   hideAllOverlays(); showOverlay('ovInitials');
 }
 function commitInitials() {
+  // The entry was auto-committed in finalizeDeath; the picker only renames it.
   flags.initials = initialsChars.join('');
-  top5.forEach((e) => delete e._justAdded);
-  top5.push({ initials: flags.initials, score: Math.floor(G.score), dist: G.dist, chain: G.bestChainRun, _justAdded: true });
-  top5.sort((a, b) => b.score - a.score);
-  top5 = top5.slice(0, 5);
+  if (justAdded) justAdded.initials = flags.initials;
   persistAll();
   renderDeathCard();
 }
@@ -1876,12 +2047,16 @@ function toggleSetting(key) {
    25. UI WIRING
    ------------------------------------------------------------------------- */
 $('btnPlay').onclick = () => { Audio.ensure(); Audio.resume(); startRun(); };
-$('btnTrophy').onclick = () => { Audio.ensure(); showTrophy(); };
-$('btnSettings').onclick = () => { syncSwitches(); showOverlay('ovSettings'); };
+$('btnTrophy').onclick = () => { Audio.ensure(); hideAllOverlays(); showTrophy(); };
+$('btnSettings').onclick = () => { syncSwitches(); hideAllOverlays(); showOverlay('ovSettings'); };
 $('btnCloseSettings').onclick = () => showAttract();
 $('btnCloseTrophy').onclick = () => showAttract();
 $('btnResume').onclick = () => togglePause();
-$('btnQuit').onclick = () => showAttract();
+$('btnQuit').onclick = () => {
+  // Quitting mid-death-sequence must still bank the run (stats, medal, best).
+  if (G.player && G.player.dead && !G.deathCardShown) { G.deathCardShown = true; finalizeDeath(); }
+  showAttract();
+};
 $('btnAgain').onclick = () => tryRestart();
 $('btnInitialsOk').onclick = () => commitInitials();
 $('swSound').onclick = () => toggleSetting('sound');
@@ -1892,7 +2067,7 @@ $('swShake2').onclick = () => toggleSetting('shake');
 $('swLeft2').onclick = () => toggleSetting('lefty');
 $('btnReset').onclick = () => {
   if (!confirm('Erase all scores, stats, and settings?')) return;
-  [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, 'highScores'].forEach((k) => localStorage.removeItem(k));
+  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
   location.reload();
 };
 $('installChip').onclick = () => {
@@ -1903,7 +2078,10 @@ $('ovDead').addEventListener('pointerdown', (e) => {
   if (e.target.closest('.btn') || e.target.closest('.install-chip')) return;
   tryRestart();
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden && G.mode === 'play') togglePause(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); } }
+  else Audio.resume();
+});
 
 let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; });
