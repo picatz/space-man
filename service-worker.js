@@ -1,6 +1,6 @@
 // Space Man 2.0 service worker.
 // Bump VERSION in the same commit as any asset change or clients keep the old build.
-const VERSION = 'v2.0.0';
+const VERSION = 'v2.0.1';
 const SHELL_CACHE = `sm2-shell-${VERSION}`;
 
 const SHELL = [
@@ -17,7 +17,9 @@ const SHELL = [
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const cache = await caches.open(SHELL_CACHE);
-    await cache.addAll(SHELL);
+    // cache:'reload' bypasses the HTTP cache so a VERSION bump can never
+    // precache a stale copy served under GitHub Pages' max-age=600.
+    await cache.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })));
     await self.skipWaiting();
   })());
 });
@@ -46,7 +48,10 @@ self.addEventListener('fetch', (e) => {
         const res = await fetch(req);
         if (res.ok) {
           const cache = await caches.open(SHELL_CACHE);
+          // Refresh both navigation keys so an offline launch at start_url
+          // './' can't resurrect the stale install-time copy.
           cache.put('./index.html', res.clone());
+          cache.put('./', res.clone());
         }
         return res;
       } catch {

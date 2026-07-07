@@ -786,9 +786,11 @@ const G = {
 function bandFor(dist) { let b = 0; for (let i = 0; i < BANDS.length; i++) if (dist >= BANDS[i].m) b = i; return b; }
 function newPlatform(x, y, w) { return { x, y, w, h: 40 }; }
 
-function addEnemyOn(plat) {
+function addEnemyOn(plat, distHere) {
   const B = BANDS[G.band];
-  const budget = lerp(1.0, 2.4, clamp(G.dist / 2000, 0, 1));
+  // Budget keys off the PLATFORM's distance (not the player's transient G.dist) so worldgen
+  // is fully seed-deterministic regardless of how far ahead the current viewport generates.
+  const budget = lerp(1.0, 2.4, clamp(distHere / 2000, 0, 1));
   if (rng() > budget / 3) return;
   let type = 'patrol';
   if (B.shooter && rng() < 0.4) {
@@ -811,7 +813,10 @@ function addEnemyOn(plat) {
 }
 
 function generateAhead() {
-  const target = G.camX + view.w + 400;
+  // Fixed, player-relative lookahead (never view.w). Enemies' fire timers start when they
+  // spawn, so spawning must happen at the same player-distance on every viewport or the
+  // seeded run diverges. 1400px comfortably covers the widest view without visible pop-in.
+  const target = G.player.x + 1400;
   while (G.genX < target) {
     G.band = bandFor((G.genX - G.startX) / 10);
     const B = BANDS[G.band];
@@ -828,13 +833,13 @@ function generateAhead() {
     const wasMaxGap = gap > B.gMax * 0.92;
     if (distHere > 15 && !wasMaxGap) {
       if (narrow) G.pickups.push({ type: 'ammo', x: plat.x + plat.w / 2, y: plat.y - 26, vy: 0, amt: CFG.killDropAmt, parachute: false, bob: rng() * TAU, grabbed: false });
-      else addEnemyOn(plat);
+      else addEnemyOn(plat, distHere);
     }
     if (distHere > 40 && rng() < 0.05)
       G.pickups.push({ type: 'ammo', x: plat.x + plat.w / 2, y: plat.y - 150, vy: 0.4, amt: CFG.killDropAmt, parachute: true, bob: rng() * TAU, grabbed: false });
   }
-  // cull far-behind platforms
-  while (G.platforms.length > 3 && G.platforms[0].x + G.platforms[0].w < G.camX - 300) G.platforms.shift();
+  // cull far-behind platforms (player-relative so culling can't vary with viewport width)
+  while (G.platforms.length > 3 && G.platforms[0].x + G.platforms[0].w < G.player.x - 900) G.platforms.shift();
 }
 
 /* ---------------------------------------------------------------------------
@@ -844,8 +849,11 @@ function seedRng(seed) { rng = (seed === null || seed === undefined) ? Math.rand
 
 function resetRun(seed) {
   seedRng(seed);
-  G.groundY = view.h - 90;
-  G.floorY = view.h + 240;
+  // World is anchored to a FIXED reference height (not view.h) so a given seed produces
+  // the identical layout on phone (360) and tablet/desktop (400). view.h only controls
+  // how much of that world is visible, never the layout — keeping QA fully deterministic.
+  G.groundY = CFG.logicalH - 90;      // 270
+  G.floorY = CFG.logicalH + 240;      // 600
   G.platforms = []; G.enemies = []; G.bullets = []; G.ebullets = []; G.pickups = [];
   for (let i = 0; i < PCAP; i++) particles[i].live = false;
   popups.length = 0;
@@ -1012,14 +1020,17 @@ function updateEnemies() {
   }
   for (let i = G.enemies.length - 1; i >= 0; i--) {
     const e = G.enemies[i];
-    if ((e.dead && e.squash > 2) || e.x < G.camX - 250) G.enemies.splice(i, 1);
+    if ((e.dead && e.squash > 2) || e.x < G.player.x - 700) G.enemies.splice(i, 1);
   }
 }
 
 function updateBullets() {
+  const px = G.player.x;
   for (let i = G.bullets.length - 1; i >= 0; i--) {
     const b = G.bullets[i]; b.x += b.vx; b.life--;
-    if (b.life <= 0 || b.x > G.camX + view.w + 100 || b.x < G.camX - 100) { G.bullets.splice(i, 1); continue; }
+    // Cull relative to the player with a fixed margin (never view.w) so a bullet's reach
+    // — and therefore whether it kills a shooter — is identical at any viewport.
+    if (b.life <= 0 || Math.abs(b.x - px) > 1400) { G.bullets.splice(i, 1); continue; }
     for (const e of G.enemies) {
       if (e.dead) continue;
       if (Math.abs(b.x - e.x) < e.w * 0.6 && Math.abs(b.y - e.y) < e.h * 0.7) {
@@ -1031,7 +1042,7 @@ function updateBullets() {
   const p = G.player;
   for (let i = G.ebullets.length - 1; i >= 0; i--) {
     const b = G.ebullets[i]; b.x += b.vx; b.y += b.vy; b.life--;
-    if (b.life <= 0 || b.x < G.camX - 120 || b.x > G.camX + view.w + 220) { G.ebullets.splice(i, 1); continue; }
+    if (b.life <= 0 || Math.abs(b.x - p.x) > 1400) { G.ebullets.splice(i, 1); continue; }
     const dx = b.x - (p.x + p.w / 2), dy = b.y - (p.y + p.h / 2), dist = Math.hypot(dx, dy);
     if (!p.dead && dist < 9) { die('bullet'); return; }
     if (!b.grazed && dist < 16) {
@@ -1088,7 +1099,7 @@ function collisions() {
       if (G.chain >= 2) G.edgePulse = 1;
     } else { die('contact'); return; }
   }
-  if (p.y > G.groundY + view.h * 0.9) { die('void'); return; }
+  if (p.y > G.groundY + 340) { die('void'); return; }   // fixed threshold → view-independent
   if (p.x <= G.flare.x + 6) { die('flare'); return; }
 
   for (let i = G.pickups.length - 1; i >= 0; i--) {
