@@ -422,6 +422,10 @@
 <pre id="errlog"></pre>
 <label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" tabindex="-1" /></label>
 
+<script src="src/contracts.js"></script>
+<script src="src/save-schema.js"></script>
+<script src="src/input-snapshot.js"></script>
+
 <script>
 "use strict";
 /* ============================================================================
@@ -489,6 +493,8 @@ const BANDS = [
   { m: 2000, wMin: 200, wMax: 260, gMin: 210, gMax: 272, dy: 96,  flare: 4.6, shooter: true,  shootIvl: 1.6, ebSpeed: 3.4, narrow: 0.22 },
   { m: 2500, wMin: 195, wMax: 255, gMin: 215, gMax: 278, dy: 100, flare: 5.5, shooter: true,  shootIvl: 1.5, ebSpeed: 3.4, narrow: 0.24 },
 ];
+const SECTORS = window.SpaceManContracts.sectors;
+const ENCOUNTER_CONTRACTS = window.SpaceManContracts.encounters;
 const BAND_HUE = [218, 232, 250, 268, 286, 312, 340, 356];
 
 const MEDALS = [
@@ -521,14 +527,16 @@ const rnd = (a, b) => a + (b - a) * rng();
 /* ---------------------------------------------------------------------------
    4. STORAGE — schema + legacy migration
    ------------------------------------------------------------------------- */
-const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags' };
+const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema' };
 function loadJSON(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
 function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
 const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
 const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false }, savedSettings);
+const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings });
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false }, migratedSave.settings, savedSettings);
+saveJSON(LS.schema, window.SpaceManSave.VERSION);
 let stats = Object.assign(
   { bestScore: 0, bestDist: 0, runs: 0, kills: 0, bestChain: 1, medals: { BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 }, deadStreak: 0, mercy: false },
   loadJSON(LS.stats, {})
@@ -777,15 +785,15 @@ function pollGamepad() {
   }
   const pressed = (i) => gamepadButton(gp, i);
   const just = (i) => pressed(i) && !input.pad.prev[i];
-  let axis = Math.abs(gp.axes[0] || 0) > .18 ? gp.axes[0] : 0;
-  if (pressed(14)) axis = -1; if (pressed(15)) axis = 1;
+  const padState = window.SpaceManInput.snapshot(gp);
+  let axis = padState.move;
   if (axis) { input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   input.gamepadX = Math.sign(axis) * Math.pow(Math.abs(axis), 1.35);
-  const jump = pressed(0);
+  const jump = padState.jump;
   if (jump && !input.pad.prev[0]) { input.jumpPressed = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   if (jump || input.pad.prev[0]) input.jumpHeld = jump;
-  if (just(2) || just(5) || just(7)) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
-  if (just(9)) {
+  if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
+  if (padState.pause && just(9)) {
     if (G.mode === 'attract') startRun();
     else if (G.mode === 'dead') tryRestart();
     else togglePause();
@@ -2076,13 +2084,6 @@ function drawPlayer(alpha) {
   ctx.scale(p.sqX + breathe, p.sqY - breathe);
   const hw = p.w / 2, hh = p.h / 2;
 
-  // A small mission patch/ribbon makes the silhouette feel authored and gives
-  // motion a soft secondary follow-through without obscuring the character.
-  ctx.strokeStyle = G.companion ? '#9FF1FF' : '#FFB454'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-hw + 4, -5);
-  ctx.quadraticCurveTo(-hw - 5 - Math.min(8, Math.abs(p.vx)), -3 + Math.sin(G.time * 9) * 2, -hw - 12 - Math.min(8, Math.abs(p.vx)), 2);
-  ctx.stroke();
-
   // Legs: two capsules in a cooler shade so they separate from the white torso
   // instead of merging into one blob; back leg a touch darker for depth.
   const legSwing = p.onGround ? Math.sin(p.runCycle) * Math.min(Math.abs(p.vx) * 1.2, 6) : (p.vy < 0 ? -4 : 4);
@@ -2451,7 +2452,7 @@ $('swShake2').onclick = () => toggleSetting('shake');
 $('swLeft2').onclick = () => toggleSetting('lefty');
 $('btnReset').onclick = () => {
   if (!confirm('Erase all scores, stats, and settings?')) return;
-  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
   location.reload();
 };
 $('installChip').onclick = () => {
