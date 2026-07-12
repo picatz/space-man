@@ -84,6 +84,14 @@
     text-align: center;
   }
   .overlay.show { display: flex; }
+  /* Motion system (E9.1): backdrop + panel fade/settle in together on .in,
+     added double-rAF after .show so the 0-state paints before animating.
+     Dims the frozen world behind pause/death instead of a hard cut. */
+  .overlay {
+    background: rgba(4, 5, 16, 0);
+    transition: background 0.16s cubic-bezier(.2, .9, .3, 1);
+  }
+  .overlay.in { background: rgba(4, 5, 16, 0.45); }
 
   .panel {
     background: var(--panel);
@@ -95,7 +103,13 @@
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+    transition: opacity 0.16s cubic-bezier(.2, .9, .3, 1), transform 0.16s cubic-bezier(.2, .9, .3, 1);
   }
+  .overlay.in .panel { opacity: 1; transform: translateY(0) scale(1); }
+  /* Death card sits low so the ragdoll/helmet stay in frame above it (E9.2). */
+  .dead-anchor { justify-content: flex-end; }
 
   .title-lg {
     font-weight: 900;
@@ -157,6 +171,12 @@
   @media (prefers-reduced-motion: reduce) {
     .btn.pulse { animation: none; }
     .btn { transition: none; }
+    /* E9.1: panels appear, they don't slide/scale in; still dim the backdrop. */
+    .overlay, .panel { transition: none; }
+    .panel { opacity: 1; transform: none; }
+    #deadMedal.stamp { animation: none; }
+    #deadDelta { transition: none; opacity: 1; transform: none; }
+    #deadTapHint { transition: none; }
   }
 
   .toggle-row {
@@ -260,6 +280,18 @@
   /* Numeric strings use the system stack — Orbitron's slashed zero reads as Ø
      on exactly the lines that matter most (the delta line, scores, stats). */
   #deadScore, #deadDelta, #deadStats, #attractBest, #attractStats, #trophyStats, table.scores td.sc { font-family: var(--font-num); }
+  /* First-run dignity (E9.4): one line, never five rows of dashes. */
+  table.scores .empty { color: var(--gold); text-align: center; padding: 10px 0; letter-spacing: 1px; border-bottom: none; }
+
+  /* Death card staged reveal (E9.3): hero number dressed, medal stamps in on
+     its existing 300ms SFX, NEW BEST slides in last, tap hint fades late. */
+  #deadScore { font-weight: 800; text-shadow: 0 0 18px rgba(56, 225, 255, 0.35); }
+  @keyframes medalStamp { 0% { transform: scale(1.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  #deadMedal.stamp { animation: medalStamp 0.25s cubic-bezier(.2, .9, .3, 1); }
+  #deadDelta { opacity: 0; transform: translateY(6px); transition: opacity 0.25s ease, transform 0.25s ease; }
+  #deadDelta.reveal { opacity: 1; transform: translateY(0); }
+  #deadTapHint { opacity: 0; font-size: 10px; letter-spacing: 2px; margin-top: 10px; transition: opacity 0.4s ease; }
+  #deadTapHint.show { opacity: 0.5; }
 
   /* Compact cards for short (phone-landscape) viewports. */
   @media (max-height: 430px) {
@@ -452,17 +484,19 @@
 </div>
 
 <!-- Game over -->
-<div class="overlay" id="ovDead">
+<div class="overlay dead-anchor" id="ovDead">
   <div class="panel">
     <div class="sub" style="letter-spacing:3px;">RUN OVER</div>
     <div id="deadScore" class="title-lg" style="font-size:44px;margin:4px 0;">0</div>
     <div id="deadMedal" class="sub" style="font-size:20px;letter-spacing:4px;height:24px;"></div>
     <div id="deadDelta" class="sub" style="margin:8px 0;font-weight:700;letter-spacing:2px;"></div>
     <div id="deadStats" class="stats-line" style="opacity:0.8;"></div>
+    <div id="deadTarget" class="sub" style="font-size:11px;opacity:0.7;margin-top:4px;display:none;"></div>
     <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
     <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
     <table class="scores" id="deadScores"></table>
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
+    <div class="sub" id="deadTapHint">TAP TO RETRY</div>
     <div class="install-chip" id="installChip">Add Space Man to your home screen</div>
   </div>
 </div>
@@ -608,6 +642,9 @@ const MEDALS = [
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const easeOutBack = (t) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const easeOutQuad = (t) => 1 - (1 - t) * (1 - t);
+const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+const easeInCubic = (t) => t * t * t;
 const TAU = Math.PI * 2;
 
 // mulberry32 seeded PRNG for all worldgen/spawn randomness when a seed is given.
@@ -633,7 +670,7 @@ const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
 const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null) });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, musicVol: 1, sfxVol: 1, muted: false }, migratedSave.settings, savedSettings);
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, autorun: true, musicVol: 1, sfxVol: 1, muted: false }, migratedSave.settings, savedSettings);
 // Raw overlay wins for switches (legacy precedence) but the mixer trio must stay sane.
 settings.musicVol = migratedSave.settings.musicVol; settings.sfxVol = migratedSave.settings.sfxVol; settings.muted = migratedSave.settings.muted;
 saveJSON(LS.schema, window.SpaceManSave.VERSION);
@@ -674,7 +711,11 @@ function persistAll() {
    ------------------------------------------------------------------------- */
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d', { alpha: false });
+const tmetaEl = document.getElementById('tmeta');   // eased every tick during a sector crossfade — cache the lookup
 const view = { w: 640, h: 360, scale: 1, dpr: 1, isTablet: false };
+// Shared HUD/text scale — shrinks on narrow (portrait) views. Used by both the
+// HUD chrome and the popup layer so the two never drift apart.
+const uiScale = () => clamp(view.w / 560, 0.72, 1);
 
 function resize() {
   const cssW = window.innerWidth, cssH = window.innerHeight;
@@ -698,10 +739,15 @@ function resize() {
     view.h = logicalH;
     view.w = canvas.width / view.scale;
   }
-  nebulaCanvas = null;                            // rebuild sized caches
-  skyGrad = null; vignetteGrad = null;
+  nebulaCanvas = null; nebulaPrevCanvas = null;   // rebuild sized caches
+  skyCanvas = null; skyPrevCanvas = null; vignetteGrad = null;
   starsBuilt = false;
   readSafeInsets();                               // cache env() insets (avoid getComputedStyle per frame)
+  // Rotation/URL-bar settle recomputes the attract framing (QA3) — a stale
+  // base otherwise slices the platform through the wordmark until next reset.
+  // A resize mid-crossfade would also stretch a wrong-sized snapshot, so just
+  // settle on the new sector's art instead of finishing a fade across the jump.
+  G.attractBase = undefined; G.sectorFadeT = 999;
   // Setting canvas.width above clears the bitmap. In shot mode there is no live
   // render loop, so repaint synchronously — otherwise a post-load resize can leave
   // the canvas blank until the next rAF (which some headless captures never wait for).
@@ -734,8 +780,20 @@ const GLOW = {
 /* Gradients are allocation-heavy to build; none of these change per frame.
    Boot-built ones depend only on constants; view-sized ones are nulled in
    resize() and rebuilt lazily. */
-const platGrad = ctx.createLinearGradient(0, 0, 0, 44);
-platGrad.addColorStop(0, '#38E1FF'); platGrad.addColorStop(1, '#123A6B');
+// Platform slab gradient re-baked per sector hue (E6): the readable #38E1FF
+// rim stays fixed, only the dark end tints. Rebuilt on band change only —
+// drawPlatforms lazily detects the hue mismatch, same pattern as buildNebula.
+let platGrad = null, platGradHue = -1;
+function buildPlatGrad(hue) {
+  const g = ctx.createLinearGradient(0, 0, 0, 44);
+  g.addColorStop(0, '#38E1FF'); g.addColorStop(1, `hsl(${hue} 55% 24%)`);
+  return g;
+}
+// Platform under-glow sprite, one lazy raster per sector hue (≤8 entries ever).
+const GLOW_PLAT = {};
+function platGlow(hue) {
+  return GLOW_PLAT[hue] || (GLOW_PLAT[hue] = glowSprite(60, `hsla(${hue}, 85%, 62%, 0.35)`, 0.2));
+}
 const flareGrad = ctx.createLinearGradient(-120, 0, 8, 0);
 flareGrad.addColorStop(0, 'rgba(255,79,102,0)');
 flareGrad.addColorStop(0.6, 'rgba(255,79,102,0.35)');
@@ -790,7 +848,22 @@ const planetSprite = (() => {
   g.beginPath(); g.ellipse(80, 60, 70, 16, -0.4, 0, TAU); g.stroke();
   return c;
 })();
-let skyGrad = null, voidGrad = null, voidGradY = -1, vignetteGrad = null;
+// Sky is a 1px-wide raster strip (not a live CanvasGradient) so the previous
+// sector's sky can be drawImage'd back over the new one for the crossfade.
+let skyCanvas = null, skyHue = -1, skyPrevCanvas = null;
+let voidGrad = null, voidGradY = -1, vignetteGrad = null;
+function buildSky(hue) {
+  const c = makeCanvas(1, Math.max(1, Math.round(view.h))), g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 0, c.height);
+  grad.addColorStop(0, '#060818');                       // top stop stays fixed for continuity
+  grad.addColorStop(0.5, `hsl(${hue} 45% 13%)`);
+  grad.addColorStop(1, `hsl(${hue} 42% 24%)`);
+  g.fillStyle = grad; g.fillRect(0, 0, 1, c.height);
+  return c;
+}
+// Flare-lit warm hue shared by the portrait floor bloom (E4) and the attract
+// horizon glow (E7) — one authored palette for "the antagonist's color".
+const FLARE_GLOW_HUE = 'hsla(12,90%,55%,';
 
 /* ---------------------------------------------------------------------------
    7. AUDIO — Web Audio synthesis, guarded behind a user gesture.
@@ -820,6 +893,10 @@ const Audio = (() => {
     { root: 784.00, mode: 'mix', duty: 25 },   // far: dominant pedal + bass octave pops
     { root: 1046.5, mode: 'lyd', duty: 50 },   // last light: title reprise over the full band
   ];
+  // Sector stinger pivot degrees (E6), indexed by the ENTERING sector: two
+  // degrees of the new key that are also diatonic in the key being left, so
+  // the 2-note bell never clashes against the still-ringing old key.
+  const STING = [[1, 2], [1, 2], [1, 2], [3, 6], [1, 2], [3, 7], [1, 2], [1, 2]];
   const HOP = [[0, 1, .75], [0.75, 2, .25], [1, 3, .5], [1.5, 5, .5], [2, 6, 2]];      // the call
   const ANSWER = [[0, 6, .5], [0.5, 5, .5], [1, 3, .5], [1.5, 2, .5], [2, 1, 2]];      // the settle
   const PROG_A = [
@@ -887,7 +964,7 @@ const Audio = (() => {
   // Every music-bus gain target flows through here: the master mute and the
   // volume sliders must win at ALL write sites (pause duck, resume sweep, reset).
   const musLvl = (base) => (settings.music && !settings.muted ? (base || 0.42) * settings.musicVol : 0);
-  const sfxLvl = () => (settings.sfx && !settings.muted ? settings.sfxVol : 0);
+  const sfxLvl = () => (settings.sfx && !settings.muted ? settings.sfxVol * 0.8 : 0);   // static headroom pull, not compressor makeup
 
   function ensure() {
     if (started || SHOT) return false;
@@ -897,14 +974,19 @@ const Audio = (() => {
       ac = new AC();
       master = ac.createGain(); master.gain.value = 0.9;
       comp = ac.createDynamicsCompressor();
+      // Safety limiter, not glue: defaults (-24/30/12/.003/.25) were a 12:1 squash
+      // pumping visibly at 112 BPM every time a stomp landed under the song.
+      comp.threshold.value = -10; comp.knee.value = 20; comp.ratio.value = 4;
+      comp.attack.value = 0.003; comp.release.value = 0.1;
       sfxGain = ac.createGain(); sfxGain.gain.value = sfxLvl();
       musicGain = ac.createGain(); musicGain.gain.value = musLvl();
       sfxGain.connect(master); musicGain.connect(master); master.connect(comp); comp.connect(ac.destination);
       // Persistent music graph: voices → musicLP (state filter) → musicGain. Jingles skip the
-      // filter via stingGain → sfxGain so they land even with music off — and can be killed.
+      // filter AND both sliders via stingGain → master — sfx-off or music-off listeners still
+      // get sector bells and the death jingle, gated only by mute — and can be killed.
       musicLP = ac.createBiquadFilter(); musicLP.type = 'lowpass'; musicLP.frequency.value = 12000;
       musicLP.connect(musicGain);
-      stingGain = ac.createGain(); stingGain.gain.value = 1; stingGain.connect(sfxGain);
+      stingGain = ac.createGain(); stingGain.gain.value = 1; stingGain.connect(master);
       const dly = ac.createDelay(1); dly.delayTime.value = 0.402;   // dotted-8th at 112
       const fb = ac.createGain(); fb.gain.value = 0.22;
       const elp = ac.createBiquadFilter(); elp.type = 'lowpass'; elp.frequency.value = 2400;
@@ -1001,7 +1083,7 @@ const Audio = (() => {
       }
     },
     stomp(level) {   // ladder = the Hop's first steps in the current key
-      noise(0.06, 0.25, 'lowpass', 900); tone('sine', 300, 55, 0.13, 0.3);
+      noise(0.06, 0.25, 'lowpass', 900); tone('sine', 300, 55, 0.13, 0.22);
       const f = degF([1, 2, 3, 5][clamp(level, 0, 3)]);
       tone('triangle', f, f, 0.09, 0.24);
       if (level >= 3) { const s = degF(6); tone('triangle', s, s, 0.09, 0.18, sfxGain, now() + 0.05); }   // ×8 caps with the sunshine 6th
@@ -1031,6 +1113,10 @@ const Audio = (() => {
         if (golden) bell(f, 0.16, 0.14, t + i * gap, sfxGain);
         else tone('triangle', f, f, 0.15, 0.2, sfxGain, t + i * gap);
       }
+    },
+    chainBank() {   // the chain lands: 5 → 1 resolve, bell timbre, on the sting bus (E8.3)
+      const t = now();
+      bell(degF(5), 0.2, 0.08, t, stingGain); bell(degF(1), 0.3, 0.08, t + 0.09, stingGain);
     },
     /* ---- delight pack — every sound sits inside the current key or far outside the mix ---- */
     discover() {   // logbook chime: degrees 5-7-9 of the moment — in key by construction
@@ -1130,7 +1216,8 @@ const Audio = (() => {
     const chord = chordAt(pos, stepIn >= 4 ? 1 : 0);
     if (stepIn === 0 || stepIn === 4) {
       if (chord !== lastChord) { lastChord = chord; padTune(chord, t); }
-      padGain.gain.setTargetAtTime(band >= 3 && mode === 'play' ? (danger ? 0.02 : 0.05) : 0, t, 0.1);
+      // Pause always gets the warm held-chord bed; play still needs the band-3 build-up.
+      padGain.gain.setTargetAtTime(mode === 'pause' ? 0.04 : (band >= 3 && mode === 'play' ? (danger ? 0.02 : 0.05) : 0), t, 0.1);
       if (stepIn === 0) echoSend.gain.setTargetAtTime(band >= 1 ? 0.25 : 0, t, 0.1);
     }
     if (mode === 'pause') {   // next-room mix: pads + one bell whole-note under the 400 Hz lid
@@ -1253,8 +1340,8 @@ const Audio = (() => {
     if (name === 'sector') {   // 2-note stinger lands in the NEW key; the band follows at the bar line
       pendKey = clamp(arg | 0, 0, SECT.length - 1);
       if (!settings.music) { curKey = pendKey; pendKey = null; }
-      const k = SECT[pendKey === null ? curKey : pendKey];
-      bell(degF(1, 0, k), 0.3, 0.1, t, stingGain); bell(degF(2, 0, k), 0.35, 0.1, t + 0.12, stingGain);
+      const ki = pendKey === null ? curKey : pendKey, k = SECT[ki], degs = STING[ki] || [1, 2];
+      bell(degF(degs[0], 0, k), 0.3, 0.1, t, stingGain); bell(degF(degs[1], 0, k), 0.35, 0.1, t + 0.12, stingGain);
     } else if (name === 'pause') {
       musicLP.frequency.cancelScheduledValues(t); musicLP.frequency.setTargetAtTime(400, t, 0.1);
       musicGain.gain.setTargetAtTime(musLvl(0.15), t, 0.1);
@@ -1282,11 +1369,16 @@ const Audio = (() => {
     // state !== 'running' also covers WebKit's 'interrupted' (call/Siri/background)
     // or audio stays dead for the session on iOS.
     ensure, resume() { if (ac && ac.state !== 'running') { try { ac.resume().catch(() => {}); } catch (e) {} } },
+    // A hidden tab's drone is a trust breach on mobile — mirror of resume() above.
+    suspend() { if (ac && ac.state === 'running') { try { ac.suspend(); } catch (e) {} } },
     sfx: SFX, tickMusic, musicReset, musicEvent, chordTones, killSting,
     degFreq(deg, oct) { return degF(deg, oct); },
     syncChannels() {
       if (sfxGain) sfxGain.gain.setTargetAtTime(sfxLvl(), now(), .025);
-      if (musicGain) musicGain.gain.setTargetAtTime(musLvl(), now(), .04);
+      // Pause keeps the music bus at next-room level even if MUSIC gets re-toggled mid-pause.
+      if (musicGain) musicGain.gain.setTargetAtTime(G.mode === 'pause' ? musLvl(0.15) : musLvl(), now(), .04);
+      // Sting bus bypasses both sliders (E5.3) — gated only by mute, audible to sfx-only or music-only players.
+      if (stingGain) stingGain.gain.setTargetAtTime((!settings.muted && (settings.sfx || settings.music)) ? 1 : 0, now(), .03);
     },
     get on() { return started; },
     get loopsCompleted() { return loopsN; },
@@ -1321,11 +1413,13 @@ function buzz(kind) {
 const input = {
   left: false, right: false, jumpHeld: false, jumpPressed: false, shoot: false,
   usingTouch: false, usingKeys: false, usingGamepad: false, stickX: 0, gamepadX: 0,
-  stick: { active: false, cx: 0, cy: 0, x: 0, y: 0, id: -1 },
+  stick: { active: false, cx: 0, cy: 0, x: 0, y: 0, id: -1, cooldown: 0 },   // cooldown: E11 auto-run resume delay after release
   jumpZone: { active: false, id: -1 },
   shootBtn: { cx: 0, cy: 0, r: 34, pressed: false, id: -1 },
   muteHold: null,   // { id, t, fired } — pending mute tap / settings long-press
   pad: { index: -1, prev: [], connected: false },
+  downIds: new Set(),   // every pointerId currently touching the canvas — death-card mash-guard reads this
+  deadIgnore: new Set(),   // snapshot of downIds taken when the death card appears (E9.6)
 };
 function inMuteHit(p) { const h = G._muteHit; return !!h && p.x >= h.x0 && p.x <= h.x1 && p.y >= h.y0 && p.y <= h.y1; }
 
@@ -1350,7 +1444,7 @@ function pollGamepad() {
   const padState = window.SpaceManInput.snapshot(gp);
   let axis = padState.move;
   if (axis) { input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
-  input.gamepadX = Math.sign(axis) * Math.pow(Math.abs(axis), 1.35);
+  input.gamepadX = axis;   // snapshot() already curves the raw stick — one source of truth
   const jump = padState.jump;
   if (jump && !input.pad.prev[0]) { input.jumpPressed = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   if (jump || input.pad.prev[0]) input.jumpHeld = jump;
@@ -1415,6 +1509,7 @@ canvas.addEventListener('pointerdown', (e) => {
   // Capture so pointerup always reaches us even if the pointer is released
   // over an overlay or outside the window — otherwise inputs stick.
   try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  input.downIds.add(e.pointerId);
   // A mouse is a direct fire input; don't switch the HUD into touch mode or
   // spawn a joystick beneath the cursor.
   if (e.pointerType === 'mouse') {
@@ -1430,7 +1525,9 @@ canvas.addEventListener('pointerdown', (e) => {
   const p = pointerPos(e);
   if (G.mode === 'attract') { startRun(); return; }
   if (G.mode === 'dead') { tryRestart(); return; }
-  if (G.mode !== 'play') return;
+  // Countdown touches arm the stick/jump/fire zones so the player is already
+  // moving at GO — the state sits armed until the first simulated tick.
+  if (G.mode !== 'play' && G.mode !== 'resume') return;
   layoutTouch();
   // pause icon zone (top-right)
   if (G._pauseHit && p.x >= G._pauseHit.x0 && p.x <= G._pauseHit.x1 && p.y >= G._pauseHit.y0 && p.y <= G._pauseHit.y1) { togglePause(); return; }
@@ -1455,11 +1552,12 @@ canvas.addEventListener('pointermove', (e) => {
   }
 }, { passive: false });
 function endPointer(e) {
+  input.downIds.delete(e.pointerId);
   if (input.muteHold && e.pointerId === input.muteHold.id) {
     if (!input.muteHold.fired && performance.now() - input.muteHold.t < 400) toggleMute();
     input.muteHold = null;
   }
-  if (e.pointerId === input.stick.id) { input.stick.active = false; input.stick.id = -1; input.stickX = 0; }
+  if (e.pointerId === input.stick.id) { input.stick.active = false; input.stick.id = -1; input.stickX = 0; input.stick.cooldown = 0.25; }   // E11: auto-run resumes 0.25s after release, not instantly
   if (e.pointerId === input.jumpZone.id) { input.jumpZone.active = false; input.jumpZone.id = -1; input.jumpHeld = false; }
   if (e.pointerId === input.shootBtn.id) { input.shootBtn.pressed = false; input.shootBtn.id = -1; }
 }
@@ -1501,7 +1599,15 @@ function updateParticles() {
    11. FLOATING SCORE POPUPS + TOAST QUEUE + DISCOVERIES
    ------------------------------------------------------------------------- */
 const popups = [];
-function popup(x, y, text, color) { popups.push({ x, y, text, color: color || '#fff', life: 42, max: 42 }); if (popups.length > 24) popups.shift(); }
+function popup(x, y, text, color) {
+  // Anti-pile: a spawn landing within 16px vertically of a live popup at
+  // similar x reads as stacked mush — nudge the newer one down instead.
+  // Threshold is wide enough to cover typical popup text half-widths, not
+  // just the spawn point, or two adjacent strings still visually collide.
+  for (const q of popups) if (Math.abs(q.x - x) < 70 && Math.abs(q.y - y) <= 16) { y += 18 * uiScale(); break; }
+  popups.push({ x, y, text, color: color || '#fff', life: 42, max: 42 });
+  if (popups.length > 24) popups.shift();
+}
 function updatePopups() { for (let i = popups.length - 1; i >= 0; i--) { const p = popups[i]; p.life--; p.y -= 0.6; if (p.life <= 0) popups.splice(i, 1); } }
 
 // ONE canvas toast queue — never DOM, never a tap target. 'sys' keeps the
@@ -1568,11 +1674,11 @@ function decorBurst(x, y, n, spd, life, size, color, kind) {
 const G = {
   mode: 'attract', time: 0, timescale: 1, freeze: 0, slowTimer: 0,
   trauma: 0, shake: { x: 0, y: 0, rot: 0 },
-  camX: 0, camY: 0, camXprev: 0, camYprev: 0, punchZoom: 1, punchTimer: 0,
+  camX: 0, camY: 0, camXprev: 0, camYprev: 0, punchZoom: 1, punchTimer: 0, hudDuck: 0, hudFade: 1,
   player: null, platforms: [], enemies: [], bullets: [], ebullets: [], pickups: [],
   flare: { x: 0, speed: 2, prevX: 0 },
   score: 0, dispScore: 0, dist: 0, maxX: 0, startX: 0,
-  chain: 0, bestChainRun: 1, killsRun: 0,
+  chain: 0, bestChainRun: 1, killsRun: 0, chainFade: 0, chainFadeMult: 0,
   ammo: CFG.ammoStart, ammoPulse: 0, cooldown: 0,
   band: 0, genX: 0, groundY: 360, floorY: 560,
   pbFlagX: null, pbPassed: false, prevBest: 0,
@@ -1591,6 +1697,14 @@ const G = {
   decorRng: mulberry32(1), whale: null, whalePending: false, sat: null, satPending: false,
   wave: 0, waveIn: 20, silkStreak: 0, quip: null,
   flareFlirtT: 0, flareFlirt: false, wardrobeOpen: false,
+  // E4: the flare as a visible antagonist. threat is a slewed, render-only
+  // read of the gap (never fed back into sim); glance* drives the astronaut's
+  // fear-glance in both play (gap-triggered) and attract (time-triggered).
+  threat: 0, glanceT: 0, glanceActive: false, glanceTimer: 0, glanceCooldown: 0,
+  glanceIn: 4, glanceAlt: false, attractAlienPlat: null,
+  // E6: sector-crossing ceremony. sectorFadeT counts up from 0 on a band-up
+  // (999 = no active crossfade); themeHue* bounds the eased meta-color sweep.
+  sectorFadeT: 999, themeHueFrom: BAND_HUE[0], themeHueTo: BAND_HUE[0],
 };
 
 const MISSIONS = [
@@ -1612,7 +1726,7 @@ function missionProgress(kind, amount) {
   G.ammo = CFG.ammoCap; G.ammoPulse = 1;
   G.flare.x -= 180;
   G.companion = { x: G.player.x - 30, y: G.player.y - 10, phase: 0 };
-  popup(G.player.x, G.player.y - 34, '+' + CFG.missionReward + ' MISSION', '#9FF1FF');
+  popup(G.player.x, G.player.y - 34, '+' + CFG.missionReward + ' MISSION', '#FFE59A');
   burst(G.player.x + G.player.w / 2, G.player.y, 30, 4, 46, 3, 'rgba(159,241,255,.95)', 0.04, 2);
   celebrate('MISSION COMPLETE!');
 }
@@ -1753,15 +1867,18 @@ function resetRun(seed) {
   G.player = {
     x: p0.x + 90, y: p0.y - CFG.ph, px: p0.x + 90, py: p0.y - CFG.ph, vx: 0, vy: 0,
     w: CFG.pw, h: CFG.ph, onGround: true, facing: 1,
-    coyote: 0, buffer: 0, jumping: false, sqX: 1, sqY: 1, landDip: 0,
+    coyote: 0, buffer: 0, jumping: false, sqX: 1, sqY: 1, landDip: 0, pose: 4,
     runCycle: 0, glint: 0, idle: 0, dead: false, groundPlat: p0, holdFor: 0,
     airFrames: 0, jumpStartX: p0.x + 90, jumpPlat: p0, boostT: 0,
   };
   G.camX = G.player.x - view.w * 0.42; G.camXprev = G.camX;
-  G.camY = G.groundY - view.h * 0.58; G.camYprev = G.camY;
+  // Matches updateCamera()'s grounded target exactly so frame 1 never has to
+  // ease a mismatch away — portrait needs more headroom above the HUD band.
+  G.camY = G.groundY - view.h * (view.h > view.w ? 0.64 : 0.58); G.camYprev = G.camY;
+  G.hudDuck = 0; G.hudFade = 1;
   G.flare.x = G.player.x - CFG.flareStartBehind; G.flare.prevX = G.flare.x; G.flare.speed = BANDS[0].flare;
   G.score = 0; G.dispScore = 0; G.dist = 0; G.maxX = G.player.x;
-  G.chain = 0; G.bestChainRun = 1; G.killsRun = 0;
+  G.chain = 0; G.bestChainRun = 1; G.killsRun = 0; G.chainFade = 0; G.chainFadeMult = 0;
   G.ammo = CFG.ammoStart; G.ammoPulse = 0; G.cooldown = 0;
   G.band = 0; G.timescale = 1; G.freeze = 0; G.slowTimer = 0; G.trauma = 0; G.punchZoom = 1; G.punchTimer = 0;
   G.platIdx = 0; G.lastGenBand = 0; G.easeUntilM = -1;
@@ -1781,22 +1898,28 @@ function resetRun(seed) {
   toastQ.length = 0; G.toastT = 0;
   const missionSeed = MISSIONS[(rng() * MISSIONS.length) | 0];
   G.mission = { kind: missionSeed.kind, target: missionSeed.target, label: missionSeed.label, progress: 0, done: false };
-  G.attractBase = undefined;
+  G.attractBase = undefined; G.attractAlienPlat = G.platforms[0];
+  G.threat = 0; G.glanceT = 0; G.glanceActive = false; G.glanceTimer = 0; G.glanceCooldown = 0;
+  G.glanceIn = 4; G.glanceAlt = false;
+  G.sectorFadeT = 999; G.themeHueFrom = G.themeHueTo = BAND_HUE[0];
   // A human profile's deadStreak must never fork a seeded #shot world.
   G.frameCount = 0; G.runStart = G.time; G.prevBest = bestScore; G.mercy = stats.mercy && !SHOT;
   G.mercyLvl = G.mercy ? clamp(stats.deadStreak - 2, 1, 3) : 0;
   G.pbFlagX = stats.bestDist > 0 ? G.startX + stats.bestDist * 10 : null;
   G.hints = [];
-  if (!flags.taughtRun) G.hints.push({ x: G.player.x + 70, y: G.groundY - 56, text: 'MOVE →' });
-  if (!flags.taughtJump) G.hints.push({ x: G.player.x + 330, y: G.groundY - 96, text: 'HOLD TO JUMP HIGHER' });
-  if (!flags.taughtShoot) G.hints.push({ x: G.player.x + 590, y: G.groundY - 120, text: 'F / CLICK TO FIRE' });
+  // `kind` resolves to on-screen text at draw time (input-mode string table)
+  // so the wording always matches how this player is actually holding the
+  // device; `in` (0..1) eases each hint in over 0.3s once it starts fading.
+  if (!flags.taughtRun) G.hints.push({ x: G.player.x + 70, y: G.groundY - 56, kind: 'move', in: 0 });
+  if (!flags.taughtJump) G.hints.push({ x: G.player.x + 330, y: G.groundY - 96, kind: 'jump', in: 0 });
+  if (!flags.taughtShoot) G.hints.push({ x: G.player.x + 590, y: G.groundY - 120, kind: 'shoot', in: 0 });
   if (!flags.taughtStomp) {
     // Teach the stomp against a real target: one slow patroller on the last
     // starter platform, hint planted just before it. Fixed values — no rng.
     const tp = G.platforms[3];
     G.enemies.push({ type: 'patrol', x: tp.x + tp.w / 2, y: tp.y - 22, px: tp.x + tp.w / 2, py: tp.y - 22, w: 24, h: 22, dir: -1, speed: 1.0,
       dead: false, squash: 0, walkPhase: 0, minX: tp.x + 14, maxX: tp.x + tp.w - 14, lookX: 0, lookY: 0 });
-    G.hints.push({ x: tp.x - 40, y: tp.y - 96, text: 'STOMP ENEMIES' });
+    G.hints.push({ x: tp.x - 40, y: tp.y - 96, kind: 'stomp', in: 0 });
   }
   generateAhead();
 }
@@ -1819,6 +1942,7 @@ function tryRestart() {
   if (G.mode !== 'dead') return;
   if ($('ovInitials').classList.contains('show')) return;  // picker owns input until confirmed/skipped
   if (G.time - G.deadShownAt < 0.4) return;      // guard so panic taps don't skip the card
+  cancelDeathAnim();                             // count-up/stamp/reveal timers never fight the next run
   Audio.killSting();                             // a ringing jingle never delays the next run
   startRun();
 }
@@ -1847,6 +1971,10 @@ function updatePlayer() {
   if (input.usingTouch) ix = input.stickX;
   else if (input.usingGamepad && Math.abs(input.gamepadX) > .01) ix = input.gamepadX;
   else { if (input.left) ix -= 1; if (input.right) ix += 1; }
+  // E11: one-thumb play. A live stick touch overrides instantly (fine control /
+  // backing off); releasing it resumes auto-run after a 0.25s cooldown, not instantly.
+  if (input.stick.cooldown > 0) input.stick.cooldown = Math.max(0, input.stick.cooldown - STEP);
+  if (input.usingTouch && settings.autorun && !input.stick.active && input.stick.cooldown <= 0) ix = 1;
   const accel = p.onGround ? CFG.accelGround : CFG.accelAir;
   if (ix !== 0) {
     const opposing = (ix < 0 && p.vx > 0) || (ix > 0 && p.vx < 0);
@@ -1895,7 +2023,7 @@ function updatePlayer() {
       const impact = p.vy;
       p.y = landed.y - p.h; p.vy = 0; p.onGround = true; p.jumping = false; p.groundPlat = landed;
       if (!wasGround) {
-        p.sqX = 1.2; p.sqY = 0.8; p.landDip = clamp(impact / 14, 0, 1) * 6;
+        p.sqX = 1.2; p.sqY = 0.8; p.landDip = clamp(impact / 14, 0, 1) * 3;   // feet-anchored squash owns the contact read now
         if (impact > 11) G.trauma = Math.max(G.trauma, 0.12);   // heavy landing = smooth thud, not jitter
         burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, palNow().trailHot, 0.08, 0);
         if (G.mode === 'play') { Audio.sfx.land(impact); if (impact > 9) buzz('light'); }
@@ -1913,6 +2041,16 @@ function updatePlayer() {
         if (G.chain > 0) {
           // best friend: banking a ×4 chain sends the companion on a victory loop
           if (DELIGHT && G.chain >= 2 && G.companion) { G.companion.loopT = 0.8; Audio.sfx.chirp(); discover('loop'); }
+          if (G.chain >= 2) {   // the payoff: banking the chain finally pays out (E8.3)
+            const mult = 1 << G.chain;
+            popup(p.x, p.y - 22, 'CHAIN ×' + mult + ' BANKED', '#FFE59A');
+            Audio.sfx.chainBank(); buzz('select');
+            G.chainFadeMult = mult; G.chainFade = 1;   // HUD readout fades over 0.25s, never blinks out
+            if (G.chain >= 4) {
+              burst(p.x + p.w / 2, p.y + p.h / 2, 14, 2.6, 26, 2.6, 'rgba(255,201,60,.95)', 0, 3);
+              G.punchZoom = 1.03; G.punchTimer = 0.12;
+            }
+          }
           G.chain = 0;   // landing banks the chain (best already recorded per kill)
         }
         const flight = Math.abs(p.x - p.jumpStartX);
@@ -1920,7 +2058,7 @@ function updatePlayer() {
         if (p.airFrames > 34 && flight > 190 && gapCleared > 100) {
           const pts = gapCleared > 190 ? 50 : 25;
           G.score += pts; G.bigAir++;
-          popup(p.x, p.y - 18, (gapCleared > 190 ? 'ORBITAL LEAP +' : 'BIG AIR +') + pts, '#9FF1FF');
+          popup(p.x, p.y - 18, (gapCleared > 190 ? 'ORBITAL LEAP +' : 'BIG AIR +') + pts, '#FFE59A');
           burst(p.x + p.w / 2, p.y + p.h, 12, 2.2, 22, 2, 'rgba(159,241,255,.85)', .08, 0);
         }
         p.airFrames = 0;
@@ -1938,7 +2076,7 @@ function updatePlayer() {
     bp.boostUsed = true; p.boostT = 48; p.vx = 9.5; p.vy = -8.5; p.onGround = false; p.jumping = true; p.facing = 1;
     p.airFrames = 0; p.jumpStartX = p.x; p.jumpPlat = bp;
     G.score += 20; G.punchZoom = 1.045; G.punchTimer = .16; G.trauma = Math.min(1, G.trauma + .18);
-    popup(p.x, p.y - 16, 'STAR BOOST +20', '#FFC93C');
+    popup(p.x, p.y - 16, 'STAR BOOST +20', '#FFE59A');
     burst(bp.boostX, bp.y - 3, 20, 3.5, 30, 3, 'rgba(255,201,60,.95)', .04, 2);
     Audio.sfx.ammo(false); buzz('heavy');
   }
@@ -1947,10 +2085,19 @@ function updatePlayer() {
     spawnP(p.x - 8, p.y + p.h * .55, -rnd(2.5, 4.5), rnd(-.4, .4), 18, 2.5, 'rgba(255,201,60,.85)', 0, false, 0);
 
   p.sqX += (1 - p.sqX) * 0.2; p.sqY += (1 - p.sqY) * 0.2; p.landDip *= 0.8;
+  p.pose += ((p.vy < 0 ? -4 : 4) - p.pose) * 0.15;   // eased airborne tuck→trail, no single-frame flip at apex
   p.runCycle += Math.abs(p.vx) * 0.06;
   p.idle = (Math.abs(p.vx) < 0.3 && p.onGround) ? p.idle + STEP : 0;
   p.glint += STEP;
   if (Math.abs(p.vx) > 1) flags.taughtRun = true;
+}
+
+// Ticked every fixed 60Hz step (not per render call) so the 0.3s ease-in lands
+// on real simulated time even under the headless #shot harness, which drives
+// update() in a tight loop and renders only once at the end.
+function updateHints() {
+  const px = G.player.x;
+  for (const h of G.hints) if (h.x - px - 260 < 120) h.in = Math.min(1, (h.in || 0) + STEP / 0.3);
 }
 
 function tryShoot() {
@@ -2027,7 +2174,7 @@ function updateBullets() {
     const dx = b.x - (p.x + p.w / 2), dy = b.y - (p.y + p.h / 2), dist = Math.hypot(dx, dy);
     if (!p.dead && dist < 9) { die('bullet'); return; }
     if (!b.grazed && dist < 16) {
-      b.grazed = true; G.score += CFG.scoreGraze; popup(b.x, b.y, '+5 CLOSE', '#9FF1FF');
+      b.grazed = true; G.score += CFG.scoreGraze; popup(b.x, b.y, '+5 CLOSE', '#FFE59A');
       missionProgress('graze', 1);
       if (G.mode === 'play') { G.timescale = 0.35; G.slowTimer = 0.18; }   // readable skill beat, still <0.2s
       spawnP(b.x, b.y, 0, 0, 20, 3, 'rgba(232,244,255,0.8)', 0, false, 3);
@@ -2052,13 +2199,13 @@ function killEnemy(e, method, interrupted) {
   missionProgress(method, 1);
   if (e.golden) {
     G.score += 100; G.ammo = CFG.ammoCap; G.ammoPulse = 1;
-    popup(e.x, e.y - 30, 'LUCKY ALIEN +100', '#FFC93C');
+    popup(e.x, e.y - 30, 'LUCKY ALIEN +100', '#FFE59A');
     burst(e.x, e.y, 22, 3.4, 34, 3, 'rgba(255,201,60,.95)', .08, 2);
     Audio.sfx.medal(3, true);   // the Hop at 1.5×, in bells — golden means golden
     discover('lucky');          // first one logs; rewards unchanged
   }
-  popup(e.x, e.y - 10, '+' + pts + (mult > 1 ? ' ×' + mult : ''), method === 'stomp' ? '#4EF07A' : '#FFC93C');
-  if (interrupted) { G.score += CFG.scoreInterrupt; popup(e.x, e.y - 26, '+10 STOP', '#FF9DB0'); }
+  popup(e.x, e.y - 10, '+' + pts + (mult > 1 ? ' ×' + mult : ''), '#FFE59A');
+  if (interrupted) { G.score += CFG.scoreInterrupt; popup(e.x, e.y - 26, '+10 STOP', '#FFE59A'); }
   burst(e.x, e.y, 12, 2.4, 26, 3, 'rgba(78,240,122,0.95)', 0.18, 2);
   if (method === 'stomp' && rng() < CFG.killDropChance)
     G.pickups.push({ type: 'ammo', x: e.x, y: e.y, vy: -2, amt: CFG.killDropAmt, parachute: false, bob: 0, grabbed: false });
@@ -2106,14 +2253,14 @@ function collisions() {
       if (k.type === 'shard') {
         G.shards++; G.shardStreak++;
         const bonus = CFG.scoreShard + Math.min(18, (G.shardStreak - 1) * 3);
-        G.score += bonus; popup(k.x, k.y, '+' + bonus + ' STAR', '#9FF1FF');
+        G.score += bonus; popup(k.x, k.y, '+' + bonus + ' STAR', '#FFE59A');
         burst(k.x, k.y, 12, 2.6, 24, 2.4, 'rgba(159,241,255,.95)', 0, 3);
         Audio.sfx.ammo(false); buzz('select'); missionProgress('shard', 1);
         G.pickups.splice(i, 1); continue;
       }
       const wasZero = G.ammo <= 0;
       G.ammo = Math.min(CFG.ammoCap, G.ammo + k.amt); G.ammoPulse = 1;
-      G.score += CFG.scoreAmmo; popup(k.x, k.y, '+AMMO', '#FFC93C');
+      G.score += CFG.scoreAmmo; popup(k.x, k.y, '+AMMO', '#FFE59A');
       burst(k.x, k.y, 10, 2, 20, 2, 'rgba(255,201,60,0.9)', 0, 0);
       Audio.sfx.ammo(wasZero); G.freeze = Math.max(G.freeze, 0.03); buzz('select');
       G.pickups.splice(i, 1);
@@ -2152,6 +2299,41 @@ function updateFlare() {
   if (G.frameCount % 3 === 0) G.crackle = rng();
 }
 
+// E4: render-only "the flare is a visible antagonist" state. threat is a
+// slewed read of the gap — never written back into anything updateFlare()
+// reads, so the difficulty rubber-band (G.flare.x itself) is untouched.
+function updateThreat() {
+  const p = G.player;
+  const target = clamp(1 - (p.x - G.flare.x - 260) / 790, 0, 1);
+  G.threat += clamp(target - G.threat, -STEP / 0.5, STEP / 0.5);   // slewed 0.5s
+  // Ember rate rides the threat, 1/18 frames idle → 1/3 at max dread. Decor
+  // stream only — never the worldgen rng — so seeded goldens stay put.
+  const every = clamp(Math.round(lerp(18, 3, G.threat)), 3, 18);
+  if (G.frameCount % every === 0)
+    spawnP(G.camX + G.decorRng() * 16, G.camY + G.decorRng() * view.h, G.decorRng() * 0.3, -0.6 - G.decorRng() * 1.4, 40, 2, 'rgba(255,150,100,0.85)', -0.015, false, 0);
+  // Fear glance: turns toward the thing chasing it inside a 300px gap, at
+  // most once per 2.5s (advanceGlance owns the cooldown/ease, shared with attract).
+  if (!G.glanceActive && (p.x - G.flare.x) < 300 && G.glanceCooldown <= 0) { G.glanceActive = true; G.glanceTimer = 0; }
+  advanceGlance();
+}
+// Shared glance-back state machine (E4.4 in play, E7 in attract): 0.6s hold,
+// 0.15s ease in/out, 2.5s cooldown after each glance ends.
+function advanceGlance() {
+  if (G.glanceCooldown > 0) G.glanceCooldown -= STEP;
+  if (G.glanceActive) {
+    G.glanceTimer += STEP;
+    if (G.glanceTimer >= 0.6) { G.glanceActive = false; G.glanceCooldown = 2.5; }
+  }
+  G.glanceT += clamp((G.glanceActive ? 1 : 0) - G.glanceT, -STEP / 0.15, STEP / 0.15);
+}
+// E6: eases the <meta name=theme-color> over the same 1.5s window the sector
+// crossfade owns, instead of snapping the instant the band changes.
+function updateThemeMeta() {
+  const t = easeOutQuad(clamp(G.sectorFadeT / 1.5, 0, 1));
+  const hue = Math.round(lerp(G.themeHueFrom, G.themeHueTo, t));
+  if (tmetaEl) tmetaEl.content = `hsl(${hue} 42% 8%)`;
+}
+
 function updateCamera() {
   const p = G.player;
   G.camXprev = G.camX; G.camYprev = G.camY;
@@ -2163,10 +2345,32 @@ function updateCamera() {
   // viewport regardless of lookahead overshoot or lerp lag (critical on narrow portrait).
   G.camX = clamp(G.camX, p.x - view.w * 0.60, p.x - view.w * 0.15);
   if (G.camX < G.flare.x - 40) G.camX = G.flare.x - 40;
+
+  const portrait = view.h > view.w;
   if (p.onGround && p.groundPlat) {
-    const tY = p.groundPlat.y - view.h * 0.58, dy = tY - G.camY;
-    if (Math.abs(dy) > 40) G.camY += (dy - Math.sign(dy) * 40) * 0.06;
+    const tY = p.groundPlat.y - view.h * (portrait ? 0.64 : 0.58), dy = tY - G.camY;
+    // Converges fully to 0 (no residual deadband) — a hard landing settles out in ~0.5s.
+    if (Math.abs(dy) < 80) G.camY += dy * 0.06;
+  } else {
+    // Airborne vertical follow: the grounded settle above never runs mid-flight, so a
+    // jump or fall can carry the player's screen-y clean off the top or bottom edge.
+    // Re-center whenever it leaves the safe band; falling looks ahead harder than
+    // rising because the landing is what must stay on screen.
+    const screenY = p.y - G.camY, lo = view.h * 0.28, hi = view.h * 0.62;
+    if (screenY < lo || screenY > hi) {
+      const targetCamY = p.y - clamp(screenY, lo, hi);
+      G.camY += (targetCamY - G.camY) * (p.vy < 0 ? 0.10 : 0.16);
+    }
   }
+  // HARD CLAMP, every frame, after all easing — mirrors the X-axis band clamp.
+  // The player's rendered y can never leave [12%,70%] of view height.
+  G.camY = clamp(G.camY, p.y - view.h * 0.70, p.y - view.h * 0.12);
+
+  // HUD duck: fade the score/mission block instead of colliding with the
+  // player sprite once the camera pins them near the top of frame.
+  const duckTarget = (p.y - G.camY) < 96 * uiScale() ? 1 : 0;
+  G.hudDuck += (duckTarget - G.hudDuck) * 0.15;
+
   if (G.punchTimer > 0) G.punchTimer -= STEP; else G.punchZoom += (1 - G.punchZoom) * 0.15;
 }
 
@@ -2182,7 +2386,7 @@ function updateDistance() {
   // newBest — the death card's delta line must never lie.
   if (G.pbFlagX !== null && !G.pbPassed && p.x >= G.pbFlagX) { G.pbPassed = true; celebrate('PAST YOUR FLAG!'); }
   if (!G.newBest && bestScore > 0 && G.score > bestScore) { G.newBest = true; celebrate('NEW BEST!'); }
-  if (!G.deep1000 && G.dist >= 1000) { G.deep1000 = true; G.stinger = 2.4; }
+  if (!G.deep1000 && G.dist >= 1000) { G.deep1000 = true; G.stinger = 2.4; G.stingerText = '1000m'; }
 }
 
 function celebrate(text) {
@@ -2336,6 +2540,7 @@ function update() {
     if (input.shoot || input.shootBtn.pressed) { tryShoot(); input.shoot = false; }
     if (G.cooldown > 0) G.cooldown--;
     updatePlayer();
+    updateHints();
     if (G.companion) {
       const c = G.companion, p = G.player;
       c.phase += .07;
@@ -2357,6 +2562,7 @@ function update() {
     // against a stale frame (magnified by deathZoom).
     if (G.player.dead) { G.camXprev = G.camX; G.camYprev = G.camY; finishTick(); return; }
     updateFlare();
+    updateThreat();
     updateCamera();
     updateDistance();
     generateAhead();
@@ -2365,15 +2571,20 @@ function update() {
       const names = ['ORBITAL DAWN', 'ION DRIFT', 'VIOLET REACH', 'NIGHT BLOOM', 'RED SHIFT', 'EVENT HORIZON', 'THE FAR SIDE', 'LAST LIGHT'];
       G.stinger = 2.4; G.stingerText = names[nextBand] || 'DEEP SPACE';
       Audio.musicEvent('sector', nextBand);   // stinger in the new key; band re-keys at the bar line
-      const hue = BAND_HUE[nextBand] || 218;
-      const meta = document.getElementById('tmeta'); if (meta) meta.content = `hsl(${hue} 42% 8%)`;
+      // Sector ceremony (E6): snapshot the outgoing sky/nebula for the 1.5s
+      // crossfade and arm the eased theme-color sweep; the actual hue-tinted
+      // rebuilds happen lazily on the next draw (drawBackground/drawPlatforms).
+      skyPrevCanvas = skyCanvas; nebulaPrevCanvas = nebulaCanvas;
+      G.sectorFadeT = 0; G.themeHueFrom = BAND_HUE[G.band] || 218; G.themeHueTo = BAND_HUE[nextBand] || 218;
     }
     G.band = nextBand;
     if (G.slowTimer > 0) { G.slowTimer -= STEP; if (G.slowTimer <= 0) G.timescale = 1; }
     if (G.celebrate > 0) G.celebrate -= STEP;
     if (G.stinger > 0) G.stinger -= STEP;
+    if (G.sectorFadeT < 1.5) { G.sectorFadeT += STEP; updateThemeMeta(); }
     if (G.edgePulse > 0) G.edgePulse -= 0.06;
     if (G.ammoPulse > 0) G.ammoPulse = Math.max(0, G.ammoPulse - 0.04);
+    if (G.chainFade > 0) G.chainFade = Math.max(0, G.chainFade - STEP / 0.25);
     G.starTimer += STEP;
     if (G.starTimer > 20 && !G.shootingStar) { G.starTimer = 0; G.shootingStar = { x: G.camX + view.w, y: rnd(20, 120), life: 60, vx: -12, vy: 4 }; }
     if (G.shootingStar) { G.shootingStar.x += G.shootingStar.vx; G.shootingStar.y += G.shootingStar.vy; if (--G.shootingStar.life <= 0) G.shootingStar = null; }
@@ -2386,7 +2597,13 @@ function update() {
     // Live hero scene: idle astronaut breathing on its platform, gentle parallax sway.
     const p = G.player;
     if (p) { p.idle += STEP; p.glint += STEP; p.facing = 1; p.onGround = true; p.vx = 0; p.vy = 0; }
-    if (G.attractBase === undefined && p) G.attractBase = { x: p.x - view.w * 0.46, y: G.groundY - view.h * 0.5 };
+    if (G.attractBase === undefined && p) {
+      // E7: the platform frames below the wordmark, not a fixed 50% — the
+      // astronaut always breathes in clear space under the logo.
+      const wm = wordmarkMetrics();
+      const platformScreenY = Math.max(view.h * 0.52, wm.cy + wm.size * 1.1) + 40;
+      G.attractBase = { x: p.x - view.w * 0.46, y: G.groundY - platformScreenY };
+    }
     if (G.attractBase) {
       G.camXprev = G.camX; G.camYprev = G.camY;
       G.camX = G.attractBase.x + Math.sin(G.time * 0.28) * 26;
@@ -2397,7 +2614,14 @@ function update() {
     if (DELIGHT && p) {   // hello out there: an unprompted wave every 14–22 s
       if (G.wave > 0) G.wave -= STEP;
       else if ((G.waveIn -= STEP) <= 0) { G.wave = 2; G.waveIn = 14 + G.decorRng() * 8; }
+      // E7: glance back at the horizon glow on a deterministic 4s/6s-alternating
+      // cadence, never while mid-wave so the two gestures don't collide.
+      if (!G.glanceActive && G.wave <= 0 && (G.glanceIn -= STEP) <= 0) {
+        G.glanceActive = true; G.glanceTimer = 0;
+        G.glanceIn = (G.glanceAlt = !G.glanceAlt) ? 6 : 4;
+      }
     }
+    advanceGlance();
     G.starTimer += STEP;
     if (G.starTimer > 8 && !G.shootingStar) { G.starTimer = 0; G.shootingStar = { x: G.camX + view.w, y: rnd(20, 110), life: 72, vx: -11, vy: 4 }; }
     if (G.shootingStar) { G.shootingStar.x += G.shootingStar.vx; G.shootingStar.y += G.shootingStar.vy; if (--G.shootingStar.life <= 0) G.shootingStar = null; }
@@ -2469,7 +2693,8 @@ function frame(now) {
     // Ease-out cubic, 1 → 1.25 over 0.5s, deterministic from deathSeq.
     const zt = clamp(G.deathSeq / 0.5, 0, 1);
     G.deathZoom = 1 + (prefersLessMotion ? 0.06 : 0.25) * (1 - Math.pow(1 - zt, 3));
-    if (G.deathSeq > 0.85 && G.mode === 'play' && !G.deathCardShown) showDeathCard();
+    if (G.deathSeq > 1.6 && G.mode === 'play' && !G.deathCardShown) showDeathCard();   // hold the ragdoll/helmet on screen before the card takes over (E9.2)
+    if (G.deathCardShown && G.hudFade > 0) G.hudFade = Math.max(0, G.hudFade - dt / 0.1);   // HUD fades over 100ms, doesn't hard-cut (E9.1)
   }
 
   // acc is untouched during freeze — hitstop re-renders the exact same frame.
@@ -2559,7 +2784,7 @@ function render(alpha) {
   drawCompanion();
   if (G.player) drawPlayer(alpha);
   drawParticles(alpha);
-  drawHints(iCamX);
+  drawHints(iCamX, iCamY);
   ctx.restore();
 
   drawPopups(iCamX, iCamY);
@@ -2582,8 +2807,11 @@ function render(alpha) {
       ctx.restore();
     }
   }
-  // HUD hides once the death card is up — the card owns the screen.
-  if (G.mode === 'play' || G.mode === 'pause' || G.mode === 'resume' || (G.player && G.player.dead && !G.deathCardShown)) drawHUD();
+  // HUD fades over 100ms once the death card is up, instead of hard-cutting
+  // on the same frame the card appears (E9.1) — the card still owns the screen after.
+  if (G.mode === 'play' || G.mode === 'pause' || G.mode === 'resume' || (G.player && G.player.dead && (!G.deathCardShown || G.hudFade > 0))) {
+    ctx.save(); ctx.globalAlpha = G.hudFade; drawHUD(); ctx.restore();
+  }
   if ((FORCE_TOUCH || input.usingTouch) && (G.mode === 'play' || G.mode === 'resume')) drawTouchControls();
   if (G.mode === 'resume') {
     ctx.textAlign = 'center';
@@ -2616,20 +2844,27 @@ function drawToast() {
 
 /* ---- SPACE MAN wordmark: 900-weight canvas text, cyan-glow underlay + white fill,
    slight skew, chromatic offset shadows (cyan left, coral right). ---- */
-function drawWordmark() {
+// Shared with the attract camera setup (E7) so the platform frame and the
+// drawn wordmark can never drift apart — one measurement, two consumers.
+function wordmarkMetrics() {
   const text = 'SPACE MAN';
   const cy = Math.max(52, view.h * 0.19);
   let size = clamp(view.w * 0.13, 18, 68);
   ctx.font = '900 ' + size + 'px ' + FONT;
   const w = ctx.measureText(text).width;
-  const maxW = view.w * 0.86;
+  const maxW = view.w * (view.h > view.w ? 0.78 : 0.86);   // portrait: keep chroma fringe off the edge
   if (w > maxW) { size = Math.max(14, size * maxW / w); ctx.font = '900 ' + size + 'px ' + FONT; }
+  return { text, cy, size };
+}
+function drawWordmark() {
+  const { text, cy, size } = wordmarkMetrics();
   const cx = view.w / 2 + cy * 0.08;       // compensate the skew's x-shift so it stays centered
+  const off = clamp(size * 0.045, 1.5, 6);   // chroma fringe scales with size instead of a fixed 3px
   ctx.save();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.transform(1, 0, -0.08, 1, 0, 0);
-  ctx.fillStyle = '#38E1FF'; ctx.globalAlpha = 0.85; ctx.fillText(text, cx - 3, cy);      // cyan chroma left
-  ctx.fillStyle = '#FF4F66'; ctx.fillText(text, cx + 3, cy);                              // coral chroma right
+  ctx.fillStyle = '#38E1FF'; ctx.globalAlpha = 0.7; ctx.fillText(text, cx - off, cy);     // cyan chroma left
+  ctx.fillStyle = '#FF4F66'; ctx.fillText(text, cx + off, cy);                            // coral chroma right
   ctx.globalAlpha = 0.55; ctx.fillStyle = '#38E1FF'; ctx.fillText(text, cx, cy + 2.5);    // cyan glow underlay
   ctx.globalAlpha = 1; ctx.fillStyle = '#F4F7FF'; ctx.fillText(text, cx, cy);             // white top layer
   ctx.restore();
@@ -2637,12 +2872,18 @@ function drawWordmark() {
   ctx.globalAlpha = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(G.time * 3));
   ctx.fillStyle = '#9FF1FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.font = '700 ' + clamp(size * 0.2, 9, 13) + 'px ' + FONT;
-  ctx.fillText('OUTRUN THE FLARE', view.w / 2, cy + size * 0.62);
+  const tagY = cy + size * 0.62;
+  ctx.fillText('OUTRUN THE FLARE', view.w / 2, tagY);
+  // E7: one line of fiction under the tagline — alpha floor raised to 0.55 so
+  // it never dims past legible (AR10's "illegible dim phase").
+  ctx.globalAlpha = 0.55 + 0.25 * (0.5 + 0.5 * Math.sin(G.time * 2 + 1.7));
+  ctx.fillStyle = '#9FB3E0'; ctx.font = '600 ' + clamp(size * 0.16, 10, 13) + 'px ' + FONT;
+  ctx.fillText('THE SUN LET GO. KEEP RUNNING.', view.w / 2, tagY + 16);
   ctx.globalAlpha = 1;
 }
 
 /* ---- background parallax ---- */
-let nebulaCanvas = null, nebulaHue = -1;
+let nebulaCanvas = null, nebulaHue = -1, nebulaPrevCanvas = null;
 function buildNebula(hue) {
   const W = view.w, H = view.h;
   // Quarter-res tile stretched at draw: 1/16th the fill cost, and the blur is
@@ -2661,7 +2902,7 @@ function buildNebula(hue) {
     const bx = b[0] * W, y = b[1] * H, r = W * b[2];
     for (const x of [bx - W, bx, bx + W]) {
       const grd = g.createRadialGradient(x, y, 0, x, y, r);
-      grd.addColorStop(0, `hsla(${hue + i * 6}, 62%, 32%, 0.32)`);
+      grd.addColorStop(0, `hsla(${hue + i * 6}, 70%, 32%, 0.42)`);   // E6: sectors read denser, more saturated
       grd.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = grd; g.fillRect(-4, 0, W + 8, H);   // paint the gutters too
     }
@@ -2680,19 +2921,31 @@ function buildStars() {
   starsBuilt = true;
 }
 function drawBackground(camX) {
-  if (!skyGrad) {
-    skyGrad = ctx.createLinearGradient(0, 0, 0, view.h);
-    skyGrad.addColorStop(0, '#060818'); skyGrad.addColorStop(0.5, '#131A3A'); skyGrad.addColorStop(1, '#2A2560');
-  }
-  ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, view.w, view.h);
-
   const hue = BAND_HUE[G.band] || 218;
+  if (!skyCanvas || skyHue !== hue) { skyCanvas = buildSky(hue); skyHue = hue; }
+  ctx.drawImage(skyCanvas, 0, 0, 1, skyCanvas.height, 0, 0, view.w, view.h);
+
   if (!nebulaCanvas || Math.abs(nebulaHue - hue) > 1) { nebulaCanvas = buildNebula(hue); nebulaHue = hue; }
-  ctx.globalAlpha = 0.85;
   const nx = -(((camX * 0.05) % view.w) + view.w) % view.w;
+  ctx.globalAlpha = 0.85;
   ctx.drawImage(nebulaCanvas, 1, 0, view.w / 4, view.h / 4, nx, 0, view.w, view.h);
   ctx.drawImage(nebulaCanvas, 1, 0, view.w / 4, view.h / 4, nx + view.w, 0, view.w, view.h);
   ctx.globalAlpha = 1;
+
+  // Sector crossing (E6): the previous sky+nebula fade out over the same 1.5s
+  // window the stinger owns, drawn OVER the new art at (1-t) — a hard hue cut
+  // in one frame reads as a glitch, not an arrival.
+  if (G.sectorFadeT < 1.5 && skyPrevCanvas) {
+    const fadeOut = 1 - easeOutQuad(clamp(G.sectorFadeT / 1.5, 0, 1));
+    ctx.globalAlpha = fadeOut;
+    ctx.drawImage(skyPrevCanvas, 0, 0, 1, skyPrevCanvas.height, 0, 0, view.w, view.h);
+    if (nebulaPrevCanvas) {
+      ctx.globalAlpha = fadeOut * 0.85;
+      ctx.drawImage(nebulaPrevCanvas, 1, 0, view.w / 4, view.h / 4, nx, 0, view.w, view.h);
+      ctx.drawImage(nebulaPrevCanvas, 1, 0, view.w / 4, view.h / 4, nx + view.w, 0, view.w, view.h);
+    }
+    ctx.globalAlpha = 1;
+  }
 
   if (!starsBuilt) buildStars();
   const W = 1600;
@@ -2702,12 +2955,15 @@ function drawBackground(camX) {
     ctx.globalAlpha = 0.5 * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(G.time * 2 + s.ph)));
     ctx.fillRect(x, s.y, 1, 1);
   }
+  ctx.fillStyle = `hsl(${hue} 60% 88%)`;   // E6: mid layer tints toward the sector hue
   for (const s of starfield.mid) {
     const x = ((s.x - camX * 0.3) % W + W) % W;
     ctx.globalAlpha = 0.7 * (0.6 + 0.4 * Math.sin(G.time * 1.5 + s.ph));
     ctx.fillRect(x, s.y, 2, 2);
   }
   ctx.globalAlpha = 1;
+  if (G.mode === 'attract') drawAttractFlareGlow();
+  if (G.player && G.mode !== 'attract') { drawFlareTongues(); drawFloorBloom(); }
   if (G.whale) drawWhale(camX, hue);
   drawPlanet(camX);
   if (G.sat) drawSatellite(camX);
@@ -2743,6 +2999,76 @@ function drawBackground(camX) {
     ctx.beginPath(); ctx.moveTo(sx, s.y); ctx.lineTo(sx + 30, s.y - 10); ctx.stroke();
   }
 }
+
+/* ---- flare presence (E4): the antagonist made visible even off-screen.
+   Screen-space only — G.threat/G.glanceT are render-derived, updateFlare's
+   difficulty math (G.flare.x itself) is never read here for anything but
+   direction, so the rubber-band trace can't be perturbed. ---- */
+function drawFlareTongues() {
+  const surge = sectorSurgeAmt();
+  const w = Math.max(lerp(10, 90, G.threat), surge * view.w * 0.33);
+  if (w < 1.5) return;
+  ctx.save(); ctx.fillStyle = flareGrad;
+  const seg = view.h / 4;
+  for (let i = 0; i < 4; i++) {
+    const cy = seg * i + seg / 2, wob = Math.sin(G.time * 3 + i * 1.7) * 14;
+    ctx.save();
+    // flareGrad is authored over a fixed 128px span (-120..8 local); scale
+    // that span to the live column width so the glow always reaches the true
+    // screen edge, however wide the sector surge pushes it — a translate-only
+    // approach detaches from the edge once w exceeds 128px. wob (tip sway)
+    // is applied in the outer, unscaled translate so its on-screen amplitude
+    // stays a fixed 14px regardless of column width.
+    ctx.translate(w + wob, 0); ctx.scale(w / 128, 1);
+    ctx.beginPath();
+    ctx.moveTo(-128, cy - seg / 2 - 6);
+    ctx.quadraticCurveTo(-64, cy - seg * 0.15, 0, cy);
+    ctx.quadraticCurveTo(-64, cy + seg * 0.15, -128, cy + seg / 2 + 6);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+// Portrait floor bloom: cached vertical strip, rebuilt only when view.h changes.
+let floorBloomCanvas = null, floorBloomH = -1;
+function buildFloorBloom() {
+  const h = Math.max(1, Math.round(view.h * 0.22));
+  const c = makeCanvas(1, h), g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, h, 0, 0);   // rises from the bottom edge
+  grad.addColorStop(0, FLARE_GLOW_HUE + '1)'); grad.addColorStop(1, FLARE_GLOW_HUE + '0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 1, h);
+  return c;
+}
+function drawFloorBloom() {
+  if (floorBloomH !== view.h) { floorBloomCanvas = buildFloorBloom(); floorBloomH = view.h; }
+  const h = floorBloomCanvas.height;
+  ctx.globalAlpha = 0.05 + 0.20 * G.threat;
+  ctx.drawImage(floorBloomCanvas, 0, 0, 1, h, 0, view.h - h, view.w, h);
+  ctx.globalAlpha = 1;
+}
+// Sector surge: once per band-up, with the stinger — a scripted 1.5s sweep
+// (0.5s out, 0.5s hold, 0.5s in) that never touches G.flare.x itself.
+function sectorSurgeAmt() {
+  const s = G.sectorFadeT;
+  if (s >= 1.5) return 0;
+  if (s < 0.5) return easeOutCubic(s / 0.5);
+  if (s < 1.0) return 1;
+  return 1 - easeInCubic((s - 1.0) / 0.5);
+}
+// Attract-only coral horizon glow — shares E4's flare-lit palette, cached once.
+let attractGlowCanvas = null;
+function buildAttractGlow() {
+  const c = makeCanvas(340, 340), g = c.getContext('2d');
+  const grd = g.createRadialGradient(170, 170, 0, 170, 170, 170);
+  grd.addColorStop(0, FLARE_GLOW_HUE + '0.25)'); grd.addColorStop(1, FLARE_GLOW_HUE + '0)');
+  g.fillStyle = grd; g.fillRect(0, 0, 340, 340);
+  return c;
+}
+function drawAttractFlareGlow() {
+  if (!attractGlowCanvas) attractGlowCanvas = buildAttractGlow();
+  ctx.drawImage(attractGlowCanvas, -170, view.h * 0.62 - 170, 340, 340);
+}
+
 function drawPlanet(camX) {
   const x = ((260 - camX * 0.25) % 1700 + 1700) % 1700 - 300, py = 88;
   if (x < -120 || x > view.w + 120) return;
@@ -2816,12 +3142,17 @@ function roundRect(x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 function drawPlatforms(camX) {
+  // Sector-tinted slab art (E6), rebuilt only on hue change — a few gradient
+  // stops, < 1ms, same lazy pattern as buildNebula.
+  const hue = BAND_HUE[G.band] || 218;
+  if (platGradHue !== hue) { platGrad = buildPlatGrad(hue); platGradHue = hue; }
+  const underGlow = platGlow(hue);
   for (const pl of G.platforms) {
     if (pl.x + pl.w < camX - 40 || pl.x > camX + view.w + 40) continue;
     const y = pl.y, w = pl.w;
     // Slab in plate-local space so the boot-built 0→44 gradient fits every platform.
     ctx.save(); ctx.translate(pl.x, y);
-    ctx.drawImage(GLOW.cyan, w / 2 - 60, -44, 120, 120);
+    ctx.drawImage(underGlow, w / 2 - 60, -44, 120, 120);
     ctx.fillStyle = platGrad; roundRect(0, 0, w, 40, 8); ctx.fill();
     // Continuous bright top edge with flush end-caps — the surface line must
     // read at speed (high contrast against the cyan fill, following the corners).
@@ -2837,9 +3168,10 @@ function drawPlatforms(camX) {
     }
     // Feathered under-glow (stretched radial sprite, no hard-edged bar).
     ctx.globalAlpha = 0.4;
-    ctx.drawImage(GLOW.cyan, -14, 26, w + 28, 52);
+    ctx.drawImage(underGlow, -14, 26, w + 28, 52);
     ctx.globalAlpha = 1;
     ctx.restore();
+    if (G.mode === 'attract' && pl === G.attractAlienPlat) drawAttractAlien(pl);
     if (pl.boost) {   // world space — anchored to pl.boostX
       const bx = pl.boostX, pulse = .7 + Math.sin(G.time * 8) * .2;
       ctx.save(); ctx.globalAlpha = pl.boostUsed ? .28 : pulse;
@@ -2853,6 +3185,27 @@ function drawPlatforms(camX) {
       ctx.restore();
     }
   }
+}
+// Attract diorama (E7): one alien peeks from a starter platform's edge — the
+// existing enemy sprite's antennae+eyes only, cropped above the slab line so
+// no live enemy needs to exist in attract mode. World-space, called from
+// drawPlatforms right after that platform's own slab so it layers cleanly.
+function drawAttractAlien(pl) {
+  const ax = pl.x + pl.w - 40, ay = pl.y - 8 + Math.sin(G.time * 1.4) * 1.5;
+  ctx.save(); ctx.translate(ax, ay);
+  ctx.drawImage(GLOW.green, -18, -22, 36, 36);
+  ctx.fillStyle = '#4EF07A'; ctx.beginPath(); ctx.ellipse(0, 0, 10, 9, 0, Math.PI, TAU); ctx.fill();
+  ctx.strokeStyle = '#2FBF5F'; ctx.lineWidth = 1.5;
+  for (const sgn of SGN) {
+    ctx.beginPath(); ctx.moveTo(sgn * 4, -7);
+    ctx.quadraticCurveTo(sgn * 8, -15, sgn * 6, -21); ctx.stroke();
+    ctx.fillStyle = '#BFFFD0'; ctx.beginPath(); ctx.arc(sgn * 6, -21, 2.5, 0, TAU); ctx.fill();
+  }
+  for (const sgn of SGN) {
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(sgn * 5, -2, 3.5, 4.5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#0a1428'; ctx.beginPath(); ctx.arc(sgn * 5, -2, 1.8, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
 }
 
 /* ---- pickups: state ticks in update() (fixed 60Hz), drawing stays pure ---- */
@@ -3124,24 +3477,41 @@ function drawPlayer(alpha) {
     }
     return;
   }
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(p.facing, 1);
-  const breathe = p.idle > 0 ? Math.sin(G.time * 3) * 0.03 : 0;
-  ctx.scale(p.sqX + breathe, p.sqY - breathe);
   const hw = p.w / 2, hh = p.h / 2;
+  const breathe = p.idle > 0 ? Math.sin(G.time * 3) * 0.03 : 0;
+  // Body lean: forward with speed, nose-up rising / nose-down falling (E8.2).
+  // Rotated before the facing scale (matches the dead-branch tumble convention
+  // above) so the lean direction is world-oriented, not mirrored by facing.
+  const lean = clamp(p.vx * 0.018, -0.14, 0.14) + (p.onGround ? 0 : clamp(p.vy * 0.008, -0.1, 0.12));
+  ctx.save();
+  if (p.onGround) {
+    // Feet-anchored squash (E8.1): pivot at the contact point so the 0.8/1.2
+    // squash compresses toward the platform instead of sinking the feet into
+    // it. Center pivot (else branch) stays for airborne stretch.
+    ctx.translate(x, y + hh);
+    ctx.rotate(lean);
+    ctx.scale(p.facing, 1);
+    ctx.scale(p.sqX + breathe, p.sqY - breathe);
+    ctx.translate(0, -hh);
+  } else {
+    ctx.translate(x, y);
+    ctx.rotate(lean);
+    ctx.scale(p.facing, 1);
+    ctx.scale(p.sqX + breathe, p.sqY - breathe);
+  }
+  const bob = p.onGround ? Math.sin(p.runCycle * 2) * 1.5 : 0;   // torso bob, twice per stride
 
   // Legs: two capsules in a cooler shade so they separate from the white torso
   // instead of merging into one blob; back leg a touch darker for depth.
-  const legSwing = p.onGround ? Math.sin(p.runCycle) * Math.min(Math.abs(p.vx) * 1.2, 6) : (p.vy < 0 ? -4 : 4);
+  const legSwing = p.onGround ? Math.sin(p.runCycle) * Math.min(Math.abs(p.vx) * 1.2, 6) : p.pose;
   ctx.lineWidth = 4.5; ctx.lineCap = 'round';
   ctx.strokeStyle = PAL.legB;
   ctx.beginPath(); ctx.moveTo(4, hh - 13); ctx.lineTo(4 - legSwing * 0.5, hh - 1); ctx.stroke();   // back leg
   ctx.strokeStyle = PAL.legF;
   ctx.beginPath(); ctx.moveTo(-4, hh - 13); ctx.lineTo(-4 + legSwing * 0.5, hh - 1); ctx.stroke();  // front leg
 
-  ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6, 7, 16, 3); ctx.fill();
-  ctx.fillStyle = PAL.suit; roundRect(-8, -4, 16, 16, 6); ctx.fill();
+  ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6 + bob, 7, 16, 3); ctx.fill();
+  ctx.fillStyle = PAL.suit; roundRect(-8, -4 + bob, 16, 16, 6); ctx.fill();
 
   // Arm: a short capsule hugging the torso side — no outward spike. G.wave > 0
   // (attract only) lifts it into a hello.
@@ -3151,8 +3521,13 @@ function drawPlayer(alpha) {
 
   ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -hh - 4, 40, 40);
   ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, -hh + 8, 11, 0, TAU); ctx.fill();
-  ctx.fillStyle = suitVisor(G.cosmetics.suit); ctx.beginPath(); ctx.ellipse(1, -hh + 8, 7.5, 6.5, 0, 0, TAU); ctx.fill();
-  const glx = Math.sin(p.glint * 1.2) * 3;
+  // E4: the astronaut is afraid — mirrors the enemy lookX/lookY eye-tracking,
+  // offsetting the visor toward the flare's world direction. lookLocal folds
+  // the facing mirror back in so it always reads as "toward the flare" on
+  // screen regardless of which way the sprite is scaled.
+  const lookLocal = clamp((G.flare.x - x) / 300, -1, 1) * p.facing * G.glanceT;
+  ctx.fillStyle = suitVisor(G.cosmetics.suit); ctx.beginPath(); ctx.ellipse(1 + lookLocal * 2.5, -hh + 8, 7.5, 6.5, 0, 0, TAU); ctx.fill();
+  const glx = Math.sin(p.glint * 1.2) * 3 + lookLocal * 3;
   ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(glx - 2, -hh + 5, 2, 3, -0.4, 0, TAU); ctx.fill();
   // Hat rides inside the same transform — it inherits facing flip and squash
   // (the beanie squashes on landing for free).
@@ -3177,28 +3552,67 @@ function drawParticles(alpha) {
 }
 
 /* ---- hints ---- */
-function drawHints(camX) {
+// Vocabulary keyed by teaching moment, resolved at draw time from the live
+// input mode — a mid-run controller swap never teaches the wrong verb, and a
+// touch player's frame-1 hint never reads a keyboard key. No brand glyphs.
+const HINT_STRINGS = {
+  move:  { touch: 'DRAG LEFT SIDE TO MOVE', gamepad: 'LEFT STICK TO MOVE', keys: 'MOVE →' },
+  jump:  { touch: 'TAP RIGHT SIDE TO JUMP · HOLD FOR HIGHER', gamepad: 'JUMP BUTTON · HOLD TO JUMP HIGHER', keys: 'HOLD TO JUMP HIGHER' },
+  shoot: { touch: 'TAP FIRE', gamepad: 'FIRE TRIGGER', keys: 'F / CLICK TO FIRE' },
+  stomp: { touch: 'STOMP ENEMIES', gamepad: 'STOMP ENEMIES', keys: 'STOMP ENEMIES' },
+};
+function hintText(h) {
+  const s = HINT_STRINGS[h.kind];
+  return input.usingGamepad ? s.gamepad : ((FORCE_TOUCH || input.usingTouch) ? s.touch : s.keys);
+}
+const HINT_FLAG = { move: 'taughtRun', jump: 'taughtJump', shoot: 'taughtShoot', stomp: 'taughtStomp' };
+function drawHints(camX, camY) {
   if (!G.player || G.mode !== 'play') return;   // teaching hints belong to the run, not the attract scene
+  const margin = 10, touch = FORCE_TOUCH || input.usingTouch;
   for (const h of G.hints) {
-    const fade = clamp((h.x + 180 - G.player.x) / 180, 0, 1);
-    if (fade <= 0) continue;
-    ctx.globalAlpha = fade * 0.6; ctx.fillStyle = '#CFE3FF';
+    // A demonstrated skill retires its hint immediately — without this the
+    // touch MOVE hint (screen-pinned below) would otherwise never scroll
+    // off-camera and could sit onscreen for the rest of the run.
+    if (flags[HINT_FLAG[h.kind]]) continue;
+    // Skip entirely while off the right edge instead of clamping — the old
+    // always-clamp behavior pinned distant hints to the same edge pixel,
+    // which is exactly how two hints used to garble into one another.
+    if (h.x > camX + view.w - margin) continue;
+    const approach = clamp(1 - (h.x - G.player.x - 260) / 120, 0, 1);
+    const alpha = approach * 0.6 * easeOutQuad(h.in || 0);
+    if (alpha <= 0) continue;
+    const text = hintText(h);
+    ctx.globalAlpha = alpha; ctx.fillStyle = '#CFE3FF';
     ctx.font = '700 12px ' + FONT; ctx.textAlign = 'center';
-    // Clamp into the visible frame so hint text never clips at a screen edge.
-    const hw = ctx.measureText(h.text).width / 2;
-    ctx.fillText(h.text, clamp(h.x, camX + hw + 10, camX + view.w - hw - 10), h.y);
+    const hw = ctx.measureText(text).width / 2;
+    let hx = h.x, hy = h.y;
+    if (h.kind === 'move' && touch) {
+      // Touch players learn MOVE at the stick's actual rest position, not a
+      // world anchor floating above a platform they may have already run past.
+      hx = camX + view.w * (settings.lefty ? 0.78 : 0.22);
+      hy = camY + view.h - (view.isTablet ? 128 : 108);
+      hx = clamp(hx, camX + hw + margin, camX + view.w - hw - margin);   // stick rest can sit closer to the edge than the text half-width
+    } else if (hx >= camX) {
+      // Only clamp into frame once the anchor is actually inside the viewport.
+      hx = clamp(hx, camX + hw + margin, camX + view.w - hw - margin);
+    }
+    ctx.fillText(text, hx, hy);
+    break;   // one hint at a time — a delayed lesson never piles onto the next
   }
   ctx.globalAlpha = 1;
 }
 
 /* ---- popups ---- */
 function drawPopups(camX, camY) {
+  const us = uiScale(), ceilY = camY + 96 * us;   // odometer/mission block owns the top band
   ctx.save(); ctx.translate(G.shake.x, G.shake.y); ctx.translate(-camX, -camY);
   for (const p of popups) {
     const t = 1 - p.life / p.max, sc = t < 0.3 ? easeOutBack(t / 0.3) * 1.2 : 1.2;
+    const py = Math.max(p.y, ceilY);
     ctx.globalAlpha = clamp(p.life / 20, 0, 1);
-    ctx.font = '900 ' + (11 * sc) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillStyle = p.color;
-    ctx.fillText(p.text, p.x, p.y);
+    ctx.font = '900 ' + (11 * sc) + 'px ' + FONT; ctx.textAlign = 'center';
+    ctx.strokeStyle = 'rgba(6,8,24,0.9)'; ctx.lineWidth = 3 * us; ctx.strokeText(p.text, p.x, py);
+    ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, py);
   }
   ctx.globalAlpha = 1; ctx.restore();
 }
@@ -3207,8 +3621,14 @@ function drawPopups(camX, camY) {
    23. HUD
    ------------------------------------------------------------------------- */
 const FONT = "'Orbitron', ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif";
+// Numerals only, never Orbitron — its slashed zero reads as Ø at HUD sizes.
+// Mirrors the DOM's --font-num split (E4's gap-chevron number).
+const FONT_NUM = "ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif";
+// Portrait mission captions (view.w < 480): the full label doesn't fit the
+// pill at the type floor, so E10 swaps in these shortened forms by kind.
+const MISSION_SHORT = { stomp: 'STOMP 3', shoot: 'BLAST 3', shard: '5 SHARDS', graze: 'DODGE 2', distance: 'REACH 350m' };
 function drawHUD() {
-  const us = clamp(view.w / 560, 0.72, 1);          // shrink HUD on narrow (portrait) views
+  const us = uiScale();
   const top = 12 + safeInset('top'), left = 12 + safeInset('left');
 
   // pause + mute cluster — enclosed rounded squares so they read as tappable,
@@ -3239,26 +3659,48 @@ function drawHUD() {
     G._muteHit = { x0: Math.max(mc - half, mid), x1: mc + half, y0: cy - yh, y1: cy + yh };
   }
 
-  // odometer + score, indented past the button cluster
+  // odometer + score, indented past the button cluster — ducks alpha instead
+  // of fighting the player sprite when the camera pins them near the top.
   const ox = left + (dead ? 0 : pitch + ps + 8 * us);
+  ctx.save(); ctx.globalAlpha *= lerp(1, 0.3, G.hudDuck);   // composes with ambient (E9.1 death fade), doesn't clobber it
   ctx.textAlign = 'left';
   drawGlowText(Math.floor(G.dist) + 'm', ox, top + 15 * us, 20 * us, '#38E1FF', '#F4F7FF');
-  drawGlowText(String(Math.floor(G.dispScore)).padStart(5, '0'), ox, top + 34 * us, 13 * us, '#38E1FF', '#CFE3FF');
+
+  // E4 gap chevron: the chase made legible as a number, not a vignette read.
+  if (!dead && G.mode === 'play' && G.player) {
+    const gapM = Math.max(0, Math.round((G.player.x - G.flare.x) / 10));
+    const pulse = G.threat > 0.6 ? 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(G.time * TAU * 2)) : 0.6;
+    ctx.save(); ctx.globalAlpha *= pulse;
+    ctx.fillStyle = '#FF8A6B'; ctx.font = '700 ' + (10 * us) + 'px ' + FONT;
+    ctx.fillText('‹‹ ', ox, top + 27 * us);
+    const cw = ctx.measureText('‹‹ ').width;
+    ctx.font = '700 ' + (10 * us) + 'px ' + FONT_NUM;
+    ctx.fillText(gapM + 'm', ox + cw, top + 27 * us);
+    ctx.restore();
+  }
+
+  drawGlowText(String(Math.floor(G.dispScore)).padStart(5, '0'), ox, top + 46 * us, Math.max(12, 13 * us), '#38E1FF', '#CFE3FF');
 
   if (G.mission) {
-    const m = G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 45 * us;
+    const m = G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
     ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 22 * us, 6 * us); ctx.fill();
-    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = '700 ' + (7.5 * us) + 'px ' + FONT; ctx.textAlign = 'left';
-    const label = m.done ? 'MISSION COMPLETE' : m.label;
+    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = '700 ' + Math.max(9.5, 7.5 * us) + 'px ' + FONT; ctx.textAlign = 'left';
+    const label = m.done ? 'MISSION COMPLETE' : (view.w < 480 ? (MISSION_SHORT[m.kind] || m.label) : m.label);
     ctx.fillText(label, ox + 6 * us, my + 9 * us);
     ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(ox + 6 * us, my + 13 * us, mw - 12 * us, 3 * us, 2); ctx.fill();
     ctx.fillStyle = m.done ? '#4EF07A' : '#38E1FF';
     roundRect(ox + 6 * us, my + 13 * us, (mw - 12 * us) * clamp(m.progress / m.target, 0, 1), 3 * us, 2); ctx.fill();
   }
+  ctx.restore();
 
-  if (G.chain > 0) {
+  if (G.chain > 0 || G.chainFade > 0) {
+    // Building chain draws solid; a just-banked chain fades+shrinks over 0.25s
+    // instead of vanishing the instant landing zeroes G.chain (E8.3).
     ctx.textAlign = 'center';
-    drawGlowText('×' + (1 << G.chain) + ' CHAIN', view.w / 2, top + 16 * us, 18 * us, '#FFC93C', '#FFE59A');
+    const active = G.chain > 0, mult = active ? (1 << G.chain) : G.chainFadeMult;
+    ctx.save(); ctx.globalAlpha *= active ? 1 : G.chainFade;
+    drawGlowText('×' + mult + ' CHAIN', view.w / 2, top + 16 * us, (active ? 18 : lerp(13, 18, G.chainFade)) * us, '#FFC93C', '#FFE59A');
+    ctx.restore();
   }
 
   const touch = FORCE_TOUCH || input.usingTouch;
@@ -3268,7 +3710,7 @@ function drawHUD() {
       ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.15)';
       ctx.fillRect(rx - i * sp - pw2, top + 2, pw2 - 1, 11 * us);
     }
-    ctx.fillStyle = '#CFE3FF'; ctx.font = '600 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'right';
+    ctx.fillStyle = '#CFE3FF'; ctx.font = '600 ' + Math.max(9.5, 9 * us) + 'px ' + FONT; ctx.textAlign = 'right';
     ctx.fillText('AMMO', rx, top + 24 * us);
   }
   if (G.shards > 0) {
@@ -3306,9 +3748,10 @@ function drawMuteButton(x, y, s, us) {
 }
 function drawGlowText(text, x, y, size, glow, fill) {
   ctx.font = '900 ' + size + 'px ' + FONT;
+  const a = ctx.globalAlpha;   // ambient alpha multiplies both layers (HUD duck, stinger/celebrate fades)
   ctx.save(); ctx.transform(1, 0, -0.08, 1, 0, 0);
-  ctx.fillStyle = glow; ctx.globalAlpha = 0.5; ctx.fillText(text, x + 1.5, y + 1.5);
-  ctx.globalAlpha = 1; ctx.fillStyle = fill; ctx.fillText(text, x, y);
+  ctx.fillStyle = glow; ctx.globalAlpha = 0.5 * a; ctx.fillText(text, x + 1.5, y + 1.5);
+  ctx.globalAlpha = a; ctx.fillStyle = fill; ctx.fillText(text, x, y);
   ctx.restore();
 }
 // Safe-area insets are cached on resize/orientation — reading getComputedStyle on
@@ -3352,6 +3795,14 @@ function drawCelebration() {
 }
 
 /* ---- touch controls ---- */
+// Icon glyph, not micro-text: replaces the 9px MOVE/JUMP captions, which sat
+// below the 10px CSS-px legibility floor. dir: -1 left, 1 right, 0 up.
+function drawChevron(cx, cy, dir) {
+  ctx.beginPath();
+  if (dir === 0) { ctx.moveTo(cx - 6, cy + 3); ctx.lineTo(cx, cy - 4); ctx.lineTo(cx + 6, cy + 3); }
+  else { ctx.moveTo(cx + dir * 3, cy - 6); ctx.lineTo(cx - dir * 4, cy); ctx.lineTo(cx + dir * 3, cy + 6); }
+  ctx.stroke();
+}
 function drawTouchControls() {
   layoutTouch();
   // Draw in CSS-pixel space (layoutTouch works in CSS px): converting through
@@ -3381,14 +3832,15 @@ function drawTouchControls() {
     const kx = input.stick.active ? clamp(input.stick.x, gx - 34, gx + 34) : gx;
     ctx.globalAlpha = input.stick.active ? 0.55 : 0.22;
     ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(kx, gy, 12, 0, TAU); ctx.fill();
-    ctx.globalAlpha = input.stick.active ? .7 : .38; ctx.font = '700 9px ' + FONT; ctx.textAlign = 'center';
-    ctx.fillText('←  MOVE  →', gx, gy + 53);
+    ctx.globalAlpha = input.stick.active ? .7 : .38; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    drawChevron(gx - 44, gy + 50, -1); drawChevron(gx + 44, gy + 50, 1);
     // The jump region is intentionally large; this quiet affordance explains
     // the invisible hit area without covering the action.
     const jx = cssW * (settings.lefty ? .26 : .74), jy = cssH - safeInset('bottom') - 44;
     ctx.globalAlpha = input.jumpZone.active ? .82 : .32; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(jx, jy, 25, 0, TAU); ctx.stroke();
-    ctx.font = '700 9px ' + FONT; ctx.fillStyle = '#CFE3FF'; ctx.fillText('JUMP', jx, jy + 3);
+    ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1.6; drawChevron(jx, jy + 2, 0);
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -3398,8 +3850,14 @@ function drawTouchControls() {
    24. OVERLAYS / SCREENS
    ------------------------------------------------------------------------- */
 const $ = (id) => document.getElementById(id);
-function hideAllOverlays() { ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe'].forEach((id) => $(id).classList.remove('show')); G.wardrobeOpen = false; }
-function showOverlay(id) { $(id).classList.add('show'); }
+function hideAllOverlays() { ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe'].forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; }
+function showOverlay(id) {
+  const el = $(id);
+  el.classList.add('show');
+  // Double-rAF (E9.1): the 0-state must paint one frame before .in flips the
+  // transition, or the browser collapses show+in into a single no-op frame.
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+}
 
 function medalGlyphs() {
   const order = ['PLATINUM', 'GOLD', 'SILVER', 'BRONZE'];
@@ -3440,25 +3898,87 @@ function togglePause() {
   }
 }
 
+// ---- death card staging (E9.3): score counts up, medal stamps on its own
+// SFX beat, delta reveals last. Every timer is tracked so a restart tap can
+// cancel it outright — nothing here may outlive the run that produced it.
+let deathScoreRaf = 0, deathTimers = [];
+function cancelDeathAnim() {
+  if (deathScoreRaf) { cancelAnimationFrame(deathScoreRaf); deathScoreRaf = 0; }
+  deathTimers.forEach(clearTimeout); deathTimers.length = 0;
+}
+function animateDeathScore(target) {
+  const el = $('deadScore');
+  if (deathScoreRaf) { cancelAnimationFrame(deathScoreRaf); deathScoreRaf = 0; }
+  if (prefersLessMotion || SHOT) { el.textContent = target.toLocaleString(); return; }   // SHOT goldens stay deterministic
+  const t0 = performance.now(), dur = 400;
+  const step = (now) => {
+    const t = clamp((now - t0) / dur, 0, 1);
+    el.textContent = Math.round(target * easeOutCubic(t)).toLocaleString();
+    deathScoreRaf = t < 1 ? requestAnimationFrame(step) : 0;
+  };
+  el.textContent = '0';
+  deathScoreRaf = requestAnimationFrame(step);
+}
+function stampMedal() {
+  const dm = $('deadMedal');
+  dm.innerHTML = G.runMedal ? `<span style="color:${G.runMedal.c}">${G.runMedal.name} MEDAL</span>` : '';
+  if (G.runMedal && !prefersLessMotion && !SHOT) { dm.classList.remove('stamp'); void dm.offsetWidth; dm.classList.add('stamp'); }
+}
+function revealDeathDelta() { $('deadDelta').classList.add('reveal'); }
+function revealTapHint() { $('deadTapHint').classList.add('show'); }
+// A target, not a period (E9.5): nearest of next medal / next sector / best-distance
+// gap, compared as a fraction of each one's own band so cross-unit "nearest" is fair.
+function deathTargetLine(fs, distM) {
+  const cands = [];
+  let prevV = 0;
+  for (const md of MEDALS.slice().reverse()) {   // ascending: BRONZE → PLATINUM
+    if (fs < md.v) { cands.push({ frac: (md.v - fs) / (md.v - prevV), text: (md.v - fs).toLocaleString() + ' TO ' + md.name }); break; }
+    prevV = md.v;
+  }
+  let prevFrom = 0;
+  for (const s of SECTORS) {
+    if (distM < s.from) { cands.push({ frac: (s.from - distM) / (s.from - prevFrom), text: s.name + ' AT ' + s.from + 'm — YOU REACHED ' + Math.floor(distM) + 'm' }); break; }
+    prevFrom = s.from;
+  }
+  if (stats.bestDist > distM) cands.push({ frac: (stats.bestDist - distM) / Math.max(1, stats.bestDist), text: Math.ceil(stats.bestDist - distM) + 'm TO YOUR BEST' });
+  if (!cands.length) return '';
+  cands.sort((a, b) => a.frac - b.frac);
+  return cands[0].text;
+}
+
 function showDeathCard() {
   G.deathCardShown = true;
   G.trauma = Math.min(G.trauma, 0.3);   // rumble can't outlast the card
   finalizeDeath();
   G.mode = 'dead'; G.deadShownAt = G.time;
-  if (settings.sfx && !settings.muted && G.runMedal) setTimeout(() => Audio.sfx.medal(G.runMedal.name === 'BRONZE' ? 1 : G.runMedal.name === 'SILVER' ? 2 : 3), 300);
+  cancelDeathAnim();
+  input.deadIgnore = new Set(input.downIds);   // mash-guard (E9.6): fingers already down don't count as the retry tap
+  // Staged reveal: medal starts blank and stamps in on its existing 300ms SFX
+  // cue; the NEW BEST delta slides in last, after both have landed.
+  $('deadMedal').innerHTML = ''; $('deadMedal').classList.remove('stamp');
+  $('deadDelta').classList.remove('reveal');
+  $('deadTapHint').classList.remove('show');
+  deathTimers.push(setTimeout(() => {
+    stampMedal();
+    if (settings.sfx && !settings.muted && G.runMedal) Audio.sfx.medal(G.runMedal.name === 'BRONZE' ? 1 : G.runMedal.name === 'SILVER' ? 2 : 3);
+  }, 300));
+  deathTimers.push(setTimeout(revealDeathDelta, 550));
+  deathTimers.push(setTimeout(revealTapHint, 900));   // matches the tap-anywhere arm time (E9.6)
   if (G.showPicker) { showInitials(); return; }   // only a full-table crack blocks; else auto-committed
   renderDeathCard();
 }
 function renderDeathCard() {
   const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
-  $('deadScore').textContent = fs.toLocaleString();
-  $('deadMedal').innerHTML = G.runMedal ? `<span style="color:${G.runMedal.c}">${G.runMedal.name} MEDAL</span>` : '';
+  animateDeathScore(fs);
   // Delta strictly vs the pre-run best (bestScore is already updated by now) —
   // a first-ever run is a NEW BEST, and the gold line never shows a stale +0.
+  // Computed exactly as before; only its reveal (showDeathCard's timer) is staged.
   if (fs > G.prevBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${(fs - G.prevBest).toLocaleString()}</span>`;
   else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
   const missionMark = G.mission && G.mission.done ? ' · MISSION ✓' : '';
   $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
+  const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
+  if (target) { dt.textContent = target; dt.style.display = 'block'; } else dt.style.display = 'none';
   // Words of comfort — plain text, never on a NEW BEST card, delta line untouched.
   const dq = $('deadQuip');
   if (G.quip && fs <= G.prevBest) { dq.textContent = G.quip; dq.style.display = 'block'; }
@@ -3473,12 +3993,19 @@ function renderDeathCard() {
   const chip = $('installChip');
   if (deferredPrompt && !flags.installDismissed && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
   hideAllOverlays(); showOverlay('ovDead');
+  // SHOT goldens are captured on the frozen first frame — reveal everything
+  // now instead of waiting on the 300/550ms timers scheduled by showDeathCard
+  // (which the SHOT=dead harness bypasses entirely by calling this directly).
+  if (SHOT) { stampMedal(); revealDeathDelta(); revealTapHint(); }
 }
 function renderScoreTable(id, highlight) {
+  // First-run dignity (E9.4): only filled rows render; an empty board never
+  // shows five rows of dashes.
+  if (!top5.length) { $(id).innerHTML = '<tr><td colspan="3" class="empty">FIRST FLIGHT — YOU SET THE BOARD</td></tr>'; return; }
   let html = '';
-  for (let i = 0; i < 5; i++) {
-    const e = top5[i], me = highlight && e && e === justAdded;
-    html += `<tr class="${me ? 'me' : ''}"><td class="rank">${i + 1}</td><td>${e ? e.initials : '---'}</td><td class="sc">${e ? e.score.toLocaleString() : '—'}</td></tr>`;
+  for (let i = 0; i < top5.length; i++) {
+    const e = top5[i], me = highlight && e === justAdded;
+    html += `<tr class="${me ? 'me' : ''}"><td class="rank">${i + 1}</td><td>${e.initials}</td><td class="sc">${e.score.toLocaleString()}</td></tr>`;
   }
   $(id).innerHTML = html;
 }
@@ -3628,6 +4155,7 @@ const SETTINGS_DEF = [
   { key: 'haptics', type: 'switch', label: 'Haptics' },
   { key: 'shake', type: 'switch', label: 'Screen shake' },
   { key: 'lefty', type: 'switch', label: 'Left-handed' },
+  { key: 'autorun', type: 'switch', label: 'Auto-run (touch)' },
 ];
 function buildSettings(host) {
   for (const def of SETTINGS_DEF) {
@@ -3725,6 +4253,10 @@ $('installChip').onclick = () => {
 };
 $('ovDead').addEventListener('pointerdown', (e) => {
   if (e.target.closest('.btn') || e.target.closest('.install-chip')) return;
+  // Mash-guard (E9.6): a pointer already down when the card appeared doesn't
+  // count as a fresh retry tap; tap-anywhere arms later than the button.
+  if (input.deadIgnore.has(e.pointerId)) { input.deadIgnore.delete(e.pointerId); return; }
+  if (G.time - G.deadShownAt < 0.9) return;
   tryRestart();
 });
 // Hello out there: tap the idle astronaut itself (44px projected circle) — the
@@ -3739,8 +4271,10 @@ $('ovAttract').addEventListener('pointerdown', (e) => {
   Audio.sfx.boop(); discover('wave');
 });
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); } }
-  else Audio.resume();
+  if (document.hidden) {
+    if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); }
+    Audio.suspend();   // kills the background drone on Android after an app switch
+  } else Audio.resume();
 });
 
 let deferredPrompt = null;
@@ -3821,7 +4355,7 @@ function runShot() {
     p.dead = false; p.y = G.groundY - p.h; p.vx = 0; p.vy = 0; p.facing = 1;
     die('contact');
     for (let i = 0; i < 50; i++) finishTick();   // settle body + helmet (no rng in ragdoll → deterministic)
-    G.deathSeq = 1.0; G.deathZoom = 1.25;
+    G.deathSeq = 1.0; G.deathZoom = 1.25; G.hudFade = 0;   // fully settled: card owns the screen, HUD already faded (E9.1)
     G.deathCardShown = true; finalizeDeath();
     G.mode = 'dead'; G.qualifies = false;
     renderDeathCard();

@@ -13,7 +13,7 @@
   function migrate(raw) {
     const input = obj(raw);
     const inSet = obj(input.settings);
-    const s = Object.assign({ music: true, sfx: true, haptics: true, shake: true, lefty: false }, inSet);
+    const s = Object.assign({ music: true, sfx: true, haptics: true, shake: true, lefty: false, autorun: true }, inSet);
     if (inSet.sound !== undefined) {
       s.music = !!inSet.sound; s.sfx = !!inSet.sound;
     }
