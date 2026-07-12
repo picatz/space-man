@@ -2199,12 +2199,15 @@ function finishTick() {
   updatePopups();
   G.trauma = Math.max(0, G.trauma - 0.03);
   // Ragdoll-lite body: inherits hitstop + slow-mo for free. No rng — the
-  // #shot=dead settle loop must stay deterministic. 'void' never ground-collides.
+  // #shot=dead settle loop must stay deterministic (platformUnder is a pure read).
+  // Both pieces land on a REAL platform under them or fall into the gap with you;
+  // there is no global floor, so a void death can't strand the helmet in mid-air.
   if (G.body && !G.body.rest) {
     const b = G.body; b.px = b.x; b.py = b.y; b.prot = b.rot;
     b.vy += 0.5; b.x += b.vx; b.y += b.vy; b.rot += b.vr; b.vr *= 0.985;
-    if (G.deathCause !== 'void' && b.y + 30 > G.groundY) {
-      b.y = G.groundY - 30;
+    const bp = b.vy > 0 && platformUnder(b.x + G.player.w / 2, b.y + 30, b.vy + 2);
+    if (bp) {
+      b.y = bp.y - 30;
       if (!b.bounced && b.vy > 2) { b.bounced = true; b.vy *= -0.35; b.vx *= 0.7; b.vr = -b.facing * 0.12; }
       else {
         b.rest = true; b.restAt = G.deathSeq; b.vx = 0; b.vy = 0;
@@ -2215,7 +2218,8 @@ function finishTick() {
   if (G.helmet) {
     G.helmet.px = G.helmet.x; G.helmet.py = G.helmet.y; G.helmet.prot = G.helmet.rot;
     G.helmet.vy += 0.4; G.helmet.x += G.helmet.vx; G.helmet.y += G.helmet.vy; G.helmet.rot += G.helmet.vr;
-    if (G.helmet.y > G.groundY - 6) { G.helmet.y = G.groundY - 6; G.helmet.vy *= -0.4; G.helmet.vx *= 0.8; }
+    const hp = G.helmet.vy > 0 && platformUnder(G.helmet.x + G.player.w / 2, G.helmet.y + 6, G.helmet.vy + 2);
+    if (hp) { G.helmet.y = hp.y - 6; G.helmet.vy *= -0.4; G.helmet.vx *= 0.8; }
   }
 }
 
