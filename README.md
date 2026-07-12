@@ -9,6 +9,18 @@ chain mid-air combos, and chase your personal best.
 - Touch: left side of the screen steers (floating stick), right side jumps
   (hold for higher), dedicated shoot button. Desktop: A/D or arrows, Space to
   jump, F/J or click to shoot, Esc to pause, M to mute.
+- Every run rolls a bite-sized mission. Optional star-shard routes, big-air
+  bonuses, rare lucky aliens, named deep-space sectors, and small cosmic
+  surprises reward curiosity without currencies, ads, or purchases.
+- Star-boost pads occasionally remix the platform rhythm. Finish a mission and
+  a tiny comet companion joins the run, celebrates alongside you, and helps
+  pull nearby star shards into reach.
+- Music, sound effects, haptics, screen shake, and handedness are independently
+  configurable from both the title and pause menus. Legacy SOUND preferences
+  migrate automatically to the more precise controls.
+- Standard gamepads are supported, including PS5 and Xbox-style layouts:
+  left stick or D-pad to move, Cross/A to jump, Square/X or R1/R2 to fire, and
+  Options/Menu to pause. Supported controllers use the optional haptics setting.
 
 ## History
 

@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Space Man" />
 <link rel="manifest" href="manifest.json" />
-<link rel="icon" href="favicon.png" />
+<link rel="icon" id="faviconLink" href="favicon.png" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 <style>
   @font-face {
@@ -154,6 +154,10 @@
     50% { box-shadow: 0 6px 26px rgba(56, 225, 255, 0.7); transform: scale(1.02); }
   }
   .btn.pulse { animation: pulseGlow 1.6s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .btn.pulse { animation: none; }
+    .btn { transition: none; }
+  }
 
   .toggle-row {
     display: flex;
@@ -174,7 +178,9 @@
     transition: background 0.15s;
     flex: 0 0 auto;
     cursor: pointer;
+    border: 0;
   }
+  .switch:focus-visible { outline: 2px solid var(--cyan-lt); outline-offset: 3px; }
   .switch.on { background: var(--cyan); }
   .switch::after {
     content: '';
@@ -224,6 +230,32 @@
     margin-top: 10px;
     line-height: 1.7;
   }
+
+  .control-guide {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin: 14px 0 8px;
+  }
+  .control-guide > div {
+    padding: 9px 6px;
+    border: 1px solid rgba(207, 227, 255, 0.12);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.035);
+  }
+  .control-guide b, .control-guide span { display: block; }
+  .control-guide b { color: var(--suit); font-size: 11px; letter-spacing: .5px; }
+  .control-guide span { margin-top: 4px; color: var(--cyan); font-size: 8px; letter-spacing: 1px; }
+
+  @media (pointer: coarse) {
+    .desktop-guide { display: none; }
+    .panel { max-width: 400px; }
+    .btn { min-height: 48px; }
+  }
+  @media (pointer: fine) { .touch-guide { display: none; } }
+  .gamepad-guide { display: none; }
+  body.gamepad-active .desktop-guide { display: none; }
+  body.gamepad-active .gamepad-guide { display: grid; }
 
   /* initials picker */
   .initials {
@@ -296,6 +328,21 @@
     <div id="attractBest" class="title-lg" style="font-size:17px;letter-spacing:2px;color:var(--gold);margin-bottom:4px;">BEST 0</div>
     <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
     <button class="btn pulse" id="btnPlay">Tap to Start</button>
+    <div class="control-guide desktop-guide" aria-label="Keyboard controls">
+      <div><b>A D / ← →</b><span>MOVE</span></div>
+      <div><b>SPACE</b><span>JUMP</span></div>
+      <div><b>F / CLICK</b><span>FIRE</span></div>
+    </div>
+    <div class="control-guide touch-guide" aria-label="Touch controls">
+      <div><b>LEFT SIDE</b><span>MOVE</span></div>
+      <div><b>RIGHT SIDE</b><span>JUMP</span></div>
+      <div><b>FIRE</b><span>SHOOT</span></div>
+    </div>
+    <div class="control-guide gamepad-guide" aria-label="Controller controls">
+      <div><b>LEFT STICK</b><span>MOVE</span></div>
+      <div><b>A / ✕</b><span>JUMP</span></div>
+      <div><b>X / □ / R2</b><span>FIRE</span></div>
+    </div>
     <div class="row">
       <button class="btn ghost" id="btnTrophy">Scores</button>
       <button class="btn ghost" id="btnSettings">Settings</button>
@@ -309,9 +356,17 @@
   <div class="panel">
     <div class="title-lg">Paused</div>
     <button class="btn" id="btnResume">Resume</button>
-    <div class="toggle-row">SOUND <div class="switch" id="swSound"></div></div>
-    <div class="toggle-row">SCREEN SHAKE <div class="switch" id="swShake"></div></div>
-    <div class="toggle-row">LEFT-HANDED <div class="switch" id="swLeft"></div></div>
+    <div class="control-guide desktop-guide">
+      <div><b>A D / ← →</b><span>MOVE</span></div><div><b>SPACE</b><span>JUMP</span></div><div><b>F / CLICK</b><span>FIRE</span></div>
+    </div>
+    <div class="control-guide gamepad-guide">
+      <div><b>LEFT STICK</b><span>MOVE</span></div><div><b>A / ✕</b><span>JUMP</span></div><div><b>X / □ / R2</b><span>FIRE</span></div>
+    </div>
+    <div class="toggle-row">MUSIC <button class="switch" id="swMusic" role="switch" aria-label="Music"></button></div>
+    <div class="toggle-row">SOUND FX <button class="switch" id="swSfx" role="switch" aria-label="Sound effects"></button></div>
+    <div class="toggle-row">HAPTICS <button class="switch" id="swHaptics" role="switch" aria-label="Haptics"></button></div>
+    <div class="toggle-row">SCREEN SHAKE <button class="switch" id="swShake" role="switch" aria-label="Screen shake"></button></div>
+    <div class="toggle-row">LEFT-HANDED <button class="switch" id="swLeft" role="switch" aria-label="Left-handed controls"></button></div>
     <button class="btn ghost" id="btnQuit">Quit to Title</button>
   </div>
 </div>
@@ -334,9 +389,11 @@
 <div class="overlay" id="ovSettings">
   <div class="panel">
     <div class="title-lg" style="font-size:22px;">Settings</div>
-    <div class="toggle-row">SOUND <div class="switch" id="swSound2"></div></div>
-    <div class="toggle-row">SCREEN SHAKE <div class="switch" id="swShake2"></div></div>
-    <div class="toggle-row">LEFT-HANDED <div class="switch" id="swLeft2"></div></div>
+    <div class="toggle-row">MUSIC <button class="switch" id="swMusic2" role="switch" aria-label="Music"></button></div>
+    <div class="toggle-row">SOUND FX <button class="switch" id="swSfx2" role="switch" aria-label="Sound effects"></button></div>
+    <div class="toggle-row">HAPTICS <button class="switch" id="swHaptics2" role="switch" aria-label="Haptics"></button></div>
+    <div class="toggle-row">SCREEN SHAKE <button class="switch" id="swShake2" role="switch" aria-label="Screen shake"></button></div>
+    <div class="toggle-row">LEFT-HANDED <button class="switch" id="swLeft2" role="switch" aria-label="Left-handed controls"></button></div>
     <button class="btn ghost coral" id="btnReset" style="margin-top:12px;">Reset All Data</button>
     <button class="btn ghost" id="btnCloseSettings">Back</button>
   </div>
@@ -417,6 +474,7 @@ const CFG = {
   pw: 24, ph: 34,
   flareStartBehind: 900,
   scoreStomp: 30, scoreShoot: 20, scoreInterrupt: 10, scoreGraze: 5, scoreAmmo: 2,
+  scoreShard: 12, missionReward: 250,
   chainCap: 3,                                  // index cap → x1/x2/x4/x8
 };
 
@@ -467,12 +525,15 @@ const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top
 function loadJSON(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
 function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
-let settings = Object.assign({ sound: true, shake: true, lefty: false }, loadJSON(LS.settings, {}));
+const savedSettings = loadJSON(LS.settings, {});
+const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
+const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false }, savedSettings);
 let stats = Object.assign(
   { bestScore: 0, bestDist: 0, runs: 0, kills: 0, bestChain: 1, medals: { BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 }, deadStreak: 0, mercy: false },
   loadJSON(LS.stats, {})
 );
-let flags = Object.assign({ taughtRun: false, taughtJump: false, taughtStomp: false, installDismissed: false, initials: 'AAA' }, loadJSON(LS.flags, {}));
+let flags = Object.assign({ taughtRun: false, taughtJump: false, taughtStomp: false, taughtShoot: false, installDismissed: false, initials: 'AAA' }, loadJSON(LS.flags, {}));
 let top5 = loadJSON(LS.top5, null);
 if (top5 !== null && !Array.isArray(top5)) top5 = null;   // corrupt/tampered JSON → re-migrate
 
@@ -518,7 +579,8 @@ function resize() {
   canvas.style.height = cssH + 'px';
   if (cssH > cssW) {
     // Portrait: scale from WIDTH (420 logical px shows a full max-jump arc plus
-    // lookahead). Height-derived scale left ~166px of view — blind jumps.
+    // lookahead). Canvas drawing uses backing-store coordinates, so scale must
+    // include DPR (canvas.width). CSS hit-testing remains separate below.
     view.scale = canvas.width / CFG.portraitW;
     view.w = CFG.portraitW;
     view.h = canvas.height / view.scale;
@@ -576,8 +638,8 @@ const Audio = (() => {
       ac = new AC();
       master = ac.createGain(); master.gain.value = 0.9;
       comp = ac.createDynamicsCompressor();
-      sfxGain = ac.createGain(); sfxGain.gain.value = settings.sound ? 1 : 0;
-      musicGain = ac.createGain(); musicGain.gain.value = settings.sound ? 0.5 : 0;
+      sfxGain = ac.createGain(); sfxGain.gain.value = settings.sfx ? 1 : 0;
+      musicGain = ac.createGain(); musicGain.gain.value = settings.music ? 0.42 : 0;
       sfxGain.connect(master); musicGain.connect(master); master.connect(comp); comp.connect(ac.destination);
       started = true; return true;
     } catch (e) { return false; }
@@ -631,7 +693,7 @@ const Audio = (() => {
     medal(n) { const notes = [523.25, 659.25, 783.99]; for (let i = 0; i < n; i++) tone('triangle', notes[i], notes[i], 0.15, 0.2, sfxGain, now() + i * 0.12); },
   };
   function tickMusic(dt, band, chain) {
-    if (!ac || !settings.sound) return;
+    if (!ac || !settings.music) return;
     const kickOn = band >= 2, hatOn = band >= 4 || chain >= 4;
     rootTimer += dt;
     if (rootTimer > 8) { rootTimer = 0; rootStep = (rootStep + 1) % 5; musicRoot = 55 * Math.pow(2, PENT[rootStep] / 12); }
@@ -656,7 +718,10 @@ const Audio = (() => {
     // or audio stays dead for the session on iOS.
     ensure, resume() { if (ac && ac.state !== 'running') { try { ac.resume().catch(() => {}); } catch (e) {} } },
     sfx: SFX, tickMusic,
-    setMute(mute) { if (sfxGain) sfxGain.gain.value = mute ? 0 : 1; if (musicGain) musicGain.gain.value = mute ? 0 : 0.5; },
+    syncChannels() {
+      if (sfxGain) sfxGain.gain.setTargetAtTime(settings.sfx ? 1 : 0, now(), .025);
+      if (musicGain) musicGain.gain.setTargetAtTime(settings.music ? .42 : 0, now(), .04);
+    },
     get on() { return started; },
   };
 })();
@@ -666,9 +731,19 @@ const Audio = (() => {
    ------------------------------------------------------------------------- */
 const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: [12, 36, 12], celebrate: [14, 40, 14, 40, 22] };
 function buzz(kind) {
-  if (!settings.sound || SHOT) return;
+  if (!settings.haptics || SHOT) return;
   const pat = HAPTICS[kind] || 10;
-  if (navigator.vibrate) { navigator.vibrate(pat); return; }
+  if (navigator.vibrate) navigator.vibrate(pat);
+  try {
+    const gp = input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null;
+    const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
+    if (act && act.playEffect) {
+      const heavy = kind === 'heavy' || kind === 'warn' || kind === 'celebrate';
+      const duration = Array.isArray(pat) ? pat.reduce((a, b) => a + b, 0) : Math.max(20, pat * 2);
+      act.playEffect('dual-rumble', { duration, strongMagnitude: heavy ? .65 : .24, weakMagnitude: heavy ? .38 : .18 }).catch(() => {});
+      return;
+    }
+  } catch (e) {}
   try { const l = document.getElementById('hapLbl'); if (l) l.click(); } catch (e) {}
 }
 
@@ -677,21 +752,63 @@ function buzz(kind) {
    ------------------------------------------------------------------------- */
 const input = {
   left: false, right: false, jumpHeld: false, jumpPressed: false, shoot: false,
-  usingTouch: false, usingKeys: false, stickX: 0,
+  usingTouch: false, usingKeys: false, usingGamepad: false, stickX: 0, gamepadX: 0,
   stick: { active: false, cx: 0, cy: 0, x: 0, y: 0, id: -1 },
   jumpZone: { active: false, id: -1 },
   shootBtn: { cx: 0, cy: 0, r: 34, pressed: false, id: -1 },
+  pad: { index: -1, prev: [], connected: false },
 };
+
+function gamepadButton(gp, index) { return !!(gp && gp.buttons[index] && gp.buttons[index].pressed); }
+function pollGamepad() {
+  if (!navigator.getGamepads) return;
+  const pads = navigator.getGamepads();
+  let gp = input.pad.index >= 0 ? pads[input.pad.index] : null;
+  if (!gp) {
+    for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
+  }
+  if (!gp) {
+    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; document.body.classList.remove('gamepad-active'); systemToast('CONTROLLER DISCONNECTED'); }
+    return;
+  }
+  if (!input.pad.connected) {
+    input.pad.connected = true; input.pad.prev = []; document.body.classList.add('gamepad-active');
+    systemToast('CONTROLLER READY');
+  }
+  const pressed = (i) => gamepadButton(gp, i);
+  const just = (i) => pressed(i) && !input.pad.prev[i];
+  let axis = Math.abs(gp.axes[0] || 0) > .18 ? gp.axes[0] : 0;
+  if (pressed(14)) axis = -1; if (pressed(15)) axis = 1;
+  if (axis) { input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
+  input.gamepadX = Math.sign(axis) * Math.pow(Math.abs(axis), 1.35);
+  const jump = pressed(0);
+  if (jump && !input.pad.prev[0]) { input.jumpPressed = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
+  if (jump || input.pad.prev[0]) input.jumpHeld = jump;
+  if (just(2) || just(5) || just(7)) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
+  if (just(9)) {
+    if (G.mode === 'attract') startRun();
+    else if (G.mode === 'dead') tryRestart();
+    else togglePause();
+  } else if (just(0)) {
+    if (G.mode === 'attract') startRun();
+    else if (G.mode === 'dead') tryRestart();
+    else if (G.mode === 'pause') togglePause();
+  }
+  input.pad.prev = gp.buttons.map((b) => !!b.pressed);
+}
+
+window.addEventListener('gamepadconnected', (e) => { input.pad.index = e.gamepad.index; pollGamepad(); });
+window.addEventListener('gamepaddisconnected', (e) => { if (input.pad.index === e.gamepad.index) { input.pad.index = -1; pollGamepad(); } });
 function onKey(e, down) {
   const k = e.key.toLowerCase();
   const map = { a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right' };
   if (map[k]) input[map[k]] = down;
   if (k === ' ' || k === 'w' || k === 'arrowup') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
-  if ((k === 'j' || k === 'f' || k === 'x') && down) input.shoot = true;
+  if ((k === 'j' || k === 'f' || k === 'x') && down) { input.shoot = true; flags.taughtShoot = true; }
   if (down) {
     input.usingKeys = true; input.usingTouch = false;
     if (k === 'escape' || k === 'p') togglePause();
-    if (k === 'm') toggleSetting('sound');
+    if (k === 'm') toggleAudio();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
     else if (G.mode === 'dead') {
       if ($('ovInitials').classList.contains('show')) {
@@ -712,8 +829,11 @@ function layoutTouch() {
   const sbR = view.isTablet ? 40 : 32;
   input.shootBtn.r = sbR;
   input.shootBtn.cx = settings.lefty ? inset + 8 + sbR : w - 24 - sbR - safeInset('right');
-  const landscape = w > h;
-  input.shootBtn.cy = landscape ? h * 0.42 : h - (safeInset('bottom') + 88 + sbR);
+  // Landscape has enough horizontal separation for both actions on the lower
+  // rail. In portrait, lift fire above jump so their generous hit areas never
+  // overlap under a right thumb.
+  const fireLift = w > h ? 24 : 92;
+  input.shootBtn.cy = h - (safeInset('bottom') + fireLift + sbR);
 }
 function pointerPos(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function inShoot(p) { const dx = p.x - input.shootBtn.cx, dy = p.y - input.shootBtn.cy, r = input.shootBtn.r + 14; return dx * dx + dy * dy <= r * r; }
@@ -724,6 +844,13 @@ canvas.addEventListener('pointerdown', (e) => {
   // Capture so pointerup always reaches us even if the pointer is released
   // over an overlay or outside the window — otherwise inputs stick.
   try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  // A mouse is a direct fire input; don't switch the HUD into touch mode or
+  // spawn a joystick beneath the cursor.
+  if (e.pointerType === 'mouse') {
+    input.usingTouch = false;
+    if (G.mode === 'play') { input.shoot = true; flags.taughtShoot = true; }
+    return;
+  }
   input.usingTouch = true; input.usingKeys = false;
   Audio.ensure(); Audio.resume();
   const p = pointerPos(e);
@@ -733,7 +860,7 @@ canvas.addEventListener('pointerdown', (e) => {
   layoutTouch();
   // pause icon zone (top-right)
   if (G._pauseHit && p.x >= G._pauseHit.x0 && p.x <= G._pauseHit.x1 && p.y >= G._pauseHit.y0 && p.y <= G._pauseHit.y1) { togglePause(); return; }
-  if (inShoot(p)) { input.shootBtn.pressed = true; input.shootBtn.id = e.pointerId; input.shoot = true; return; }
+  if (inShoot(p)) { input.shootBtn.pressed = true; input.shootBtn.id = e.pointerId; input.shoot = true; flags.taughtShoot = true; return; }
   if (isMoveHalf(p)) {
     input.stick.active = true; input.stick.id = e.pointerId;
     input.stick.cx = p.x; input.stick.cy = p.y; input.stick.x = p.x; input.stick.y = p.y; input.stickX = 0;
@@ -796,6 +923,7 @@ function updateParticles() {
 const popups = [];
 function popup(x, y, text, color) { popups.push({ x, y, text, color: color || '#fff', life: 42, max: 42 }); if (popups.length > 24) popups.shift(); }
 function updatePopups() { for (let i = popups.length - 1; i >= 0; i--) { const p = popups[i]; p.life--; p.y -= 0.6; if (p.life <= 0) popups.splice(i, 1); } }
+function systemToast(text) { G.toast = text; G.toastT = 2.4; }
 
 /* ---------------------------------------------------------------------------
    12. GAME STATE
@@ -816,17 +944,43 @@ const G = {
   hints: [], shootingStar: null, starTimer: 0,
   runStart: 0, frameCount: 0, helmet: null, mercy: false,
   crackle: 0, deadShownAt: 0, runMedal: null, qualifies: false,
+  mission: null, shards: 0, shardStreak: 0, bigAir: 0, companion: null,
+  ufo: null, ufoTimer: 0, milestone: 0,
+  toast: '', toastT: 0,
 };
+
+const MISSIONS = [
+  { kind: 'stomp', target: 3, label: 'STOMP 3 ALIENS' },
+  { kind: 'shoot', target: 3, label: 'BLAST 3 ALIENS' },
+  { kind: 'shard', target: 5, label: 'CATCH 5 STAR SHARDS' },
+  { kind: 'graze', target: 2, label: 'SURVIVE 2 CLOSE CALLS' },
+  { kind: 'distance', target: 350, label: 'REACH 350m' },
+];
+
+function missionProgress(kind, amount) {
+  const m = G.mission;
+  if (!m || m.done || m.kind !== kind) return;
+  m.progress = Math.min(m.target, m.progress + (amount || 1));
+  if (m.progress < m.target) return;
+  m.done = true;
+  G.score += CFG.missionReward;
+  G.ammo = CFG.ammoCap; G.ammoPulse = 1;
+  G.flare.x -= 180;
+  G.companion = { x: G.player.x - 30, y: G.player.y - 10, phase: 0 };
+  popup(G.player.x, G.player.y - 34, '+' + CFG.missionReward + ' MISSION', '#9FF1FF');
+  burst(G.player.x + G.player.w / 2, G.player.y, 30, 4, 46, 3, 'rgba(159,241,255,.95)', 0.04, 2);
+  celebrate('MISSION COMPLETE!');
+}
 
 /* ---------------------------------------------------------------------------
    13. WORLDGEN
    ------------------------------------------------------------------------- */
 function bandFor(dist) { let b = 0; for (let i = 0; i < BANDS.length; i++) if (dist >= BANDS[i].m) b = i; return b; }
-function newPlatform(x, y, w) { return { x, y, w, h: 40 }; }
+function newPlatform(x, y, w) { return { x, y, w, h: 40, boost: false, boostUsed: false }; }
 
 function patrolAt(plat, x, dir, speed) {
   return { type: 'patrol', x, y: plat.y - 22, w: 24, h: 22, dir, speed,
-    dead: false, squash: 0, walkPhase: rng() * TAU, minX: plat.x + 14, maxX: plat.x + plat.w - 14, lookX: 0, lookY: 0 };
+    dead: false, golden: rng() < 0.035, squash: 0, walkPhase: rng() * TAU, minX: plat.x + 14, maxX: plat.x + plat.w - 14, lookX: 0, lookY: 0 };
 }
 function addEnemyOn(plat, distHere, mercyOn) {
   const B = BANDS[G.band];
@@ -887,16 +1041,28 @@ function generateAhead() {
     if (gap > B.gMax - 25) y = Math.max(y, last.y - 40);
     const x = last.x + last.w + gap;
     const plat = newPlatform(x, y, w);
+    if (distNext > 240 && w > 210 && rng() < 0.1) {
+      plat.boost = true; plat.boostX = plat.x + rnd(55, plat.w - 55);
+    }
     G.platforms.push(plat);
     G.genX = x + w;
     const distHere = (x - G.startX) / 10;
     const wasMaxGap = gap > B.gMax * 0.92;
-    if (distHere > 15 && !wasMaxGap) {
+    if (distHere > 15 && !wasMaxGap && !plat.boost) {
       if (narrow) G.pickups.push({ type: 'ammo', x: plat.x + plat.w / 2, y: plat.y - 26, vy: 0, amt: CFG.killDropAmt, parachute: false, bob: rng() * TAU, grabbed: false });
       else addEnemyOn(plat, distHere, mercyOn);
     }
     if (distHere > 40 && rng() < 0.05)
       G.pickups.push({ type: 'ammo', x: plat.x + plat.w / 2, y: plat.y - 150, vy: 0.4, amt: CFG.killDropAmt, parachute: true, bob: rng() * TAU, grabbed: false });
+    // Optional star trails make familiar jumps tempting in a new way.
+    if (distHere > 60 && !wasMaxGap && rng() < 0.22) {
+      const n = 3 + (rng() < 0.3 ? 2 : 0);
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1);
+        G.pickups.push({ type: 'shard', x: plat.x + 34 + t * Math.max(10, plat.w - 68),
+          y: plat.y - 54 - Math.sin(t * Math.PI) * 38, vy: 0, bob: rng() * TAU, grabbed: false });
+      }
+    }
   }
   // cull far-behind platforms (player-relative so culling can't vary with viewport width)
   while (G.platforms.length > 3 && G.platforms[0].x + G.platforms[0].w < G.player.x - 900) G.platforms.shift();
@@ -927,6 +1093,7 @@ function resetRun(seed) {
     w: CFG.pw, h: CFG.ph, onGround: true, facing: 1,
     coyote: 0, buffer: 0, jumping: false, sqX: 1, sqY: 1, landDip: 0,
     runCycle: 0, glint: 0, idle: 0, dead: false, groundPlat: p0, holdFor: 0,
+    airFrames: 0, jumpStartX: p0.x + 90, jumpPlat: p0, boostT: 0,
   };
   G.camX = G.player.x - view.w * 0.42; G.camXprev = G.camX;
   G.camY = G.groundY - view.h * 0.58; G.camYprev = G.camY;
@@ -938,12 +1105,16 @@ function resetRun(seed) {
   G.newBest = false; G.celebrate = 0; G.deathSeq = 0; G.deathZoom = 1; G.deathCardShown = false;
   G.vignette = 0; G.edgePulse = 0; G.stinger = 0; G.deep1000 = false;
   G.pbPassed = false; G.helmet = null; G.starTimer = 0; G.shootingStar = null;
+  G.shards = 0; G.shardStreak = 0; G.bigAir = 0; G.companion = null; G.ufo = null; G.ufoTimer = rnd(18, 35); G.milestone = 0;
+  const missionSeed = MISSIONS[(rng() * MISSIONS.length) | 0];
+  G.mission = { kind: missionSeed.kind, target: missionSeed.target, label: missionSeed.label, progress: 0, done: false };
   G.attractBase = undefined;
   G.frameCount = 0; G.runStart = G.time; G.prevBest = bestScore; G.mercy = stats.mercy;
   G.pbFlagX = stats.bestDist > 0 ? G.startX + stats.bestDist * 10 : null;
   G.hints = [];
   if (!flags.taughtRun) G.hints.push({ x: G.player.x + 70, y: G.groundY - 56, text: 'MOVE →' });
   if (!flags.taughtJump) G.hints.push({ x: G.player.x + 330, y: G.groundY - 96, text: 'HOLD TO JUMP HIGHER' });
+  if (!flags.taughtShoot) G.hints.push({ x: G.player.x + 590, y: G.groundY - 120, text: 'F / CLICK TO FIRE' });
   if (!flags.taughtStomp) {
     // Teach the stomp against a real target: one slow patroller on the last
     // starter platform, hint planted just before it. Fixed values — no rng.
@@ -991,7 +1162,9 @@ function updatePlayer() {
   if (p.dead) return;
 
   let ix = 0;
-  if (input.usingTouch) ix = input.stickX; else { if (input.left) ix -= 1; if (input.right) ix += 1; }
+  if (input.usingTouch) ix = input.stickX;
+  else if (input.usingGamepad && Math.abs(input.gamepadX) > .01) ix = input.gamepadX;
+  else { if (input.left) ix -= 1; if (input.right) ix += 1; }
   const accel = p.onGround ? CFG.accelGround : CFG.accelAir;
   if (ix !== 0) {
     const opposing = (ix < 0 && p.vx > 0) || (ix > 0 && p.vx < 0);
@@ -1000,7 +1173,8 @@ function updatePlayer() {
     if (opposing && p.onGround && Math.abs(p.vx) > 2 && G.frameCount % 3 === 0)
       spawnP(p.x, p.y + p.h, -p.facing * rnd(0.5, 1.5), -rnd(0.3, 1), 14, 2, 'rgba(159,241,255,0.6)', 0.05, false, 0);
   } else { p.vx *= p.onGround ? CFG.fricGround : CFG.fricAir; if (Math.abs(p.vx) < 0.05) p.vx = 0; }
-  p.vx = clamp(p.vx, -CFG.maxRun, CFG.maxRun);
+  if (p.boostT > 0) p.boostT--;
+  p.vx = clamp(p.vx, -(p.boostT > 0 ? 9.5 : CFG.maxRun), p.boostT > 0 ? 9.5 : CFG.maxRun);
 
   if (input.jumpPressed) { p.buffer = CFG.buffer; input.jumpPressed = false; }
   if (p.buffer > 0) p.buffer--;
@@ -1011,6 +1185,7 @@ function updatePlayer() {
     p.sqX = 0.8; p.sqY = 1.2;
     if (G.mode === 'play') { Audio.sfx.jump(false); buzz('light'); }
     flags.taughtJump = true;
+    p.airFrames = 0; p.jumpStartX = p.x; p.jumpPlat = p.groundPlat;
   }
   if (p.jumping && p.vy < 0 && !input.jumpHeld) { p.vy *= CFG.varJumpCut; p.jumping = false; if (G.mode === 'play') Audio.sfx.jump(true); }
 
@@ -1025,6 +1200,7 @@ function updatePlayer() {
   p.y += p.vy;
   const feet = p.y + p.h, wasGround = p.onGround;
   p.onGround = false;
+  if (!wasGround) p.airFrames++;
 
   if (p.vy >= 0) {
     let landed = null;
@@ -1041,6 +1217,15 @@ function updatePlayer() {
         burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, 'rgba(159,241,255,0.7)', 0.08, 0);
         if (G.mode === 'play') { Audio.sfx.land(impact); if (impact > 9) buzz('light'); }
         if (G.chain > 0) G.chain = 0;   // landing banks the chain (best already recorded per kill)
+        const flight = Math.abs(p.x - p.jumpStartX);
+        const gapCleared = p.jumpPlat ? Math.max(0, landed.x - (p.jumpPlat.x + p.jumpPlat.w), p.jumpPlat.x - (landed.x + landed.w)) : 0;
+        if (p.airFrames > 34 && flight > 190 && gapCleared > 100) {
+          const pts = gapCleared > 190 ? 50 : 25;
+          G.score += pts; G.bigAir++;
+          popup(p.x, p.y - 18, (gapCleared > 190 ? 'ORBITAL LEAP +' : 'BIG AIR +') + pts, '#9FF1FF');
+          burst(p.x + p.w / 2, p.y + p.h, 12, 2.2, 22, 2, 'rgba(159,241,255,.85)', .08, 0);
+        }
+        p.airFrames = 0;
       }
     }
   }
@@ -1049,6 +1234,19 @@ function updatePlayer() {
     spawnP(p.x - p.facing * 6, p.y + p.h, -p.facing * rnd(0.3, 1), -rnd(0.2, 0.8), 16, 2, 'rgba(159,241,255,0.5)', 0.05, false, 0);
   if (p.vy < -2 && G.frameCount % 2 === 0)
     spawnP(p.x - p.facing * 8, p.y + 6, -p.facing * rnd(0.2, 0.8), rnd(0.4, 1.2), 12, 1.6, 'rgba(255,180,84,0.85)', 0.04, false, 0);
+
+  const bp = p.groundPlat;
+  if (p.onGround && bp && bp.boost && !bp.boostUsed && Math.abs((p.x + p.w / 2) - bp.boostX) < 24) {
+    bp.boostUsed = true; p.boostT = 48; p.vx = 9.5; p.vy = -8.5; p.onGround = false; p.jumping = true; p.facing = 1;
+    p.airFrames = 0; p.jumpStartX = p.x; p.jumpPlat = bp;
+    G.score += 20; G.punchZoom = 1.045; G.punchTimer = .16; G.trauma = Math.min(1, G.trauma + .18);
+    popup(p.x, p.y - 16, 'STAR BOOST +20', '#FFC93C');
+    burst(bp.boostX, bp.y - 3, 20, 3.5, 30, 3, 'rgba(255,201,60,.95)', .04, 2);
+    Audio.sfx.ammo(false); buzz('heavy');
+  }
+
+  if (p.boostT > 0 && G.frameCount % 2 === 0)
+    spawnP(p.x - 8, p.y + p.h * .55, -rnd(2.5, 4.5), rnd(-.4, .4), 18, 2.5, 'rgba(255,201,60,.85)', 0, false, 0);
 
   p.sqX += (1 - p.sqX) * 0.2; p.sqY += (1 - p.sqY) * 0.2; p.landDip *= 0.8;
   p.runCycle += Math.abs(p.vx) * 0.06;
@@ -1131,6 +1329,7 @@ function updateBullets() {
     if (!p.dead && dist < 9) { die('bullet'); return; }
     if (!b.grazed && dist < 16) {
       b.grazed = true; G.score += CFG.scoreGraze; popup(b.x, b.y, '+5 CLOSE', '#9FF1FF');
+      missionProgress('graze', 1);
       if (G.mode === 'play') { G.timescale = 0.5; G.slowTimer = 0.12; }
       spawnP(b.x, b.y, 0, 0, 20, 3, 'rgba(232,244,255,0.8)', 0, false, 3);
       Audio.sfx.closeCall(clamp(dx / 120, -1, 1)); buzz('select');
@@ -1151,6 +1350,13 @@ function killEnemy(e, method, interrupted) {
   const mult = 1 << G.chain;
   const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult;
   G.score += pts;
+  missionProgress(method, 1);
+  if (e.golden) {
+    G.score += 100; G.ammo = CFG.ammoCap; G.ammoPulse = 1;
+    popup(e.x, e.y - 30, 'LUCKY ALIEN +100', '#FFC93C');
+    burst(e.x, e.y, 22, 3.4, 34, 3, 'rgba(255,201,60,.95)', .08, 2);
+    Audio.sfx.medal(3);
+  }
   popup(e.x, e.y - 10, '+' + pts + (mult > 1 ? ' ×' + mult : ''), method === 'stomp' ? '#4EF07A' : '#FFC93C');
   if (interrupted) { G.score += CFG.scoreInterrupt; popup(e.x, e.y - 26, '+10 STOP', '#FF9DB0'); }
   burst(e.x, e.y, 12, 2.4, 26, 3, 'rgba(78,240,122,0.95)', 0.18, 2);
@@ -1193,9 +1399,18 @@ function collisions() {
   for (let i = G.pickups.length - 1; i >= 0; i--) {
     const k = G.pickups[i]; if (k.grabbed) continue;
     const dx = pcx - k.x, dy = (p.y + p.h / 2) - k.y, d = Math.hypot(dx, dy);
-    if (d < 60) { k.x += dx * 0.15; k.y += dy * 0.15; }
+    const magnet = G.companion && k.type === 'shard' ? 100 : 60;
+    if (d < magnet) { k.x += dx * (G.companion ? 0.2 : 0.15); k.y += dy * (G.companion ? 0.2 : 0.15); }
     if (d < 18) {
       k.grabbed = true;
+      if (k.type === 'shard') {
+        G.shards++; G.shardStreak++;
+        const bonus = CFG.scoreShard + Math.min(18, (G.shardStreak - 1) * 3);
+        G.score += bonus; popup(k.x, k.y, '+' + bonus + ' STAR', '#9FF1FF');
+        burst(k.x, k.y, 12, 2.6, 24, 2.4, 'rgba(159,241,255,.95)', 0, 3);
+        Audio.sfx.ammo(false); buzz('select'); missionProgress('shard', 1);
+        G.pickups.splice(i, 1); continue;
+      }
       const wasZero = G.ammo <= 0;
       G.ammo = Math.min(CFG.ammoCap, G.ammo + k.amt); G.ammoPulse = 1;
       G.score += CFG.scoreAmmo; popup(k.x, k.y, '+AMMO', '#FFC93C');
@@ -1259,6 +1474,7 @@ function updateDistance() {
     const m = Math.floor((G.maxX - G.startX) / 10);
     if (m > G.dist) { G.score += (m - G.dist); G.dist = m; }
   }
+  if (G.mission && G.mission.kind === 'distance') missionProgress('distance', G.dist - G.mission.progress);
   // Passing the distance flag celebrates, but only a genuine score record sets
   // newBest — the death card's delta line must never lie.
   if (G.pbFlagX !== null && !G.pbPassed && p.x >= G.pbFlagX) { G.pbPassed = true; celebrate('PAST YOUR FLAG!'); }
@@ -1305,7 +1521,7 @@ function finalizeDeath() {
   G.runMedal = medal;
   // Hints retire after three runs, or individually once the action is performed
   // (per-action flag sets live in the physics/combat code) — never all at once.
-  if (stats.runs >= 3) { flags.taughtRun = true; flags.taughtJump = true; flags.taughtStomp = true; }
+  if (stats.runs >= 3) { flags.taughtRun = true; flags.taughtJump = true; flags.taughtStomp = true; flags.taughtShoot = true; }
   const wasFull = top5.length >= 5;
   G.qualifies = (top5.length < 5 || fs > top5[top5.length - 1].score) && fs > 0 && !SHOT;
   // The blocking picker only appears when a genuinely FULL table is cracked — the
@@ -1333,6 +1549,13 @@ function update() {
     if (input.shoot || input.shootBtn.pressed) { tryShoot(); input.shoot = false; }
     if (G.cooldown > 0) G.cooldown--;
     updatePlayer();
+    if (G.companion) {
+      const c = G.companion, p = G.player;
+      c.phase += .07;
+      c.x += (p.x - p.facing * 34 - c.x) * .1;
+      c.y += (p.y + 4 + Math.sin(c.phase) * 9 - c.y) * .12;
+      if (G.frameCount % 5 === 0) spawnP(c.x, c.y, -p.facing * .4, .2, 18, 1.6, 'rgba(159,241,255,.7)', 0, false, 0);
+    }
     updateEnemies();
     updateBullets();
     updatePickups();
@@ -1342,7 +1565,14 @@ function update() {
     updateCamera();
     updateDistance();
     generateAhead();
-    G.band = bandFor(G.dist);
+    const nextBand = bandFor(G.dist);
+    if (nextBand > G.band) {
+      const names = ['ORBITAL DAWN', 'ION DRIFT', 'VIOLET REACH', 'NIGHT BLOOM', 'RED SHIFT', 'EVENT HORIZON', 'THE FAR SIDE', 'LAST LIGHT'];
+      G.stinger = 2.4; G.stingerText = names[nextBand] || 'DEEP SPACE';
+      const hue = BAND_HUE[nextBand] || 218;
+      const meta = document.getElementById('tmeta'); if (meta) meta.content = `hsl(${hue} 42% 8%)`;
+    }
+    G.band = nextBand;
     if (G.slowTimer > 0) { G.slowTimer -= STEP; if (G.slowTimer <= 0) G.timescale = 1; }
     if (G.celebrate > 0) G.celebrate -= STEP;
     if (G.stinger > 0) G.stinger -= STEP;
@@ -1351,6 +1581,9 @@ function update() {
     G.starTimer += STEP;
     if (G.starTimer > 20 && !G.shootingStar) { G.starTimer = 0; G.shootingStar = { x: G.camX + view.w, y: rnd(20, 120), life: 60, vx: -12, vy: 4 }; }
     if (G.shootingStar) { G.shootingStar.x += G.shootingStar.vx; G.shootingStar.y += G.shootingStar.vy; if (--G.shootingStar.life <= 0) G.shootingStar = null; }
+    G.ufoTimer -= STEP;
+    if (G.ufoTimer <= 0 && !G.ufo) G.ufo = { x: view.w + 80, y: rnd(48, 130), vx: -2.8, phase: 0 };
+    if (G.ufo) { G.ufo.x += G.ufo.vx; G.ufo.phase += .08; if (G.ufo.x < -100) { G.ufo = null; G.ufoTimer = rnd(28, 55); } }
     G.dispScore += (G.score - G.dispScore) * 0.2;
     Audio.tickMusic(STEP, G.band, 1 << G.chain);
   } else if (G.mode === 'attract') {
@@ -1392,6 +1625,7 @@ function finishTick() {
 let acc = 0, lastT = 0, rafId = 0, shotFrozen = false;
 function frame(now) {
   rafId = requestAnimationFrame(frame);
+  pollGamepad();
   if (shotFrozen) { render(1); return; }   // QA: re-render frozen state (survives post-load resizes)
   if (!lastT) lastT = now;
   let dt = (now - lastT) / 1000; lastT = now;
@@ -1399,6 +1633,7 @@ function frame(now) {
   G.time += dt;
 
   if (G.mode === 'resume') { G.resumeT -= dt; if (G.resumeT <= 0) G.mode = 'play'; }
+  if (G.toastT > 0) G.toastT = Math.max(0, G.toastT - dt);
 
   if (G.player && G.player.dead) {
     G.deathSeq += dt;
@@ -1427,7 +1662,11 @@ function render(alpha) {
   const iCamX = lerp(G.camXprev, G.camX, alpha);
   const iCamY = lerp(G.camYprev, G.camY, alpha);
   ctx.save();
-  ctx.scale(view.scale, view.scale);
+  // Establish a canonical frame transform every time. This prevents a nested
+  // CSS-pixel HUD/touch transform from ever leaking into a later Retina frame.
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#060818'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(view.scale, 0, 0, view.scale, 0, 0);
   ctx.fillStyle = '#060818'; ctx.fillRect(0, 0, view.w, view.h);
 
   drawBackground(iCamX);
@@ -1452,6 +1691,7 @@ function render(alpha) {
   drawPBFlag();
   drawEnemies();
   drawBullets();
+  drawCompanion();
   if (G.player) drawPlayer(alpha);
   drawParticles();
   drawHints(iCamX);
@@ -1469,7 +1709,19 @@ function render(alpha) {
     drawGlowText(String(clamp(Math.ceil(G.resumeT / 0.434), 1, 3)), view.w / 2, view.h / 2, 46, '#38E1FF', '#F4F7FF');
   }
   drawCelebration();
+  drawSystemToast();
   ctx.restore();
+}
+
+function drawSystemToast() {
+  if (G.toastT <= 0) return;
+  const a = Math.min(1, G.toastT * 3, (2.4 - G.toastT) * 5);
+  const w = 176, h = 28, x = view.w / 2 - w / 2, y = 18 + safeInset('top');
+  ctx.save(); ctx.globalAlpha = a;
+  ctx.fillStyle = 'rgba(10,14,32,.88)'; roundRect(x, y, w, h, 10); ctx.fill();
+  ctx.strokeStyle = 'rgba(56,225,255,.38)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = '#CFE3FF'; ctx.font = '700 9px ' + FONT; ctx.textAlign = 'center';
+  ctx.fillText(G.toast, view.w / 2, y + 18); ctx.restore();
 }
 
 /* ---- SPACE MAN wordmark: 900-weight canvas text, cyan-glow underlay + white fill,
@@ -1559,6 +1811,16 @@ function drawBackground(camX) {
   }
   ctx.globalAlpha = 1;
   drawPlanet(camX);
+  if (G.ufo) {
+    const u = G.ufo, uy = u.y + Math.sin(u.phase) * 5;
+    ctx.save(); ctx.globalAlpha = .72;
+    ctx.fillStyle = 'rgba(56,225,255,.12)';
+    ctx.beginPath(); ctx.moveTo(u.x - 13, uy + 5); ctx.lineTo(u.x + 13, uy + 5); ctx.lineTo(u.x + 25, uy + 36); ctx.lineTo(u.x - 25, uy + 36); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.ellipse(u.x, uy, 18, 6, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#2A2560'; ctx.beginPath(); ctx.arc(u.x, uy - 3, 7, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = '#FFC93C'; for (const lx of [-10, 0, 10]) { ctx.beginPath(); ctx.arc(u.x + lx, uy + 2, 1.5, 0, TAU); ctx.fill(); }
+    ctx.restore();
+  }
   const spd = Math.abs(G.player ? G.player.vx : 0);
   for (const s of starfield.near) {
     const x = ((s.x - camX * 0.5) % W + W) % W;
@@ -1633,6 +1895,18 @@ function drawPlatforms(camX) {
     ctx.strokeStyle = '#E9FDFF'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(x + 4, y + 2); ctx.lineTo(x + w - 4, y + 2); ctx.stroke();
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect(x + 2, y + 1, 10, 3.5); ctx.fillRect(x + w - 12, y + 1, 10, 3.5);
+    if (pl.boost) {
+      const bx = pl.boostX, pulse = .7 + Math.sin(G.time * 8) * .2;
+      ctx.save(); ctx.globalAlpha = pl.boostUsed ? .28 : pulse;
+      ctx.drawImage(GLOW.gold, bx - 32, y - 31, 64, 64);
+      ctx.fillStyle = pl.boostUsed ? '#7A6A42' : '#FFC93C';
+      roundRect(bx - 27, y - 4, 54, 7, 3); ctx.fill();
+      ctx.fillStyle = pl.boostUsed ? '#9B8B62' : '#FFF1A8';
+      for (let i = -1; i <= 1; i++) {
+        const xx = bx + i * 14; ctx.beginPath(); ctx.moveTo(xx - 5, y - 2); ctx.lineTo(xx + 1, y - 7); ctx.lineTo(xx + 7, y - 2); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
     // Crystal stalactites hang flush from the slab underside in its dark tone.
     ctx.fillStyle = '#123A6B';
     const n = w > 200 ? 3 : 2;
@@ -1663,6 +1937,20 @@ function updatePickups() {
 function drawPickups() {
   for (const k of G.pickups) {
     if (k.grabbed) continue;
+    if (k.type === 'shard') {
+      const by = k.y + Math.sin(k.bob || 0) * 3;
+      ctx.save(); ctx.translate(k.x, by); ctx.rotate((k.bob || 0) * .45);
+      ctx.drawImage(GLOW.cyan, -25, -25, 50, 50);
+      ctx.fillStyle = '#DDFBFF'; ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = -Math.PI / 2 + i * Math.PI / 4, rr = i % 2 ? 3.5 : 9;
+        const xx = Math.cos(a) * rr, yy = Math.sin(a) * rr;
+        if (!i) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+      continue;
+    }
     if (k.parachute) {
       ctx.fillStyle = 'rgba(255,201,60,0.85)';
       ctx.beginPath(); ctx.arc(k.x, k.y - 16, 12, Math.PI, 0); ctx.fill();
@@ -1680,13 +1968,23 @@ function drawPickups() {
 function drawPBFlag() {
   if (G.pbFlagX === null) return;
   const gp = platformUnder(G.pbFlagX, G.groundY + 300, 500);
-  const fx = G.pbFlagX, fy = gp ? gp.y : G.groundY;
+  const fx = G.pbFlagX;
+  // Keep the marker honest to the exact record distance. If that coordinate
+  // falls in a gap, make it a floating beacon instead of planting a flag on
+  // invisible ground.
+  const floating = !gp, fy = gp ? gp.y : G.groundY - 28;
+  if (floating) {
+    ctx.save(); ctx.setLineDash([3, 5]); ctx.strokeStyle = 'rgba(207,227,255,.28)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(fx, fy + 8); ctx.lineTo(fx, G.groundY + 45); ctx.stroke(); ctx.restore();
+  }
   ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx, fy - 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx, fy - 44); ctx.stroke();
   ctx.fillStyle = G.pbPassed ? '#FFC93C' : '#FF4F66';
-  ctx.beginPath(); ctx.moveTo(fx, fy - 40); ctx.lineTo(fx + 22, fy - 34); ctx.lineTo(fx, fy - 28); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(fx, fy - 44); ctx.lineTo(fx + 25, fy - 37); ctx.lineTo(fx, fy - 30); ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#060818'; ctx.font = '700 8px ' + FONT; ctx.textAlign = 'center';
-  ctx.fillText(flags.initials, fx + 9, fy - 32);
+  ctx.fillText(flags.initials, fx + 10, fy - 35);
+  ctx.fillStyle = 'rgba(207,227,255,.72)'; ctx.font = '700 7px ' + FONT;
+  ctx.fillText('BEST ' + stats.bestDist + 'm', fx, fy - 52);
 }
 
 /* ---- enemies ---- */
@@ -1699,12 +1997,12 @@ function drawEnemies() {
     const squash = 1 + walk * 0.08;
     const tel = e.telegraph > 0;
     if (e.type === 'shoot') { ctx.fillStyle = '#1F9E4E'; ctx.beginPath(); ctx.ellipse(0, 7, 16, 6, 0, 0, TAU); ctx.fill(); }
-    ctx.drawImage(GLOW.green, -30, -30, 60, 60);
-    ctx.fillStyle = tel && Math.floor(G.time * 20) % 2 ? '#8CFFB0' : '#4EF07A';
+    ctx.drawImage(e.golden ? GLOW.gold : GLOW.green, -30, -30, 60, 60);
+    ctx.fillStyle = e.golden ? '#FFC93C' : (tel && Math.floor(G.time * 20) % 2 ? '#8CFFB0' : '#4EF07A');
     ctx.beginPath(); ctx.ellipse(0, 0, e.w / 2, (e.h / 2) * squash, 0, Math.PI, TAU); ctx.fill();
     roundRect(-e.w / 2, -1, e.w, e.h / 2 + 2, 5); ctx.fill();
-    const antC = e.type === 'shoot' ? (tel ? '#FF4F66' : '#FF8090') : '#BFFFD0';
-    ctx.strokeStyle = '#2FBF5F'; ctx.lineWidth = 1.5;
+    const antC = e.golden ? '#FFF1A8' : (e.type === 'shoot' ? (tel ? '#FF4F66' : '#FF8090') : '#BFFFD0');
+    ctx.strokeStyle = e.golden ? '#D99B16' : '#2FBF5F'; ctx.lineWidth = 1.5;
     for (const sgn of [-1, 1]) {
       ctx.beginPath(); ctx.moveTo(sgn * 4, -e.h / 2 + 2);
       ctx.quadraticCurveTo(sgn * 8, -e.h / 2 - 6, sgn * 6 + walk * 2, -e.h / 2 - 12); ctx.stroke();
@@ -1715,6 +2013,11 @@ function drawEnemies() {
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(sgn * 5, -2, 3.5, 4.5, 0, 0, TAU); ctx.fill();
       ctx.fillStyle = '#0a1428'; ctx.beginPath(); ctx.arc(sgn * 5 + lx, -2 + ly, 1.8, 0, TAU); ctx.fill();
     }
+    ctx.strokeStyle = e.golden ? '#7A4C00' : '#176B3A'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+    ctx.beginPath();
+    if (tel) ctx.arc(0, 6, 2.5, 0, TAU);
+    else ctx.arc(0, 4, 4, .25, Math.PI - .25);
+    ctx.stroke();
     if (e.type === 'patrol') {
       ctx.fillStyle = '#1F9E4E';
       ctx.beginPath(); ctx.arc(-5, e.h / 2 - 1 + Math.abs(walk) * 2, 3, 0, TAU); ctx.fill();
@@ -1739,6 +2042,19 @@ function drawBullets() {
 }
 
 /* ---- player ---- */
+function drawCompanion() {
+  const c = G.companion;
+  if (!c || (G.player && G.player.dead)) return;
+  ctx.save(); ctx.translate(c.x, c.y);
+  ctx.drawImage(GLOW.cyan, -24, -24, 48, 48);
+  ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#F4F7FF'; ctx.beginPath(); ctx.arc(1.5, -1.5, 2.2, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#1479FF'; ctx.beginPath(); ctx.arc(2.1, -1.4, 1, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(159,241,255,.65)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(-5, 2); ctx.quadraticCurveTo(-13, 5 + Math.sin(c.phase) * 3, -19, 1); ctx.stroke();
+  ctx.restore();
+}
+
 function drawPlayer(alpha) {
   const p = G.player;
   const x = lerp(p.px, p.x, alpha) + p.w / 2;
@@ -1759,6 +2075,13 @@ function drawPlayer(alpha) {
   const breathe = p.idle > 0 ? Math.sin(G.time * 3) * 0.03 : 0;
   ctx.scale(p.sqX + breathe, p.sqY - breathe);
   const hw = p.w / 2, hh = p.h / 2;
+
+  // A small mission patch/ribbon makes the silhouette feel authored and gives
+  // motion a soft secondary follow-through without obscuring the character.
+  ctx.strokeStyle = G.companion ? '#9FF1FF' : '#FFB454'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-hw + 4, -5);
+  ctx.quadraticCurveTo(-hw - 5 - Math.min(8, Math.abs(p.vx)), -3 + Math.sin(G.time * 9) * 2, -hw - 12 - Math.min(8, Math.abs(p.vx)), 2);
+  ctx.stroke();
 
   // Legs: two capsules in a cooler shade so they separate from the white torso
   // instead of merging into one blob; back leg a touch darker for depth.
@@ -1858,6 +2181,17 @@ function drawHUD() {
   drawGlowText(Math.floor(G.dist) + 'm', ox, top + 15 * us, 20 * us, '#38E1FF', '#F4F7FF');
   drawGlowText(String(Math.floor(G.dispScore)).padStart(5, '0'), ox, top + 34 * us, 13 * us, '#38E1FF', '#CFE3FF');
 
+  if (G.mission) {
+    const m = G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 45 * us;
+    ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 22 * us, 6 * us); ctx.fill();
+    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = '700 ' + (7.5 * us) + 'px ' + FONT; ctx.textAlign = 'left';
+    const label = m.done ? 'MISSION COMPLETE' : m.label;
+    ctx.fillText(label, ox + 6 * us, my + 9 * us);
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(ox + 6 * us, my + 13 * us, mw - 12 * us, 3 * us, 2); ctx.fill();
+    ctx.fillStyle = m.done ? '#4EF07A' : '#38E1FF';
+    roundRect(ox + 6 * us, my + 13 * us, (mw - 12 * us) * clamp(m.progress / m.target, 0, 1), 3 * us, 2); ctx.fill();
+  }
+
   if (G.chain > 0) {
     ctx.textAlign = 'center';
     drawGlowText('×' + (1 << G.chain) + ' CHAIN', view.w / 2, top + 16 * us, 18 * us, '#FFC93C', '#FFE59A');
@@ -1872,6 +2206,10 @@ function drawHUD() {
     }
     ctx.fillStyle = '#CFE3FF'; ctx.font = '600 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'right';
     ctx.fillText('AMMO', rx, top + 24 * us);
+  }
+  if (G.shards > 0) {
+    ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'right';
+    ctx.fillText('✦ ' + G.shards, view.w - left, top + 42 * us);
   }
 }
 function drawGlowText(text, x, y, size, glow, fill) {
@@ -1902,7 +2240,7 @@ function drawVignette() {
   if (G.stinger > 0) {
     ctx.globalAlpha = clamp(G.stinger, 0, 1) * Math.min(1, (2.4 - G.stinger) * 3);
     ctx.textAlign = 'center';
-    drawGlowText('DEEP SPACE', view.w / 2, view.h / 2, 28, '#38E1FF', '#F4F7FF');
+    drawGlowText(G.stingerText || 'DEEP SPACE', view.w / 2, view.h / 2, 28, '#38E1FF', '#F4F7FF');
     ctx.globalAlpha = 1;
   }
 }
@@ -1935,10 +2273,10 @@ function drawTouchControls() {
   }
   ctx.fillStyle = G.ammo > 0 ? 'rgba(255,201,60,0.9)' : 'rgba(255,255,255,0.3)';
   ctx.font = '900 13px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('FIRE', sx, sy + 5);
-  if (input.stick.active || FORCE_TOUCH) {
+  {
     const cssW = window.innerWidth, cssH = window.innerHeight;
-    const gx = input.stick.active ? input.stick.cx : cssW * (settings.lefty ? 0.8 : 0.2);
-    const gy = input.stick.active ? input.stick.cy : cssH * 0.72;
+    const gx = input.stick.active ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
+    const gy = input.stick.active ? input.stick.cy : cssH - safeInset('bottom') - (view.isTablet ? 92 : 76);
     ctx.globalAlpha = 0.3; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(gx, gy, 34, 0, TAU); ctx.stroke();
     // Inner knob always renders — direction/magnitude feedback is the whole
@@ -1946,6 +2284,14 @@ function drawTouchControls() {
     const kx = input.stick.active ? clamp(input.stick.x, gx - 34, gx + 34) : gx;
     ctx.globalAlpha = input.stick.active ? 0.55 : 0.22;
     ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(kx, gy, 12, 0, TAU); ctx.fill();
+    ctx.globalAlpha = input.stick.active ? .7 : .38; ctx.font = '700 9px ' + FONT; ctx.textAlign = 'center';
+    ctx.fillText('←  MOVE  →', gx, gy + 53);
+    // The jump region is intentionally large; this quiet affordance explains
+    // the invisible hit area without covering the action.
+    const jx = cssW * (settings.lefty ? .26 : .74), jy = cssH - safeInset('bottom') - 44;
+    ctx.globalAlpha = input.jumpZone.active ? .82 : .32; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(jx, jy, 25, 0, TAU); ctx.stroke();
+    ctx.font = '700 9px ' + FONT; ctx.fillStyle = '#CFE3FF'; ctx.fillText('JUMP', jx, jy + 3);
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -1969,6 +2315,7 @@ function medalGlyphs() {
 
 function showAttract() {
   hideAllOverlays();
+  const meta = $('tmeta'); if (meta) meta.content = '#060818';
   $('btnPlay').textContent = matchMedia('(pointer: coarse)').matches ? 'Tap to Start' : 'Press Space';
   $('attractBest').textContent = 'BEST ' + bestScore.toLocaleString();
   $('attractMedals').innerHTML = medalGlyphs();
@@ -1995,7 +2342,7 @@ function showDeathCard() {
   G.deathCardShown = true;
   finalizeDeath();
   G.mode = 'dead'; G.deadShownAt = G.time;
-  if (settings.sound && G.runMedal) setTimeout(() => Audio.sfx.medal(G.runMedal.name === 'BRONZE' ? 1 : G.runMedal.name === 'SILVER' ? 2 : 3), 300);
+  if (settings.sfx && G.runMedal) setTimeout(() => Audio.sfx.medal(G.runMedal.name === 'BRONZE' ? 1 : G.runMedal.name === 'SILVER' ? 2 : 3), 300);
   if (G.showPicker) { showInitials(); return; }   // only a full-table crack blocks; else auto-committed
   renderDeathCard();
 }
@@ -2007,7 +2354,8 @@ function renderDeathCard() {
   // a first-ever run is a NEW BEST, and the gold line never shows a stale +0.
   if (fs > G.prevBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${(fs - G.prevBest).toLocaleString()}</span>`;
   else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
-  $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · BEST CHAIN ×${G.bestChainRun}`;
+  const missionMark = G.mission && G.mission.done ? ' · MISSION ✓' : '';
+  $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
   renderScoreTable('deadScores', true);
   const chip = $('installChip');
   if (deferredPrompt && !flags.installDismissed && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
@@ -2057,13 +2405,22 @@ function showTrophy() {
 
 /* ---- settings ---- */
 function syncSwitches() {
-  [['swSound', 'sound'], ['swShake', 'shake'], ['swLeft', 'lefty'], ['swSound2', 'sound'], ['swShake2', 'shake'], ['swLeft2', 'lefty']]
-    .forEach(([id, key]) => { const el = $(id); if (el) el.classList.toggle('on', !!settings[key]); });
+  [['swMusic', 'music'], ['swSfx', 'sfx'], ['swHaptics', 'haptics'], ['swShake', 'shake'], ['swLeft', 'lefty'],
+    ['swMusic2', 'music'], ['swSfx2', 'sfx'], ['swHaptics2', 'haptics'], ['swShake2', 'shake'], ['swLeft2', 'lefty']]
+    .forEach(([id, key]) => {
+      const el = $(id); if (!el) return;
+      el.classList.toggle('on', !!settings[key]); el.setAttribute('aria-checked', String(!!settings[key]));
+    });
 }
 function toggleSetting(key) {
   settings[key] = !settings[key];
-  if (key === 'sound') Audio.setMute(!settings.sound);
+  if (key === 'music' || key === 'sfx') Audio.syncChannels();
   syncSwitches(); persistAll();
+}
+function toggleAudio() {
+  const turnOn = !settings.music && !settings.sfx;
+  settings.music = turnOn; settings.sfx = turnOn;
+  Audio.syncChannels(); syncSwitches(); persistAll();
 }
 
 /* ---------------------------------------------------------------------------
@@ -2082,10 +2439,14 @@ $('btnQuit').onclick = () => {
 };
 $('btnAgain').onclick = () => tryRestart();
 $('btnInitialsOk').onclick = () => commitInitials();
-$('swSound').onclick = () => toggleSetting('sound');
+$('swMusic').onclick = () => toggleSetting('music');
+$('swSfx').onclick = () => toggleSetting('sfx');
+$('swHaptics').onclick = () => toggleSetting('haptics');
 $('swShake').onclick = () => toggleSetting('shake');
 $('swLeft').onclick = () => toggleSetting('lefty');
-$('swSound2').onclick = () => toggleSetting('sound');
+$('swMusic2').onclick = () => toggleSetting('music');
+$('swSfx2').onclick = () => toggleSetting('sfx');
+$('swHaptics2').onclick = () => toggleSetting('haptics');
 $('swShake2').onclick = () => toggleSetting('shake');
 $('swLeft2').onclick = () => toggleSetting('lefty');
 $('btnReset').onclick = () => {
@@ -2180,13 +2541,38 @@ function runShot() {
 }
 
 /* ---------------------------------------------------------------------------
-   29. FONT READINESS then BOOT
+   29. LIVING FAVICON — subtle identity motion, never background churn
+   ------------------------------------------------------------------------- */
+function setupAnimatedFavicon() {
+  const link = document.getElementById('faviconLink');
+  if (!link || prefersLessMotion) return;
+  const icon = new Image(); icon.src = 'favicon.png';
+  icon.onload = () => {
+    const c = document.createElement('canvas'); c.width = c.height = 32;
+    const g = c.getContext('2d'); let phase = 0;
+    const paint = () => {
+      if (document.hidden) return;
+      g.clearRect(0, 0, 32, 32); g.drawImage(icon, 0, 0, 32, 32);
+      phase = (phase + 1) % 8;
+      const a = phase / 8 * TAU, x = 16 + Math.cos(a) * 13, y = 16 + Math.sin(a) * 13;
+      g.fillStyle = G.mission && G.mission.done ? '#9FF1FF' : '#FFC93C';
+      g.globalAlpha = .55 + (phase % 2) * .35;
+      g.beginPath(); g.arc(x, y, phase % 2 ? 1.4 : .8, 0, TAU); g.fill(); g.globalAlpha = 1;
+      link.href = c.toDataURL('image/png');
+    };
+    paint(); window.setInterval(paint, 900);
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   30. FONT READINESS then BOOT
    ------------------------------------------------------------------------- */
 function boot() {
   resize();
   booted = true;
   syncSwitches();
-  Audio.setMute(!settings.sound);
+  Audio.syncChannels();
+  setupAnimatedFavicon();
   if (SHOT) { runShot(); return; }
   showAttract();
   lastT = 0; rafId = requestAnimationFrame(frame);

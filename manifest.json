@@ -6,12 +6,29 @@
     "start_url": "./",
     "scope": "./",
     "display": "standalone",
-    "display_override": ["standalone", "fullscreen"],
+    "display_override": ["fullscreen", "standalone"],
     "orientation": "any",
     "background_color": "#060818",
     "theme_color": "#060818",
     "categories": ["games", "entertainment"],
     "launch_handler": { "client_mode": "navigate-existing" },
+    "prefer_related_applications": false,
+    "screenshots": [
+        {
+            "src": "screenshots/gameplay-wide.png",
+            "type": "image/png",
+            "sizes": "1280x720",
+            "form_factor": "wide",
+            "label": "Mission complete with a comet companion in Ion Drift"
+        },
+        {
+            "src": "screenshots/gameplay-portrait.png",
+            "type": "image/png",
+            "sizes": "390x844",
+            "form_factor": "narrow",
+            "label": "Portrait play with thumb-friendly movement, jump, and fire controls"
+        }
+    ],
     "icons": [
         {
             "src": "icons/icon-192x192.png",
