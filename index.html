@@ -163,12 +163,47 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 10px;
     padding: 12px 4px;
     font-size: 13px;
     font-weight: 600;
     letter-spacing: 1px;
+    text-transform: uppercase;
     border-bottom: 1px solid rgba(207, 227, 255, 0.08);
   }
+  /* Dependent rows dim when their parent switch is off — still operable. */
+  .settings-list .dim { opacity: 0.45; }
+  .slider-row .pct { flex: 0 0 42px; text-align: right; font-family: var(--font-num); color: var(--cyan); }
+  .slider-row input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    flex: 1;
+    min-width: 0;
+    height: 44px;              /* full-height touch target; track drawn thin */
+    margin: -10px 0;           /* row keeps its rhythm despite the tall input */
+    background: transparent;
+    cursor: pointer;
+  }
+  .slider-row input[type='range']:focus-visible { outline: 2px solid var(--cyan-lt); outline-offset: 3px; border-radius: 8px; }
+  /* --fill = value% — webkit has no ::range-progress, so the track is a 2-stop gradient */
+  .slider-row input[type='range']::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--cyan) var(--fill, 100%), rgba(255, 255, 255, 0.12) var(--fill, 100%));
+  }
+  .slider-row input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    margin-top: -8px;
+    border-radius: 50%;
+    border: 0;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  }
+  .slider-row input[type='range']::-moz-range-track { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); }
+  .slider-row input[type='range']::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--cyan); }
+  .slider-row input[type='range']::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; border: 0; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); }
   .switch {
     position: relative;
     width: 50px;
@@ -195,6 +230,19 @@
   }
   .switch.on::after { transform: translateX(22px); }
 
+  /* wardrobe: swatch circles are pure CSS (suit hex); hat tiles hold a canvas
+     painted by drawHat itself so thumbnails can never drift from the sprite. */
+  .swatch-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 8px 0 2px; }
+  .swatch, .hat-tile { width: 44px; height: 44px; border: 2px solid rgba(207, 227, 255, 0.18); cursor: pointer; padding: 0; position: relative; font-size: 13px; }
+  .swatch { border-radius: 50%; }
+  .hat-tile { border-radius: 10px; background: rgba(255, 255, 255, 0.05); }
+  .hat-tile canvas { display: block; margin: 2px auto 0; }
+  .swatch.sel, .hat-tile.sel { border-color: var(--cyan); box-shadow: 0 0 10px rgba(56, 225, 255, 0.45); }
+  .swatch.locked, .hat-tile.locked { opacity: 0.35; }
+  .swatch .lock, .hat-tile .lock { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .ward-name { font-size: 10px; letter-spacing: 2px; color: var(--cyan-lt); min-height: 13px; margin-bottom: 4px; text-transform: uppercase; }
+  .ward-hint { font-family: var(--font-num); font-size: 10px; letter-spacing: 1px; color: var(--gold); min-height: 13px; margin: 6px 0 2px; }
+
   table.scores {
     width: 100%;
     border-collapse: collapse;
@@ -220,6 +268,9 @@
     .title-lg { font-size: 18px; margin-bottom: 2px; }
     .panel .btn { padding: 8px 14px; }
     table.scores td, table.scores th { padding: 2px 8px; font-size: 11px; }
+    .toggle-row { padding: 5px 4px; font-size: 12px; }
+    .slider-row input[type='range'] { height: 32px; margin: -6px 0; }
+    .swatch-row { gap: 5px; margin: 4px 0 0; }
   }
   table.scores tr.me td { color: var(--gold); }
 
@@ -316,6 +367,8 @@
   #errlog.show { display: block; }
 
   .hap { position: fixed; left: -9999px; top: -9999px; opacity: 0; pointer-events: none; }
+  /* Screen-reader live region: visually hidden, never display:none (that silences it). */
+  #srAnnounce { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -345,6 +398,7 @@
     </div>
     <div class="row">
       <button class="btn ghost" id="btnTrophy">Scores</button>
+      <button class="btn ghost" id="btnWardrobe">Suit Up</button>
       <button class="btn ghost" id="btnSettings">Settings</button>
     </div>
     <div id="attractStats" class="stats-line"></div>
@@ -362,11 +416,7 @@
     <div class="control-guide gamepad-guide">
       <div><b>LEFT STICK</b><span>MOVE</span></div><div><b>A / ✕</b><span>JUMP</span></div><div><b>X / □ / R2</b><span>FIRE</span></div>
     </div>
-    <div class="toggle-row">MUSIC <button class="switch" id="swMusic" role="switch" aria-label="Music"></button></div>
-    <div class="toggle-row">SOUND FX <button class="switch" id="swSfx" role="switch" aria-label="Sound effects"></button></div>
-    <div class="toggle-row">HAPTICS <button class="switch" id="swHaptics" role="switch" aria-label="Haptics"></button></div>
-    <div class="toggle-row">SCREEN SHAKE <button class="switch" id="swShake" role="switch" aria-label="Screen shake"></button></div>
-    <div class="toggle-row">LEFT-HANDED <button class="switch" id="swLeft" role="switch" aria-label="Left-handed controls"></button></div>
+    <div class="settings-list" data-settings-host></div>
     <button class="btn ghost" id="btnQuit">Quit to Title</button>
   </div>
 </div>
@@ -379,6 +429,7 @@
     <div id="deadMedal" class="sub" style="font-size:20px;letter-spacing:4px;height:24px;"></div>
     <div id="deadDelta" class="sub" style="margin:8px 0;font-weight:700;letter-spacing:2px;"></div>
     <div id="deadStats" class="stats-line" style="opacity:0.8;"></div>
+    <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
     <table class="scores" id="deadScores"></table>
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
     <div class="install-chip" id="installChip">Add Space Man to your home screen</div>
@@ -389,13 +440,23 @@
 <div class="overlay" id="ovSettings">
   <div class="panel">
     <div class="title-lg" style="font-size:22px;">Settings</div>
-    <div class="toggle-row">MUSIC <button class="switch" id="swMusic2" role="switch" aria-label="Music"></button></div>
-    <div class="toggle-row">SOUND FX <button class="switch" id="swSfx2" role="switch" aria-label="Sound effects"></button></div>
-    <div class="toggle-row">HAPTICS <button class="switch" id="swHaptics2" role="switch" aria-label="Haptics"></button></div>
-    <div class="toggle-row">SCREEN SHAKE <button class="switch" id="swShake2" role="switch" aria-label="Screen shake"></button></div>
-    <div class="toggle-row">LEFT-HANDED <button class="switch" id="swLeft2" role="switch" aria-label="Left-handed controls"></button></div>
-    <button class="btn ghost coral" id="btnReset" style="margin-top:12px;">Reset All Data</button>
+    <div class="settings-list" data-settings-host></div>
+    <button class="btn ghost" id="btnWardrobe2" style="margin-top:12px;">Suit Up</button>
+    <button class="btn ghost coral" id="btnReset">Reset All Data</button>
     <button class="btn ghost" id="btnCloseSettings">Back</button>
+  </div>
+</div>
+
+<!-- Wardrobe — bottom-anchored so the live attract scene stays the preview -->
+<div class="overlay attract-anchor" id="ovWardrobe">
+  <div class="panel">
+    <div class="title-lg" style="font-size:20px;">Your Spacefarer</div>
+    <div class="swatch-row" id="suitRow"></div>
+    <div class="ward-name" id="suitName"></div>
+    <div class="swatch-row" id="hatRow"></div>
+    <div class="ward-name" id="hatName"></div>
+    <div class="ward-hint" id="wardHint"></div>
+    <button class="btn" id="btnWardrobeDone">Done</button>
   </div>
 </div>
 
@@ -421,6 +482,7 @@
 
 <pre id="errlog"></pre>
 <label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" tabindex="-1" /></label>
+<div id="srAnnounce" aria-live="polite"></div>
 
 <script src="src/contracts.js"></script>
 <script src="src/save-schema.js"></script>
@@ -527,21 +589,23 @@ const rnd = (a, b) => a + (b - a) * rng();
 /* ---------------------------------------------------------------------------
    4. STORAGE — schema + legacy migration
    ------------------------------------------------------------------------- */
-const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema' };
+const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries' };
 function loadJSON(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
 function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
 const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
 const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false }, migratedSave.settings, savedSettings);
+const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null) });
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, musicVol: 1, sfxVol: 1, muted: false }, migratedSave.settings, savedSettings);
+// Raw overlay wins for switches (legacy precedence) but the mixer trio must stay sane.
+settings.musicVol = migratedSave.settings.musicVol; settings.sfxVol = migratedSave.settings.sfxVol; settings.muted = migratedSave.settings.muted;
 saveJSON(LS.schema, window.SpaceManSave.VERSION);
 let stats = Object.assign(
-  { bestScore: 0, bestDist: 0, runs: 0, kills: 0, bestChain: 1, medals: { BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 }, deadStreak: 0, mercy: false },
+  { bestScore: 0, bestDist: 0, runs: 0, kills: 0, bestChain: 1, medals: { BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 }, deadStreak: 0, mercy: false, deepRuns: 0, missionsDone: 0 },
   loadJSON(LS.stats, {})
 );
-let flags = Object.assign({ taughtRun: false, taughtJump: false, taughtStomp: false, taughtShoot: false, installDismissed: false, initials: 'AAA' }, loadJSON(LS.flags, {}));
+let flags = Object.assign({ taughtRun: false, taughtJump: false, taughtStomp: false, taughtShoot: false, installDismissed: false, initials: 'AAA', playDays: [], bestStreak: 0, ufoSeen: 0 }, loadJSON(LS.flags, {}));
 let top5 = loadJSON(LS.top5, null);
 if (top5 !== null && !Array.isArray(top5)) top5 = null;   // corrupt/tampered JSON → re-migrate
 
@@ -566,6 +630,7 @@ stats.bestScore = bestScore;
 function persistAll() {
   saveJSON(LS.settings, settings); saveJSON(LS.stats, stats);
   saveJSON(LS.flags, flags); saveJSON(LS.top5, top5); saveJSON(LS.best, bestScore);
+  saveJSON(LS.cosmetics, G.cosmetics);
 }
 
 /* ---------------------------------------------------------------------------
@@ -642,6 +707,44 @@ flareGrad.addColorStop(0.85, 'rgba(255,140,90,0.75)');
 flareGrad.addColorStop(1, 'rgba(255,220,180,0.95)');
 const visorGrad = ctx.createLinearGradient(-8, -CFG.ph / 2 + 2, 8, -CFG.ph / 2 + 14);
 visorGrad.addColorStop(0, '#61D9FF'); visorGrad.addColorStop(1, '#1479FF');
+
+/* ---- suit palettes: wardrobe, not a form. Silhouette, gait, and hitboxes never
+   change; 'classic' resolves to the exact original literals (goldens stay bytewise). ---- */
+const PALETTES = {
+ classic: {name:'CLASSIC',      suit:'#F4F7FF',legB:'#9FB3E0',legF:'#C6D4F5',arm:'#E4ECFF',pack:'#FFB454',visTop:'#61D9FF',visBot:'#1479FF',trail:'159,241,255,.6'},
+ mint:    {name:'MINT COMET',   suit:'#C8F5DC',legB:'#8FC4A6',legF:'#AEE3C4',arm:'#B9EED0',pack:'#FFB454',visTop:'#7BF0C4',visBot:'#0E8A5F',trail:'123,240,196,.6'},
+ rose:    {name:'ROSE NEBULA',  suit:'#FFD4E5',legB:'#D19BB4',legF:'#F0B8CD',arm:'#FFC6DC',pack:'#38E1FF',visTop:'#FF9ECF',visBot:'#C2247E',trail:'255,158,207,.6'},
+ gold:    {name:'SOLAR GOLD',   suit:'#FFE8B0',legB:'#CBA96A',legF:'#EDD08F',arm:'#FFDF9A',pack:'#FF4F66',visTop:'#FFC93C',visBot:'#B4610A',trail:'255,201,60,.6'},
+ lilac:   {name:'LILAC DRIFT',  suit:'#E4D4FF',legB:'#AC96D6',legF:'#CCB8EE',arm:'#D9C6FA',pack:'#FFC93C',visTop:'#C9A8FF',visBot:'#6A2FD0',trail:'201,168,255,.6'},
+ coral:   {name:'CORAL BLAZE',  suit:'#FFC4AE',legB:'#CE8F76',legF:'#EFAC92',arm:'#FFB69C',pack:'#61D9FF',visTop:'#FF8A6B',visBot:'#C22B3A',trail:'255,138,107,.65'},
+ aurora:  {name:'AURORA ICE',   suit:'#CFFAF0',legB:'#8FC9BC',legF:'#B2E4D8',arm:'#C0F0E3',pack:'#FF9ECF',visTop:'#6BF7E0',visBot:'#0C7C8C',trail:'107,247,224,.6'},
+ graphite:{name:'GRAPHITE VOID',suit:'#9AA3B8',legB:'#6B7488',legF:'#848EA4',arm:'#8C96AC',pack:'#FFC93C',visTop:'#2B3A5E',visBot:'#0B1E42',trail:'154,163,184,.55'},
+};
+function hexRGB(h) { return parseInt(h.slice(1, 3), 16) + ',' + parseInt(h.slice(3, 5), 16) + ',' + parseInt(h.slice(5, 7), 16); }
+// Particle tints are prebuilt strings (per-site alphas preserved so classic
+// stays literal-identical): trail* = dust/skid/land, puff* = jetpack exhaust.
+for (const id in PALETTES) {
+  const P = PALETTES[id], rgb = P.trail.slice(0, P.trail.lastIndexOf(',')), prgb = hexRGB(P.pack);
+  P.trailDim = 'rgba(' + rgb + ',0.5)'; P.trailMid = 'rgba(' + rgb + ',0.6)'; P.trailHot = 'rgba(' + rgb + ',0.7)';
+  P.puffHot = 'rgba(' + prgb + ',0.85)'; P.puffDim = 'rgba(' + prgb + ',0.7)';
+}
+const palNow = () => PALETTES[G.cosmetics.suit] || PALETTES.classic;
+// Helmet glows and visor gradients are lazy per-suit caches — pre-rendered
+// sprites and boot-style gradients only, nothing blurred or built per-frame.
+GLOW.suit = { classic: GLOW.white };
+function suitGlow(id) {
+  return GLOW.suit[id] || (GLOW.suit[id] = glowSprite(40, 'rgba(' + hexRGB((PALETTES[id] || PALETTES.classic).suit) + ',0.5)', 0.2));
+}
+const suitVisors = { classic: visorGrad };
+function suitVisor(id) {
+  if (!suitVisors[id]) {
+    const P = PALETTES[id] || PALETTES.classic;
+    const g = ctx.createLinearGradient(-8, -CFG.ph / 2 + 2, 8, -CFG.ph / 2 + 14);
+    g.addColorStop(0, P.visTop); g.addColorStop(1, P.visBot);
+    suitVisors[id] = g;
+  }
+  return suitVisors[id];
+}
 const planetSprite = (() => {
   const c = makeCanvas(160, 120), g = c.getContext('2d');
   const grd = g.createRadialGradient(68, 48, 4, 80, 60, 46);
@@ -745,6 +848,10 @@ const Audio = (() => {
   const vSlots = [0, 0, 0, 0];
   let loopsN = 0, onLoopCb = null, boostUntil = 0, dngS = 0, dngPeak = false;
   let lastTick = 0, lastMode = '', tBar = 0, tNextT = 0;
+  // Every music-bus gain target flows through here: the master mute and the
+  // volume sliders must win at ALL write sites (pause duck, resume sweep, reset).
+  const musLvl = (base) => (settings.music && !settings.muted ? (base || 0.42) * settings.musicVol : 0);
+  const sfxLvl = () => (settings.sfx && !settings.muted ? settings.sfxVol : 0);
 
   function ensure() {
     if (started || SHOT) return false;
@@ -754,8 +861,8 @@ const Audio = (() => {
       ac = new AC();
       master = ac.createGain(); master.gain.value = 0.9;
       comp = ac.createDynamicsCompressor();
-      sfxGain = ac.createGain(); sfxGain.gain.value = settings.sfx ? 1 : 0;
-      musicGain = ac.createGain(); musicGain.gain.value = settings.music ? 0.42 : 0;
+      sfxGain = ac.createGain(); sfxGain.gain.value = sfxLvl();
+      musicGain = ac.createGain(); musicGain.gain.value = musLvl();
       sfxGain.connect(master); musicGain.connect(master); master.connect(comp); comp.connect(ac.destination);
       // Persistent music graph: voices → musicLP (state filter) → musicGain. Jingles skip the
       // filter via stingGain → sfxGain so they land even with music off — and can be killed.
@@ -1046,12 +1153,12 @@ const Audio = (() => {
     if (m === 'attract') {   // reopen the state filter and hand the room to the music box
       tNextT = 0;
       musicLP.frequency.cancelScheduledValues(t); musicLP.frequency.setTargetAtTime(12000, t, 0.08);
-      musicGain.gain.setTargetAtTime(settings.music ? 0.42 : 0, t, 0.1);
+      musicGain.gain.setTargetAtTime(musLvl(), t, 0.1);
       echoSend.gain.setTargetAtTime(0.2, t, 0.1);
     }
   }
   function tickMusic(mode, band, chainMult, danger) {
-    if (!ac || !settings.music) return;   // muted engine schedules NOTHING
+    if (!ac || !settings.music || settings.muted) return;   // muted engine schedules NOTHING
     const tN = ac.currentTime, dt = Math.min(0.1, Math.max(0, tN - lastTick)); lastTick = tN;
     if (mode !== lastMode) { modeChange(mode, tN); lastMode = mode; }
     if (chainMult >= 4) boostUntil = tN + 0.3;   // sparkle decays 0.3 s after the chain banks
@@ -1083,7 +1190,7 @@ const Audio = (() => {
     if (!ac) return;
     const t = now();
     musicLP.frequency.cancelScheduledValues(t); musicLP.frequency.setTargetAtTime(12000, t, 0.05);
-    musicGain.gain.cancelScheduledValues(t); musicGain.gain.setTargetAtTime(settings.music ? 0.42 : 0, t, 0.05);
+    musicGain.gain.cancelScheduledValues(t); musicGain.gain.setTargetAtTime(musLvl(), t, 0.05);
   }
   function musicEvent(name, arg) {
     if (!ac) return;
@@ -1095,14 +1202,14 @@ const Audio = (() => {
       bell(degF(1, 0, k), 0.3, 0.1, t, stingGain); bell(degF(2, 0, k), 0.35, 0.1, t + 0.12, stingGain);
     } else if (name === 'pause') {
       musicLP.frequency.cancelScheduledValues(t); musicLP.frequency.setTargetAtTime(400, t, 0.1);
-      musicGain.gain.setTargetAtTime(settings.music ? 0.15 : 0, t, 0.1);
+      musicGain.gain.setTargetAtTime(musLvl(0.15), t, 0.1);
     } else if (name === 'resume') {   // the filter reopening IS the countdown audio
       const secs = arg || 0.25;
       musicLP.frequency.cancelScheduledValues(t);
       musicLP.frequency.setValueAtTime(Math.max(200, musicLP.frequency.value), t);
       musicLP.frequency.exponentialRampToValueAtTime(12000, t + secs);
-      musicGain.gain.setTargetAtTime(settings.music ? 0.42 : 0, t, secs / 3);
-      if (settings.music && anchored) {   // pickup: two 8ths leading into the next bar line
+      musicGain.gain.setTargetAtTime(musLvl(), t, secs / 3);
+      if (settings.music && !settings.muted && anchored) {   // pickup: two 8ths leading into the next bar line
         let bt = barT; while (bt - BEAT < t + secs) bt += 4 * BEAT;
         bell(degF(5), 0.2, 0.07, bt - BEAT, stingGain); bell(degF(7), 0.2, 0.07, bt - BEAT * 0.5, stingGain);
       }
@@ -1123,8 +1230,8 @@ const Audio = (() => {
     sfx: SFX, tickMusic, musicReset, musicEvent, chordTones, killSting,
     degFreq(deg, oct) { return degF(deg, oct); },
     syncChannels() {
-      if (sfxGain) sfxGain.gain.setTargetAtTime(settings.sfx ? 1 : 0, now(), .025);
-      if (musicGain) musicGain.gain.setTargetAtTime(settings.music ? .42 : 0, now(), .04);
+      if (sfxGain) sfxGain.gain.setTargetAtTime(sfxLvl(), now(), .025);
+      if (musicGain) musicGain.gain.setTargetAtTime(musLvl(), now(), .04);
     },
     get on() { return started; },
     get loopsCompleted() { return loopsN; },
@@ -1162,8 +1269,10 @@ const input = {
   stick: { active: false, cx: 0, cy: 0, x: 0, y: 0, id: -1 },
   jumpZone: { active: false, id: -1 },
   shootBtn: { cx: 0, cy: 0, r: 34, pressed: false, id: -1 },
+  muteHold: null,   // { id, t, fired } — pending mute tap / settings long-press
   pad: { index: -1, prev: [], connected: false },
 };
+function inMuteHit(p) { const h = G._muteHit; return !!h && p.x >= h.x0 && p.x <= h.x1 && p.y >= h.y0 && p.y <= h.y1; }
 
 function gamepadButton(gp, index) { return !!(gp && gp.buttons[index] && gp.buttons[index].pressed); }
 function pollGamepad() {
@@ -1215,7 +1324,7 @@ function onKey(e, down) {
   if (down) {
     input.usingKeys = true; input.usingTouch = false;
     if (k === 'escape' || k === 'p') togglePause();
-    if (k === 'm') toggleAudio();
+    if (k === 'm') toggleMute();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
     else if (G.mode === 'dead') {
       if ($('ovInitials').classList.contains('show')) {
@@ -1255,7 +1364,10 @@ canvas.addEventListener('pointerdown', (e) => {
   // spawn a joystick beneath the cursor.
   if (e.pointerType === 'mouse') {
     input.usingTouch = false;
-    if (G.mode === 'play') { input.shoot = true; flags.taughtShoot = true; }
+    if (G.mode === 'play') {
+      if (inMuteHit(pointerPos(e))) { input.muteHold = { id: e.pointerId, t: performance.now(), fired: false }; return; }
+      input.shoot = true; flags.taughtShoot = true;
+    }
     return;
   }
   input.usingTouch = true; input.usingKeys = false;
@@ -1267,6 +1379,8 @@ canvas.addEventListener('pointerdown', (e) => {
   layoutTouch();
   // pause icon zone (top-right)
   if (G._pauseHit && p.x >= G._pauseHit.x0 && p.x <= G._pauseHit.x1 && p.y >= G._pauseHit.y0 && p.y <= G._pauseHit.y1) { togglePause(); return; }
+  // mute icon: gesture resolves on release (tap) or in frame() (long-press) — never stick/jump
+  if (inMuteHit(p)) { input.muteHold = { id: e.pointerId, t: performance.now(), fired: false }; return; }
   if (inShoot(p)) { input.shootBtn.pressed = true; input.shootBtn.id = e.pointerId; input.shoot = true; flags.taughtShoot = true; return; }
   if (isMoveHalf(p)) {
     input.stick.active = true; input.stick.id = e.pointerId;
@@ -1286,6 +1400,10 @@ canvas.addEventListener('pointermove', (e) => {
   }
 }, { passive: false });
 function endPointer(e) {
+  if (input.muteHold && e.pointerId === input.muteHold.id) {
+    if (!input.muteHold.fired && performance.now() - input.muteHold.t < 400) toggleMute();
+    input.muteHold = null;
+  }
   if (e.pointerId === input.stick.id) { input.stick.active = false; input.stick.id = -1; input.stickX = 0; }
   if (e.pointerId === input.jumpZone.id) { input.jumpZone.active = false; input.jumpZone.id = -1; input.jumpHeld = false; }
   if (e.pointerId === input.shootBtn.id) { input.shootBtn.pressed = false; input.shootBtn.id = -1; }
@@ -1356,6 +1474,8 @@ const G = {
   mission: null, shards: 0, shardStreak: 0, bigAir: 0, companion: null,
   ufo: null, ufoTimer: 0, milestone: 0,
   toast: '', toastT: 0,
+  cosmetics: migratedSave.cosmetics, newCosmetics: [],
+  flareFlirtT: 0, flareFlirt: false, wardrobeOpen: false,
 };
 
 const MISSIONS = [
@@ -1372,6 +1492,7 @@ function missionProgress(kind, amount) {
   m.progress = Math.min(m.target, m.progress + (amount || 1));
   if (m.progress < m.target) return;
   m.done = true;
+  stats.missionsDone = (stats.missionsDone || 0) + 1;   // aurora-suit counter
   G.score += CFG.missionReward;
   G.ammo = CFG.ammoCap; G.ammoPulse = 1;
   G.flare.x -= 180;
@@ -1534,6 +1655,7 @@ function resetRun(seed) {
   G.pbPassed = false; G.helmet = null; G.starTimer = 0; G.shootingStar = null;
   G.body = null; G.kickX = 0; G.kickY = 0; G.kickAt = -9; G.deathFocus = null;
   G.shards = 0; G.shardStreak = 0; G.bigAir = 0; G.companion = null; G.ufo = null; G.ufoTimer = rnd(18, 35); G.milestone = 0;
+  G.flareFlirtT = 0; G.flareFlirt = false;
   const missionSeed = MISSIONS[(rng() * MISSIONS.length) | 0];
   G.mission = { kind: missionSeed.kind, target: missionSeed.target, label: missionSeed.label, progress: 0, done: false };
   G.attractBase = undefined;
@@ -1558,6 +1680,10 @@ function resetRun(seed) {
 
 function startRun() {
   Audio.ensure(); Audio.resume(); hideAllOverlays();
+  // sprout-hat calendar: distinct play days, capped at 7 date strings
+  const day = new Date().toISOString().slice(0, 10);
+  if (!Array.isArray(flags.playDays)) flags.playDays = [];
+  if (flags.playDays.indexOf(day) < 0) { flags.playDays.push(day); if (flags.playDays.length > 7) flags.playDays.shift(); }
   const seed = SHOT_SEED !== null ? SHOT_SEED : (Math.random() * 1e9) | 0;
   // Drop any buffered jump/held keys from the restart keypress itself, or the
   // astronaut performs an involuntary full jump on frame 1 of every run.
@@ -1579,6 +1705,7 @@ function clearInput() {
   input.stick.active = false; input.stick.id = -1;
   input.jumpZone.active = false; input.jumpZone.id = -1;
   input.shootBtn.pressed = false; input.shootBtn.id = -1;
+  input.muteHold = null;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1603,7 +1730,7 @@ function updatePlayer() {
     p.vx += ix * accel * (opposing ? CFG.turnMult : 1);
     p.facing = ix < 0 ? -1 : 1;
     if (opposing && p.onGround && Math.abs(p.vx) > 2 && G.frameCount % 3 === 0)
-      spawnP(p.x, p.y + p.h, -p.facing * rnd(0.5, 1.5), -rnd(0.3, 1), 14, 2, 'rgba(159,241,255,0.6)', 0.05, false, 0);
+      spawnP(p.x, p.y + p.h, -p.facing * rnd(0.5, 1.5), -rnd(0.3, 1), 14, 2, palNow().trailMid, 0.05, false, 0);
   } else { p.vx *= p.onGround ? CFG.fricGround : CFG.fricAir; if (Math.abs(p.vx) < 0.05) p.vx = 0; }
   if (p.boostT > 0) p.boostT--;
   p.vx = clamp(p.vx, -(p.boostT > 0 ? 9.5 : CFG.maxRun), p.boostT > 0 ? 9.5 : CFG.maxRun);
@@ -1647,7 +1774,7 @@ function updatePlayer() {
       if (!wasGround) {
         p.sqX = 1.2; p.sqY = 0.8; p.landDip = clamp(impact / 14, 0, 1) * 6;
         if (impact > 11) G.trauma = Math.max(G.trauma, 0.12);   // heavy landing = smooth thud, not jitter
-        burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, 'rgba(159,241,255,0.7)', 0.08, 0);
+        burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, palNow().trailHot, 0.08, 0);
         if (G.mode === 'play') { Audio.sfx.land(impact); if (impact > 9) buzz('light'); }
         if (G.chain > 0) G.chain = 0;   // landing banks the chain (best already recorded per kill)
         const flight = Math.abs(p.x - p.jumpStartX);
@@ -1664,9 +1791,9 @@ function updatePlayer() {
   }
 
   if (p.onGround && Math.abs(p.vx) > 2.5 && G.frameCount % 6 === 0)
-    spawnP(p.x - p.facing * 6, p.y + p.h, -p.facing * rnd(0.3, 1), -rnd(0.2, 0.8), 16, 2, 'rgba(159,241,255,0.5)', 0.05, false, 0);
+    spawnP(p.x - p.facing * 6, p.y + p.h, -p.facing * rnd(0.3, 1), -rnd(0.2, 0.8), 16, 2, palNow().trailDim, 0.05, false, 0);
   if (p.vy < -2 && G.frameCount % 2 === 0)
-    spawnP(p.x - p.facing * 8, p.y + 6, -p.facing * rnd(0.2, 0.8), rnd(0.4, 1.2), 12, 1.6, 'rgba(255,180,84,0.85)', 0.04, false, 0);
+    spawnP(p.x - p.facing * 8, p.y + 6, -p.facing * rnd(0.2, 0.8), rnd(0.4, 1.2), 12, 1.6, palNow().puffHot, 0.04, false, 0);
 
   const bp = p.groundPlat;
   if (p.onGround && bp && bp.boost && !bp.boostUsed && Math.abs((p.x + p.w / 2) - bp.boostX) < 24) {
@@ -1874,6 +2001,9 @@ function updateFlare() {
   const gap = G.player.x - G.flare.x;
   G.vignette = clamp(1 - gap / 400, 0, 1);
   if (gap < 300) G.trauma = Math.max(G.trauma, 0.1 * (1 - gap / 300));
+  // coral-suit flirt: living inside a 40px flare gap for 3 sustained seconds
+  if (gap < 40) { G.flareFlirtT += STEP; if (G.flareFlirtT >= 3) G.flareFlirt = true; }
+  else G.flareFlirtT = 0;
   // Rising coral embers below the platform line — falling should read as death.
   if (G.frameCount % 18 === 0)
     spawnP(G.player.x + rnd(-view.w * 0.5, view.w * 0.6), G.groundY + rnd(90, 280), rnd(-0.2, 0.2), -rnd(0.3, 0.9), 60, 2, 'rgba(255,110,90,0.5)', -0.005, false, 0);
@@ -1967,6 +2097,8 @@ function finalizeDeath() {
   stats.bestScore = bestScore;
   stats.bestDist = Math.max(stats.bestDist, G.dist);
   stats.bestChain = Math.max(stats.bestChain, G.bestChainRun);
+  if (G.dist >= 600) stats.deepRuns = (stats.deepRuns || 0) + 1;                       // lilac-suit counter
+  flags.bestStreak = fs > G.prevBest && fs > 0 ? (flags.bestStreak || 0) + 1 : 0;      // halo-hat streak
   // Quick death = short OR shallow: a 19s death at 250m is a decent run; a slow 90m death isn't.
   if ((G.time - G.runStart) < 20 || G.dist < 150) stats.deadStreak++; else stats.deadStreak = 0;
   stats.mercy = stats.deadStreak >= 3;
@@ -1974,6 +2106,7 @@ function finalizeDeath() {
   for (const md of MEDALS) if (fs >= md.v) { medal = md; break; }
   if (medal) stats.medals[medal.name] = (stats.medals[medal.name] || 0) + 1;
   G.runMedal = medal;
+  checkUnlocks();                                // before renderDeathCard — the card shows the unlock line
   // Hints retire after three runs, or individually once the action is performed
   // (per-action flag sets live in the physics/combat code) — never all at once.
   if (stats.runs >= 3) { flags.taughtRun = true; flags.taughtJump = true; flags.taughtStomp = true; flags.taughtShoot = true; }
@@ -2040,7 +2173,7 @@ function update() {
     if (G.starTimer > 20 && !G.shootingStar) { G.starTimer = 0; G.shootingStar = { x: G.camX + view.w, y: rnd(20, 120), life: 60, vx: -12, vy: 4 }; }
     if (G.shootingStar) { G.shootingStar.x += G.shootingStar.vx; G.shootingStar.y += G.shootingStar.vy; if (--G.shootingStar.life <= 0) G.shootingStar = null; }
     G.ufoTimer -= STEP;
-    if (G.ufoTimer <= 0 && !G.ufo) G.ufo = { x: view.w + 80, y: rnd(48, 130), vx: -2.8, phase: 0 };
+    if (G.ufoTimer <= 0 && !G.ufo) { G.ufo = { x: view.w + 80, y: rnd(48, 130), vx: -2.8, phase: 0 }; flags.ufoSeen = (flags.ufoSeen || 0) + 1; }
     if (G.ufo) { G.ufo.x += G.ufo.vx; G.ufo.phase += .08; if (G.ufo.x < -100) { G.ufo = null; G.ufoTimer = rnd(28, 55); } }
     G.dispScore += (G.score - G.dispScore) * 0.2;
   } else if (G.mode === 'attract') {
@@ -2053,7 +2186,8 @@ function update() {
       G.camX = G.attractBase.x + Math.sin(G.time * 0.28) * 26;
       G.camY = G.attractBase.y + Math.sin(G.time * 0.4) * 7;
     }
-    if (p && G.frameCount % 9 === 0) spawnP(p.x - 8, p.y + 6, -rnd(0.2, 0.6), rnd(0.3, 0.9), 20, 1.6, 'rgba(255,180,84,0.7)', 0.03, false, 0);
+    if (p && G.frameCount % 9 === 0) spawnP(p.x - 8, p.y + 6, -rnd(0.2, 0.6), rnd(0.3, 0.9), 20, 1.6, palNow().puffDim, 0.03, false, 0);
+    if (p && p.idle >= 60) unlockCosmetic('catears');   // easter egg: a patient minute of stargazing
     G.starTimer += STEP;
     if (G.starTimer > 8 && !G.shootingStar) { G.starTimer = 0; G.shootingStar = { x: G.camX + view.w, y: rnd(20, 110), life: 72, vx: -11, vy: 4 }; }
     if (G.shootingStar) { G.shootingStar.x += G.shootingStar.vx; G.shootingStar.y += G.shootingStar.vy; if (--G.shootingStar.life <= 0) G.shootingStar = null; }
@@ -2100,6 +2234,14 @@ function frame(now) {
 
   if (G.mode === 'resume') { G.resumeT -= dt; if (G.resumeT <= 0) G.mode = 'play'; }
   if (G.toastT > 0) G.toastT = Math.max(0, G.toastT - dt);
+
+  // Mute long-press (≥400 ms): pause first, then settings. A tap resolves in
+  // endPointer; a death mid-hold aborts (togglePause refuses, mode stays play).
+  if (input.muteHold && !input.muteHold.fired && performance.now() - input.muteHold.t >= 400) {
+    input.muteHold.fired = true;
+    if (G.mode === 'play') togglePause();
+    if (G.mode === 'pause') openSettings('pause');
+  }
 
   if (G.player && G.player.dead) {
     G.deathSeq += dt;
@@ -2202,7 +2344,23 @@ function render(alpha) {
   drawPopups(iCamX, iCamY);
   drawForeground(iCamX);
   drawVignette();
-  if (G.mode === 'attract') drawWordmark();
+  if (G.mode === 'attract') {
+    drawWordmark();
+    // Wardrobe podium: the exact same drawPlayer at 3× — the close-up preview
+    // can never drift from the in-game sprite (suit, hat, squash and all).
+    // Anchored just above the measured panel top so it clears the card.
+    if (G.wardrobeOpen && G.player) {
+      const p = G.player;
+      const panelTop = (G.wardrobePanelTop || window.innerHeight * 0.5) * (view.h / window.innerHeight);
+      const sc = clamp((panelTop - 10) / 48, 2, 3);   // 3× with headroom, easing down on short viewports
+      ctx.save();
+      ctx.translate(view.w / 2, clamp(panelTop - 6 - 17 * sc, 60, view.h - 40));
+      ctx.scale(sc, sc);
+      ctx.translate(-(p.x + p.w / 2), -(p.y + p.h / 2));
+      drawPlayer(1);
+      ctx.restore();
+    }
+  }
   // HUD hides once the death card is up — the card owns the screen.
   if (G.mode === 'play' || G.mode === 'pause' || G.mode === 'resume' || (G.player && G.player.dead && !G.deathCardShown)) drawHUD();
   if ((FORCE_TOUCH || input.usingTouch) && (G.mode === 'play' || G.mode === 'resume')) drawTouchControls();
@@ -2566,16 +2724,90 @@ function drawCompanion() {
   ctx.restore();
 }
 
+/* ---- hats: pure overdraw in helmet-local space (R=11, y-up negative); every
+   primitive fits the existing 40×40 glow envelope — no hitbox or physics change. ---- */
+function rrPath(c, x, y, w, h, r) {   // roundRect on an arbitrary context (thumbnails use their own)
+  c.beginPath();
+  c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+const HATS = {
+  none: { name: 'NO HAT', draw() {} },
+  antenna: { name: 'ANTENNA', draw(c) {
+    c.strokeStyle = '#C6D4F5'; c.lineWidth = 2; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(0, -11); c.lineTo(0, -17); c.stroke();
+    c.fillStyle = '#FFC93C'; c.beginPath(); c.arc(0, -18, 2.5, 0, TAU); c.fill();
+    c.fillStyle = 'rgba(255,201,60,.4)'; c.beginPath(); c.arc(0, -18, 4, 0, TAU); c.fill();   // pre-baked halo
+  } },
+  sprout: { name: 'SPROUT', draw(c) {
+    c.strokeStyle = '#35C46B'; c.lineWidth = 2; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(0, -10); c.quadraticCurveTo(1, -15, 3, -17); c.stroke();
+    c.fillStyle = '#4ADE87';
+    c.beginPath(); c.ellipse(0.5, -15, 3, 1.6, -0.6, 0, TAU); c.fill();
+    c.beginPath(); c.ellipse(4.5, -17.5, 3, 1.6, 0.5, 0, TAU); c.fill();
+  } },
+  beanie: { name: 'BEANIE', draw(c) {
+    c.fillStyle = '#FF6B8A'; c.beginPath(); c.arc(0, -8, 9.5, Math.PI, 0); c.closePath(); c.fill();   // dome
+    c.fillStyle = '#E14E6E'; rrPath(c, -9.5, -9, 19, 3.5, 1.75); c.fill();
+    c.fillStyle = '#FFF3F6'; c.beginPath(); c.arc(0, -18, 2.8, 0, TAU); c.fill();                     // pom
+  } },
+  halo: { name: 'HALO', draw(c) {
+    c.strokeStyle = 'rgba(255,233,168,.35)'; c.lineWidth = 4;
+    c.beginPath(); c.ellipse(0, -15, 8, 2.4, 0, 0, TAU); c.stroke();
+    c.strokeStyle = '#FFE9A8'; c.lineWidth = 1.8;
+    c.beginPath(); c.ellipse(0, -15, 8, 2.4, 0, 0, TAU); c.stroke();   // double-stroke glow
+  } },
+  crown: { name: 'CROWN', draw(c) {
+    c.fillStyle = '#FFC93C'; c.beginPath();
+    c.moveTo(-7, -9); c.lineTo(-7, -15); c.lineTo(-3.5, -12); c.lineTo(0, -17);
+    c.lineTo(3.5, -12); c.lineTo(7, -15); c.lineTo(7, -9); c.closePath(); c.fill();
+    c.fillStyle = '#FF4F66'; c.beginPath(); c.arc(0, -12, 1.3, 0, TAU); c.fill();
+  } },
+  cone: { name: 'PARTY CONE', draw(c) {
+    c.fillStyle = '#B87BFF'; c.beginPath();
+    c.moveTo(-5, -9); c.lineTo(5, -9); c.lineTo(0, -20); c.closePath(); c.fill();
+    c.strokeStyle = '#F4F7FF'; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(-3.4, -12.5); c.lineTo(3.4, -12.5); c.moveTo(-1.9, -16); c.lineTo(1.9, -16); c.stroke();
+    c.fillStyle = '#FFC93C'; c.beginPath(); c.arc(0, -20, 2, 0, TAU); c.fill();
+  } },
+  catears: { name: 'STAR CAT', draw(c) {   // suit-colored ears, pink inner at 55% about the same centroid
+    const tri = (m, k) => {
+      const pts = [[-8.5, -7], [-3, -10], [-6.5, -16]], cx = -6, cy = -11;
+      c.beginPath();
+      pts.forEach(([x, y], i) => { const px = (cx + (x - cx) * k) * m, py = cy + (y - cy) * k; i ? c.lineTo(px, py) : c.moveTo(px, py); });
+      c.closePath(); c.fill();
+    };
+    c.fillStyle = palNow().suit; tri(1, 1); tri(-1, 1);
+    c.fillStyle = '#FF9ECF'; tri(1, 0.55); tri(-1, 0.55);
+  } },
+  phones: { name: 'HEADPHONES', draw(c) {
+    c.strokeStyle = '#38E1FF'; c.lineWidth = 2.5; c.lineCap = 'round';
+    c.beginPath(); c.arc(0, 0, 12.5, 1.15 * Math.PI, 1.85 * Math.PI); c.stroke();
+    c.fillStyle = '#1479FF'; rrPath(c, -14, -3, 4.5, 8, 2); c.fill(); rrPath(c, 9.5, -3, 4.5, 8, 2); c.fill();
+    c.fillStyle = '#9FF1FF';
+    c.beginPath(); c.arc(-11.75, 1, 1.2, 0, TAU); c.fill();
+    c.beginPath(); c.arc(11.75, 1, 1.2, 0, TAU); c.fill();
+  } },
+};
+function drawHat(id, s, g) {
+  const h = HATS[id];
+  if (!h || id === 'none') return;
+  g = g || ctx;
+  g.save(); g.scale(s, s); h.draw(g); g.restore();
+}
+
 function drawPlayer(alpha) {
   const p = G.player;
+  const PAL = PALETTES[G.cosmetics.suit] || PALETTES.classic;
   const x = lerp(p.px, p.x, alpha) + p.w / 2;
   const y = lerp(p.py, p.y, alpha) + p.h / 2 + p.landDip;
   if (p.dead && G.deathSeq > 0.08) {
     if (G.helmet) {
       ctx.save(); ctx.translate(lerp(G.helmet.px, G.helmet.x, alpha) + p.w / 2, lerp(G.helmet.py, G.helmet.y, alpha)); ctx.rotate(lerp(G.helmet.prot, G.helmet.rot, alpha));
-      ctx.drawImage(GLOW.white, -20, -20, 40, 40);
-      ctx.fillStyle = '#F4F7FF'; ctx.beginPath(); ctx.arc(0, 0, 9, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#1479FF'; ctx.beginPath(); ctx.arc(2, 0, 5, 0, TAU); ctx.fill();
+      ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -20, 40, 40);
+      ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, 0, 9, 0, TAU); ctx.fill();
+      ctx.fillStyle = PAL.visBot; ctx.beginPath(); ctx.arc(2, 0, 5, 0, TAU); ctx.fill();
+      drawHat(G.cosmetics.hat, 9 / 11);   // welded to the detached helmet — tumbles and bounces free
       ctx.restore();
     }
     // The body stays — a playful tumble, never gruesome. Live primitives with
@@ -2589,13 +2821,13 @@ function drawPlayer(alpha) {
       ctx.scale(b.facing, 1);
       const legB = 5, legF = b.rest ? -3 : 5;   // one knee up at rest
       ctx.lineWidth = 4.5; ctx.lineCap = 'round';
-      ctx.strokeStyle = '#9FB3E0';
+      ctx.strokeStyle = PAL.legB;
       ctx.beginPath(); ctx.moveTo(4, hh - 13); ctx.lineTo(4 - legB * 0.5, hh - 1); ctx.stroke();   // back leg
-      ctx.strokeStyle = '#C6D4F5';
+      ctx.strokeStyle = PAL.legF;
       ctx.beginPath(); ctx.moveTo(-4, hh - 13); ctx.lineTo(-4 + legF * 0.5, hh - 1); ctx.stroke(); // front leg
-      ctx.fillStyle = '#FFB454'; roundRect(-hw - 1, -6, 7, 16, 3); ctx.fill();
-      ctx.fillStyle = '#F4F7FF'; roundRect(-8, -4, 16, 16, 6); ctx.fill();
-      ctx.strokeStyle = '#E4ECFF'; ctx.lineWidth = 3.5;
+      ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6, 7, 16, 3); ctx.fill();
+      ctx.fillStyle = PAL.suit; roundRect(-8, -4, 16, 16, 6); ctx.fill();
+      ctx.strokeStyle = PAL.arm; ctx.lineWidth = 3.5;
       ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(6.5, 10); ctx.stroke();                       // arm thrown up
       // Bare head: tiny eyes, surprised "o" while tumbling, flat mouth at rest.
       ctx.fillStyle = '#FFD9B8'; ctx.beginPath(); ctx.arc(0, -hh + 8, 6.5, 0, TAU); ctx.fill();
@@ -2619,24 +2851,27 @@ function drawPlayer(alpha) {
   // instead of merging into one blob; back leg a touch darker for depth.
   const legSwing = p.onGround ? Math.sin(p.runCycle) * Math.min(Math.abs(p.vx) * 1.2, 6) : (p.vy < 0 ? -4 : 4);
   ctx.lineWidth = 4.5; ctx.lineCap = 'round';
-  ctx.strokeStyle = '#9FB3E0';
+  ctx.strokeStyle = PAL.legB;
   ctx.beginPath(); ctx.moveTo(4, hh - 13); ctx.lineTo(4 - legSwing * 0.5, hh - 1); ctx.stroke();   // back leg
-  ctx.strokeStyle = '#C6D4F5';
+  ctx.strokeStyle = PAL.legF;
   ctx.beginPath(); ctx.moveTo(-4, hh - 13); ctx.lineTo(-4 + legSwing * 0.5, hh - 1); ctx.stroke();  // front leg
 
-  ctx.fillStyle = '#FFB454'; roundRect(-hw - 1, -6, 7, 16, 3); ctx.fill();
-  ctx.fillStyle = '#F4F7FF'; roundRect(-8, -4, 16, 16, 6); ctx.fill();
+  ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6, 7, 16, 3); ctx.fill();
+  ctx.fillStyle = PAL.suit; roundRect(-8, -4, 16, 16, 6); ctx.fill();
 
   // Arm: a short capsule hugging the torso side — no outward spike.
-  ctx.strokeStyle = '#E4ECFF'; ctx.lineWidth = 3.5;
+  ctx.strokeStyle = PAL.arm; ctx.lineWidth = 3.5;
   const armSwing = p.onGround ? Math.sin(p.runCycle + Math.PI) * 2 : 1.5;
   ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(6.5, 6 + armSwing); ctx.stroke();
 
-  ctx.drawImage(GLOW.white, -20, -hh - 4, 40, 40);
-  ctx.fillStyle = '#F4F7FF'; ctx.beginPath(); ctx.arc(0, -hh + 8, 11, 0, TAU); ctx.fill();
-  ctx.fillStyle = visorGrad; ctx.beginPath(); ctx.ellipse(1, -hh + 8, 7.5, 6.5, 0, 0, TAU); ctx.fill();
+  ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -hh - 4, 40, 40);
+  ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, -hh + 8, 11, 0, TAU); ctx.fill();
+  ctx.fillStyle = suitVisor(G.cosmetics.suit); ctx.beginPath(); ctx.ellipse(1, -hh + 8, 7.5, 6.5, 0, 0, TAU); ctx.fill();
   const glx = Math.sin(p.glint * 1.2) * 3;
   ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(glx - 2, -hh + 5, 2, 3, -0.4, 0, TAU); ctx.fill();
+  // Hat rides inside the same transform — it inherits facing flip and squash
+  // (the beanie squashes on landing for free).
+  ctx.save(); ctx.translate(0, -hh + 8); drawHat(G.cosmetics.hat, 1); ctx.restore();
   ctx.restore();
 }
 
@@ -2691,25 +2926,36 @@ function drawHUD() {
   const us = clamp(view.w / 560, 0.72, 1);          // shrink HUD on narrow (portrait) views
   const top = 12 + safeInset('top'), left = 12 + safeInset('left');
 
-  // pause button — enclosed rounded square so it reads as tappable, not as
-  // part of the odometer; hidden once the player is dead (nothing to pause).
+  // pause + mute cluster — enclosed rounded squares so they read as tappable,
+  // not as part of the odometer; hidden once the player is dead (the death
+  // sequence and restart tap own the screen).
   const dead = G.player && G.player.dead;
   const ps = 30 * us;
+  const pitch = Math.max(48 * view.w / window.innerWidth, ps + 10 * us);   // ≥48 CSS px between square origins
+  const bt = top - 4 * us;
   if (!dead) {
     ctx.fillStyle = 'rgba(10,14,32,0.72)';
-    roundRect(left, top - 4 * us, ps, ps, 8 * us); ctx.fill();
+    roundRect(left, bt, ps, ps, 8 * us); ctx.fill();
     ctx.strokeStyle = 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
-    const bw = 3.5 * us, bh = 13 * us, bx = left + ps / 2 - bw - 2 * us, by = top - 4 * us + (ps - bh) / 2;
+    const bw = 3.5 * us, bh = 13 * us, bx = left + ps / 2 - bw - 2 * us, by = bt + (ps - bh) / 2;
     ctx.fillStyle = '#CFE3FF';
     ctx.fillRect(bx, by, bw, bh); ctx.fillRect(bx + bw + 4 * us, by, bw, bh);
+    drawMuteButton(left + pitch, bt, ps, us);
   }
-  G._pauseHit = dead ? null : {
-    x0: (left - 8) / view.w * window.innerWidth, x1: (left + ps + 10) / view.w * window.innerWidth,
-    y0: (top - 12) / view.h * window.innerHeight, y1: (top + ps + 8) / view.h * window.innerHeight,
-  };
+  // Hit rects in CSS px, padded to ≥44×44 and clamped at the midline between
+  // the two squares — the nearest button always wins, neither steals a tap.
+  if (dead) { G._pauseHit = null; G._muteHit = null; }
+  else {
+    const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+    const half = Math.max(ps * kx / 2 + 8, 22), yh = Math.max(ps * ky / 2 + 8, 22);
+    const cy = (bt + ps / 2) * ky, mid = (left + (pitch + ps) / 2) * kx;
+    const pc = (left + ps / 2) * kx, mc = (left + pitch + ps / 2) * kx;
+    G._pauseHit = { x0: pc - half, x1: Math.min(pc + half, mid), y0: cy - yh, y1: cy + yh };
+    G._muteHit = { x0: Math.max(mc - half, mid), x1: mc + half, y0: cy - yh, y1: cy + yh };
+  }
 
-  // odometer + score, indented past the pause button
-  const ox = left + (dead ? 0 : ps + 14 * us);
+  // odometer + score, indented past the button cluster
+  const ox = left + (dead ? 0 : pitch + ps + 8 * us);
   ctx.textAlign = 'left';
   drawGlowText(Math.floor(G.dist) + 'm', ox, top + 15 * us, 20 * us, '#38E1FF', '#F4F7FF');
   drawGlowText(String(Math.floor(G.dispScore)).padStart(5, '0'), ox, top + 34 * us, 13 * us, '#38E1FF', '#CFE3FF');
@@ -2743,6 +2989,34 @@ function drawHUD() {
   if (G.shards > 0) {
     ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'right';
     ctx.fillText('✦ ' + G.shards, view.w - left, top + 42 * us);
+  }
+}
+function drawMuteButton(x, y, s, us) {
+  const muted = settings.muted;
+  ctx.fillStyle = 'rgba(10,14,32,0.72)';
+  roundRect(x, y, s, s, 8 * us); ctx.fill();
+  ctx.strokeStyle = muted ? 'rgba(56,225,255,.18)' : 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+  const cx = x + s / 2 - 2.5 * us, cy = y + s / 2;   // glyph sits left of center; waves fill the right
+  ctx.fillStyle = muted ? 'rgba(207,227,255,.45)' : '#CFE3FF';
+  ctx.fillRect(cx - 5 * us, cy - 3 * us, 3.5 * us, 6 * us);
+  ctx.beginPath();
+  ctx.moveTo(cx - 1.5 * us, cy - 3 * us); ctx.lineTo(cx + 2.5 * us, cy - 6.5 * us);
+  ctx.lineTo(cx + 2.5 * us, cy + 6.5 * us); ctx.lineTo(cx - 1.5 * us, cy + 3 * us);
+  ctx.closePath(); ctx.fill();
+  if (!muted) {
+    ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1.5 * us;
+    ctx.beginPath(); ctx.arc(cx + 3 * us, cy, 4 * us, -0.85, 0.85); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx + 3 * us, cy, 7 * us, -0.85, 0.85); ctx.stroke();
+  } else {
+    ctx.strokeStyle = 'rgba(207,227,255,.7)'; ctx.lineWidth = 1.8 * us;
+    ctx.beginPath(); ctx.moveTo(x + 7 * us, y + s - 7 * us); ctx.lineTo(x + s - 7 * us, y + 7 * us); ctx.stroke();
+  }
+  if (input.muteHold && !input.muteHold.fired) {   // long-press progress ring (1 px, plain stroke)
+    const p = clamp((performance.now() - input.muteHold.t) / 400, 0, 1);
+    if (p > 0.08) {
+      ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x + s / 2, y + s / 2, s * 0.72, -Math.PI / 2, -Math.PI / 2 + p * TAU); ctx.stroke();
+    }
   }
 }
 function drawGlowText(text, x, y, size, glow, fill) {
@@ -2839,7 +3113,7 @@ function drawTouchControls() {
    24. OVERLAYS / SCREENS
    ------------------------------------------------------------------------- */
 const $ = (id) => document.getElementById(id);
-function hideAllOverlays() { ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials'].forEach((id) => $(id).classList.remove('show')); }
+function hideAllOverlays() { ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe'].forEach((id) => $(id).classList.remove('show')); G.wardrobeOpen = false; }
 function showOverlay(id) { $(id).classList.add('show'); }
 
 function medalGlyphs() {
@@ -2858,6 +3132,7 @@ function showAttract() {
   $('attractBest').textContent = 'BEST ' + bestScore.toLocaleString();
   $('attractMedals').innerHTML = medalGlyphs();
   $('attractStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m · BEST CHAIN ×${stats.bestChain}`;
+  updateWardrobeBadge();
   showOverlay('ovAttract');
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
   G.mode = 'attract';
@@ -2867,7 +3142,7 @@ function togglePause() {
   if (G.mode === 'play') {
     if (G.player && G.player.dead) return;     // death sequence owns the screen
     clearInput();
-    G.mode = 'pause'; syncSwitches(); showOverlay('ovPause');
+    G.mode = 'pause'; syncSettingsUI(); showOverlay('ovPause');
     Audio.musicEvent('pause');
   } else if (G.mode === 'pause') {
     hideAllOverlays(); Audio.resume(); clearInput();
@@ -2884,7 +3159,7 @@ function showDeathCard() {
   G.trauma = Math.min(G.trauma, 0.3);   // rumble can't outlast the card
   finalizeDeath();
   G.mode = 'dead'; G.deadShownAt = G.time;
-  if (settings.sfx && G.runMedal) setTimeout(() => Audio.sfx.medal(G.runMedal.name === 'BRONZE' ? 1 : G.runMedal.name === 'SILVER' ? 2 : 3), 300);
+  if (settings.sfx && !settings.muted && G.runMedal) setTimeout(() => Audio.sfx.medal(G.runMedal.name === 'BRONZE' ? 1 : G.runMedal.name === 'SILVER' ? 2 : 3), 300);
   if (G.showPicker) { showInitials(); return; }   // only a full-table crack blocks; else auto-committed
   renderDeathCard();
 }
@@ -2898,6 +3173,12 @@ function renderDeathCard() {
   else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
   const missionMark = G.mission && G.mission.done ? ' · MISSION ✓' : '';
   $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
+  // Passive unlock line — plain text, nothing focusable, restart tap untouched.
+  const du = $('deadUnlock');
+  if (G.newCosmetics.length) {
+    du.textContent = 'UNLOCKED: ' + G.newCosmetics.map(cosmeticName).join(' · ') + ' ✦ SUIT UP';
+    du.style.display = 'block';
+  } else du.style.display = 'none';
   renderScoreTable('deadScores', true);
   const chip = $('installChip');
   if (deferredPrompt && !flags.installDismissed && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
@@ -2934,6 +3215,7 @@ function commitInitials() {
   // The entry was auto-committed in finalizeDeath; the picker only renames it.
   flags.initials = initialsChars.join('');
   if (justAdded) justAdded.initials = flags.initials;
+  if (justAdded && top5[0] === justAdded) unlockCosmetic('crown');   // #1 held under your own initials
   persistAll();
   renderDeathCard();
 }
@@ -2945,33 +3227,182 @@ function showTrophy() {
   showOverlay('ovTrophy');
 }
 
+/* ---- wardrobe: suits, hats, unlocks ---- */
+const SUIT_ORDER = ['classic', 'mint', 'rose', 'gold', 'lilac', 'coral', 'aurora', 'graphite'];
+const HAT_ORDER = ['none', 'antenna', 'sprout', 'beanie', 'halo', 'crown', 'cone', 'catears', 'phones'];
+const UNLOCK_HINTS = {
+  rose: 'REACH A 750m BEST', gold: 'EARN A GOLD MEDAL', coral: 'SKIM THE FLARE FOR 3 SECONDS',
+  lilac: '10 RUNS PAST 600m', aurora: 'COMPLETE 5 MISSIONS', graphite: 'REACH LAST LIGHT',
+  sprout: 'PLAY ON 5 DIFFERENT DAYS', beanie: 'FINISH 25 RUNS', halo: '3 NEW BESTS IN A ROW',
+  crown: 'HOLD 1ST PLACE WITH YOUR INITIALS', cone: 'SPOT THE SAUCER 3 TIMES',
+  catears: 'STARGAZE A WHILE', phones: 'SURVIVE ONE FULL SONG',
+};
+function cosmeticName(id) { return (PALETTES[id] || HATS[id] || { name: id }).name; }
+function unlockCosmetic(id) {
+  if (SHOT || G.cosmetics.unlocked.indexOf(id) >= 0) return;   // QA bots never mutate the profile
+  G.cosmetics.unlocked.push(id);
+  G.newCosmetics.push(id);
+  persistAll();
+  updateWardrobeBadge();
+}
+// Runs in finalizeDeath before renderDeathCard; attract-only checks (catears)
+// live in the attract update branch. Mid-run unlocks queue silently by design.
+function checkUnlocks() {
+  if (SHOT) return;
+  if (stats.bestDist >= 750) unlockCosmetic('rose');
+  if ((stats.medals.GOLD || 0) + (stats.medals.PLATINUM || 0) > 0) unlockCosmetic('gold');
+  if (G.flareFlirt) unlockCosmetic('coral');
+  if ((stats.deepRuns || 0) >= 10) unlockCosmetic('lilac');
+  if ((stats.missionsDone || 0) >= 5) unlockCosmetic('aurora');
+  if (stats.bestDist >= 2500) unlockCosmetic('graphite');
+  if ((flags.playDays || []).length >= 5) unlockCosmetic('sprout');
+  if (stats.runs >= 25) unlockCosmetic('beanie');
+  if ((flags.bestStreak || 0) >= 3) unlockCosmetic('halo');
+  if ((flags.ufoSeen || 0) >= 3) unlockCosmetic('cone');
+  if (Audio.loopsCompleted >= 1) unlockCosmetic('phones');   // one full form without dying
+}
+function updateWardrobeBadge() {
+  $('btnWardrobe').innerHTML = G.newCosmetics.length ? 'Suit Up <span style="color:var(--gold)">✦</span>' : 'Suit Up';
+}
+function hatThumb(id) {   // painted by drawHat itself — a thumbnail can never drift
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const c = makeCanvas(36 * dpr, 36 * dpr);
+  c.style.width = c.style.height = '36px';
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr);
+  g.translate(18, id === 'phones' ? 20 : 35);   // phones wraps the helmet center; the rest sit above it
+  drawHat(id, id === 'phones' ? 1.2 : 1.6, g);
+  return c;
+}
+function wardItem(id, cls, sel, apply) {
+  const b = document.createElement('button');
+  b.className = cls + (sel ? ' sel' : '');
+  const locked = G.cosmetics.unlocked.indexOf(id) < 0;
+  if (locked) {
+    b.classList.add('locked');
+    const lk = document.createElement('span'); lk.className = 'lock'; lk.textContent = '🔒';
+    b.appendChild(lk);
+    b.setAttribute('aria-label', cosmeticName(id) + ' locked');
+    b.onclick = () => { $('wardHint').textContent = cosmeticName(id) + ' — ' + (UNLOCK_HINTS[id] || '?'); Audio.sfx.ui(1); };
+  } else {
+    b.setAttribute('aria-label', cosmeticName(id));
+    b.onclick = () => { apply(); $('wardHint').textContent = ''; Audio.sfx.ui(3); persistAll(); buildWardrobe(); };
+  }
+  return b;
+}
+function buildWardrobe() {
+  const suits = $('suitRow'), hats = $('hatRow');
+  suits.innerHTML = ''; hats.innerHTML = '';
+  for (const id of SUIT_ORDER) {
+    const b = wardItem(id, 'swatch', G.cosmetics.suit === id, () => { G.cosmetics.suit = id; refreshFaviconSkin(); });
+    b.style.background = PALETTES[id].suit;
+    suits.appendChild(b);
+  }
+  for (const id of HAT_ORDER) {
+    const b = wardItem(id, 'hat-tile', G.cosmetics.hat === id, () => { G.cosmetics.hat = id; refreshFaviconSkin(); });
+    b.insertBefore(hatThumb(id), b.firstChild);
+    hats.appendChild(b);
+  }
+  $('suitName').textContent = cosmeticName(G.cosmetics.suit);
+  $('hatName').textContent = cosmeticName(G.cosmetics.hat);
+}
+function showWardrobe() {   // G.mode stays 'attract': the live idle scene IS the preview
+  G.newCosmetics.length = 0;
+  updateWardrobeBadge();
+  $('wardHint').textContent = '';
+  buildWardrobe();
+  hideAllOverlays(); showOverlay('ovWardrobe');
+  G.wardrobePanelTop = $('ovWardrobe').firstElementChild.getBoundingClientRect().top;   // one sync measure
+  G.wardrobeOpen = true;
+}
+
 /* ---- settings ---- */
-function syncSwitches() {
-  [['swMusic', 'music'], ['swSfx', 'sfx'], ['swHaptics', 'haptics'], ['swShake', 'shake'], ['swLeft', 'lefty'],
-    ['swMusic2', 'music'], ['swSfx2', 'sfx'], ['swHaptics2', 'haptics'], ['swShake2', 'shake'], ['swLeft2', 'lefty']]
-    .forEach(([id, key]) => {
-      const el = $(id); if (!el) return;
+// One definition, two hosts (ovPause + ovSettings): rows can never drift apart.
+const SETTINGS_DEF = [
+  { key: 'music', type: 'switch', label: 'Music' },
+  { key: 'musicVol', type: 'slider', label: 'Music volume', dependsOn: 'music' },
+  { key: 'sfx', type: 'switch', label: 'Sound FX' },
+  { key: 'sfxVol', type: 'slider', label: 'SFX volume', dependsOn: 'sfx' },
+  { key: 'haptics', type: 'switch', label: 'Haptics' },
+  { key: 'shake', type: 'switch', label: 'Screen shake' },
+  { key: 'lefty', type: 'switch', label: 'Left-handed' },
+];
+function buildSettings(host) {
+  for (const def of SETTINGS_DEF) {
+    const row = document.createElement('div');
+    row.className = 'toggle-row'; row.dataset.settingRow = def.key;
+    const lbl = document.createElement('span'); lbl.textContent = def.label;
+    row.appendChild(lbl);
+    if (def.type === 'switch') {
+      const b = document.createElement('button');
+      b.className = 'switch'; b.dataset.setting = def.key;
+      b.setAttribute('role', 'switch'); b.setAttribute('aria-label', def.label);
+      b.onclick = () => toggleSetting(def.key);
+      row.appendChild(b);
+    } else {
+      row.classList.add('slider-row');
+      const r = document.createElement('input');
+      r.type = 'range'; r.min = 0; r.max = 100; r.step = 5;
+      r.dataset.setting = def.key; r.setAttribute('aria-label', def.label);
+      const pct = document.createElement('span'); pct.className = 'pct';
+      // input = live (heard while dragging); change = the single LS write per drag
+      r.oninput = () => { settings[def.key] = r.valueAsNumber / 100; Audio.syncChannels(); syncSettingsUI(); };
+      r.onchange = () => persistAll();
+      row.appendChild(r); row.appendChild(pct);
+    }
+    host.appendChild(row);
+  }
+}
+function syncSettingsUI() {
+  document.querySelectorAll('[data-setting]').forEach((el) => {
+    const key = el.dataset.setting;
+    if (el.classList.contains('switch')) {
       el.classList.toggle('on', !!settings[key]); el.setAttribute('aria-checked', String(!!settings[key]));
-    });
+    } else {
+      const v = Math.round(settings[key] * 100);
+      el.value = v; el.style.setProperty('--fill', v + '%');
+      el.nextElementSibling.textContent = v + '%';
+    }
+  });
+  document.querySelectorAll('[data-setting-row]').forEach((row) => {
+    const def = SETTINGS_DEF.find((d) => d.key === row.dataset.settingRow);
+    if (def && def.dependsOn) row.classList.toggle('dim', !settings[def.dependsOn]);
+  });
 }
 function toggleSetting(key) {
   settings[key] = !settings[key];
   if (key === 'music' || key === 'sfx') Audio.syncChannels();
-  syncSwitches(); persistAll();
+  syncSettingsUI(); persistAll();
 }
-function toggleAudio() {
-  const turnOn = !settings.music && !settings.sfx;
-  settings.music = turnOn; settings.sfx = turnOn;
-  Audio.syncChannels(); syncSwitches(); persistAll();
+// Master quick-mute: non-destructive flag over the music/sfx mix (icon + M key).
+// Deliberately NOT a panel switch — the panel shows the underlying mix instead.
+function toggleMute() {
+  settings.muted = !settings.muted;
+  Audio.syncChannels(); persistAll();
+  announce(settings.muted ? 'Audio muted' : 'Audio on');
 }
+function announce(msg) { const el = $('srAnnounce'); if (el) el.textContent = msg; }
+// Settings opens only over attract or pause (sim never ticks under it) and
+// closes back to where it came from — never auto-resuming a run.
+let settingsFrom = 'attract';
+function openSettings(from) {
+  settingsFrom = from || 'attract';
+  // Wardrobe is never reachable from pause — the restart path stays sacred.
+  $('btnWardrobe2').style.display = settingsFrom === 'pause' ? 'none' : '';
+  syncSettingsUI(); hideAllOverlays(); showOverlay('ovSettings');
+}
+function reopenPause() { hideAllOverlays(); syncSettingsUI(); showOverlay('ovPause'); }
 
 /* ---------------------------------------------------------------------------
    25. UI WIRING
    ------------------------------------------------------------------------- */
 $('btnPlay').onclick = () => { Audio.ensure(); Audio.resume(); startRun(); };
 $('btnTrophy').onclick = () => { Audio.ensure(); hideAllOverlays(); showTrophy(); };
-$('btnSettings').onclick = () => { syncSwitches(); hideAllOverlays(); showOverlay('ovSettings'); };
-$('btnCloseSettings').onclick = () => showAttract();
+$('btnSettings').onclick = () => openSettings('attract');
+$('btnWardrobe').onclick = () => { Audio.ensure(); showWardrobe(); };
+$('btnWardrobe2').onclick = () => showWardrobe();
+$('btnWardrobeDone').onclick = () => showAttract();
+$('btnCloseSettings').onclick = () => (settingsFrom === 'pause' ? reopenPause() : showAttract());
 $('btnCloseTrophy').onclick = () => showAttract();
 $('btnResume').onclick = () => togglePause();
 $('btnQuit').onclick = () => {
@@ -2981,19 +3412,9 @@ $('btnQuit').onclick = () => {
 };
 $('btnAgain').onclick = () => tryRestart();
 $('btnInitialsOk').onclick = () => commitInitials();
-$('swMusic').onclick = () => toggleSetting('music');
-$('swSfx').onclick = () => toggleSetting('sfx');
-$('swHaptics').onclick = () => toggleSetting('haptics');
-$('swShake').onclick = () => toggleSetting('shake');
-$('swLeft').onclick = () => toggleSetting('lefty');
-$('swMusic2').onclick = () => toggleSetting('music');
-$('swSfx2').onclick = () => toggleSetting('sfx');
-$('swHaptics2').onclick = () => toggleSetting('haptics');
-$('swShake2').onclick = () => toggleSetting('shake');
-$('swLeft2').onclick = () => toggleSetting('lefty');
 $('btnReset').onclick = () => {
   if (!confirm('Erase all scores, stats, and settings?')) return;
-  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
   location.reload();
 };
 $('installChip').onclick = () => {
@@ -3057,9 +3478,22 @@ function botInput() {
 
 function runShot() {
   const seed = SHOT_SEED !== null ? SHOT_SEED : 42;
+  // suit=/hat= params dress the bot for cosmetic goldens (session-only, never persisted)
+  if (HASH.suit && PALETTES[HASH.suit]) G.cosmetics.suit = HASH.suit;
+  if (HASH.hat && HATS[HASH.hat]) G.cosmetics.hat = HASH.hat;
   resetRun(seed);
-  G.mode = 'play'; hideAllOverlays();
   const el = $('errlog'); el.classList.add('show'); el.textContent = window.__errors.join('\n');
+  if (SHOT === 'wardrobe') {   // deterministic wardrobe scene over the idle attract hero
+    G.mode = 'attract'; hideAllOverlays();
+    for (let i = 0; i < 40; i++) update();
+    showWardrobe();
+    el.textContent = window.__errors.join('\n');
+    G.trauma = 0; G.kickX = 0; G.kickY = 0;
+    render(1);
+    shotFrozen = true; lastT = 0; rafId = requestAnimationFrame(frame);
+    return;
+  }
+  G.mode = 'play'; hideAllOverlays();
   if (FORCE_TOUCH) input.usingTouch = true;
   for (let i = 0; i < SHOT_FRAMES; i++) {
     if (G.player.dead) break;
@@ -3079,7 +3513,7 @@ function runShot() {
     G.mode = 'dead'; G.qualifies = false;
     renderDeathCard();
   } else if (SHOT === 'pause') {
-    G.mode = 'pause'; syncSwitches(); showOverlay('ovPause');
+    G.mode = 'pause'; syncSettingsUI(); showOverlay('ovPause');
   }
   el.textContent = window.__errors.join('\n');
   G.trauma = 0; G.kickX = 0; G.kickY = 0;   // G.time is frozen here — a still frame must not bake a mid-shake offset
@@ -3091,24 +3525,90 @@ function runShot() {
 /* ---------------------------------------------------------------------------
    29. LIVING FAVICON — subtle identity motion, never background churn
    ------------------------------------------------------------------------- */
+// The mark wears the wardrobe too: near-white helmet pixels multiply toward the
+// suit hex (classic = identity), and the equipped hat gets a micro-glyph.
+// FAVH pixel-verified against favicon.png: helmet ring center (16, 16.5), r 10.5.
+const FAVH = { x: 16, y: 16.5, r: 10.5 };
+let faviconRepaint = null;
+function refreshFaviconSkin() { if (faviconRepaint) faviconRepaint(); }
+function faviconHatGlyph(g) {
+  const id = G.cosmetics.hat, x = FAVH.x, t = FAVH.y - FAVH.r;   // t = helmet top row
+  if (!id || id === 'none') return;
+  if (id === 'antenna') {
+    g.fillStyle = '#C6D4F5'; g.fillRect(x - 0.5, t - 3, 1, 3);
+    g.fillStyle = '#FFC93C'; g.beginPath(); g.arc(x, t - 3.5, 1.2, 0, TAU); g.fill();
+  } else if (id === 'sprout') {
+    g.fillStyle = '#35C46B'; g.fillRect(x - 0.5, t - 3, 1, 3);
+    g.fillStyle = '#4ADE87'; g.beginPath(); g.arc(x + 1.5, t - 3.5, 1.6, 0, TAU); g.fill();
+  } else if (id === 'beanie') {
+    g.strokeStyle = '#FF6B8A'; g.lineWidth = 3;
+    g.beginPath(); g.arc(x, t + 3, 4.5, 1.15 * Math.PI, 1.85 * Math.PI); g.stroke();
+    g.fillStyle = '#FFF3F6'; g.beginPath(); g.arc(x, t - 2.5, 1.4, 0, TAU); g.fill();
+  } else if (id === 'halo') {
+    g.strokeStyle = '#FFE9A8'; g.lineWidth = 1.5;
+    g.beginPath(); g.ellipse(x, t - 2.5, 6, 1.5, 0, 0, TAU); g.stroke();
+  } else if (id === 'crown') {
+    g.fillStyle = '#FFC93C';
+    for (const dx of [-3.5, 0, 3.5]) g.fillRect(x + dx - 0.5, t - 3, 1.4, 2.6);
+  } else if (id === 'cone') {
+    g.fillStyle = '#B87BFF'; g.beginPath();
+    g.moveTo(x - 3, t + 1); g.lineTo(x + 3, t + 1); g.lineTo(x, t - 5); g.closePath(); g.fill();
+    g.fillStyle = '#FFC93C'; g.beginPath(); g.arc(x, t - 5, 1.2, 0, TAU); g.fill();
+  } else if (id === 'catears') {
+    g.fillStyle = palNow().suit;
+    for (const m of [-1, 1]) {
+      g.beginPath(); g.moveTo(x + m * 7, t + 2); g.lineTo(x + m * 3, t + 1); g.lineTo(x + m * 6, t - 2.5); g.closePath(); g.fill();
+    }
+  } else if (id === 'phones') {
+    g.fillStyle = '#1479FF';
+    g.fillRect(FAVH.x - FAVH.r - 2, FAVH.y - 1.5, 2, 3); g.fillRect(FAVH.x + FAVH.r, FAVH.y - 1.5, 2, 3);
+  }
+}
 function setupAnimatedFavicon() {
   const link = document.getElementById('faviconLink');
-  if (!link || prefersLessMotion) return;
+  // SHOT never touches the tab icon; reduced motion keeps the static file.
+  if (!link || prefersLessMotion || SHOT) return;
   const icon = new Image(); icon.src = 'favicon.png';
   icon.onload = () => {
     const c = document.createElement('canvas'); c.width = c.height = 32;
-    const g = c.getContext('2d'); let phase = 0;
-    const paint = () => {
-      if (document.hidden) return;
-      if (G.mode === 'play' || G.mode === 'resume') return;   // toDataURL hitches the run; identity motion belongs to attract/pause/dead
-      g.clearRect(0, 0, 32, 32); g.drawImage(icon, 0, 0, 32, 32);
-      phase = (phase + 1) % 8;
-      const a = phase / 8 * TAU, x = 16 + Math.cos(a) * 13, y = 16 + Math.sin(a) * 13;
-      g.fillStyle = G.mission && G.mission.done ? '#9FF1FF' : '#FFC93C';
-      g.globalAlpha = .55 + (phase % 2) * .35;
-      g.beginPath(); g.arc(x, y, phase % 2 ? 1.4 : .8, 0, TAU); g.fill(); g.globalAlpha = 1;
-      link.href = c.toDataURL('image/png');
+    const g = c.getContext('2d');
+    let phase = 0, broken = false, tinted = null, tintFor = '';
+    const tint = () => {   // once per suit change: multiply near-white pixels by the suit hex
+      const id = G.cosmetics.suit;
+      if (tinted && tintFor === id) return;
+      const tc = makeCanvas(32, 32), tg = tc.getContext('2d');
+      tg.drawImage(icon, 0, 0, 32, 32);
+      if (id !== 'classic' && PALETTES[id]) {
+        const im = tg.getImageData(0, 0, 32, 32), d = im.data, s = PALETTES[id].suit;
+        const kr = parseInt(s.slice(1, 3), 16) / 255, kg = parseInt(s.slice(3, 5), 16) / 255, kb = parseInt(s.slice(5, 7), 16) / 255;
+        for (let i = 0; i < d.length; i += 4) {
+          const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+          if (d[i] > 200 && d[i + 1] > 200 && d[i + 2] > 200 && mx - mn < 28) { d[i] *= kr; d[i + 1] *= kg; d[i + 2] *= kb; }
+        }
+        tg.putImageData(im, 0, 0);
+      }
+      tinted = tc; tintFor = id;
     };
+    const paint = () => {
+      if (broken || document.hidden) return;
+      if (G.mode === 'play' || G.mode === 'resume') return;   // toDataURL hitches the run; identity motion belongs to attract/pause/dead
+      try {
+        tint();
+        g.clearRect(0, 0, 32, 32); g.drawImage(tinted, 0, 0);
+        faviconHatGlyph(g);
+        phase = (phase + 1) % 8;
+        const a = phase / 8 * TAU, x = 16 + Math.cos(a) * 13, y = 16 + Math.sin(a) * 13;
+        g.fillStyle = G.mission && G.mission.done ? '#9FF1FF' : '#FFC93C';
+        g.globalAlpha = .55 + (phase % 2) * .35;
+        g.beginPath(); g.arc(x, y, phase % 2 ? 1.4 : .8, 0, TAU); g.fill(); g.globalAlpha = 1;
+        link.href = c.toDataURL('image/png');
+      } catch (e) {
+        // file:// taints the canvas (getImageData/toDataURL throw) — fall back
+        // to the static icon forever and keep the errlog clean.
+        broken = true; link.href = 'favicon.png';
+      }
+    };
+    faviconRepaint = () => { tinted = null; paint(); };
     paint(); window.setInterval(paint, 900);
   };
 }
@@ -3119,7 +3619,8 @@ function setupAnimatedFavicon() {
 function boot() {
   resize();
   booted = true;
-  syncSwitches();
+  document.querySelectorAll('[data-settings-host]').forEach(buildSettings);
+  syncSettingsUI();
   Audio.syncChannels();
   setupAnimatedFavicon();
   if (SHOT) { runShot(); return; }
