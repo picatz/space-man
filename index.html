@@ -274,6 +274,36 @@
   }
   table.scores tr.me td { color: var(--gold); }
 
+  /* discovery logbook (RECORDS panel): found = full color, unfound = ? + dimmed hint */
+  #logbook {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 12px;
+    margin-top: 10px;
+    text-align: left;
+    border-top: 1px solid rgba(207, 227, 255, 0.08);
+    padding-top: 4px;
+  }
+  .log-row {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    padding: 5px 2px;
+    border-bottom: 1px solid rgba(207, 227, 255, 0.08);
+    font-size: 10px;
+    letter-spacing: 1px;
+    min-height: 28px;
+  }
+  .log-glyph { flex: 0 0 16px; text-align: center; color: var(--gold); font-size: 12px; }
+  .log-name { color: var(--suit); font-weight: 700; text-transform: uppercase; }
+  .log-row.unfound .log-glyph { color: rgba(207, 227, 255, 0.4); }
+  .log-row.unfound .log-hint { font-family: var(--font-num); color: var(--ui); opacity: 0.5; }
+  #logCount { font-family: var(--font-num); }
+  @media (max-height: 430px) {
+    #logbook { max-height: 110px; overflow-y: auto; }
+    .log-row { min-height: 22px; padding: 2px 2px; }
+  }
+
   .stats-line {
     font-size: 11px;
     letter-spacing: 1px;
@@ -429,6 +459,7 @@
     <div id="deadMedal" class="sub" style="font-size:20px;letter-spacing:4px;height:24px;"></div>
     <div id="deadDelta" class="sub" style="margin:8px 0;font-weight:700;letter-spacing:2px;"></div>
     <div id="deadStats" class="stats-line" style="opacity:0.8;"></div>
+    <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
     <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
     <table class="scores" id="deadScores"></table>
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
@@ -460,12 +491,14 @@
   </div>
 </div>
 
-<!-- Trophy / top 5 -->
+<!-- Records: top 5 → stats → discovery logbook -->
 <div class="overlay" id="ovTrophy">
   <div class="panel">
-    <div class="title-lg" style="font-size:22px;">Top Runs</div>
+    <div class="title-lg" style="font-size:22px;">Records</div>
     <table class="scores" id="trophyScores"></table>
     <div id="trophyStats" class="stats-line"></div>
+    <div id="logbook"></div>
+    <div id="logCount" class="stats-line"></div>
     <button class="btn ghost" id="btnCloseTrophy" style="margin-top:12px;">Back</button>
   </div>
 </div>
@@ -523,6 +556,9 @@ const SHOT = HASH.shot || null;                 // 'play' | 'dead' | 'pause' | n
 const SHOT_SEED = HASH.seed !== undefined ? (parseInt(HASH.seed, 10) || 0) : null;
 const SHOT_FRAMES = HASH.frames !== undefined ? (parseInt(HASH.frames, 10) || 0) : 600;
 const FORCE_TOUCH = HASH.touch == '1' || HASH.touch === true;
+// Delight pack (sky guests, postcards, quips) is cosmetic-only and never runs
+// under #shot — seeded goldens stay pixel-identical by construction.
+const DELIGHT = !SHOT;
 
 /* ---------------------------------------------------------------------------
    2. CONFIG / CURVES — every tuning constant lives here. Motion per 60Hz frame.
@@ -630,7 +666,7 @@ stats.bestScore = bestScore;
 function persistAll() {
   saveJSON(LS.settings, settings); saveJSON(LS.stats, stats);
   saveJSON(LS.flags, flags); saveJSON(LS.top5, top5); saveJSON(LS.best, bestScore);
-  saveJSON(LS.cosmetics, G.cosmetics);
+  saveJSON(LS.cosmetics, G.cosmetics); saveJSON(LS.discoveries, G.discoveries);
 }
 
 /* ---------------------------------------------------------------------------
@@ -996,6 +1032,25 @@ const Audio = (() => {
         else tone('triangle', f, f, 0.15, 0.2, sfxGain, t + i * gap);
       }
     },
+    /* ---- delight pack — every sound sits inside the current key or far outside the mix ---- */
+    discover() {   // logbook chime: degrees 5-7-9 of the moment — in key by construction
+      const t = now();
+      [5, 7, 9].forEach((d, i) => { const f = degF(d); tone('triangle', f, f, 0.14, 0.12, sfxGain, t + i * 0.09); });
+    },
+    boop() { const f = degF(1); tone('sine', f, f, 0.09, 0.12); },   // a soft hello back
+    whale() {   // 110→165 Hz under a 400 Hz lid — big, far away, gentle
+      if (!ac) return;
+      const t = now(), o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
+      o.type = 'sine'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(165, t + 1.4);
+      f.type = 'lowpass'; f.frequency.value = 400;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.3);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
+      o.connect(f); f.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 1.45);
+    },
+    silk() { tone('triangle', 660, 660, 0.08, 0.07); },
+    chirp() { const t = now(); tone('square', 1100, 1100, 0.05, 0.08, sfxGain, t); tone('square', 1450, 1450, 0.05, 0.08, sfxGain, t + 0.07); },
+    zip() { tone('sine', 900, 1500, 0.25, 0.08); },              // tickled saucer wheee
+    beep(t0) { const t = t0 || now(); tone('square', 1250, 1250, 0.03, 0.06, sfxGain, t); tone('square', 1250, 1250, 0.03, 0.06, sfxGain, t + 0.25); },
   };
   function deathJingle(newBest, pitch) {
     if (!ac) return;
@@ -1283,12 +1338,12 @@ function pollGamepad() {
     for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
   }
   if (!gp) {
-    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; document.body.classList.remove('gamepad-active'); systemToast('CONTROLLER DISCONNECTED'); }
+    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
     return;
   }
   if (!input.pad.connected) {
     input.pad.connected = true; input.pad.prev = []; document.body.classList.add('gamepad-active');
-    systemToast('CONTROLLER READY');
+    queueToast('CONTROLLER READY', 'sys');
   }
   const pressed = (i) => gamepadButton(gp, i);
   const just = (i) => pressed(i) && !input.pad.prev[i];
@@ -1443,12 +1498,69 @@ function updateParticles() {
 }
 
 /* ---------------------------------------------------------------------------
-   11. FLOATING SCORE POPUPS
+   11. FLOATING SCORE POPUPS + TOAST QUEUE + DISCOVERIES
    ------------------------------------------------------------------------- */
 const popups = [];
 function popup(x, y, text, color) { popups.push({ x, y, text, color: color || '#fff', life: 42, max: 42 }); if (popups.length > 24) popups.shift(); }
 function updatePopups() { for (let i = popups.length - 1; i >= 0; i--) { const p = popups[i]; p.life--; p.y -= 0.6; if (p.life <= 0) popups.splice(i, 1); } }
-function systemToast(text) { G.toast = text; G.toastT = 2.4; }
+
+// ONE canvas toast queue — never DOM, never a tap target. 'sys' keeps the
+// controller-toast look; 'gold' (discoveries, unlocks) waits for a calm beat
+// and is fully suppressed once the death card owns the screen.
+const toastQ = [];
+function queueToast(text, style, glyph) {
+  toastQ.push({ text, style: style || 'sys', glyph });
+  if (toastQ.length > 6) toastQ.shift();
+}
+// Calm gate: gold moments only land when nothing is chasing, exploding, or celebrating.
+function calm() {
+  return G.mode === 'play' && !G.player.dead && G.freeze === 0 && G.slowTimer <= 0
+    && (G.player.x - G.flare.x) > 520 && G.stinger <= 0 && G.celebrate <= 0;
+}
+
+// Logbook registry — 10 entries, persisted as ids in sm2.discoveries (cap 64).
+const DISCOVERIES = [
+  { id: 'wave',   name: 'HELLO OUT THERE', glyph: '✋', hint: 'the space man gets lonely.' },
+  { id: 'whale',  name: 'THE TRAVELER',    glyph: '☽', hint: 'something big swims between the stars.' },
+  { id: 'moon',   name: 'MOON MAIL',       glyph: '☾', hint: 'a postcard from 500m out.' },
+  { id: 'mars',   name: 'RED NEIGHBOR',    glyph: '♂', hint: 'a postcard from 1200m out.' },
+  { id: 'saturn', name: 'RING ROUTE',      glyph: '♄', hint: 'a postcard from 2500m out.' },
+  { id: 'ufo',    name: 'CLOSE ENCOUNTER', glyph: '◉', hint: 'someone up there is shy.' },
+  { id: 'silk',   name: 'SILK LANDINGS',   glyph: '❋', hint: 'touch down like a feather. thrice.' },
+  { id: 'loop',   name: 'BEST FRIEND',     glyph: '✦', hint: 'make your buddy proud.' },
+  { id: 'sat',    name: 'LITTLE BEEPER',   glyph: '✧', hint: 'beep… beep…' },
+  { id: 'lucky',  name: 'LUCKY STAR',      glyph: '★', hint: 'one in a very many is golden.' },
+];
+const found = (id) => G.discoveries.indexOf(id) >= 0;
+function discover(id, toastText, glyph) {   // idempotent; entry persists even if the toast never lands
+  const d = DISCOVERIES.find((x) => x.id === id);
+  if (SHOT || !d || found(id)) return;
+  G.discoveries.push(id);
+  persistAll();
+  queueToast(toastText || ('★ NEW DISCOVERY — ' + d.name), 'gold', glyph);
+  Audio.sfx.discover();
+}
+// Milestone postcards — zero points; the sky is the reward.
+const POSTCARDS = {
+  moon:   { m: 500,  text: 'YOU PASSED THE MOON' },
+  mars:   { m: 1200, text: 'SAY HI TO MARS' },
+  saturn: { m: 2500, text: 'POSTCARD FROM SATURN' },
+};
+// Words of comfort — seasoning, not a collectible. Non-best deaths only.
+const QUIPS = [
+  'the stars will keep your spot', 'gravity: 1 · space man: 0',
+  'even comets take breaks', 'the moon saw that. it was cool',
+  'space is mostly practice', 'your helmet rolled somewhere nice',
+  'the flare says good game', 'stars applaud quietly',
+];
+// Ring/spark bursts for delight moments draw on the decor stream — the seeded
+// worldgen rng is never consumed by delight code.
+function decorBurst(x, y, n, spd, life, size, color, kind) {
+  for (let i = 0; i < n; i++) {
+    const a = G.decorRng() * TAU, s = spd * (0.4 + G.decorRng() * 0.6);
+    spawnP(x, y, Math.cos(a) * s, Math.sin(a) * s, life * (0.7 + G.decorRng() * 0.6), size, color, 0, false, kind || 0);
+  }
+}
 
 /* ---------------------------------------------------------------------------
    12. GAME STATE
@@ -1473,8 +1585,11 @@ const G = {
   crackle: 0, deadShownAt: 0, runMedal: null, qualifies: false,
   mission: null, shards: 0, shardStreak: 0, bigAir: 0, companion: null,
   ufo: null, ufoTimer: 0, milestone: 0,
-  toast: '', toastT: 0,
+  toast: '', toastT: 0, toastMax: 2.4, toastStyle: 'sys', toastGlyph: null,
   cosmetics: migratedSave.cosmetics, newCosmetics: [],
+  discoveries: migratedSave.discoveries,
+  decorRng: mulberry32(1), whale: null, whalePending: false, sat: null, satPending: false,
+  wave: 0, waveIn: 20, silkStreak: 0, quip: null,
   flareFlirtT: 0, flareFlirt: false, wardrobeOpen: false,
 };
 
@@ -1656,6 +1771,14 @@ function resetRun(seed) {
   G.body = null; G.kickX = 0; G.kickY = 0; G.kickAt = -9; G.deathFocus = null;
   G.shards = 0; G.shardStreak = 0; G.bigAir = 0; G.companion = null; G.ufo = null; G.ufoTimer = rnd(18, 35); G.milestone = 0;
   G.flareFlirtT = 0; G.flareFlirt = false;
+  // Decor stream: seeded apart from worldgen so sky guests can never fork a run.
+  // Rolls are drawn here unconditionally (deterministic); DELIGHT gates behavior.
+  G.decorRng = mulberry32(((seed >>> 0) ^ 0x5EED) >>> 0);
+  G.whale = null; G.sat = null; G.silkStreak = 0; G.quip = null;
+  G.whalePending = G.decorRng() < 0.15;                                // one traveler per lucky run
+  G.satPending = !G.whalePending && G.decorRng() < 0.18;               // the beeper covers whale-less skies
+  G.wave = 0; G.waveIn = 14 + G.decorRng() * 8;
+  toastQ.length = 0; G.toastT = 0;
   const missionSeed = MISSIONS[(rng() * MISSIONS.length) | 0];
   G.mission = { kind: missionSeed.kind, target: missionSeed.target, label: missionSeed.label, progress: 0, done: false };
   G.attractBase = undefined;
@@ -1776,7 +1899,22 @@ function updatePlayer() {
         if (impact > 11) G.trauma = Math.max(G.trauma, 0.12);   // heavy landing = smooth thud, not jitter
         burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, palNow().trailHot, 0.08, 0);
         if (G.mode === 'play') { Audio.sfx.land(impact); if (impact > 9) buzz('light'); }
-        if (G.chain > 0) G.chain = 0;   // landing banks the chain (best already recorded per kill)
+        if (DELIGHT && G.mode === 'play') {
+          // silk landings: three feather touches in a row (impact < 6, no death between)
+          if (impact < 6) {
+            if (++G.silkStreak >= 3) {
+              G.silkStreak = 0;
+              decorBurst(p.x + p.w / 2, p.y + p.h, 8, 2, 20, 2, 'rgba(159,241,255,.8)', 3);
+              popup(p.x, p.y - 22, 'silky', '#9FF1FF');
+              Audio.sfx.silk(); discover('silk');
+            }
+          } else G.silkStreak = 0;
+        }
+        if (G.chain > 0) {
+          // best friend: banking a ×4 chain sends the companion on a victory loop
+          if (DELIGHT && G.chain >= 2 && G.companion) { G.companion.loopT = 0.8; Audio.sfx.chirp(); discover('loop'); }
+          G.chain = 0;   // landing banks the chain (best already recorded per kill)
+        }
         const flight = Math.abs(p.x - p.jumpStartX);
         const gapCleared = p.jumpPlat ? Math.max(0, landed.x - (p.jumpPlat.x + p.jumpPlat.w), p.jumpPlat.x - (landed.x + landed.w)) : 0;
         if (p.airFrames > 34 && flight > 190 && gapCleared > 100) {
@@ -1917,6 +2055,7 @@ function killEnemy(e, method, interrupted) {
     popup(e.x, e.y - 30, 'LUCKY ALIEN +100', '#FFC93C');
     burst(e.x, e.y, 22, 3.4, 34, 3, 'rgba(255,201,60,.95)', .08, 2);
     Audio.sfx.medal(3, true);   // the Hop at 1.5×, in bells — golden means golden
+    discover('lucky');          // first one logs; rewards unchanged
   }
   popup(e.x, e.y - 10, '+' + pts + (mult > 1 ? ' ×' + mult : ''), method === 'stomp' ? '#4EF07A' : '#FFC93C');
   if (interrupted) { G.score += CFG.scoreInterrupt; popup(e.x, e.y - 26, '+10 STOP', '#FF9DB0'); }
@@ -2053,6 +2192,64 @@ function celebrate(text) {
   Audio.sfx.medal(3); buzz('celebrate');
 }
 
+// Delight tick — DELIGHT-gated, decorRng-driven, cosmetic-only. Reads gameplay
+// state (bullets, dist, calm), writes only decor, toasts, and the logbook.
+function updateDelight() {
+  const p = G.player;
+  // sky guests spawn at the first calm beat past their odometer marks
+  if (G.whalePending && G.dist >= 400 && calm()) {
+    G.whalePending = false;
+    G.whale = { x: G.camX * 0.12 + view.w + 220, y: 42 + G.decorRng() * 46, t: 0, seen: false, called: false };
+  }
+  if (G.satPending && G.dist >= 250 && calm()) {
+    G.satPending = false;
+    G.sat = { x: G.camX * 0.25 + view.w + 60, y: 26 + G.decorRng() * 70, rot: G.decorRng() * TAU, t: 0, seen: false, blipped: false };
+  }
+  if (G.whale) {
+    const w = G.whale; w.t += STEP; w.x -= 0.42;
+    const sx = w.x - G.camX * 0.12;
+    if (!w.seen && sx < view.w - 80) { w.seen = true; discover('whale'); }
+    if (!w.called && sx < view.w * 0.5) { w.called = true; if (calm()) Audio.sfx.whale(); }
+    if (G.frameCount % 120 === 0) for (let i = 0; i < 2; i++)   // pooled bubbles, 2 per 2 s
+      spawnP(sx + G.camX - 20 - G.decorRng() * 60, w.y + G.camY - 6, 0, -0.3 - G.decorRng() * 0.3, 50, 2, 'rgba(159,241,255,.35)', -0.004, false, 0);
+    if (sx < -260) G.whale = null;
+  }
+  if (G.sat) {
+    const s = G.sat; s.t += STEP; s.x -= 0.25; s.rot += 0.01;   // slow tumble
+    const sx = s.x - G.camX * 0.25;
+    if (!s.seen && sx < view.w - 30) { s.seen = true; discover('sat'); }
+    if (!s.blipped && sx < view.w * 0.5) { s.blipped = true; if (calm()) Audio.sfx.beep(); }
+    if (sx < -40) G.sat = null;
+  }
+  // postcards: pend at the odometer, deliver at the next calm beat — zero points
+  if (!G.milestone) for (const id in POSTCARDS) {
+    if (G.dist >= POSTCARDS[id].m && !found(id)) { G.milestone = id; break; }
+  }
+  if (G.milestone && calm()) {
+    const id = G.milestone, d = DISCOVERIES.find((x) => x.id === id);
+    G.milestone = 0;
+    discover(id, POSTCARDS[id].text, d.glyph);
+    decorBurst(p.x + p.w / 2, p.y, 10, 2.6, 26, 2.4, 'rgba(255,201,60,.85)', 3);
+  }
+  // ticklish UFO: reads bullets, writes only decor
+  if (G.ufo) {
+    const u = G.ufo, ux = u.x + G.camX, uy = u.y + Math.sin(u.phase) * 5 + G.camY;
+    if (u.tickle === undefined) {
+      for (const b of G.bullets) {
+        const dx = b.x - ux, dy = b.y - uy;
+        if (dx * dx + dy * dy < 1600) {   // within 40 px of its screen pos
+          u.tickle = 0; popup(ux, uy - 22, '!', '#9FF1FF');
+          Audio.sfx.zip(); discover('ufo'); break;
+        }
+      }
+    } else {
+      u.tickle += STEP;
+      u.vx += (-8.4 - u.vx) * 0.05;   // 3× ease-out exit
+      if (G.frameCount % 2 === 0) spawnP(ux + 14, uy, 2.5, 0, 14, 2, 'rgba(56,225,255,.7)', 0, false, 0);   // cyan streak
+    }
+  }
+}
+
 /* ---------------------------------------------------------------------------
    19. DEATH
    ------------------------------------------------------------------------- */
@@ -2087,6 +2284,8 @@ function die(cause) {
   else burst(bx, by, 14, 2.6, 60, 2.6, 'rgba(255,150,80,.9)', -0.015, 0);   // flare embers rise
   G.helmet = { x: p.x, y: p.y + 4, px: p.x, py: p.y + 4, prot: 0,
                vx: Math.sign(K.bvx || 1) * rnd(1.5, 3.5), vy: -rnd(4, 7), rot: 0, vr: rnd(-0.3, 0.3) };
+  // words of comfort: 1-in-6 non-best deaths, decor stream — the delta line never shares its card space with a lie
+  G.quip = (DELIGHT && !G.newBest && G.decorRng() < 1 / 6) ? QUIPS[(G.decorRng() * QUIPS.length) | 0] : null;
   Audio.sfx.death(G.newBest, K.pitch);
 }
 
@@ -2140,9 +2339,15 @@ function update() {
     if (G.companion) {
       const c = G.companion, p = G.player;
       c.phase += .07;
-      c.x += (p.x - p.facing * 34 - c.x) * .1;
-      c.y += (p.y + 4 + Math.sin(c.phase) * 9 - c.y) * .12;
-      if (G.frameCount % 5 === 0) spawnP(c.x, c.y, -p.facing * .4, .2, 18, 1.6, 'rgba(159,241,255,.7)', 0, false, 0);
+      let tx = p.x - p.facing * 34, ty = p.y + 4 + Math.sin(c.phase) * 9;
+      if (c.loopT > 0) {   // best-friend loop: one 40px circle over 0.8s, offset on the follow target
+        c.loopT -= STEP;
+        const a = (1 - Math.max(c.loopT, 0) / 0.8) * TAU;
+        tx += Math.sin(a) * 20; ty -= (1 - Math.cos(a)) * 20;
+      }
+      c.x += (tx - c.x) * .1;
+      c.y += (ty - c.y) * .12;
+      if (G.frameCount % (c.loopT > 0 ? 2 : 5) === 0) spawnP(c.x, c.y, -p.facing * .4, .2, 18, 1.6, 'rgba(159,241,255,.7)', 0, false, 0);
     }
     updateEnemies();
     updateBullets();
@@ -2175,6 +2380,7 @@ function update() {
     G.ufoTimer -= STEP;
     if (G.ufoTimer <= 0 && !G.ufo) { G.ufo = { x: view.w + 80, y: rnd(48, 130), vx: -2.8, phase: 0 }; flags.ufoSeen = (flags.ufoSeen || 0) + 1; }
     if (G.ufo) { G.ufo.x += G.ufo.vx; G.ufo.phase += .08; if (G.ufo.x < -100) { G.ufo = null; G.ufoTimer = rnd(28, 55); } }
+    if (DELIGHT) updateDelight();
     G.dispScore += (G.score - G.dispScore) * 0.2;
   } else if (G.mode === 'attract') {
     // Live hero scene: idle astronaut breathing on its platform, gentle parallax sway.
@@ -2188,6 +2394,10 @@ function update() {
     }
     if (p && G.frameCount % 9 === 0) spawnP(p.x - 8, p.y + 6, -rnd(0.2, 0.6), rnd(0.3, 0.9), 20, 1.6, palNow().puffDim, 0.03, false, 0);
     if (p && p.idle >= 60) unlockCosmetic('catears');   // easter egg: a patient minute of stargazing
+    if (DELIGHT && p) {   // hello out there: an unprompted wave every 14–22 s
+      if (G.wave > 0) G.wave -= STEP;
+      else if ((G.waveIn -= STEP) <= 0) { G.wave = 2; G.waveIn = 14 + G.decorRng() * 8; }
+    }
     G.starTimer += STEP;
     if (G.starTimer > 8 && !G.shootingStar) { G.starTimer = 0; G.shootingStar = { x: G.camX + view.w, y: rnd(20, 110), life: 72, vx: -11, vy: 4 }; }
     if (G.shootingStar) { G.shootingStar.x += G.shootingStar.vx; G.shootingStar.y += G.shootingStar.vy; if (--G.shootingStar.life <= 0) G.shootingStar = null; }
@@ -2238,6 +2448,13 @@ function frame(now) {
 
   if (G.mode === 'resume') { G.resumeT -= dt; if (G.resumeT <= 0) G.mode = 'play'; }
   if (G.toastT > 0) G.toastT = Math.max(0, G.toastT - dt);
+  // Toast queue: sys shows whenever; gold waits for a calm beat (or attract).
+  // Nothing dequeues once the death card owns the screen — entries persist in the logbook.
+  else if (toastQ.length && !G.deathCardShown && (toastQ[0].style !== 'gold' || G.mode === 'attract' || calm())) {
+    const t = toastQ.shift();
+    G.toast = t.text; G.toastStyle = t.style; G.toastGlyph = t.glyph || null;
+    G.toastT = G.toastMax = t.style === 'gold' ? 2.6 : 2.4;
+  }
 
   // Mute long-press (≥400 ms): pause first, then settings. A tap resolves in
   // endPointer; a death mid-hold aborts (togglePause refuses, mode stays play).
@@ -2373,19 +2590,28 @@ function render(alpha) {
     drawGlowText(String(clamp(Math.ceil(G.resumeT / 0.434), 1, 3)), view.w / 2, view.h / 2, 46, '#38E1FF', '#F4F7FF');
   }
   drawCelebration();
-  drawSystemToast();
+  drawToast();
   ctx.restore();
 }
 
-function drawSystemToast() {
-  if (G.toastT <= 0) return;
-  const a = Math.min(1, G.toastT * 3, (2.4 - G.toastT) * 5);
-  const w = 176, h = 28, x = view.w / 2 - w / 2, y = 18 + safeInset('top');
+function drawToast() {
+  if (G.toastT <= 0 || G.deathCardShown) return;   // the death card owns the screen
+  const gold = G.toastStyle === 'gold';
+  const a = Math.min(1, G.toastT * 3, (G.toastMax - G.toastT) * 5);
+  ctx.font = '700 9px ' + FONT;
+  const glyph = gold ? G.toastGlyph : null;   // postcards carry a 16px inline icon
+  const w = gold ? Math.max(176, ctx.measureText(G.toast).width + (glyph ? 52 : 26)) : 176;
+  const h = glyph ? 30 : 28, x = view.w / 2 - w / 2, y = 18 + safeInset('top');
   ctx.save(); ctx.globalAlpha = a;
   ctx.fillStyle = 'rgba(10,14,32,.88)'; roundRect(x, y, w, h, 10); ctx.fill();
-  ctx.strokeStyle = 'rgba(56,225,255,.38)'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.fillStyle = '#CFE3FF'; ctx.font = '700 9px ' + FONT; ctx.textAlign = 'center';
-  ctx.fillText(G.toast, view.w / 2, y + 18); ctx.restore();
+  ctx.strokeStyle = gold ? 'rgba(255,201,60,.55)' : 'rgba(56,225,255,.38)'; ctx.lineWidth = 1; ctx.stroke();
+  if (glyph) {
+    ctx.fillStyle = '#FFC93C'; ctx.font = '16px ' + FONT; ctx.textAlign = 'left';
+    ctx.fillText(glyph, x + 9, y + h / 2 + 6);
+    ctx.font = '700 9px ' + FONT;
+  }
+  ctx.fillStyle = gold ? '#FFE59A' : '#CFE3FF'; ctx.textAlign = 'center';
+  ctx.fillText(G.toast, view.w / 2 + (glyph ? 12 : 0), y + h / 2 + 4); ctx.restore();
 }
 
 /* ---- SPACE MAN wordmark: 900-weight canvas text, cyan-glow underlay + white fill,
@@ -2482,14 +2708,21 @@ function drawBackground(camX) {
     ctx.fillRect(x, s.y, 2, 2);
   }
   ctx.globalAlpha = 1;
+  if (G.whale) drawWhale(camX, hue);
   drawPlanet(camX);
+  if (G.sat) drawSatellite(camX);
   if (G.ufo) {
     const u = G.ufo, uy = u.y + Math.sin(u.phase) * 5;
+    const tickled = u.tickle !== undefined;
     ctx.save(); ctx.globalAlpha = .72;
+    if (tickled && u.tickle < 0.4) {   // wobble ±0.15 rad for 0.4 s — ticklish, not hurt
+      ctx.translate(u.x, uy); ctx.rotate(Math.sin(u.tickle * 45) * 0.15); ctx.translate(-u.x, -uy);
+    }
     ctx.fillStyle = 'rgba(56,225,255,.12)';
     ctx.beginPath(); ctx.moveTo(u.x - 13, uy + 5); ctx.lineTo(u.x + 13, uy + 5); ctx.lineTo(u.x + 25, uy + 36); ctx.lineTo(u.x - 25, uy + 36); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.ellipse(u.x, uy, 18, 6, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#2A2560'; ctx.beginPath(); ctx.arc(u.x, uy - 3, 7, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = tickled && u.tickle < 0.25 ? '#DDFBFF' : '#2A2560';   // dome flash
+    ctx.beginPath(); ctx.arc(u.x, uy - 3, 7, Math.PI, 0); ctx.fill();
     ctx.fillStyle = '#FFC93C'; for (const lx of [-10, 0, 10]) { ctx.beginPath(); ctx.arc(u.x + lx, uy + 2, 1.5, 0, TAU); ctx.fill(); }
     ctx.restore();
   }
@@ -2515,6 +2748,41 @@ function drawPlanet(camX) {
   if (x < -120 || x > view.w + 120) return;
   ctx.save(); ctx.globalAlpha = 0.65;
   ctx.drawImage(planetSprite, x - 80, py - 60, 160, 120);
+  ctx.restore();
+}
+/* ---- sky guests (delight): far-parallax silhouettes, plain fills only ---- */
+function drawWhale(camX, hue) {
+  const w = G.whale, sx = w.x - camX * 0.12;
+  if (sx < -140 || sx > view.w + 140) return;
+  const und = Math.sin(w.t * 1.6) * 4;              // slow whole-body undulation
+  const fl = Math.sin(w.t * Math.PI) * 9;           // flukes beat at 0.5 Hz
+  ctx.save(); ctx.translate(sx, w.y + und);
+  ctx.fillStyle = `hsla(${hue}, 48%, 68%, 0.3)`;
+  ctx.beginPath();
+  ctx.moveTo(-90, 2);                               // nose (swimming left)
+  ctx.quadraticCurveTo(-42, -26, 28, -10);          // back arc
+  ctx.quadraticCurveTo(58, -6, 80, -2);             // taper toward the tail
+  ctx.quadraticCurveTo(94, -8 - fl, 104, -14 - fl); // upper fluke
+  ctx.quadraticCurveTo(93, -1, 104, 10 + fl);       // fluke notch → lower fluke
+  ctx.quadraticCurveTo(88, 5, 78, 4);
+  ctx.quadraticCurveTo(16, 18, -90, 2);             // belly arc home
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.5)';           // eye highlight
+  ctx.beginPath(); ctx.arc(-70, -3, 1.5, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+function drawSatellite(camX) {
+  const s = G.sat, sx = s.x - camX * 0.25;
+  if (sx < -20 || sx > view.w + 20) return;
+  ctx.save(); ctx.translate(sx, s.y); ctx.globalAlpha = 0.8;
+  const blink = Math.sin(G.time * TAU) > 0.6;       // red nav light, 1 Hz
+  if (blink) ctx.drawImage(GLOW.coral, -8, -8, 16, 16);
+  ctx.rotate(s.rot);
+  ctx.fillStyle = '#38E1FF'; ctx.fillRect(-9, -2, 5, 4); ctx.fillRect(4, -2, 5, 4);   // panels
+  ctx.fillStyle = '#9FB3E0'; ctx.fillRect(-3, -3, 6, 6);                               // body
+  ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(0, -7); ctx.stroke();                 // antenna
+  if (blink) { ctx.fillStyle = '#FF4F66'; ctx.beginPath(); ctx.arc(0, -7, 1.2, 0, TAU); ctx.fill(); }
   ctx.restore();
 }
 function drawForeground(camX) {
@@ -2670,6 +2938,11 @@ function drawEnemies(camX, alpha) {
     ctx.fillStyle = e.golden ? '#FFC93C' : (tel && Math.floor(G.time * 20) % 2 ? '#8CFFB0' : '#4EF07A');
     ctx.beginPath(); ctx.ellipse(0, 0, e.w / 2, (e.h / 2) * squash, 0, Math.PI, TAU); ctx.fill();
     roundRect(-e.w / 2, -1, e.w, e.h / 2 + 2, 5); ctx.fill();
+    if (e.golden && DELIGHT) {   // lucky star wears a tiny two-triangle pixel crown
+      ctx.fillStyle = '#FFF1A8'; ctx.beginPath();
+      ctx.moveTo(-4, -e.h / 2 + 1); ctx.lineTo(-1.5, -e.h / 2 - 3); ctx.lineTo(0.5, -e.h / 2);
+      ctx.lineTo(2.5, -e.h / 2 - 3); ctx.lineTo(4.5, -e.h / 2 + 1); ctx.closePath(); ctx.fill();
+    }
     const antC = e.golden ? '#FFF1A8' : (e.type === 'shoot' ? (tel ? '#FF4F66' : '#FF8090') : '#BFFFD0');
     ctx.strokeStyle = e.golden ? '#D99B16' : '#2FBF5F'; ctx.lineWidth = 1.5;
     for (const sgn of SGN) {
@@ -2721,8 +2994,15 @@ function drawCompanion() {
   ctx.save(); ctx.translate(c.x, c.y);
   ctx.drawImage(GLOW.cyan, -24, -24, 48, 48);
   ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#F4F7FF'; ctx.beginPath(); ctx.arc(1.5, -1.5, 2.2, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#1479FF'; ctx.beginPath(); ctx.arc(2.1, -1.4, 1, 0, TAU); ctx.fill();
+  // two happy blinks during the victory loop
+  const blink = c.loopT > 0 && ((c.loopT > 0.5 && c.loopT < 0.62) || (c.loopT > 0.2 && c.loopT < 0.32));
+  if (blink) {
+    ctx.strokeStyle = '#F4F7FF'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0.2, -1.5); ctx.lineTo(3.2, -1.3); ctx.stroke();
+  } else {
+    ctx.fillStyle = '#F4F7FF'; ctx.beginPath(); ctx.arc(1.5, -1.5, 2.2, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1479FF'; ctx.beginPath(); ctx.arc(2.1, -1.4, 1, 0, TAU); ctx.fill();
+  }
   ctx.strokeStyle = 'rgba(159,241,255,.65)'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.moveTo(-5, 2); ctx.quadraticCurveTo(-13, 5 + Math.sin(c.phase) * 3, -19, 1); ctx.stroke();
   ctx.restore();
@@ -2863,9 +3143,10 @@ function drawPlayer(alpha) {
   ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6, 7, 16, 3); ctx.fill();
   ctx.fillStyle = PAL.suit; roundRect(-8, -4, 16, 16, 6); ctx.fill();
 
-  // Arm: a short capsule hugging the torso side — no outward spike.
+  // Arm: a short capsule hugging the torso side — no outward spike. G.wave > 0
+  // (attract only) lifts it into a hello.
   ctx.strokeStyle = PAL.arm; ctx.lineWidth = 3.5;
-  const armSwing = p.onGround ? Math.sin(p.runCycle + Math.PI) * 2 : 1.5;
+  const armSwing = G.wave > 0 ? Math.sin(G.time * 14) * 4 - 8 : (p.onGround ? Math.sin(p.runCycle + Math.PI) * 2 : 1.5);
   ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(6.5, 6 + armSwing); ctx.stroke();
 
   ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -hh - 4, 40, 40);
@@ -3135,7 +3416,8 @@ function showAttract() {
   $('btnPlay').textContent = matchMedia('(pointer: coarse)').matches ? 'Tap to Start' : 'Press Space';
   $('attractBest').textContent = 'BEST ' + bestScore.toLocaleString();
   $('attractMedals').innerHTML = medalGlyphs();
-  $('attractStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m · BEST CHAIN ×${stats.bestChain}`;
+  const logN = logbookCount();
+  $('attractStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m · BEST CHAIN ×${stats.bestChain}` + (logN ? ` · LOG ${logN}/${DISCOVERIES.length}` : '');
   updateWardrobeBadge();
   showOverlay('ovAttract');
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
@@ -3177,6 +3459,10 @@ function renderDeathCard() {
   else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
   const missionMark = G.mission && G.mission.done ? ' · MISSION ✓' : '';
   $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
+  // Words of comfort — plain text, never on a NEW BEST card, delta line untouched.
+  const dq = $('deadQuip');
+  if (G.quip && fs <= G.prevBest) { dq.textContent = G.quip; dq.style.display = 'block'; }
+  else dq.style.display = 'none';
   // Passive unlock line — plain text, nothing focusable, restart tap untouched.
   const du = $('deadUnlock');
   if (G.newCosmetics.length) {
@@ -3224,10 +3510,19 @@ function commitInitials() {
   renderDeathCard();
 }
 
-/* ---- trophy ---- */
+/* ---- records: top-5 → stats → discovery logbook ---- */
+function logbookCount() { return DISCOVERIES.reduce((n, d) => n + (found(d.id) ? 1 : 0), 0); }
 function showTrophy() {
   renderScoreTable('trophyScores', false);
   $('trophyStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m`;
+  let lb = '';
+  for (const d of DISCOVERIES) {
+    lb += found(d.id)
+      ? `<div class="log-row"><span class="log-glyph">${d.glyph}</span><span class="log-name">${d.name}</span></div>`
+      : `<div class="log-row unfound"><span class="log-glyph">?</span><span class="log-hint">${d.hint}</span></div>`;
+  }
+  $('logbook').innerHTML = lb;
+  $('logCount').textContent = logbookCount() + ' / ' + DISCOVERIES.length + ' FOUND';
   showOverlay('ovTrophy');
 }
 
@@ -3246,6 +3541,9 @@ function unlockCosmetic(id) {
   if (SHOT || G.cosmetics.unlocked.indexOf(id) >= 0) return;   // QA bots never mutate the profile
   G.cosmetics.unlocked.push(id);
   G.newCosmetics.push(id);
+  // Mid-run/attract unlocks toast at the next calm beat; death-time unlocks are
+  // suppressed by the card (which shows its own passive line) by construction.
+  queueToast('✦ UNLOCKED — ' + cosmeticName(id), 'gold');
   persistAll();
   updateWardrobeBadge();
 }
@@ -3428,6 +3726,17 @@ $('installChip').onclick = () => {
 $('ovDead').addEventListener('pointerdown', (e) => {
   if (e.target.closest('.btn') || e.target.closest('.install-chip')) return;
   tryRestart();
+});
+// Hello out there: tap the idle astronaut itself (44px projected circle) — the
+// attract card's buttons sit in the panel, so this can never steal one.
+$('ovAttract').addEventListener('pointerdown', (e) => {
+  if (!DELIGHT || G.mode !== 'attract' || !G.player || e.target.closest('.panel')) return;
+  const dx = e.clientX - (G.player.x + G.player.w / 2 - G.camX) * (window.innerWidth / view.w);
+  const dy = e.clientY - (G.player.y + G.player.h / 2 - G.camY) * (window.innerHeight / view.h);
+  if (dx * dx + dy * dy > 22 * 22) return;
+  Audio.ensure(); Audio.resume();
+  G.wave = 2; G.waveIn = 14 + G.decorRng() * 8;
+  Audio.sfx.boop(); discover('wave');
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); } }
