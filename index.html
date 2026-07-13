@@ -662,17 +662,19 @@ const rnd = (a, b) => a + (b - a) * rng();
 /* ---------------------------------------------------------------------------
    4. STORAGE — schema + legacy migration
    ------------------------------------------------------------------------- */
-const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries' };
+const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries', achievements: 'sm2.achievements' };
 function loadJSON(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
 function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
 const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
 const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null) });
+const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) });
 let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, autorun: true, musicVol: 1, sfxVol: 1, muted: false }, migratedSave.settings, savedSettings);
 // Raw overlay wins for switches (legacy precedence) but the mixer trio must stay sane.
 settings.musicVol = migratedSave.settings.musicVol; settings.sfxVol = migratedSave.settings.sfxVol; settings.muted = migratedSave.settings.muted;
+// Passthrough achievement dates (firstRunDate etc.) — additive v4 field, no schema bump.
+let ach = migratedSave.achievements;
 saveJSON(LS.schema, window.SpaceManSave.VERSION);
 let stats = Object.assign(
   { bestScore: 0, bestDist: 0, runs: 0, kills: 0, bestChain: 1, medals: { BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 }, deadStreak: 0, mercy: false, deepRuns: 0, missionsDone: 0 },
@@ -703,7 +705,7 @@ stats.bestScore = bestScore;
 function persistAll() {
   saveJSON(LS.settings, settings); saveJSON(LS.stats, stats);
   saveJSON(LS.flags, flags); saveJSON(LS.top5, top5); saveJSON(LS.best, bestScore);
-  saveJSON(LS.cosmetics, G.cosmetics); saveJSON(LS.discoveries, G.discoveries);
+  saveJSON(LS.cosmetics, G.cosmetics); saveJSON(LS.discoveries, G.discoveries); saveJSON(LS.achievements, ach);
 }
 
 /* ---------------------------------------------------------------------------
@@ -838,6 +840,28 @@ function suitVisor(id) {
     suitVisors[id] = g;
   }
   return suitVisors[id];
+}
+// E12: light-pistol sprites, lazy per-suit pre-renders like suitGlow. The
+// lance glow rides every player bullet; the muzzle starburst (white core →
+// suit trail color) shows two frames on fire. No blur filters anywhere.
+GLOW.lance = {}; GLOW.muzzle = {};
+function lanceGlow(id) {
+  return GLOW.lance[id] || (GLOW.lance[id] = glowSprite(10, (PALETTES[id] || PALETTES.classic).trailHot, 0.3));
+}
+function muzzleFlash(id) {
+  if (!GLOW.muzzle[id]) {
+    const P = PALETTES[id] || PALETTES.classic;
+    const c = makeCanvas(28, 28), g = c.getContext('2d');
+    g.translate(14, 14); g.strokeStyle = P.trailHot; g.lineCap = 'round';
+    for (let i = 0; i < 6; i++) {   // starburst: long/short alternating rays
+      const a = i * TAU / 6 + 0.26, r = i % 2 ? 7 : 12;
+      g.lineWidth = i % 2 ? 2 : 3;
+      g.beginPath(); g.moveTo(Math.cos(a) * 3, Math.sin(a) * 3); g.lineTo(Math.cos(a) * r, Math.sin(a) * r); g.stroke();
+    }
+    g.fillStyle = '#FFF'; g.beginPath(); g.arc(0, 0, 3.5, 0, TAU); g.fill();
+    GLOW.muzzle[id] = c;
+  }
+  return GLOW.muzzle[id];
 }
 const planetSprite = (() => {
   const c = makeCanvas(160, 120), g = c.getContext('2d');
@@ -1123,7 +1147,7 @@ const Audio = (() => {
       const t = now();
       [5, 7, 9].forEach((d, i) => { const f = degF(d); tone('triangle', f, f, 0.14, 0.12, sfxGain, t + i * 0.09); });
     },
-    boop() { const f = degF(1); tone('sine', f, f, 0.09, 0.12); },   // a soft hello back
+    boop(deg) { const f = degF(deg || 1); tone('sine', f, f, 0.09, 0.12); },   // a soft hello back (E13 arrivals pick their degree)
     whale() {   // 110→165 Hz under a 400 Hz lid — big, far away, gentle
       if (!ac) return;
       const t = now(), o = ac.createOscillator(), g = ac.createGain(), f = ac.createBiquadFilter();
@@ -1696,6 +1720,10 @@ const G = {
   discoveries: migratedSave.discoveries,
   decorRng: mulberry32(1), whale: null, whalePending: false, sat: null, satPending: false,
   wave: 0, waveIn: 20, silkStreak: 0, quip: null,
+  // E12: arms + light pistol. fireT/twirlT/holsterT/inspectIn are render
+  // choreography timers ticked on sim STEPs (wall-clock G.time is frozen in
+  // the #shot loop); pistol is the death-debris piece, settles like the helmet.
+  fireT: 0, twirlT: 0, holsterT: 0, inspectIn: 7, pistol: null,
   flareFlirtT: 0, flareFlirt: false, wardrobeOpen: false,
   // E4: the flare as a visible antagonist. threat is a slewed, render-only
   // read of the gap (never fed back into sim); glance* drives the astronaut's
@@ -1705,6 +1733,12 @@ const G = {
   // E6: sector-crossing ceremony. sectorFadeT counts up from 0 on a band-up
   // (999 = no active crossfade); themeHue* bounds the eased meta-color sweep.
   sectorFadeT: 999, themeHueFrom: BAND_HUE[0], themeHueTo: BAND_HUE[0],
+  // E13: arrival vignettes. vig is the live vignette (render-clocked), vigHold
+  // is the ONLY sim-visible bit (parks auto-run while an uncancelled vignette
+  // dresses the start — real inputs always win instantly); vigDecor is the
+  // parked rocket. vigRoll comes from its own seeded offshoot stream so the
+  // shared decor stream (threat embers) stays bytewise for goldens.
+  vig: null, vigHold: false, vigDecor: null, vigRoll: 1,
 };
 
 const MISSIONS = [
@@ -1886,12 +1920,19 @@ function resetRun(seed) {
   G.vignette = 0; G.edgePulse = 0; G.stinger = 0; G.deep1000 = false;
   G.pbPassed = false; G.helmet = null; G.starTimer = 0; G.shootingStar = null;
   G.body = null; G.kickX = 0; G.kickY = 0; G.kickAt = -9; G.deathFocus = null;
+  G.pistol = null; G.fireT = 0; G.twirlT = 0; G.holsterT = 0; G.inspectIn = 7;   // E12
   G.shards = 0; G.shardStreak = 0; G.bigAir = 0; G.companion = null; G.ufo = null; G.ufoTimer = rnd(18, 35); G.milestone = 0;
   G.flareFlirtT = 0; G.flareFlirt = false;
   // Decor stream: seeded apart from worldgen so sky guests can never fork a run.
   // Rolls are drawn here unconditionally (deterministic); DELIGHT gates behavior.
   G.decorRng = mulberry32(((seed >>> 0) ^ 0x5EED) >>> 0);
   G.whale = null; G.sat = null; G.silkStreak = 0; G.quip = null;
+  // E13: arrival roll — deterministic per seed but NOT drawn from decorRng
+  // (an extra shared-stream draw would shift every threat-ember position and
+  // break golden pixel identity). startRun applies eligibility; SHOT never
+  // reaches beginArrival at all.
+  G.vig = null; G.vigHold = false; G.vigDecor = null;
+  G.vigRoll = mulberry32(((seed >>> 0) ^ 0xA11FE) >>> 0)();
   G.whalePending = G.decorRng() < 0.15;                                // one traveler per lucky run
   G.satPending = !G.whalePending && G.decorRng() < 0.18;               // the beeper covers whale-less skies
   G.wave = 0; G.waveIn = 14 + G.decorRng() * 8;
@@ -1936,6 +1977,7 @@ function startRun() {
   clearInput();
   resetRun(seed);
   Audio.musicReset(seed);
+  beginArrival();   // E13: render-side greeting; sim ticks under it from frame 1
   G.mode = 'play'; buzz('light');
 }
 function tryRestart() {
@@ -1974,7 +2016,9 @@ function updatePlayer() {
   // E11: one-thumb play. A live stick touch overrides instantly (fine control /
   // backing off); releasing it resumes auto-run after a 0.25s cooldown, not instantly.
   if (input.stick.cooldown > 0) input.stick.cooldown = Math.max(0, input.stick.cooldown - STEP);
-  if (input.usingTouch && settings.autorun && !input.stick.active && input.stick.cooldown <= 0) ix = 1;
+  // E13: an uncancelled arrival parks the assist only — any real input (stick,
+  // jump, fire, keys, pad) still lands this same tick and cancels the vignette.
+  if (input.usingTouch && settings.autorun && !input.stick.active && input.stick.cooldown <= 0 && !G.vigHold) ix = 1;
   const accel = p.onGround ? CFG.accelGround : CFG.accelAir;
   if (ix !== 0) {
     const opposing = (ix < 0 && p.vx > 0) || (ix > 0 && p.vx < 0);
@@ -2025,7 +2069,7 @@ function updatePlayer() {
       if (!wasGround) {
         p.sqX = 1.2; p.sqY = 0.8; p.landDip = clamp(impact / 14, 0, 1) * 3;   // feet-anchored squash owns the contact read now
         if (impact > 11) G.trauma = Math.max(G.trauma, 0.12);   // heavy landing = smooth thud, not jitter
-        burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, palNow().trailHot, 0.08, 0);
+        burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, frostDust(palNow().trailHot), 0.08, 0);
         if (G.mode === 'play') { Audio.sfx.land(impact); if (impact > 9) buzz('light'); }
         if (DELIGHT && G.mode === 'play') {
           // silk landings: three feather touches in a row (impact < 6, no death between)
@@ -2045,6 +2089,7 @@ function updatePlayer() {
             const mult = 1 << G.chain;
             popup(p.x, p.y - 22, 'CHAIN ×' + mult + ' BANKED', '#FFE59A');
             Audio.sfx.chainBank(); buzz('select');
+            if (!prefersLessMotion) G.holsterT = 0.3;   // E12: holster-spin flourish on the bank
             G.chainFadeMult = mult; G.chainFade = 1;   // HUD readout fades over 0.25s, never blinks out
             if (G.chain >= 4) {
               burst(p.x + p.w / 2, p.y + p.h / 2, 14, 2.6, 26, 2.6, 'rgba(255,201,60,.95)', 0, 3);
@@ -2067,7 +2112,7 @@ function updatePlayer() {
   }
 
   if (p.onGround && Math.abs(p.vx) > 2.5 && G.frameCount % 6 === 0)
-    spawnP(p.x - p.facing * 6, p.y + p.h, -p.facing * rnd(0.3, 1), -rnd(0.2, 0.8), 16, 2, palNow().trailDim, 0.05, false, 0);
+    spawnP(p.x - p.facing * 6, p.y + p.h, -p.facing * rnd(0.3, 1), -rnd(0.2, 0.8), 16, 2, frostDust(palNow().trailDim), 0.05, false, 0);
   if (p.vy < -2 && G.frameCount % 2 === 0)
     spawnP(p.x - p.facing * 8, p.y + 6, -p.facing * rnd(0.2, 0.8), rnd(0.4, 1.2), 12, 1.6, palNow().puffHot, 0.04, false, 0);
 
@@ -2105,8 +2150,9 @@ function tryShoot() {
   if (G.cooldown > 0) return;
   if (G.ammo <= 0) { Audio.sfx.shoot(true); return; }
   G.ammo--; G.cooldown = CFG.pBulletCooldown;
+  G.fireT = 0.15;   // E12: recoil + muzzle-flash clock (sim-stepped, render-only read)
   G.bullets.push({ x: p.x + p.facing * 12, px: p.x + p.facing * 12, y: p.y + 12, vx: p.facing * CFG.pBulletSpeed, life: 90 });
-  burst(p.x + p.facing * 14, p.y + 12, 3, 2, 8, 2, 'rgba(255,201,60,0.9)', 0, 0);
+  burst(p.x + p.facing * 14, p.y + 12, 3, 2, 8, 2, palNow().trailHot, 0, 0);
   Audio.sfx.shoot(false); buzz('select');
   G.trauma = Math.min(1, G.trauma + 0.08);
 }
@@ -2157,11 +2203,19 @@ function updateBullets() {
       if (e.dead) continue;
       if (Math.abs(b.x - e.x) < e.w * 0.6 && Math.abs(b.y - e.y) < e.h * 0.7) {
         killEnemy(e, 'shoot', e.type === 'shoot' && e.telegraph > 0);
+        // E12: lance impact — ring + three fixed-fan sparks in the suit trail
+        // color. spawnP only: burst() draws from the shared worldgen rng stream.
+        const P = palNow(), fan = Math.sign(b.vx) || 1;
+        spawnP(b.x, b.y, 0, 0, 14, 3, P.trailHot, 0, false, 3);
+        spawnP(b.x, b.y, -fan * 1.6, -1.8, 16, 2, P.trailHot, 0.08, false, 0);
+        spawnP(b.x, b.y, -fan * 2.4, 0, 14, 2, P.trailHot, 0.08, false, 0);
+        spawnP(b.x, b.y, -fan * 1.6, 1.8, 16, 2, P.trailHot, 0.08, false, 0);
         // Airborne shot kills extend the air chain too — every kill without
         // touching the ground doubles the multiplier, stomp or shot alike.
         if (G.player && !G.player.onGround && !G.player.dead) {
           G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
           G.chain = Math.min(G.chain + 1, CFG.chainCap);
+          if (G.chain >= 3 && !prefersLessMotion) G.twirlT = 0.22;   // third airborne kill: pistol twirl (E12)
         }
         G.bullets.splice(i, 1); break;
       }
@@ -2230,6 +2284,7 @@ function collisions() {
       killEnemy(e, 'stomp', false);
       G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
       G.chain = Math.min(G.chain + 1, CFG.chainCap);
+      if (G.chain >= 3 && !prefersLessMotion) G.twirlT = 0.22;   // third airborne kill: pistol twirl (E12)
       p.vy = input.jumpHeld ? CFG.stompBounceHeld : CFG.stompBounce;
       p.jumping = input.jumpHeld;
       p.y = e.y - e.h / 2 - p.h;
@@ -2488,6 +2543,12 @@ function die(cause) {
   else burst(bx, by, 14, 2.6, 60, 2.6, 'rgba(255,150,80,.9)', -0.015, 0);   // flare embers rise
   G.helmet = { x: p.x, y: p.y + 4, px: p.x, py: p.y + 4, prot: 0,
                vx: Math.sign(K.bvx || 1) * rnd(1.5, 3.5), vy: -rnd(4, 7), rot: 0, vr: rnd(-0.3, 0.3) };
+  // E12: the pistol leaves the glove — same debris physics as the helmet, but
+  // launched from cause constants (no new draws from the shared rng stream);
+  // it scatters with the body — slower, higher, counter-spinning — so all
+  // three pieces land as one readable tableau (or share the gap with you).
+  G.pistol = { x: p.x + f * 6, y: p.y + 10, px: p.x + f * 6, py: p.y + 10, prot: 0,
+               vx: Math.sign(K.bvx || 1) * 1.1, vy: -6.5, rot: 0, vr: f * 0.45 };
   // words of comfort: 1-in-6 non-best deaths, decor stream — the delta line never shares its card space with a lie
   G.quip = (DELIGHT && !G.newBest && G.decorRng() < 1 / 6) ? QUIPS[(G.decorRng() * QUIPS.length) | 0] : null;
   Audio.sfx.death(G.newBest, K.pitch);
@@ -2495,6 +2556,7 @@ function die(cause) {
 
 function finalizeDeath() {
   const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
+  lastRunEnd = performance.now() / 1000;   // E13: restarts inside 60s never see a vignette
   stats.runs++;
   bestScore = Math.max(bestScore, fs);
   stats.bestScore = bestScore;
@@ -2620,6 +2682,11 @@ function update() {
         G.glanceActive = true; G.glanceTimer = 0;
         G.glanceIn = (G.glanceAlt = !G.glanceAlt) ? 6 : 4;
       }
+      // E12: idle inspect-twirl every 6–10 s (decor stream), never mid-wave —
+      // DELIGHT-gated so #shot=attract goldens stay stable.
+      if (G.wave <= 0 && G.twirlT <= 0 && !prefersLessMotion && (G.inspectIn -= STEP) <= 0) {
+        G.twirlT = 0.22; G.inspectIn = 6 + G.decorRng() * 4;
+      }
     }
     advanceGlance();
     G.starTimer += STEP;
@@ -2655,6 +2722,15 @@ function finishTick() {
     const hp = G.helmet.vy > 0 && platformUnder(G.helmet.x + G.player.w / 2, G.helmet.y + 6, G.helmet.vy + 2);
     if (hp) { G.helmet.y = hp.y - 6; G.helmet.vy *= -0.4; G.helmet.vx *= 0.8; }
   }
+  if (G.pistol) {   // E12: pistol debris rides the same settle rules as the helmet
+    const q = G.pistol; q.px = q.x; q.py = q.y; q.prot = q.rot;
+    q.vy += 0.4; q.x += q.vx; q.y += q.vy; q.rot += q.vr;
+    const qp = q.vy > 0 && platformUnder(q.x + G.player.w / 2, q.y + 3, q.vy + 2);
+    if (qp) { q.y = qp.y - 3; q.vy *= -0.4; q.vx *= 0.8; q.vr *= 0.5; }
+  }
+  if (G.fireT > 0) G.fireT = Math.max(0, G.fireT - STEP);          // E12 choreography clocks tick on
+  if (G.twirlT > 0) G.twirlT = Math.max(0, G.twirlT - STEP);       // sim steps (wall clock is frozen
+  if (G.holsterT > 0) G.holsterT = Math.max(0, G.holsterT - STEP); // in the #shot loop) → deterministic
 }
 
 /* ---------------------------------------------------------------------------
@@ -2687,6 +2763,8 @@ function frame(now) {
     if (G.mode === 'play') togglePause();
     if (G.mode === 'pause') openSettings('pause');
   }
+
+  tickAlive(dt);   // E13: arrival vignettes + seasonal timers (real time, render-side)
 
   if (G.player && G.player.dead) {
     G.deathSeq += dt;
@@ -2782,7 +2860,10 @@ function render(alpha) {
   drawEnemies(iCamX, alpha);
   drawBullets(iCamX, alpha);
   drawCompanion();
+  vigPose = arrivalPose();          // E13: this frame's pose morph + prop anchors
+  drawArrivalBack();
   if (G.player) drawPlayer(alpha);
+  drawArrivalFront();
   drawParticles(alpha);
   drawHints(iCamX, iCamY);
   ctx.restore();
@@ -2834,8 +2915,15 @@ function drawToast() {
   ctx.fillStyle = 'rgba(10,14,32,.88)'; roundRect(x, y, w, h, 10); ctx.fill();
   ctx.strokeStyle = gold ? 'rgba(255,201,60,.55)' : 'rgba(56,225,255,.38)'; ctx.lineWidth = 1; ctx.stroke();
   if (glyph) {
-    ctx.fillStyle = '#FFC93C'; ctx.font = '16px ' + FONT; ctx.textAlign = 'left';
-    ctx.fillText(glyph, x + 9, y + h / 2 + 6);
+    // E13 seasonal: drawn glyph variants — never an emoji-font dependency. The
+    // anniversary cake is explicit; Lunar New Year week re-dresses every
+    // postcard glyph as a lantern.
+    if (glyph === 'cake') drawCakeGlyph(x + 9, y + h / 2);
+    else if (SEASON.lunar) drawLanternGlyph(x + 9, y + h / 2);
+    else {
+      ctx.fillStyle = '#FFC93C'; ctx.font = '16px ' + FONT; ctx.textAlign = 'left';
+      ctx.fillText(glyph, x + 9, y + h / 2 + 6);
+    }
     ctx.font = '700 9px ' + FONT;
   }
   ctx.fillStyle = gold ? '#FFE59A' : '#CFE3FF'; ctx.textAlign = 'center';
@@ -2925,7 +3013,10 @@ function drawBackground(camX) {
   if (!skyCanvas || skyHue !== hue) { skyCanvas = buildSky(hue); skyHue = hue; }
   ctx.drawImage(skyCanvas, 0, 0, 1, skyCanvas.height, 0, 0, view.w, view.h);
 
-  if (!nebulaCanvas || Math.abs(nebulaHue - hue) > 1) { nebulaCanvas = buildNebula(hue); nebulaHue = hue; }
+  // E13 seasonal: dusk week shifts the nebula toward ember-orange (nebula only —
+  // sky + platform art keep the sector hue so the world still reads its band).
+  const nhue = SEASON.dusk ? 28 : hue;
+  if (!nebulaCanvas || Math.abs(nebulaHue - nhue) > 1) { nebulaCanvas = buildNebula(nhue); nebulaHue = nhue; }
   const nx = -(((camX * 0.05) % view.w) + view.w) % view.w;
   ctx.globalAlpha = 0.85;
   ctx.drawImage(nebulaCanvas, 1, 0, view.w / 4, view.h / 4, nx, 0, view.w, view.h);
@@ -2946,6 +3037,7 @@ function drawBackground(camX) {
     }
     ctx.globalAlpha = 1;
   }
+  if (fwList.length) drawFireworks();   // E13 seasonal: far-layer blooms, new year only
 
   if (!starsBuilt) buildStars();
   const W = 1600;
@@ -2974,14 +3066,10 @@ function drawBackground(camX) {
     if (tickled && u.tickle < 0.4) {   // wobble ±0.15 rad for 0.4 s — ticklish, not hurt
       ctx.translate(u.x, uy); ctx.rotate(Math.sin(u.tickle * 45) * 0.15); ctx.translate(-u.x, -uy);
     }
-    ctx.fillStyle = 'rgba(56,225,255,.12)';
-    ctx.beginPath(); ctx.moveTo(u.x - 13, uy + 5); ctx.lineTo(u.x + 13, uy + 5); ctx.lineTo(u.x + 25, uy + 36); ctx.lineTo(u.x - 25, uy + 36); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.ellipse(u.x, uy, 18, 6, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = tickled && u.tickle < 0.25 ? '#DDFBFF' : '#2A2560';   // dome flash
-    ctx.beginPath(); ctx.arc(u.x, uy - 3, 7, Math.PI, 0); ctx.fill();
-    ctx.fillStyle = '#FFC93C'; for (const lx of [-10, 0, 10]) { ctx.beginPath(); ctx.arc(u.x + lx, uy + 2, 1.5, 0, TAU); ctx.fill(); }
+    drawSaucerBody(u.x, uy, tickled && u.tickle < 0.25);
     ctx.restore();
   }
+  if (bat) drawBat();   // E13 seasonal: dusk-week silhouette flyby (decor stream)
   const spd = Math.abs(G.player ? G.player.vx : 0);
   for (const s of starfield.near) {
     const x = ((s.x - camX * 0.5) % W + W) % W;
@@ -3110,6 +3198,17 @@ function drawSatellite(camX) {
   ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(0, -7); ctx.stroke();                 // antenna
   if (blink) { ctx.fillStyle = '#FF4F66'; ctx.beginPath(); ctx.arc(0, -7, 1.2, 0, TAU); ctx.fill(); }
   ctx.restore();
+}
+// One saucer, two hosts: the ticklish sky guest and the E13 drop-off vignette
+// share these exact primitives (same ops, same order — the guest's golden
+// pixels are untouched by the extraction).
+function drawSaucerBody(x, uy, domeBright) {
+  ctx.fillStyle = 'rgba(56,225,255,.12)';
+  ctx.beginPath(); ctx.moveTo(x - 13, uy + 5); ctx.lineTo(x + 13, uy + 5); ctx.lineTo(x + 25, uy + 36); ctx.lineTo(x - 25, uy + 36); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.ellipse(x, uy, 18, 6, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = domeBright ? '#DDFBFF' : '#2A2560';   // dome flash
+  ctx.beginPath(); ctx.arc(x, uy - 3, 7, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = '#FFC93C'; for (const lx of [-10, 0, 10]) { ctx.beginPath(); ctx.arc(x + lx, uy + 2, 1.5, 0, TAU); ctx.fill(); }
 }
 function drawForeground(camX) {
   ctx.fillStyle = 'rgba(232,244,255,0.06)';
@@ -3324,12 +3423,18 @@ function drawEnemies(camX, alpha) {
 
 /* ---- bullets ---- */
 function drawBullets(camX, alpha) {
+  // E12: light-lance streak — per-suit glow sprite under a trail-color body
+  // and a 1px white core, replacing the old gold dot.
+  const P = palNow(), suit = G.cosmetics.suit;
   for (const b of G.bullets) {
     if (b.x < camX - 80 || b.x > camX + view.w + 80) continue;
-    const bx = lerp(b.px, b.x, alpha);
-    ctx.strokeStyle = 'rgba(255,201,60,0.5)'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(bx - b.vx * 0.8, b.y); ctx.lineTo(bx, b.y); ctx.stroke();
-    ctx.fillStyle = '#FFE59A'; ctx.beginPath(); ctx.arc(bx, b.y, 2.5, 0, TAU); ctx.fill();
+    const bx = lerp(b.px, b.x, alpha), d = Math.sign(b.vx) || 1;
+    ctx.drawImage(lanceGlow(suit), bx - 10, b.y - 10, 20, 20);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = P.trailHot; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(bx - d * 10, b.y); ctx.lineTo(bx, b.y); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(bx - d * 7, b.y); ctx.lineTo(bx, b.y); ctx.stroke();
   }
   for (const b of G.ebullets) {
     if (b.x < camX - 80 || b.x > camX + view.w + 80) continue;
@@ -3433,6 +3538,24 @@ function drawHat(id, s, g) {
   g.save(); g.scale(s, s); h.draw(g); g.restore();
 }
 
+/* ---- arms + light pistol (E12): capsule strokes in the leg language.
+   armCapsule strokes shoulder→hand with one quadratic elbow bend (no joints)
+   and returns the hand point; drawPistol renders grip-at-origin, emitter
+   toward +x, so the hand transform is also the recoil/twirl pivot. ---- */
+function armCapsule(sx, sy, ang, len, bend) {   // ang: radians from hanging-down, + toward facing
+  const hx = sx + Math.sin(ang) * len, hy = sy + Math.cos(ang) * len;
+  ctx.beginPath(); ctx.moveTo(sx, sy);
+  ctx.quadraticCurveTo((sx + hx) / 2 + Math.cos(ang) * bend, (sy + hy) / 2 - Math.sin(ang) * bend, hx, hy);
+  ctx.stroke();
+  return [hx, hy];
+}
+function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
+  ctx.fillStyle = P.visBot;
+  rrPath(ctx, -2, -3.6, 7, 3.4, 1.4); ctx.fill();     // rounded body
+  ctx.fillRect(-1.4, -0.8, 2.2, 2.2);                  // grip drops into the glove
+  ctx.fillStyle = P.visTop; ctx.fillRect(5, -3.3, 1.6, 1.5);   // emitter
+}
+
 function drawPlayer(alpha) {
   const p = G.player;
   const PAL = PALETTES[G.cosmetics.suit] || PALETTES.classic;
@@ -3445,6 +3568,14 @@ function drawPlayer(alpha) {
       ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, 0, 9, 0, TAU); ctx.fill();
       ctx.fillStyle = PAL.visBot; ctx.beginPath(); ctx.arc(2, 0, 5, 0, TAU); ctx.fill();
       drawHat(G.cosmetics.hat, 9 / 11);   // welded to the detached helmet — tumbles and bounces free
+      ctx.restore();
+    }
+    if (G.pistol) {   // E12: the pistol is debris now — tumbles and lands like the helmet
+      const q = G.pistol;
+      ctx.save();
+      ctx.translate(lerp(q.px, q.x, alpha) + p.w / 2, lerp(q.py, q.y, alpha));
+      ctx.rotate(lerp(q.prot, q.rot, alpha));
+      drawPistol(PAL);
       ctx.restore();
     }
     // The body stays — a playful tumble, never gruesome. Live primitives with
@@ -3463,9 +3594,13 @@ function drawPlayer(alpha) {
       ctx.strokeStyle = PAL.legF;
       ctx.beginPath(); ctx.moveTo(-4, hh - 13); ctx.lineTo(-4 + legF * 0.5, hh - 1); ctx.stroke(); // front leg
       ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6, 7, 16, 3); ctx.fill();
+      // E12: the same two-capsule arms as the living body — far arm splayed
+      // behind the torso, near arm thrown up in the tumble, folded at rest.
+      ctx.strokeStyle = PAL.legB; ctx.lineWidth = 4;
+      armCapsule(-5, -6, b.rest ? -0.5 : -1.0, 12, -1.8);
       ctx.fillStyle = PAL.suit; roundRect(-8, -4, 16, 16, 6); ctx.fill();
-      ctx.strokeStyle = PAL.arm; ctx.lineWidth = 3.5;
-      ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(6.5, 10); ctx.stroke();                       // arm thrown up
+      ctx.strokeStyle = PAL.arm; ctx.lineWidth = 4;
+      armCapsule(5, -6, b.rest ? 0.7 : 2.0, 10, -1.8);
       // Bare head: tiny eyes, surprised "o" while tumbling, flat mouth at rest.
       ctx.fillStyle = '#FFD9B8'; ctx.beginPath(); ctx.arc(0, -hh + 8, 6.5, 0, TAU); ctx.fill();
       ctx.fillStyle = '#1B2340';
@@ -3479,26 +3614,35 @@ function drawPlayer(alpha) {
   }
   const hw = p.w / 2, hh = p.h / 2;
   const breathe = p.idle > 0 ? Math.sin(G.time * 3) * 0.03 : 0;
+  // E13: arrival choreography — pure render morphs (offset/rot/scale/alpha/scan)
+  // over the LIVE simulated player; tickAlive has already begun the ≤150ms
+  // dissolve (V.k → 0) the instant any input lands.
+  const V = vigPose;
+  if (V && V.a <= 0.01) return;   // still inside the rocket / riding the star
+  const vX = x + (V ? V.dx : 0), vY = y + (V ? V.dy : 0);
   // Body lean: forward with speed, nose-up rising / nose-down falling (E8.2).
   // Rotated before the facing scale (matches the dead-branch tumble convention
   // above) so the lean direction is world-oriented, not mirrored by facing.
-  const lean = clamp(p.vx * 0.018, -0.14, 0.14) + (p.onGround ? 0 : clamp(p.vy * 0.008, -0.1, 0.12));
+  const lean = clamp(p.vx * 0.018, -0.14, 0.14) + (p.onGround ? 0 : clamp(p.vy * 0.008, -0.1, 0.12)) + (V ? V.rot : 0);
   ctx.save();
+  if (V && V.a < 1) ctx.globalAlpha = V.a;
   if (p.onGround) {
     // Feet-anchored squash (E8.1): pivot at the contact point so the 0.8/1.2
     // squash compresses toward the platform instead of sinking the feet into
     // it. Center pivot (else branch) stays for airborne stretch.
-    ctx.translate(x, y + hh);
+    ctx.translate(vX, vY + hh);
     ctx.rotate(lean);
     ctx.scale(p.facing, 1);
     ctx.scale(p.sqX + breathe, p.sqY - breathe);
     ctx.translate(0, -hh);
   } else {
-    ctx.translate(x, y);
+    ctx.translate(vX, vY);
     ctx.rotate(lean);
     ctx.scale(p.facing, 1);
     ctx.scale(p.sqX + breathe, p.sqY - breathe);
   }
+  if (V && V.s !== 1) ctx.scale(V.s, V.s);            // star delivery uncurl
+  if (V && V.scan < 0.999) scanClip(hh, V.scan);      // beam materialize bands
   const bob = p.onGround ? Math.sin(p.runCycle * 2) * 1.5 : 0;   // torso bob, twice per stride
 
   // Legs: two capsules in a cooler shade so they separate from the white torso
@@ -3511,13 +3655,59 @@ function drawPlayer(alpha) {
   ctx.beginPath(); ctx.moveTo(-4, hh - 13); ctx.lineTo(-4 + legSwing * 0.5, hh - 1); ctx.stroke();  // front leg
 
   ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6 + bob, 7, 16, 3); ctx.fill();
+
+  // Arms (E12): far arm in the legB tone behind the torso, near arm in
+  // PAL.arm over it, pistol always in the near glove. Angles are radians from
+  // hanging-down; +x is the facing direction, so the flip comes free.
+  const run = Math.min(Math.abs(p.vx) / CFG.maxRun, 1);
+  let nearA, farA;
+  if (p.onGround) {
+    const swing = Math.sin(p.runCycle + Math.PI) * 0.49 * run;   // ±28°, counter-phase vs the legs
+    const sway = Math.sin(G.time * TAU * 0.8) * 0.07;            // idle sway ±4° at 0.8 Hz
+    nearA = lerp(0.55 + sway, 1.35 + swing * 0.2, run);          // near arm carries the pistol level
+    // Far arm pumps from a lifted runner's carriage: the shoulder sits under a
+    // 16px torso and an 11px helmet, so only the backswing past the pack is
+    // ever on silhouette (it draws at leg length, 12, for the same reason).
+    farA = lerp(-0.5 + sway, -0.7 + swing, run);
+  } else {
+    const fall = clamp(p.pose / 4, -1, 1) * 0.5 + 0.5;   // 0 rising → 1 falling, eased upstream
+    nearA = lerp(2.18, 1.75, fall);    // reach 35° forward-up → floaty 10°-up fall drift
+    farA = lerp(-0.85, -0.55, fall);   // trail back past the pack → drift up
+  }
+  const dip = Math.max(0, 1 - p.sqY) * 1.1;   // landing: arms dip with the squash, recover with it
+  nearA -= dip; farA -= dip;
+  if (G.wave > 0) nearA = 2.35 + Math.sin(G.time * 14) * 0.26;   // attract hello, clear of the helmet
+  const ft = 0.15 - G.fireT;   // time since the last shot (sim-stepped clock)
+  const rec = Math.pow(clamp(1 - ft / 0.09, 0, 1), 3);   // 14° recoil kick, cubic-out return
+  nearA += rec * 0.24;
+  if (V && V.nearA !== undefined && V.armW > 0) {   // E13: nap fold/stretch, hop reach, hang grip, goodbye wave
+    nearA = lerp(nearA, V.nearA, V.armW); farA = lerp(farA, V.farA, V.armW);
+  }
+  ctx.strokeStyle = PAL.legB; ctx.lineWidth = 4;
+  armCapsule(-5, -6 + bob, farA, 12, -1.8);
+
   ctx.fillStyle = PAL.suit; roundRect(-8, -4 + bob, 16, 16, 6); ctx.fill();
 
-  // Arm: a short capsule hugging the torso side — no outward spike. G.wave > 0
-  // (attract only) lifts it into a hello.
-  ctx.strokeStyle = PAL.arm; ctx.lineWidth = 3.5;
-  const armSwing = G.wave > 0 ? Math.sin(G.time * 14) * 4 - 8 : (p.onGround ? Math.sin(p.runCycle + Math.PI) * 2 : 1.5);
-  ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(6.5, 6 + armSwing); ctx.stroke();
+  ctx.strokeStyle = PAL.arm; ctx.lineWidth = 4;
+  const hand = armCapsule(5, -6 + bob, nearA, 10, -1.8);
+  let pa = (1.35 - nearA) * 0.65 - rec * 0.2;   // wrist keeps the pistol level at speed, tips with the pose
+  if (G.twirlT > 0) pa += (1 - G.twirlT / 0.22) * TAU;          // 360° twirl, 220 ms (chain ×3 / inspect)
+  else if (G.holsterT > 0) pa += (1 - G.holsterT / 0.3) * TAU;  // chain-bank holster spin
+  ctx.save(); ctx.translate(hand[0], hand[1]); ctx.rotate(pa);
+  drawPistol(PAL);
+  ctx.fillStyle = PAL.arm; ctx.beginPath(); ctx.arc(0, 0.4, 2.1, 0, TAU); ctx.fill();   // glove wraps the grip
+  if (G.fireT > 0) {   // muzzle flash: 2 frames/50 ms; emitter glow lingers 150 ms
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 1 - ft / 0.15;
+    ctx.drawImage(lanceGlow(G.cosmetics.suit), 6.5 - 5, -2.5 - 5, 10, 10);
+    if (ft < 0.05) {
+      const s = ft < 0.025 ? 16 : 11;   // two authored flash frames, no per-frame gradients
+      ctx.globalAlpha = 1;
+      ctx.drawImage(muzzleFlash(G.cosmetics.suit), 6.5 - s / 2, -2.5 - s / 2, s, s);
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+  ctx.restore();
 
   ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -hh - 4, 40, 40);
   ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, -hh + 8, 11, 0, TAU); ctx.fill();
@@ -3529,6 +3719,13 @@ function drawPlayer(alpha) {
   ctx.fillStyle = suitVisor(G.cosmetics.suit); ctx.beginPath(); ctx.ellipse(1 + lookLocal * 2.5, -hh + 8, 7.5, 6.5, 0, 0, TAU); ctx.fill();
   const glx = Math.sin(p.glint * 1.2) * 3 + lookLocal * 3;
   ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(glx - 2, -hh + 5, 2, 3, -0.4, 0, TAU); ctx.fill();
+  if (SEASON.frost) {   // E13 seasonal: frost creeps in from the visor edge (render-only, off under SHOT)
+    ctx.strokeStyle = 'rgba(228,248,255,0.9)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.ellipse(1, -hh + 8, 6.6, 5.6, 0, -2.8, -1.15); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(1, -hh + 8, 6.6, 5.6, 0, 0.7, 1.4); ctx.stroke();
+    ctx.fillStyle = 'rgba(228,248,255,0.85)';
+    ctx.fillRect(-3.4, -hh + 3.2, 1.2, 1.2); ctx.fillRect(4.2, -hh + 11, 1, 1);
+  }
   // Hat rides inside the same transform — it inherits facing flip and squash
   // (the beanie squashes on landing for free).
   ctx.save(); ctx.translate(0, -hh + 8); drawHat(G.cosmetics.hat, 1); ctx.restore();
@@ -3546,6 +3743,14 @@ function drawParticles(alpha) {
     if (p.kind === 3) {
       ctx.globalAlpha = a * 0.7; ctx.strokeStyle = p.color; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(px, py, (1 - a) * 18 + 4, 0, TAU); ctx.stroke();
+    } else if (p.kind === 4) {   // E13 seasonal: blossom petal — tumbling ellipse
+      ctx.globalAlpha = a * 0.85; ctx.fillStyle = p.color;
+      ctx.save(); ctx.translate(px, py); ctx.rotate(p.life * 0.09);
+      ctx.beginPath(); ctx.ellipse(0, 0, p.size, p.size * 0.55, 0, 0, TAU); ctx.fill(); ctx.restore();
+    } else if (p.kind === 5) {   // E13: the nap's drifting Zs
+      ctx.globalAlpha = a * 0.9; ctx.fillStyle = p.color;
+      ctx.font = '700 ' + p.size + 'px ' + FONT; ctx.textAlign = 'center';
+      ctx.fillText('z', px, py);
     } else { ctx.globalAlpha = a; ctx.fillStyle = p.color; ctx.fillRect(px - p.size / 2, py - p.size / 2, p.size, p.size); }
   }
   ctx.globalAlpha = 1;
@@ -3880,6 +4085,7 @@ function showAttract() {
   showOverlay('ovAttract');
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
   G.mode = 'attract';
+  attractGreet();   // E13: welcome-back wave + anniversary confetti (one-shots, DELIGHT-gated)
 }
 
 function togglePause() {
@@ -4238,6 +4444,7 @@ $('btnResume').onclick = () => togglePause();
 $('btnQuit').onclick = () => {
   // Quitting mid-death-sequence must still bank the run (stats, medal, best).
   if (G.player && G.player.dead && !G.deathCardShown) { G.deathCardShown = true; finalizeDeath(); }
+  lastRunEnd = performance.now() / 1000;   // E13: a quit ends the run too — no vignette on the next quick start
   showAttract();
 };
 $('btnAgain').onclick = () => tryRestart();
@@ -4274,7 +4481,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); }
     Audio.suspend();   // kills the background drone on Android after an app switch
-  } else Audio.resume();
+  } else {
+    Audio.resume();
+    SEASON = computeSeason();   // E13: the date can roll over mid-session
+  }
 });
 
 let deferredPrompt = null;
@@ -4461,7 +4671,369 @@ function setupAnimatedFavicon() {
 }
 
 /* ---------------------------------------------------------------------------
-   30. FONT READINESS then BOOT
+   30. ALIVE — arrival vignettes, seasonal moments, welcome-back (E13)
+   PRIME DIRECTIVE: the sim is live under every frame of this. Vignettes are
+   render-side choreography over the already-simulated player; any real input
+   begins a ≤150ms dissolve; nothing here runs under SHOT (DELIGHT gates the
+   lot) and nothing draws from the worldgen rng.
+   ------------------------------------------------------------------------- */
+let vigPose = null;                       // this frame's pose morph (render-only)
+let runsThisSession = 0, lastRunEnd = -1; // restart-path guard: fresh session or >60s sit-out only
+let fwList = [], fwIn = 3, bat = null, batIn = 30, petalIn = 2;   // seasonal decor timers (frame-time)
+let bdayShown = false;
+
+function seasonOff() { return { frost: false, dusk: false, lunar: false, blossom: false, fw: false, bday: 0 }; }
+function computeSeason() {
+  if (!DELIGHT) return seasonOff();       // SHOT sees no season, ever — goldens hold by construction
+  const nowD = new Date(), m = nowD.getMonth() + 1, d = nowD.getDate(), md = m * 100 + d;
+  const S = seasonOff();
+  S.frost = md >= 1201 || md <= 105;      // deep winter: visor frost + snow-dust
+  S.dusk = m === 10 && d >= 24;           // dusk week: ember nebula + bat flybys
+  S.blossom = m === 3 && d >= 19 && d <= 21;   // equinox: comet blossoms
+  S.fw = md === 1231 || md === 101;       // new year: far-layer firework blooms
+  // Lunar New Year week, dates through 2030 (m*100+d) — lantern postcard art.
+  const LNY = { 2026: 217, 2027: 206, 2028: 126, 2029: 213, 2030: 203 };
+  const lny = LNY[nowD.getFullYear()];
+  if (lny) {
+    const days = Math.floor((nowD - new Date(nowD.getFullYear(), ((lny / 100) | 0) - 1, lny % 100)) / 864e5);
+    S.lunar = days >= 0 && days < 7;
+  }
+  const fr = ach.firstRunDate;            // game anniversary — N years since the very first run
+  if (typeof fr === 'string' && fr.length === 10) {
+    const yrs = nowD.getFullYear() - +fr.slice(0, 4);
+    if (yrs >= 1 && m === +fr.slice(5, 7) && d === +fr.slice(8, 10)) S.bday = yrs;
+  }
+  return S;
+}
+if (DELIGHT && !ach.firstRunDate) { ach.firstRunDate = new Date().toISOString().slice(0, 10); saveJSON(LS.achievements, ach); }
+let SEASON = computeSeason();
+function frostDust(c) { return SEASON.frost ? 'rgba(216,240,255,0.7)' : c; }
+// Welcome back: ≥7 days since the last recorded play day — one wave, one hello,
+// no streak-shaming. Computed once at boot, consumed by the first attract.
+let welcomeBack = false;
+if (DELIGHT && Array.isArray(flags.playDays) && flags.playDays.length) {
+  const lastDay = new Date(flags.playDays[flags.playDays.length - 1] + 'T12:00:00');
+  welcomeBack = isFinite(lastDay) && Math.floor((Date.now() - lastDay.getTime()) / 864e5) >= 7;
+}
+function attractGreet() {
+  if (!DELIGHT || !G.player) return;
+  if (welcomeBack) {
+    welcomeBack = false;
+    G.wave = 2;                            // waves the moment you're back in the room
+    queueToast('GOOD TO SEE YOU, PILOT.', 'sys');
+  }
+  if (SEASON.bday && !bdayShown) {
+    bdayShown = true;
+    queueToast('SPACE MAN IS ' + SEASON.bday + ' TODAY', 'gold', 'cake');
+    const p = G.player;
+    for (const c of ['#FFC93C', '#9FF1FF', '#FF8A6B']) decorBurst(p.x + p.w / 2, p.y - 26, 8, 2.4, 55, 2.4, c, 0);
+  }
+}
+
+/* ---- arrivals: five ways to show up for work ---- */
+const VIGS = {
+  nap:     { dur: 1.3, deg: 3, helloAt: 0.72 },
+  landing: { dur: 1.6, deg: 5, helloAt: 1.02 },
+  beam:    { dur: 1.1, deg: 8, helloAt: 0.62 },
+  dropoff: { dur: 1.5, deg: 6, helloAt: 0.68 },
+  star:    { dur: 1.2, deg: 9, helloAt: 0.56 },
+};
+const VIG_ORDER = ['nap', 'landing', 'beam', 'dropoff', 'star'];
+function beginArrival() {
+  runsThisSession++;
+  vigPose = null;
+  if (!DELIGHT) return;
+  // NEVER on the restart path: only a fresh session or a >60s sit-out — and the
+  // sim runs underneath regardless, so worst case the greeting costs zero frames.
+  if (!(runsThisSession === 1 || (lastRunEnd >= 0 && performance.now() / 1000 - lastRunEnd > 60))) return;
+  if (G.vigRoll >= 0.45) return;           // 55% plain starts keep arrivals special
+  const p = G.player, ax = p.x + p.w / 2, ay = p.y + p.h;
+  if (prefersLessMotion) { G.vig = { id: 'fade', t: 0, dur: 0.3, out: false, fade: 1, said: true, ax, ay, acc: 0 }; return; }
+  const id = VIG_ORDER[Math.min(4, (G.vigRoll / 0.45 * 5) | 0)];
+  const def = VIGS[id];
+  G.vig = { id, t: 0, dur: def.dur, deg: def.deg, helloAt: def.helloAt, out: false, fade: 1, said: false, fired: false, zip: false, ax, ay, acc: 0 };
+  if (id === 'landing') G.vigDecor = { x: ax - 320, y: ay, tilt: 0.14, hatch: 0, smoke: 0 };
+}
+function anyPlayerInput() {
+  return input.left || input.right || input.jumpHeld || input.jumpPressed || input.shoot ||
+    input.stick.active || input.jumpZone.active || input.shootBtn.pressed || Math.abs(input.gamepadX) > 0.01;
+}
+function tickAlive(dt) {
+  if (!DELIGHT) return;                    // SHOT and bot runs never see any of this
+  const v = G.vig;
+  if (v) {
+    if (G.mode !== 'play' || !G.player || G.player.dead) G.vig = null;
+    else {
+      v.t += dt;
+      // ANY real input begins the dissolve; ≤150ms later the vignette is gone.
+      // The sim never waited — control was live the whole time.
+      if (!v.out && (anyPlayerInput() || v.t >= v.dur)) v.out = true;
+      if (v.out && (v.fade -= dt / 0.15) <= 0) G.vig = null;
+      else {
+        if (!v.said && v.t >= v.helloAt) { v.said = true; Audio.sfx.boop(v.deg); }   // one-note hello, current key
+        arrivalFX(v, dt);
+      }
+    }
+  }
+  G.vigHold = !!(G.vig && !G.vig.out);
+  const d = G.vigDecor;                    // the parked rocket smokes for ~300px, then it's just scenery
+  if (d && G.mode === 'play' && G.player && Math.abs(G.player.x - d.x) < 300) {
+    if ((d.smoke -= dt) <= 0) {
+      d.smoke = 0.13;
+      spawnP(d.x - 16 + G.decorRng() * 10, d.y - 18, -0.1 + G.decorRng() * 0.25, -0.45 - G.decorRng() * 0.4, 48, 2.8, 'rgba(196,206,230,.4)', -0.004, false, 0);
+    }
+  }
+  seasonalTick(dt);
+}
+function arrivalFX(v, dt) {   // prop motion + pooled-particle dressing (decor stream only)
+  const u = clamp(v.t / v.dur, 0, 1);
+  if (v.id === 'nap') {
+    if (u < 0.5 && (v.acc -= dt) <= 0) {
+      v.acc = 0.42;
+      spawnP(v.ax - 26, v.ay - 14, 0.25, -0.3, 60, 6 + G.decorRng() * 3, 'rgba(207,227,255,.85)', -0.003, false, 5);
+    }
+  } else if (v.id === 'landing') {
+    const d = G.vigDecor; if (!d) return;
+    const w = clamp(u / 0.5, 0, 1), e = easeOutCubic(w);
+    d.x = lerp(v.ax - 320, v.ax - 44, e); d.y = v.ay - (1 - w) * (1 - w) * 26;
+    d.tilt = 0.14 * (1 - e);
+    // A cancel mid-skid still pops the canopy — the pilot is visibly outside now.
+    d.hatch = v.out ? Math.min(1, d.hatch + dt * 8) : clamp((u - 0.52) / 0.12, 0, 1);
+    if (w < 1 && (v.acc -= dt) <= 0) {     // skid smoke + the odd hot fleck off the rail
+      v.acc = 0.05;
+      spawnP(d.x - 22, d.y - 5, -0.5 - G.decorRng() * 0.6, -0.4 - G.decorRng() * 0.5, 34, 2.6, 'rgba(196,206,230,.45)', -0.006, false, 0);
+      if (G.decorRng() < 0.4) spawnP(d.x - 14, d.y - 2, -0.4, -0.2 - G.decorRng() * 0.4, 20, 1.8, 'rgba(255,150,90,.7)', 0.01, false, 0);
+    }
+  } else if (v.id === 'beam') {
+    if (!v.fired && v.t >= 0.6) {          // materialize completes: sparkle
+      v.fired = true;
+      decorBurst(v.ax, v.ay - 17, 12, 2.4, 24, 2, 'rgba(159,241,255,.9)', 0);
+      decorBurst(v.ax, v.ay - 17, 2, 0.8, 22, 2, '#9FF1FF', 3);
+    }
+  } else if (v.id === 'dropoff') {
+    if (!v.zip && u >= 0.8) { v.zip = true; Audio.sfx.zip(); }   // the ticklish one says wheee
+    if (u >= 0.8 && (v.acc -= dt) <= 0) {
+      v.acc = 0.03;
+      const s = dropSaucer(v);
+      spawnP(s.sx - 12, s.sy + 2, -2.2, 0.6, 14, 2, 'rgba(56,225,255,.7)', 0, false, 0);
+    }
+  } else if (v.id === 'star') {
+    if (u < 0.45) {
+      if ((v.acc -= dt) <= 0) {
+        v.acc = 0.03;
+        const s = starPath(v);
+        spawnP(s.x - 6, s.y - 4, -0.8 - G.decorRng(), -0.5, 26, 2.2, 'rgba(255,225,160,.8)', 0.004, false, 0);
+      }
+    } else if (!v.fired) {                 // touchdown flash under the uncurl
+      v.fired = true;
+      decorBurst(v.ax, v.ay - 16, 10, 2.6, 26, 2.4, 'rgba(255,201,60,.9)', 0);
+      decorBurst(v.ax, v.ay - 16, 2, 0.8, 22, 2, '#FFE59A', 3);
+    }
+  }
+}
+/* ---- pose: everything drawPlayer needs, already cancel-morphed by k ---- */
+function arrivalPose() {
+  const v = G.vig;
+  if (!v || G.mode !== 'play' || !G.player || G.player.dead) return null;
+  const k = clamp(v.fade, 0, 1), u = clamp(v.t / v.dur, 0, 1);
+  const P = { k, rot: 0, dx: 0, dy: 0, s: 1, a: 1, scan: 1, nearA: undefined, farA: undefined, armW: 0 };
+  if (v.id === 'fade') {                   // reduced motion: choreography becomes a plain 300ms fade-in
+    P.a = lerp(1, clamp(v.t / 0.3, 0, 1), k);
+    return P;
+  }
+  if (v.id === 'nap') {
+    if (u < 0.5) { P.rot = -1.42; P.dy = 2; P.nearA = 1.15; P.farA = -0.25; P.armW = 1; }   // flat out, arms folded
+    else {
+      const w = clamp((u - 0.5) / 0.28, 0, 1), e = easeOutCubic(w);
+      P.rot = -1.42 * (1 - easeOutBack(w)); P.dy = 2 * (1 - w);
+      P.nearA = lerp(1.15, 2.95, e); P.farA = lerp(-0.25, -2.6, e);   // the full-arm stretch (Stage D arms)
+      P.armW = 1 - clamp((u - 0.84) / 0.16, 0, 1);
+    }
+  } else if (v.id === 'landing') {
+    if (u < 0.6) { P.a = 0; P.dx = -38; }  // still in the cockpit
+    else {
+      const w = clamp((u - 0.6) / 0.26, 0, 1);
+      P.dx = lerp(-38, 0, easeOutQuad(w)); P.dy = -Math.sin(Math.PI * w) * 30;   // the hop out
+      P.rot = 0.16 * (1 - w);
+      P.nearA = 2.15; P.farA = -0.9; P.armW = 1 - clamp((u - 0.9) / 0.1, 0, 1);
+    }
+  } else if (v.id === 'beam') {
+    P.scan = clamp((v.t - 0.12) / 0.5, 0, 1);
+    P.nearA = 1.7; P.farA = -1.3; P.armW = 1 - clamp((u - 0.7) / 0.3, 0, 1);
+  } else if (v.id === 'dropoff') {
+    if (u < 0.42) { P.dy = dropSaucer(v).sy + 50 - v.ay; P.nearA = 2.85; P.farA = -2.75; P.armW = 1; }   // hanging on
+    else if (u < 0.52) { const w = (u - 0.42) / 0.1; P.dy = lerp(-28, 0, easeOutQuad(w)); P.nearA = 2.85; P.farA = -2.75; P.armW = 1 - w; }
+    else if (u >= 0.6 && u < 0.85) { P.nearA = 2.35 + Math.sin(G.time * 14) * 0.26; P.farA = -0.4; P.armW = 1; }   // waves it goodbye
+    else if (u >= 0.85) { P.nearA = 2.35; P.farA = -0.4; P.armW = 1 - clamp((u - 0.85) / 0.15, 0, 1); }
+  } else if (v.id === 'star') {
+    if (u < 0.45) { P.a = 0; P.s = 0.3; P.rot = -1.8; }   // riding the star in
+    else {
+      const w = clamp((u - 0.45) / 0.38, 0, 1);
+      P.s = lerp(0.35, 1, easeOutBack(w)); P.rot = -1.8 * (1 - easeOutCubic(w));   // the uncurl
+    }
+  }
+  // Cancel morph: every knob eases to its live value as the dissolve runs out.
+  P.rot *= k; P.dx *= k; P.dy *= k;
+  P.s = lerp(1, P.s, k); P.a = lerp(1, P.a, k); P.scan = lerp(1, P.scan, k); P.armW *= k;
+  return P;
+}
+function scanClip(hh, t) {
+  // Materialize in horizontal scan-bands: rows resolve in a fixed pseudo-random
+  // order (9·i mod 14 walks every row) — the clip covers suit, arms, and hat.
+  const rows = 14, y0 = -hh - 18, rh = (hh * 2 + 22) / rows;
+  ctx.beginPath();
+  for (let i = 0; i < rows; i++) if (((i * 9) % rows) / rows < t) ctx.rect(-28, y0 + i * rh, 56, rh + 0.4);
+  ctx.clip();
+}
+/* ---- prop paths + drawing (world space, camera-culled) ---- */
+function dropSaucer(v) {
+  const u = clamp(v.t / v.dur, 0, 1), hover = v.ay - 78;
+  let sx = v.ax + 2, sy, wob = 0;
+  if (u < 0.4) sy = lerp(v.ay - 240, hover, easeOutCubic(u / 0.4));
+  else sy = hover + Math.sin(G.time * 2.2) * 2;
+  if (u >= 0.62 && u < 0.8) wob = Math.sin((u - 0.62) * 52) * 0.13;   // the ticklish waggle, reprised
+  if (u >= 0.8) { const w = (u - 0.8) / 0.2; sx += easeInCubic(w) * 360; sy -= easeInCubic(w) * 130; }
+  return { sx, sy, u, wob };
+}
+function starPath(v) {
+  const w = clamp(v.t / (v.dur * 0.45), 0, 1), e = easeOutQuad(w);
+  return { x: lerp(v.ax - 430, v.ax, e), y: lerp(v.ay - 250, v.ay - 16, e), w };
+}
+let beamCanvas = null;
+function beamSprite() {   // lazy 48×8 falloff strip, stretched at draw — no per-frame gradients
+  if (!beamCanvas) {
+    const c = makeCanvas(48, 8), g = c.getContext('2d');
+    const grd = g.createLinearGradient(0, 0, 48, 0);
+    grd.addColorStop(0, 'rgba(159,241,255,0)'); grd.addColorStop(0.5, 'rgba(221,251,255,0.6)'); grd.addColorStop(1, 'rgba(159,241,255,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 48, 8);
+    beamCanvas = c;
+  }
+  return beamCanvas;
+}
+function drawRocket(d) {
+  if (d.x < G.camX - 90 || d.x > G.camX + view.w + 90) return;
+  ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.tilt || 0);
+  ctx.fillStyle = '#8FA3D0';               // tail fin — it came in hot, nose right
+  ctx.beginPath(); ctx.moveTo(-20, -12); ctx.lineTo(-30, -26); ctx.lineTo(-14, -14); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#C6D4F5'; roundRect(-24, -15, 44, 15, 7); ctx.fill();
+  ctx.fillStyle = '#FF8A6B';               // coral nose cone
+  ctx.beginPath(); ctx.moveTo(18, -15); ctx.quadraticCurveTo(33, -13, 36, -7.5); ctx.quadraticCurveTo(33, -2, 18, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#61D9FF';               // canopy pops once the hop starts
+  if (d.hatch > 0) {
+    ctx.save(); ctx.translate(-9, -15); ctx.rotate(-d.hatch * 1.1);
+    ctx.beginPath(); ctx.arc(7, 0, 7, Math.PI, 0); ctx.fill(); ctx.restore();
+  } else { ctx.beginPath(); ctx.arc(-2, -15, 7, Math.PI, 0); ctx.fill(); }
+  ctx.fillStyle = '#123A6B'; ctx.fillRect(-24, -3, 44, 3);   // scorched skid rail
+  ctx.restore();
+}
+function drawArrivalBack() {
+  if (G.vigDecor) drawRocket(G.vigDecor);
+  const v = G.vig, V = vigPose;
+  if (!v || !V) return;
+  if (v.id === 'dropoff') {
+    const s = dropSaucer(v);
+    if (s.u < 0.55) {                      // the carrying beam
+      ctx.globalAlpha = 0.55 * V.k;
+      ctx.drawImage(beamSprite(), s.sx - 13, s.sy + 6, 26, Math.max(2, v.ay - s.sy - 6));
+      ctx.globalAlpha = 1;
+    }
+    ctx.save(); ctx.globalAlpha = 0.92 * V.k;
+    if (s.wob) { ctx.translate(s.sx, s.sy); ctx.rotate(s.wob); ctx.translate(-s.sx, -s.sy); }
+    drawSaucerBody(s.sx, s.sy, s.u > 0.62 && s.u < 0.8 && Math.floor(G.time * 10) % 2 === 0);
+    ctx.restore();
+  } else if (v.id === 'star') {
+    const s = starPath(v);
+    if (s.w < 1) {
+      ctx.save(); ctx.globalAlpha = V.k;
+      ctx.drawImage(GLOW.white, s.x - 22, s.y - 22, 44, 44);
+      ctx.strokeStyle = 'rgba(232,244,255,0.85)'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - 38, s.y - 22); ctx.stroke();
+      ctx.fillStyle = '#FFF'; ctx.beginPath(); ctx.arc(s.x, s.y, 3.2, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+function drawArrivalFront() {   // the beam column washes OVER the materializing body
+  const v = G.vig, V = vigPose;
+  if (!v || !V || v.id !== 'beam') return;
+  const aIn = clamp(v.t / 0.1, 0, 1), aOut = 1 - clamp((v.t - v.dur * 0.6) / 0.28, 0, 1);
+  const a = Math.min(aIn, aOut) * V.k;
+  if (a <= 0) return;
+  const bh = v.ay + 4 - G.camY;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.45 * a; ctx.drawImage(beamSprite(), v.ax - 26, G.camY, 52, bh);
+  ctx.globalAlpha = 0.85 * a; ctx.drawImage(beamSprite(), v.ax - 9, G.camY, 18, bh);
+  ctx.restore();
+}
+/* ---- seasonal decor (frame-time, decor stream, play + attract only) ---- */
+function seasonalTick(dt) {
+  if (G.mode !== 'play' && G.mode !== 'attract') return;
+  if (SEASON.fw) {
+    fwIn -= dt;
+    if (fwIn <= 0 && fwList.length < 3) {
+      fwList.push({ u: 0.08 + G.decorRng() * 0.84, v: G.decorRng(), t: 0, col: ['#FFC93C', '#9FF1FF', '#FF8A6B'][(G.decorRng() * 3) | 0] });
+      fwIn = 2 + G.decorRng() * 3;
+    }
+    for (let i = fwList.length - 1; i >= 0; i--) if ((fwList[i].t += dt) > 1.6) fwList.splice(i, 1);
+  }
+  if (SEASON.dusk) {
+    if (bat) { bat.t += dt; bat.x -= 85 * dt; if (bat.x < -40) bat = null; }
+    else if ((batIn -= dt) <= 0) { bat = { x: view.w + 30, y: 26 + G.decorRng() * 88, t: 0 }; batIn = 45 + G.decorRng() * 45; }
+  }
+  if (SEASON.blossom && (petalIn -= dt) <= 0) {
+    petalIn = 0.9 + G.decorRng() * 0.7;
+    spawnP(G.camX + G.decorRng() * view.w, G.camY + 4 + G.decorRng() * view.h * 0.3, -0.3 - G.decorRng() * 0.4, 0.35 + G.decorRng() * 0.3, 260, 3.4, 'rgba(255,190,214,0.9)', 0.0008, false, 4);
+  }
+}
+function drawFireworks() {   // dotted blooms in the far layer — screen space, ≤3 live
+  for (const f of fwList) {
+    const uu = f.t / 1.6, r = easeOutCubic(clamp(uu, 0, 1)) * 34, a = (1 - uu) * 0.75;
+    if (a <= 0) continue;
+    const cx = f.u * view.w, cy = 18 + f.v * view.h * 0.35;
+    ctx.fillStyle = f.col; ctx.globalAlpha = a;
+    for (let i = 0; i < 10; i++) {
+      const an = i / 10 * TAU + f.u * 9;
+      ctx.fillRect(cx + Math.cos(an) * r - 1.25, cy + Math.sin(an) * r - 1.25, 2.5, 2.5);
+    }
+    ctx.globalAlpha = a * 0.8; ctx.fillRect(cx - 1, cy - 1, 2, 2);   // fading core
+  }
+  ctx.globalAlpha = 1;
+}
+function drawBat() {         // dusk-week silhouette, two quadratic wings, far layer
+  const fl = Math.sin(bat.t * 16);
+  ctx.save(); ctx.translate(bat.x, bat.y + Math.sin(bat.t * 3) * 6);
+  ctx.fillStyle = 'rgba(10,15,38,0.85)';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(-7, -4 - fl * 3, -12, 1 - fl * 4);
+  ctx.quadraticCurveTo(-6, 1, 0, 2.5);
+  ctx.quadraticCurveTo(6, 1, 12, 1 - fl * 4);
+  ctx.quadraticCurveTo(7, -4 - fl * 3, 0, 0);
+  ctx.fill(); ctx.restore();
+}
+/* ---- drawn toast glyphs — never an emoji-font dependency ---- */
+function drawLanternGlyph(x, y) {
+  ctx.save(); ctx.translate(x + 7, y);
+  ctx.fillStyle = '#FFC93C'; ctx.fillRect(-2.5, -8, 5, 2); ctx.fillRect(-2.5, 6, 5, 1.6);
+  ctx.fillStyle = '#FF4F66'; ctx.beginPath(); ctx.ellipse(0, -0.2, 5.5, 6, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,201,60,.8)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-2.5, -5); ctx.quadraticCurveTo(-3.6, 0, -2.5, 4.6);
+  ctx.moveTo(2.5, -5); ctx.quadraticCurveTo(3.6, 0, 2.5, 4.6); ctx.stroke();
+  ctx.strokeStyle = '#FFC93C'; ctx.beginPath(); ctx.moveTo(0, 7.6); ctx.lineTo(0, 10); ctx.stroke();
+  ctx.restore();
+}
+function drawCakeGlyph(x, y) {
+  ctx.save(); ctx.translate(x + 7, y + 1);
+  ctx.fillStyle = '#FF9ECF'; rrPath(ctx, -7, -2, 14, 4, 2); ctx.fill();
+  ctx.fillStyle = '#FFE59A'; rrPath(ctx, -8, 2, 16, 5, 2); ctx.fill();
+  ctx.strokeStyle = '#F4F7FF'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, -3); ctx.lineTo(0, -7); ctx.stroke();
+  ctx.fillStyle = '#FFC93C'; ctx.beginPath(); ctx.arc(0, -8.2, 1.6, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
+/* ---------------------------------------------------------------------------
+   31. FONT READINESS then BOOT
    ------------------------------------------------------------------------- */
 function boot() {
   resize();
