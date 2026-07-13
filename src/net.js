@@ -1238,6 +1238,10 @@
         row.emoteSeq = (row.emoteSeq | 0) + 1;
         row.emoteId = em.emoteId;
         broadcastEmoteB(row.p, em.emoteId, row.emoteSeq).catch(() => {});
+        // Symmetric with the guest EMOTEB path (§4.6): emit locally so a host
+        // client surfaces peer emotes too — incl. spectators, whose presence()
+        // row is null (positionless) so no world bubble ever draws for them.
+        S.ev.emit('emote', { p: row.p, id: em.emoteId, seq: row.emoteSeq });
         return;
       }
       if (pt[0] === A_PRES) {

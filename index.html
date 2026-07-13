@@ -113,9 +113,11 @@
      reachable. Gated ≥640px tall so the 980×620 solo #shot goldens — where the
      panel is left at its natural height, exactly as before — don't move a pixel;
      the short-landscape case (≤430px) is already handled by its own rule below. */
-  @media (min-height: 640px) {
-    .panel { max-height: calc(100dvh - 40px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
-  }
+  /* The settings/pause panel grows tall in a room (the Run Together section), so
+     it must cap + scroll at every viewport height or Back/Reset fall off-screen.
+     Scoped to .scroll-cap — added in code ONLY when the network rows are built
+     (real sessions), never under #shot — so the solo goldens can't move. */
+  .panel.scroll-cap { max-height: calc(100dvh - 24px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   /* Death card sits low so the ragdoll/helmet stay in frame above it (E9.2). */
   .dead-anchor { justify-content: flex-end; }
 
@@ -5113,6 +5115,8 @@ async function acceptInvite(role) {
 
 // --- Settings → Network (bespoke rows below the generic switch/slider loop) --
 function buildNetworkSettings(host) {
+  const panel = host.closest && host.closest('.panel');   // tall net rows → cap + scroll (never under #shot, so goldens hold)
+  if (panel) panel.classList.add('scroll-cap');
   const h = document.createElement('div');
   h.className = 'net-sub'; h.style.margin = '12px 0 2px'; h.textContent = 'Relay';
   host.appendChild(h);
@@ -5716,7 +5720,21 @@ if (NET) NET.onEvent((e, d) => {
   } else if (e === 'reject') { if (d && d.pubHex) pendingJoins.delete(d.pubHex); if (netLive()) renderRoomCard(); }
   else if (e === 'rotated') { if (netLive()) renderRoomCard(); }   // fresh link/code/QR after New Link
   else if (e === 'roster' || e === 'ok' || e === 'kick') { if (netLive()) renderRoomCard(); }
+  else if (e === 'emote') netEmoteToast(d);
 });
+// A world emote bubble only draws over a positioned ghost (peer runner) or your
+// own player. Spectators are positionless (presence() emits no row for them), and
+// your own bubble is hidden while you watch — so those emotes would vanish. Toast
+// them instead so a wave from the stands still lands. Positioned emoters already
+// bubble → skip to avoid doubling.
+function netEmoteToast(d) {
+  if (!d || !settings.netEmotes) return;
+  if (ghosts.some((g) => g.active && g.p === d.p)) return;         // peer runner → bubble handles it
+  if (d.p === NET.info().myP && !netSpectating()) return;          // your own bubble covers it while playing
+  const row = (NET.roster() || []).find((r) => r.p === d.p);
+  const who = (row && row.callsign) || ('P' + d.p);
+  queueToast(who + ' ' + (EMOTE_GLYPH[d.id] || ''), 'net');
+}
 $('btnReset').onclick = () => {
   if (!confirm('Erase all scores, stats, and settings?')) return;
   try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
