@@ -92,6 +92,13 @@
     transition: background 0.16s cubic-bezier(.2, .9, .3, 1);
   }
   .overlay.in { background: rgba(4, 5, 16, 0.45); }
+  /* Attract-anchored overlays (attract / wardrobe / room) showcase the LIVE
+     scene behind them — the hero astronaut IS the preview — so a uniform dim
+     washes out the very thing they're presenting. Give them a bottom-only
+     gradient instead: clear over the astronaut up top, darkening only behind
+     the bottom-anchored card for contrast. Modal overlays keep the flat dim. */
+  .overlay.attract-anchor { background: linear-gradient(to bottom, rgba(4, 5, 16, 0) 45%, rgba(4, 5, 16, 0) 100%); }
+  .overlay.attract-anchor.in { background: linear-gradient(to bottom, rgba(4, 5, 16, 0) 45%, rgba(4, 5, 16, 0.55) 100%); }
 
   .panel {
     background: var(--panel);
