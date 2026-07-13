@@ -1294,7 +1294,19 @@
         // New run → fresh trace: reset the run clock AND the dim flag (the
         // unverified mark discounts a TRACE, not a key — a laggy honest blip
         // must not dim a player forever; a cheater re-dims within one frame).
-        if (row.runT0 == null || pres.runId !== row.runId) { row.runT0 = t; row.runId = pres.runId; row.unverified = false; }
+        // Seed the run clock from the host's OWN authoritative round start when a
+        // shared round is underway and this peer claims that round's runId, so a
+        // mid-round joiner gets exactly the elapsed the round clock implies and
+        // their real dist is plausible at once (no ~23s "unverified" dim). The
+        // headroom is a host-clock value (roundT0 shares t's performance.now base),
+        // never the peer's claim, so a cheater who overclaims dist beyond what the
+        // round's own elapsed allows is still flagged. Fall back to t (elapsed 0)
+        // with no active round, during pre-roll (roundT0 in the future), or a
+        // mismatched runId — solo/pre-round behaviour unchanged.
+        if (row.runT0 == null || pres.runId !== row.runId) {
+          const anchorRound = S.roundT0 && S.roundRunId === S.runId && S.roundT0 <= t && pres.runId === S.roundRunId;
+          row.runT0 = anchorRound ? S.roundT0 : t; row.runId = pres.runId; row.unverified = false;
+        }
         pres.elapsedMs = t - row.runT0;
         const env = checkEnvelope(row.pres, pres, row.lastSeen ? t - row.lastSeen : 0);
         if (env.teleport) return strike(row, 'teleport');
