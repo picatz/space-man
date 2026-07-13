@@ -49,6 +49,13 @@
   // invite relayHost field).
   var HOST_RE = /^[A-Za-z0-9.\-]+(:\d{1,5})?$/;
 
+  // City labels are DISPLAY strings that reach the DOM (room card / settings /
+  // mobility log). Hosts are gated by HOST_RE; cities were the gap — a hostile
+  // directory endpoint or a poisoned same-origin localStorage cache controls
+  // RegionName freely. Strip HTML-significant chars HERE, at the same trust
+  // boundary, so no city can ever carry markup to an innerHTML sink downstream.
+  function cleanCity(s) { return String(s == null ? '' : s).replace(/[<>&"']/g, '').slice(0, 24); }
+
   // Native parser: official Regions{} → Nodes[] into our flat region list.
   // Tolerant: missing/extra fields ignored; DERPPort!=443 appended as :port.
   function parse(obj) {
@@ -71,7 +78,7 @@
       if (!hosts.length) continue;
       regions.push({
         code: String(r.RegionCode).slice(0, 8),
-        city: String(r.RegionName || r.RegionCode).slice(0, 24),
+        city: cleanCity(r.RegionName || r.RegionCode),
         lat: +r.Latitude || 0, lon: +r.Longitude || 0,
         hosts: hosts.slice(0, 4),
       });
@@ -87,7 +94,7 @@
       var h = String(arr[i]).trim().replace(/^wss?:\/\//, '').replace(/\/derp\/?$/, '');
       if (HOST_RE.test(h)) clean.push(h);
     }
-    return { v: 1, src: 'server-list', regions: clean.length ? [{ code: 'usr', city: label || 'custom relay', lat: 0, lon: 0, hosts: clean }] : [] };
+    return { v: 1, src: 'server-list', regions: clean.length ? [{ code: 'usr', city: cleanCity(label || 'custom relay'), lat: 0, lon: 0, hosts: clean }] : [] };
   }
 
   function baked() { return parse(BAKED_JSON); }
@@ -108,7 +115,7 @@
       }
       if (!hosts.length) continue;
       regions.push({
-        code: String(r.code).slice(0, 8), city: String(r.city || r.code).slice(0, 24),
+        code: String(r.code).slice(0, 8), city: cleanCity(r.city || r.code),
         lat: +r.lat || 0, lon: +r.lon || 0, hosts: hosts,
       });
     }

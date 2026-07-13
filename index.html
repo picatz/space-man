@@ -431,6 +431,99 @@
   .hap { position: fixed; left: -9999px; top: -9999px; opacity: 0; pointer-events: none; }
   /* Screen-reader live region: visually hidden, never display:none (that silences it). */
   #srAnnounce { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* ============ RUN TOGETHER (multiplayer surfaces) ============ */
+  /* 4th attract button: wrap to 2×2 on the narrow portrait card (scoped so the
+     other 2-wide rows are untouched). */
+  #attractRow { flex-wrap: wrap; }
+  #attractRow .btn { flex: 1 1 42%; }
+
+  .net-sub { font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; margin: 2px 0 10px; }
+  .net-sub .num { font-family: var(--font-num); }
+
+  /* Room card. On short (landscape) viewports the card is taller than the
+     screen — cap it and scroll internally so title/link/roster stay reachable. */
+  #ovRoom .panel { max-height: calc(100vh - 32px); overflow-y: auto; }
+  .room-top { display: flex; gap: 14px; align-items: flex-start; margin: 4px 0 10px; text-align: left; }
+  .room-qr { flex: 0 0 auto; width: 168px; height: 168px; border-radius: 10px; background: #fff; image-rendering: pixelated; }
+  .room-invite { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .invite-block .k { font-size: 9px; letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
+  .invite-block .v { font-family: var(--font-num); font-size: 12px; color: var(--suit); word-break: break-all; margin-top: 2px; }
+  .invite-block .code { font-size: 20px; letter-spacing: 3px; color: var(--cyan-lt); }
+  .chip-row { display: flex; gap: 8px; margin-top: 6px; }
+  .mini-chip {
+    font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--cyan); background: rgba(56, 225, 255, 0.12); border: 1px solid rgba(56, 225, 255, 0.3);
+    border-radius: 8px; padding: 8px 12px; min-height: 36px; cursor: pointer;
+  }
+  .mini-chip.coral { color: var(--coral); background: rgba(255, 79, 102, 0.1); border-color: rgba(255, 79, 102, 0.35); }
+  .mini-chip:active { transform: scale(0.96); }
+
+  .room-relay { font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; text-align: left; margin: 2px 0; }
+  .room-relay .num { font-family: var(--font-num); }
+  .room-log { text-align: left; margin: 2px 0 6px; }
+  .room-log summary { font-size: 10px; letter-spacing: 1px; color: var(--cyan); cursor: pointer; opacity: 0.8; list-style: none; }
+  .room-log summary::-webkit-details-marker { display: none; }
+  .room-log .log-line { font-size: 10px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; padding: 4px 0 0 12px; }
+  .room-log .log-line .num { font-family: var(--font-num); }
+
+  .roster { text-align: left; margin: 6px 0 10px; max-height: 232px; overflow-y: auto; }
+  .roster-row {
+    display: flex; align-items: center; gap: 8px; min-height: 44px;
+    padding: 4px 2px; border-bottom: 1px solid rgba(207, 227, 255, 0.08);
+    font-size: 12px; letter-spacing: 1px;
+  }
+  .roster-row .pn { font-family: var(--font-num); color: var(--cyan); font-weight: 700; flex: 0 0 26px; }
+  .roster-row .who { flex: 1; min-width: 0; color: var(--suit); font-weight: 700; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .roster-row .who .tag { color: var(--ui); font-weight: 500; opacity: 0.7; text-transform: none; letter-spacing: 0.5px; }
+  .roster-row .glyph { flex: 0 0 14px; text-align: center; color: var(--cyan-lt); }
+  .roster-row.unverified { opacity: 0.5; }
+  .roster-row.pending { color: var(--gold); }
+  .roster-row.pending .who { color: var(--gold); }
+
+  /* Join prompt / blocked-host card */
+  .stack-btn { display: flex; flex-direction: column; }
+  #btnJoinNotNow, #btnJoinAnyway { opacity: 0.75; }
+  #joinState { font-size: 12px; letter-spacing: 1px; color: var(--ui); opacity: 0.75; margin: 6px 0; min-height: 16px; }
+  #joinCustomDir { font-size: 11px; letter-spacing: 1px; color: var(--gold); opacity: 0.85; margin: 4px 0; display: none; }
+  #joinCustomDir.show { display: block; }
+
+  /* Callsign picker */
+  .callsign-cols { display: flex; justify-content: center; gap: 18px; margin: 16px 0; }
+  .callsign-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .callsign-word {
+    font-size: 20px; font-weight: 800; letter-spacing: 1px; color: var(--cyan-lt);
+    width: clamp(96px, 32vw, 140px); text-align: center; text-transform: uppercase;
+    text-shadow: 0 0 12px rgba(56, 225, 255, 0.5);
+  }
+  #callsignPreview { font-family: var(--font); font-size: 14px; letter-spacing: 2px; color: var(--suit); min-height: 18px; text-transform: uppercase; }
+
+  /* Settings → Network */
+  .net-radio { text-align: left; padding: 4px 4px 10px; border-bottom: 1px solid rgba(207, 227, 255, 0.08); }
+  .net-radio-opt { display: flex; align-items: center; gap: 8px; padding: 8px 2px; font-size: 12px; letter-spacing: 0.5px; color: var(--ui); cursor: pointer; text-transform: none; min-height: 40px; }
+  .net-radio-opt .dot { flex: 0 0 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(56, 225, 255, 0.4); position: relative; }
+  .net-radio-opt.sel .dot::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--cyan); }
+  .net-radio .hint { font-size: 10px; color: var(--ui); opacity: 0.5; padding: 0 0 4px 24px; letter-spacing: 0.5px; }
+  .net-radio input, .net-radio textarea {
+    width: 100%; margin: 4px 0 6px; background: rgba(255, 255, 255, 0.05); color: var(--suit);
+    border: 1px solid rgba(207, 227, 255, 0.18); border-radius: 8px; padding: 8px; font: 12px var(--font-num); box-sizing: border-box;
+  }
+  .net-val { font-family: var(--font-num); color: var(--cyan); font-size: 12px; }
+  #blockedList { text-align: left; margin: 4px 0; max-height: 160px; overflow-y: auto; }
+  #blockedList .log-row .mini-chip { margin-left: auto; }
+
+  /* Run Together — in-run surfaces (N3) */
+  .room-caption { font-size: 10px; letter-spacing: 3px; color: var(--ui); opacity: 0.7; margin: 12px 0 2px; }
+  table.scores tr.unverified { opacity: 0.5; }
+  .emote-row { display: flex; justify-content: center; gap: 8px; margin: 12px 0 2px; flex-wrap: wrap; }
+  .emote-btn {
+    width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%;
+    font-size: 20px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  }
+  @media (max-height: 430px) { .emote-row { display: none; } }
+  #ovRosterActions .panel { max-width: 320px; }
+  .roster-actions-head { font-size: 12px; letter-spacing: 1px; color: var(--ui); margin-bottom: 10px; text-transform: uppercase; }
+  .roster-actions-head .glyph { color: var(--cyan-lt); margin-right: 4px; }
 </style>
 </head>
 <body>
@@ -458,10 +551,11 @@
       <div><b>A / ✕</b><span>JUMP</span></div>
       <div><b>X / □ / R2</b><span>FIRE</span></div>
     </div>
-    <div class="row">
+    <div class="row" id="attractRow">
       <button class="btn ghost" id="btnTrophy">Scores</button>
       <button class="btn ghost" id="btnWardrobe">Suit Up</button>
       <button class="btn ghost" id="btnSettings">Settings</button>
+      <button class="btn ghost" id="btnTogether">Run Together</button>
     </div>
     <div id="attractStats" class="stats-line"></div>
   </div>
@@ -479,6 +573,7 @@
       <div><b>LEFT STICK</b><span>MOVE</span></div><div><b>A / ✕</b><span>JUMP</span></div><div><b>X / □ / R2</b><span>FIRE</span></div>
     </div>
     <div class="settings-list" data-settings-host></div>
+    <button class="btn ghost" id="btnPauseSpectate" style="display:none;">Spectate This Round</button>
     <button class="btn ghost" id="btnQuit">Quit to Title</button>
   </div>
 </div>
@@ -495,9 +590,13 @@
     <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
     <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
     <table class="scores" id="deadScores"></table>
+    <div class="room-caption" id="deadRoomCaption" style="display:none;">ROOM</div>
+    <table class="scores" id="deadRoomScores" style="display:none;"></table>
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
+    <button class="btn ghost" id="btnSpectateRound" style="display:none;">Spectate This Round</button>
     <div class="sub" id="deadTapHint">TAP TO RETRY</div>
     <div class="install-chip" id="installChip">Add Space Man to your home screen</div>
+    <div class="emote-row" id="deadEmotes" style="display:none;"></div>
   </div>
 </div>
 
@@ -547,6 +646,93 @@
   </div>
 </div>
 
+<!-- Run Together: room card — attract-anchored so the idle scene stays behind it -->
+<div class="overlay attract-anchor" id="ovRoom">
+  <div class="panel">
+    <div class="title-lg" id="roomTitle" style="font-size:20px;">Room</div>
+    <div class="net-sub" id="roomCounts"></div>
+    <div class="room-top" id="roomTop">
+      <canvas class="room-qr" id="roomQr" width="168" height="168"></canvas>
+      <div class="room-invite">
+        <div class="invite-block">
+          <div class="k">Link</div>
+          <div class="v" id="roomLink"></div>
+          <div class="chip-row">
+            <button class="mini-chip" id="btnRoomCopy">Copy</button>
+            <button class="mini-chip" id="btnRoomShare" style="display:none;">Share…</button>
+          </div>
+        </div>
+        <div class="invite-block">
+          <div class="k">Code</div>
+          <div class="v code" id="roomCode"></div>
+        </div>
+      </div>
+    </div>
+    <div class="room-relay" id="roomRelay"></div>
+    <details class="room-log" id="roomLog" style="display:none;">
+      <summary id="roomLogSummary"></summary>
+      <div id="roomLogLines"></div>
+    </details>
+    <div class="roster" id="roomRoster"></div>
+    <div class="toggle-row" id="roomApproveRow">
+      <span>Approve Joins</span>
+      <button class="switch" id="roomApprove" role="switch" aria-label="Approve joins"></button>
+    </div>
+    <div class="row" id="roomHostControls">
+      <button class="btn ghost" id="btnRoomNewLink">New Link</button>
+      <button class="btn ghost" id="btnRoomNewWorld">New World</button>
+    </div>
+    <button class="btn ghost coral" id="btnRoomLeave">Leave Room</button>
+    <button class="btn ghost" id="btnRoomBack">Back</button>
+  </div>
+</div>
+
+<!-- Run Together: join invite prompt -->
+<div class="overlay" id="ovJoin">
+  <div class="panel">
+    <div class="title-lg" id="joinTitle" style="font-size:20px;">Join This Run Together?</div>
+    <div id="joinState"></div>
+    <div id="joinCustomDir">This room uses a custom relay directory.</div>
+    <div id="joinChoices">
+      <button class="btn pulse" id="btnJoinPlay">Play</button>
+      <button class="btn ghost" id="btnJoinWatch">Watch</button>
+    </div>
+    <button class="btn ghost" id="btnJoinNotNow">Not Now</button>
+  </div>
+</div>
+
+<!-- Run Together: blocked-host warning -->
+<div class="overlay" id="ovBlockedHost">
+  <div class="panel">
+    <div class="title-lg" style="font-size:20px;">Blocked Host</div>
+    <div class="sub">This room is hosted by someone you've blocked.</div>
+    <button class="btn" id="btnBlockedNotNow">Not Now</button>
+    <button class="btn ghost" id="btnJoinAnyway">Join Anyway</button>
+  </div>
+</div>
+
+<!-- Run Together: callsign picker (two-column spinner) -->
+<div class="overlay" id="ovCallsign">
+  <div class="panel">
+    <div class="title-lg" style="font-size:20px;">Your Callsign</div>
+    <div class="callsign-cols" id="callsignCols"></div>
+    <div id="callsignPreview"></div>
+    <button class="btn ghost" id="btnCallsignReroll">Re-roll</button>
+    <button class="btn" id="btnCallsignDone">Done</button>
+  </div>
+</div>
+
+<!-- Run Together: roster long-press sheet (hide / block / kick) -->
+<div class="overlay dead-anchor" id="ovRosterActions">
+  <div class="panel">
+    <div class="roster-actions-head" id="rosterActionsHead"></div>
+    <button class="btn ghost" id="btnRosterHide">Hide</button>
+    <button class="btn ghost" id="btnRosterBlock">Block</button>
+    <button class="btn ghost" id="btnRosterKick" style="display:none;">Kick</button>
+    <button class="btn ghost" id="btnRosterCancel">Cancel</button>
+  </div>
+</div>
+
 <pre id="errlog"></pre>
 <label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" tabindex="-1" /></label>
 <div id="srAnnounce" aria-live="polite"></div>
@@ -554,6 +740,13 @@
 <script src="src/contracts.js"></script>
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
+<!-- Run Together (multiplayer). All four are inert on load: they define globals
+     only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
+     #j= invite is accepted (net-spec §4.1 lazy gate). -->
+<script src="src/callsigns.js"></script>
+<script src="src/relay-directory.js"></script>
+<script src="src/qr.js"></script>
+<script src="src/net.js"></script>
 
 <script>
 "use strict";
@@ -586,13 +779,21 @@ const HASH = (() => {
   });
   return h;
 })();
-const SHOT = HASH.shot || null;                 // 'play' | 'dead' | 'pause' | null
+const SHOT = HASH.shot || null;                 // 'play' | 'dead' | 'pause' | 'wardrobe' | 'room' | null
 const SHOT_SEED = HASH.seed !== undefined ? (parseInt(HASH.seed, 10) || 0) : null;
 const SHOT_FRAMES = HASH.frames !== undefined ? (parseInt(HASH.frames, 10) || 0) : 600;
 const FORCE_TOUCH = HASH.touch == '1' || HASH.touch === true;
 // Delight pack (sky guests, postcards, quips) is cosmetic-only and never runs
 // under #shot — seeded goldens stay pixel-identical by construction.
 const DELIGHT = !SHOT;
+// Net hard-off under every #shot (net-spec I19/I20): any real socket attempt in
+// a shot throws + logs, proving the surfaces stay offline. #shot=room drives the
+// deterministic mock (no sockets), so this wrapper never actually fires there.
+if (SHOT && typeof WebSocket !== 'undefined') {
+  const RealWS = WebSocket;
+  window.WebSocket = function () { logErr('net: WebSocket blocked under #shot'); throw new Error('net disabled under #shot'); };
+  window.WebSocket.prototype = RealWS.prototype;
+}
 
 /* ---------------------------------------------------------------------------
    2. CONFIG / CURVES — every tuning constant lives here. Motion per 60Hz frame.
@@ -670,7 +871,18 @@ const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
 const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, autorun: true, musicVol: 1, sfxVol: 1, muted: false }, migratedSave.settings, savedSettings);
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, autorun: true, musicVol: 1, sfxVol: 1, muted: false,
+  // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
+  netGhosts: 0.55, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
+// Net settings sanitized here (schema v5 will own this): opacity clamps to 0.25–1,
+// mode falls back to 'default' for any unknown value.
+settings.netGhosts = Math.min(1, Math.max(0.25, (typeof settings.netGhosts === 'number' && isFinite(settings.netGhosts)) ? settings.netGhosts : 0.55));
+settings.netEmotes = settings.netEmotes !== false;
+settings.netApprove = settings.netApprove === true;
+if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
+if (typeof settings.netRelay !== 'string') settings.netRelay = '';
+if (typeof settings.netRelayUrl !== 'string') settings.netRelayUrl = '';
+if (typeof settings.netRelayList !== 'string') settings.netRelayList = '';
 // Raw overlay wins for switches (legacy precedence) but the mixer trio must stay sane.
 settings.musicVol = migratedSave.settings.musicVol; settings.sfxVol = migratedSave.settings.sfxVol; settings.muted = migratedSave.settings.muted;
 // Passthrough achievement dates (firstRunDate etc.) — additive v4 field, no schema bump.
@@ -1496,6 +1708,9 @@ function onKey(e, down) {
   if ((k === 'j' || k === 'f' || k === 'x') && down) { input.shoot = true; flags.taughtShoot = true; }
   if (down) {
     input.usingKeys = true; input.usingTouch = false;
+    // Run Together emotes (§4.6): digits 1-6 in play/dead, only while netLive and
+    // never while the initials overlay is swallowing keys. Solo: no NET, no-op.
+    if (k >= '1' && k <= '6' && netInRun() && !$('ovInitials').classList.contains('show')) { sendEmote(+k - 1); return; }
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
@@ -1534,6 +1749,7 @@ canvas.addEventListener('pointerdown', (e) => {
   // over an overlay or outside the window — otherwise inputs stick.
   try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
   input.downIds.add(e.pointerId);
+  if (netInRun() && netPointerDown(e)) return;   // Run Together: spectator chrome / LEAVE / emote-wheel arm (solo: no-op)
   // A mouse is a direct fire input; don't switch the HUD into touch mode or
   // spawn a joystick beneath the cursor.
   if (e.pointerType === 'mouse') {
@@ -1568,6 +1784,7 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 }, { passive: false });
 canvas.addEventListener('pointermove', (e) => {
+  if (emWheel.open && e.pointerId === emWheel.armId) { emWheel.sel = emoteWheelSector(pointerPos(e).x, pointerPos(e).y); return; }
   if (input.stick.active && e.pointerId === input.stick.id) {
     const p = pointerPos(e); input.stick.x = p.x; input.stick.y = p.y;
     const dx = p.x - input.stick.cx, dead = 12, full = 48, mag = Math.abs(dx);
@@ -1577,6 +1794,10 @@ canvas.addEventListener('pointermove', (e) => {
 }, { passive: false });
 function endPointer(e) {
   input.downIds.delete(e.pointerId);
+  if (e.pointerId === emWheel.armId) {   // resolve/cancel the emote wheel
+    if (emWheel.open) { if (emWheel.sel >= 0) sendEmote(emWheel.sel); emWheel.open = false; }
+    emWheel.armed = false; emWheel.armId = -1; emWheel.sel = -1;
+  }
   if (input.muteHold && e.pointerId === input.muteHold.id) {
     if (!input.muteHold.fired && performance.now() - input.muteHold.t < 400) toggleMute();
     input.muteHold = null;
@@ -1977,6 +2198,13 @@ function startRun() {
   clearInput();
   resetRun(seed);
   Audio.musicReset(seed);
+  // Run Together role at run start (Addendum A): a sit-out watches THIS round,
+  // then the next run auto-jumps back in; otherwise starting a run IS the jump-in.
+  if (netLive()) {
+    if (sitOutNext) sitOutNext = false;                       // consume the one-round sit-out
+    else if (NET.info().role === 1) { try { NET.setRole(0); } catch (e) {} announce('Now playing.'); }
+    slipRun = 0; slipT = 0;
+  }
   beginArrival();   // E13: render-side greeting; sim ticks under it from frame 1
   G.mode = 'play'; buzz('light');
 }
@@ -2626,7 +2854,15 @@ function update() {
     updateFlare();
     updateThreat();
     updateCamera();
+    if (netSpectating()) netFollowCamera();   // spectator follows the watched runner, not the local bot
     updateDistance();
+    // Run Together presence feed (§4.1): capture at 10Hz; no-op solo / spectating
+    // / under the offline mock (NET.active is false there).
+    if (netLive() && !netSpectating() && G.frameCount % 6 === 0) {
+      const pl = G.player;
+      const st = (pl.facing > 0 ? 1 : 0) | (pl.onGround ? 2 : 0) | 8 | (slipT > 0.25 ? 16 : 0);
+      NET.sendPresence(pl.x + pl.w / 2, pl.y + pl.h / 2, (pl.vx * 10) | 0, st, G.chain, Math.floor(G.score), G.dist);
+    }
     generateAhead();
     const nextBand = bandFor(G.dist);
     if (nextBand > G.band) {
@@ -2788,6 +3024,7 @@ function frame(now) {
   // Drop unpayable debt after the step cap or a slow device spirals: 6 updates
   // per render forever, with simulation lagging real input.
   if (acc > STEP) acc = STEP;
+  netTick(dt);                       // Run Together: sample ghosts, decay emotes, TOUR director, slipstream
   // Non-stepping modes (pause/resume/dead card) hold the last simulated state;
   // interpolating there oscillates against a prev that never advances.
   const stepping = (G.mode === 'play' || G.mode === 'attract');
@@ -2862,7 +3099,8 @@ function render(alpha) {
   drawCompanion();
   vigPose = arrivalPose();          // E13: this frame's pose morph + prop anchors
   drawArrivalBack();
-  if (G.player) drawPlayer(alpha);
+  drawGhosts(alpha, iCamX);          // under-player layer (Run Together); no-op solo
+  if (G.player && !netSpectating()) drawPlayer(alpha);
   drawArrivalFront();
   drawParticles(alpha);
   drawHints(iCamX, iCamY);
@@ -2890,10 +3128,12 @@ function render(alpha) {
   }
   // HUD fades over 100ms once the death card is up, instead of hard-cutting
   // on the same frame the card appears (E9.1) — the card still owns the screen after.
+  if (netInRun()) drawRaceStrip();   // topmost band; the HUD shifts down to clear it (Run Together)
   if (G.mode === 'play' || G.mode === 'pause' || G.mode === 'resume' || (G.player && G.player.dead && (!G.deathCardShown || G.hudFade > 0))) {
     ctx.save(); ctx.globalAlpha = G.hudFade; drawHUD(); ctx.restore();
   }
-  if ((FORCE_TOUCH || input.usingTouch) && (G.mode === 'play' || G.mode === 'resume')) drawTouchControls();
+  drawNetHUD();                      // spectator chrome + emote wheel + unstable banner (Run Together)
+  if ((FORCE_TOUCH || input.usingTouch) && (G.mode === 'play' || G.mode === 'resume') && !netSpectating()) drawTouchControls();
   if (G.mode === 'resume') {
     ctx.textAlign = 'center';
     drawGlowText(String(clamp(Math.ceil(G.resumeT / 0.434), 1, 3)), view.w / 2, view.h / 2, 46, '#38E1FF', '#F4F7FF');
@@ -3834,7 +4074,10 @@ const FONT_NUM = "ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif";
 const MISSION_SHORT = { stomp: 'STOMP 3', shoot: 'BLAST 3', shard: '5 SHARDS', graze: 'DODGE 2', distance: 'REACH 350m' };
 function drawHUD() {
   const us = uiScale();
-  const top = 12 + safeInset('top'), left = 12 + safeInset('left');
+  // Run Together: the race strip owns the topmost band, so the run HUD shifts
+  // down by (strip 26 + 6 gap) while in a room (§10.1). Solo: netInRun() false → 0.
+  const netBand = netInRun() ? 32 : 0;
+  const top = 12 + netBand + safeInset('top'), left = 12 + safeInset('left');
 
   // pause + mute cluster — enclosed rounded squares so they read as tappable,
   // not as part of the odometer; hidden once the player is dead (the death
@@ -3864,6 +4107,10 @@ function drawHUD() {
     G._muteHit = { x0: Math.max(mc - half, mid), x1: mc + half, y0: cy - yh, y1: cy + yh };
   }
 
+  // A spectator watches someone else's run — the local odometer/chain/ammo/
+  // shards would lie about a run they aren't taking. Keep only pause/mute above;
+  // the WATCHING banner + race strip (drawNetHUD) own the rest of the band.
+  if (netSpectating()) return;
   // odometer + score, indented past the button cluster — ducks alpha instead
   // of fighting the player sprite when the camera pins them near the top.
   const ox = left + (dead ? 0 : pitch + ps + 8 * us);
@@ -4055,7 +4302,7 @@ function drawTouchControls() {
    24. OVERLAYS / SCREENS
    ------------------------------------------------------------------------- */
 const $ = (id) => document.getElementById(id);
-function hideAllOverlays() { ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe'].forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; }
+function hideAllOverlays() { ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'].forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; }
 function showOverlay(id) {
   const el = $(id);
   el.classList.add('show');
@@ -4093,6 +4340,7 @@ function togglePause() {
     if (G.player && G.player.dead) return;     // death sequence owns the screen
     clearInput();
     G.mode = 'pause'; syncSettingsUI(); showOverlay('ovPause');
+    $('btnPauseSpectate').style.display = (netLive() && NET.info().role !== 1) ? '' : 'none';
     Audio.musicEvent('pause');
   } else if (G.mode === 'pause') {
     hideAllOverlays(); Audio.resume(); clearInput();
@@ -4196,6 +4444,7 @@ function renderDeathCard() {
     du.style.display = 'block';
   } else du.style.display = 'none';
   renderScoreTable('deadScores', true);
+  renderRoomBoard();               // Run Together: ROOM column + spectate/emote controls (no-op solo)
   const chip = $('installChip');
   if (deferredPrompt && !flags.installDismissed && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
   hideAllOverlays(); showOverlay('ovDead');
@@ -4346,9 +4595,26 @@ function showWardrobe() {   // G.mode stays 'attract': the live idle scene IS th
   updateWardrobeBadge();
   $('wardHint').textContent = '';
   buildWardrobe();
+  if (!SHOT) ensureWardrobeCallsign();   // callsign entry (§13.4); never under #shot so the wardrobe golden is byte-identical
   hideAllOverlays(); showOverlay('ovWardrobe');
   G.wardrobePanelTop = $('ovWardrobe').firstElementChild.getBoundingClientRect().top;   // one sync measure
   G.wardrobeOpen = true;
+}
+// Callsign row for the wardrobe (real sessions only). Injected lazily so the
+// #shot=wardrobe golden — captured with SHOT set — never sees it.
+function ensureWardrobeCallsign() {
+  if (!NET) return;
+  const panel = $('ovWardrobe').firstElementChild;
+  let row = document.getElementById('wardCallsignRow');
+  if (!row) {
+    row = document.createElement('div'); row.className = 'toggle-row'; row.id = 'wardCallsignRow';
+    row.innerHTML = '<span>Callsign</span>';
+    const v = document.createElement('span'); v.className = 'net-val'; v.id = 'wardCallsignVal'; row.appendChild(v);
+    row.onclick = () => showCallsign(() => showWardrobe());
+    panel.insertBefore(row, $('btnWardrobeDone'));
+  }
+  const cs = getCallsign();
+  $('wardCallsignVal').textContent = cs ? (NET.callsignText(cs[0], cs[1]) || 'Pick one') : 'Pick one';
 }
 
 /* ---- settings ---- */
@@ -4362,9 +4628,22 @@ const SETTINGS_DEF = [
   { key: 'shake', type: 'switch', label: 'Screen shake' },
   { key: 'lefty', type: 'switch', label: 'Left-handed' },
   { key: 'autorun', type: 'switch', label: 'Auto-run (touch)' },
+  // Run Together — network (net-spec §4.8 / blueprint §9). Music-independent.
+  // net:true rows are suppressed under #shot so the pause/settings goldens stay
+  // pixel-identical (same doctrine as the wardrobe callsign row); real sessions
+  // (SHOT === null) always show them.
+  { key: 'netGhosts', type: 'slider', label: 'Ghost opacity', min: 0.25, max: 1, section: 'Run Together', net: true },
+  { key: 'netEmotes', type: 'switch', label: 'Emotes', net: true },
+  { key: 'netApprove', type: 'switch', label: 'Approve joins', net: true },
 ];
 function buildSettings(host) {
   for (const def of SETTINGS_DEF) {
+    if (def.net && SHOT) continue;   // net rows never bloat a #shot golden
+    if (def.section) {   // a lightweight header before the first row of a group
+      const h = document.createElement('div');
+      h.className = 'net-sub'; h.style.margin = '12px 0 2px'; h.textContent = def.section;
+      host.appendChild(h);
+    }
     const row = document.createElement('div');
     row.className = 'toggle-row'; row.dataset.settingRow = def.key;
     const lbl = document.createElement('span'); lbl.textContent = def.label;
@@ -4378,16 +4657,18 @@ function buildSettings(host) {
     } else {
       row.classList.add('slider-row');
       const r = document.createElement('input');
-      r.type = 'range'; r.min = 0; r.max = 100; r.step = 5;
+      // Per-row range override (net-spec §9.1: ghost opacity is 0.25–1, not 0–1).
+      r.type = 'range'; r.min = (def.min != null ? def.min * 100 : 0); r.max = (def.max != null ? def.max * 100 : 100); r.step = 5;
       r.dataset.setting = def.key; r.setAttribute('aria-label', def.label);
       const pct = document.createElement('span'); pct.className = 'pct';
       // input = live (heard while dragging); change = the single LS write per drag
-      r.oninput = () => { settings[def.key] = r.valueAsNumber / 100; Audio.syncChannels(); syncSettingsUI(); };
+      r.oninput = () => { settings[def.key] = r.valueAsNumber / 100; if (def.key === 'musicVol' || def.key === 'sfxVol') Audio.syncChannels(); syncSettingsUI(); };
       r.onchange = () => persistAll();
       row.appendChild(r); row.appendChild(pct);
     }
     host.appendChild(row);
   }
+  if (!SHOT) buildNetworkSettings(host);   // bespoke net rows off under #shot (golden identity)
 }
 function syncSettingsUI() {
   document.querySelectorAll('[data-setting]').forEach((el) => {
@@ -4396,10 +4677,15 @@ function syncSettingsUI() {
       el.classList.toggle('on', !!settings[key]); el.setAttribute('aria-checked', String(!!settings[key]));
     } else {
       const v = Math.round(settings[key] * 100);
-      el.value = v; el.style.setProperty('--fill', v + '%');
+      el.value = v;
+      // Fill tracks the value within the row's own [min,max] (net ghost-opacity
+      // starts at 25, so a raw v% would misplace the gradient).
+      const lo = Number(el.min) || 0, hi = Number(el.max) || 100;
+      el.style.setProperty('--fill', (hi > lo ? Math.round((v - lo) / (hi - lo) * 100) : v) + '%');
       el.nextElementSibling.textContent = v + '%';
     }
   });
+  syncNetworkSettings();
   document.querySelectorAll('[data-setting-row]').forEach((row) => {
     const def = SETTINGS_DEF.find((d) => d.key === row.dataset.settingRow);
     if (def && def.dependsOn) row.classList.toggle('dim', !settings[def.dependsOn]);
@@ -4430,6 +4716,795 @@ function openSettings(from) {
 function reopenPause() { hideAllOverlays(); syncSettingsUI(); showOverlay('ovPause'); }
 
 /* ---------------------------------------------------------------------------
+   25b. RUN TOGETHER — multiplayer UI surfaces (blueprint N2b). Everything here
+   is inert until the player taps RUN TOGETHER or accepts a #j= invite (net-spec
+   §4.1 lazy gate). Nothing touches the sim, input, or the restart path.
+   ------------------------------------------------------------------------- */
+const NET = window.SpaceManNet || null;
+// net=0 hard-disables (A/B debugging + shot safety); no NET → surfaces stay dark.
+function netEnabled() { return !!NET && HASH.net !== '0'; }
+function netLive() { return !!NET && (NET.active || NET.mockActive); }
+
+// --- Callsign (Addendum C) — cosmetics.callsign = [adjIdx, nounIdx], persisted
+//     through the existing cosmetics save path. Read defensively (schema v5 will
+//     validate; today a corrupt value just falls back to "pick one").
+function getCallsign() {
+  const c = G.cosmetics && G.cosmetics.callsign;
+  if (NET && Array.isArray(c) && c.length === 2 && NET.callsignValid(c[0] | 0, c[1] | 0)) return [c[0] | 0, c[1] | 0];
+  return null;
+}
+function hasCallsign() { return !!getCallsign(); }
+function applyCallsignToNet() { const c = getCallsign(); if (c && NET) NET.setCallsign(c[0], c[1]); }
+
+let callsignSel = [0, 0];
+function callsignData() { return window.SpaceManCallsigns || { adj: ['PLAYER'], noun: ['ONE'], deny: [] }; }
+function callsignStepValid(a, n) { return NET ? NET.callsignValid(a, n) : true; }
+function stepCallsignCol(col, dir) {
+  const d = callsignData(), len = col === 0 ? d.adj.length : d.noun.length;
+  let a = callsignSel[0], n = callsignSel[1];
+  for (let i = 0; i < len; i++) {                 // skip denied/out-of-range pairs transparently (§13.3)
+    if (col === 0) a = (a + dir + len) % len; else n = (n + dir + len) % len;
+    if (callsignStepValid(a, n)) { callsignSel = [a, n]; return; }
+  }
+}
+function rerollCallsign() {
+  const d = callsignData();
+  for (let i = 0; i < 128; i++) {
+    const a = (Math.random() * d.adj.length) | 0, n = (Math.random() * d.noun.length) | 0;
+    if (callsignStepValid(a, n)) { callsignSel = [a, n]; break; }
+  }
+  renderCallsign();
+}
+function renderCallsign() {
+  const d = callsignData();
+  const cols = $('callsignCols');
+  if (!cols.dataset.built) {
+    cols.innerHTML = '';
+    for (let c = 0; c < 2; c++) {
+      const col = document.createElement('div'); col.className = 'callsign-col';
+      const up = document.createElement('button'); up.className = 'arrow-btn'; up.textContent = '▲';
+      const w = document.createElement('div'); w.className = 'callsign-word'; w.dataset.col = c;
+      const dn = document.createElement('button'); dn.className = 'arrow-btn'; dn.textContent = '▼';
+      up.onclick = () => { stepCallsignCol(c, 1); renderCallsign(); Audio.sfx.ui(3); };
+      dn.onclick = () => { stepCallsignCol(c, -1); renderCallsign(); Audio.sfx.ui(1); };
+      col.appendChild(up); col.appendChild(w); col.appendChild(dn); cols.appendChild(col);
+    }
+    cols.dataset.built = '1';
+  }
+  const words = cols.querySelectorAll('.callsign-word');
+  words[0].textContent = d.adj[callsignSel[0]] || '—';
+  words[1].textContent = d.noun[callsignSel[1]] || '—';
+  const txt = NET ? NET.callsignText(callsignSel[0], callsignSel[1]) : null;
+  $('callsignPreview').textContent = txt || ((d.adj[callsignSel[0]] || '') + ' ' + (d.noun[callsignSel[1]] || ''));
+}
+let callsignDone = null;
+function showCallsign(onDone) {
+  callsignDone = onDone || null;
+  const cur = getCallsign();
+  if (cur) callsignSel = cur; else rerollCallsign();   // opening pre-rolls a valid pair (§13.4: Done alone = "just pick one")
+  renderCallsign();
+  hideAllOverlays(); showOverlay('ovCallsign');
+}
+function commitCallsign() {
+  if (!G.cosmetics) return;
+  G.cosmetics.callsign = [callsignSel[0], callsignSel[1]];
+  persistAll();                                        // existing cosmetics path (LS.cosmetics)
+  applyCallsignToNet();
+  const cb = callsignDone; callsignDone = null;
+  if (cb) cb(); else showAttract();
+}
+
+// --- Room card ------------------------------------------------------------
+function shortLink(link) {
+  if (!link) return '';
+  const i = link.indexOf('#j=');
+  const tail = i >= 0 ? link.slice(i + 3) : link;
+  return 'space-man/#j=' + tail.slice(0, 6) + '…';
+}
+function drawRoomQr(link) {
+  const c = $('roomQr'); if (!c || !window.SpaceManQR) return;
+  try { window.SpaceManQR.draw(c.getContext('2d'), 0, 0, 168, link || 'https://picatz.github.io/space-man/'); } catch (e) {}
+}
+function renderMobilityLog() {
+  const log = netLive() && NET.info ? (NET.info().mobility || []) : [];
+  const el = $('roomLog');
+  if (!log.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  $('roomLogSummary').textContent = '▸ ' + log.length + ' relay event' + (log.length === 1 ? '' : 's');
+  // textContent DOM build (never innerHTML): from/to are directory city labels
+  // and `by` is a callsign — all peer/directory-derived, so keep them out of any
+  // markup sink even though the boundary already strips city markup (§I7).
+  const lines = $('roomLogLines'); lines.innerHTML = '';
+  for (const l of log) {
+    const row = document.createElement('div'); row.className = 'log-line';
+    row.appendChild(document.createTextNode('relay: ' + (l.from || '—') + ' → ' + (l.to || '—') + ' · by ' + (l.by || '—') + ' · '));
+    const at = document.createElement('span'); at.className = 'num'; at.textContent = String(l.at == null ? '' : l.at); row.appendChild(at);
+    lines.appendChild(row);
+  }
+}
+// 500ms long-press on a roster row opens the hide/block/kick sheet (§7 — longer
+// than the 400ms emote-wheel arm so the two gestures never blur together).
+function attachRosterLongPress(el, r) {
+  let timer = null;
+  const start = () => { timer = setTimeout(() => { timer = null; openRosterActions(r); }, 500); };
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  el.addEventListener('pointerdown', start);
+  el.addEventListener('pointerup', cancel);
+  el.addEventListener('pointerleave', cancel);
+  el.addEventListener('pointercancel', cancel);
+}
+function renderRoster(roster, isHost) {
+  const host = $('roomRoster'); host.innerHTML = '';
+  for (const r of roster) {
+    const row = document.createElement('div');
+    row.className = 'roster-row' + (r.unverified ? ' unverified' : '');
+    const pn = document.createElement('span'); pn.className = 'pn'; pn.textContent = 'P' + r.p; row.appendChild(pn);
+    if (r.spectator) { const g = document.createElement('span'); g.className = 'glyph'; g.textContent = '◎'; row.appendChild(g); }
+    else if (r.unverified) { const g = document.createElement('span'); g.className = 'glyph'; g.textContent = '≈'; row.appendChild(g); }
+    const who = document.createElement('span'); who.className = 'who';
+    let suffix = '';
+    if (r.you && r.host) suffix = ' (you, host)';
+    else if (r.you) suffix = ' (you)';
+    else if (r.host) suffix = ' (host)';
+    if (r.spectator) suffix += ' (watching)';
+    // No-callsign peers arrive as callsign 'P{n}' (net getter fallback); the P#
+    // column already shows that, so render the blueprint's "PLAYER {n}" grammar
+    // instead of a redundant "P4  P4" (same dedup the ghost badge uses, §4.3).
+    const rname = (r.callsign && r.callsign !== ('P' + r.p)) ? r.callsign : ('PLAYER ' + r.p);
+    who.textContent = rname + suffix;   // textContent: raw tags never reach DOM (I7)
+    row.appendChild(who);
+    if (isHost && !r.you) {
+      const k = document.createElement('button'); k.className = 'mini-chip coral'; k.textContent = 'Kick';
+      k.onclick = () => kickPlayer(r);
+      row.appendChild(k);
+    }
+    if (!r.you) attachRosterLongPress(row, r);   // 500ms long-press → hide/block/kick sheet (§7)
+    host.appendChild(row);
+  }
+}
+function renderRoomCard() {
+  if (!netLive()) return;
+  const info = NET.info(), roster = NET.roster();
+  const isHost = !!info.isHost;
+  const hostRow = roster.find((r) => r.host) || roster[0] || { p: 1 };
+  const titleName = hostRow.callsign || ('P' + hostRow.p);
+  $('roomTitle').textContent = 'ROOM · ' + titleName + "'S RUN";
+  $('roomCounts').innerHTML = 'players <span class="num">' + info.players + '/' + info.cap +
+    '</span> · spectators <span class="num">' + info.spectators + '/' + info.specCap + '</span>';
+  // QR / link / code are host-only (guests don't re-share their own invite, §4.4).
+  $('roomTop').style.display = isHost ? '' : 'none';
+  $('roomApproveRow').style.display = isHost ? '' : 'none';
+  $('roomHostControls').style.display = isHost ? '' : 'none';
+  if (isHost) {
+    $('roomLink').textContent = shortLink(info.link);
+    $('roomCode').textContent = info.code || '—';
+    drawRoomQr(info.link);
+    $('btnRoomShare').style.display = navigator.share ? '' : 'none';
+    $('roomApprove').classList.toggle('on', !!settings.netApprove);
+    $('roomApprove').setAttribute('aria-checked', String(!!settings.netApprove));
+  }
+  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · <span class="num">' + (info.rttMs | 0) + 'ms</span>';
+  renderMobilityLog();
+  renderRoster(roster, isHost);
+}
+function copyRoomLink() {
+  const link = netLive() ? NET.info().link : '';
+  if (!link) return;
+  const done = () => { queueToast('Invite link copied', 'sys'); announce('Invite link copied.'); };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, done);
+    else done();
+  } catch (e) { done(); }
+}
+function shareRoomLink() {
+  const link = netLive() ? NET.info().link : '';
+  if (link && navigator.share) { try { navigator.share({ url: link }); } catch (e) {} }
+}
+function kickPlayer(r) {
+  // Native confirm — the app's one existing confirm pattern (btnReset); host-only,
+  // rare, consequential (§4.3). Handlers degrade to no-op stubs until the
+  // room-lifecycle implementer lands them (§4.1 🔶).
+  if (!window.confirm('Kick ' + (r.callsign || ('PLAYER ' + r.p)) + '?')) return;
+  try { NET.kick(r.p); } catch (e) {}
+  announce('Removed from the room.');
+  if (window.confirm("Kicked. Rotate the invite so they can't return?")) { try { NET.rotateLink(); } catch (e) {} }
+  renderRoomCard();
+}
+async function openRoomFlow() {
+  if (!netEnabled()) return;
+  Audio.ensure();
+  if (!hasCallsign()) { showCallsign(openRoomFlow); return; }   // first-run callsign step (§13.4)
+  hideAllOverlays();
+  try {
+    const relayDir = { mode: settings.netRelayMode };
+    if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
+    else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
+    await NET.openRoom({ relayDir, relayHost: settings.netRelay || undefined });
+    applyCallsignToNet();
+    renderRoomCard();
+    announce('Room created. Invite link ready.');
+    showOverlay('ovRoom');
+  } catch (e) {
+    queueToast('relay unreachable — try a custom relay in Settings', 'sys');
+    showAttract();
+  }
+}
+function leaveRoom() {
+  try { NET.leave(); } catch (e) {}
+  announce('Left the room.');
+  showAttract();
+}
+
+// --- Join prompt (#j= invite) --------------------------------------------
+let joinPayload = null;
+function setJoinState(msg) { $('joinState').textContent = msg || ''; }
+function resetJoinPrompt() {
+  $('joinTitle').textContent = 'Join This Run Together?';
+  $('joinChoices').style.display = '';
+  $('btnJoinNotNow').style.display = '';
+  setJoinState('');
+  $('joinCustomDir').classList.remove('show');
+}
+function maybeShowJoinPrompt() {
+  if (SHOT || !netEnabled() || !HASH.j) return;
+  joinPayload = HASH.j;
+  resetJoinPrompt();
+  hideAllOverlays(); showOverlay('ovJoin');
+}
+function rejectMessage(e) {
+  const m = e && e.message ? e.message : '';
+  if (/version|update/i.test(m)) return 'Update to play together.';
+  if (/expired/i.test(m)) return 'This invite has expired.';
+  if (/scan|right/i.test(m)) return "This link doesn't look right.";
+  if (/full/i.test(m)) return 'This room is full.';
+  return 'relay unreachable — the room may have ended, or your network blocks it. A host can supply a custom relay in Settings.';
+}
+async function acceptInvite(role) {
+  if (!joinPayload) return;
+  if (!hasCallsign()) { showCallsign(() => { resetJoinPrompt(); showOverlay('ovJoin'); acceptInvite(role); }); return; }
+  $('joinChoices').style.display = 'none';
+  $('btnJoinNotNow').style.display = 'none';
+  setJoinState('Joining…');
+  try {
+    await NET.acceptJoin(joinPayload, { role: role });
+    applyCallsignToNet();
+    if (role === 1) NET.setRole(1);
+    const info = NET.info();
+    if (info.city) setJoinState('Joining… relay ' + info.city);
+    if ((info.caps || 0) && settings && false) { /* placeholder */ }
+    announce('Joined the room.');
+    renderRoomCard();
+    hideAllOverlays(); showOverlay('ovRoom');
+  } catch (e) {
+    setJoinState(rejectMessage(e));
+  }
+}
+
+// --- Settings → Network (bespoke rows below the generic switch/slider loop) --
+function buildNetworkSettings(host) {
+  const h = document.createElement('div');
+  h.className = 'net-sub'; h.style.margin = '12px 0 2px'; h.textContent = 'Relay';
+  host.appendChild(h);
+
+  // Custom relay (single host) — tap → prompt() (net-spec §4.8).
+  const cr = document.createElement('div'); cr.className = 'toggle-row';
+  cr.innerHTML = '<span>Custom Relay</span>';
+  const crVal = document.createElement('span'); crVal.className = 'net-val net-customrelay-val';
+  cr.appendChild(crVal);
+  cr.onclick = () => {
+    const v = window.prompt('Custom relay host (wss:// or https:// host[:port]) — leave blank for none', settings.netRelay || '');
+    if (v === null) return;
+    const s = String(v).trim();
+    settings.netRelay = /^(wss|https):\/\/[A-Za-z0-9.\-:]{2,}$/.test(s) ? s : '';   // invalid silently resets (§9.2)
+    persistAll(); syncSettingsUI();
+  };
+  host.appendChild(cr);
+
+  // Relay directory sourcing (Addendum E) — 3-option radio group.
+  const rd = document.createElement('div'); rd.className = 'net-radio';
+  const head = document.createElement('div'); head.className = 'toggle-row'; head.style.borderBottom = 'none'; head.style.padding = '4px 2px';
+  head.innerHTML = '<span>Relay Directory</span>';
+  const rdVal = document.createElement('span'); rdVal.className = 'net-val net-relaymode-val'; head.appendChild(rdVal);
+  rd.appendChild(head);
+  const modes = [
+    { m: 'default', label: 'Default', hint: 'The official public directory' },
+    { m: 'custom', label: 'Custom URL', hint: '' },
+    { m: 'list', label: 'Server List', hint: 'A list of servers for your server' },
+  ];
+  for (const mo of modes) {
+    const opt = document.createElement('div'); opt.className = 'net-radio-opt'; opt.dataset.mode = mo.m;
+    opt.innerHTML = '<span class="dot"></span><span>' + mo.label + '</span>';
+    opt.onclick = () => { settings.netRelayMode = mo.m; persistAll(); syncSettingsUI(); };
+    rd.appendChild(opt);
+    if (mo.hint) { const hn = document.createElement('div'); hn.className = 'hint'; hn.textContent = mo.hint; rd.appendChild(hn); }
+    if (mo.m === 'custom') {
+      const inp = document.createElement('input'); inp.className = 'net-relayurl'; inp.placeholder = 'https://…/relay-map'; inp.style.display = 'none';
+      inp.value = settings.netRelayUrl;
+      inp.onchange = () => { settings.netRelayUrl = String(inp.value).trim(); persistAll(); };
+      rd.appendChild(inp);
+    }
+    if (mo.m === 'list') {
+      const ta = document.createElement('textarea'); ta.className = 'net-relaylist'; ta.rows = 3; ta.placeholder = 'one host per line'; ta.style.display = 'none';
+      ta.value = settings.netRelayList;
+      ta.onchange = () => { settings.netRelayList = String(ta.value); persistAll(); };
+      rd.appendChild(ta);
+    }
+  }
+  host.appendChild(rd);
+
+  // Passive relay status (only while in a room).
+  const st = document.createElement('div'); st.className = 'room-relay net-status-row'; st.style.display = 'none';
+  host.appendChild(st);
+
+  // Blocked list (Addendum G) — count chip → expandable list with Unblock chips.
+  const bl = document.createElement('div'); bl.className = 'toggle-row';
+  bl.innerHTML = '<span>Blocked</span>';
+  const blVal = document.createElement('span'); blVal.className = 'net-val net-blocked-count'; bl.appendChild(blVal);
+  const blList = document.createElement('div'); blList.id = ''; blList.className = 'net-blocked-list'; blList.style.display = 'none'; blList.style.textAlign = 'left';
+  bl.onclick = () => { blList.style.display = blList.style.display === 'none' ? '' : 'none'; renderBlockedList(blList); };
+  host.appendChild(bl); host.appendChild(blList);
+
+  // Leave room — only while in a room (mirrors the room card; pause reachability
+  // per Addendum G "LEAVE lives in room card AND the pause sheet").
+  const lv = document.createElement('button'); lv.className = 'btn ghost coral net-leave-btn'; lv.textContent = 'Leave Room'; lv.style.display = 'none';
+  lv.onclick = () => leaveRoom();
+  host.appendChild(lv);
+}
+function renderBlockedList(el) {
+  if (!NET) { el.innerHTML = ''; return; }
+  const list = NET.blocklist();
+  if (!list.length) { el.innerHTML = '<div class="log-row"><span class="log-hint">No blocked players.</span></div>'; return; }
+  el.innerHTML = '';
+  for (const b of list) {
+    const cs = (b.callsign && NET.callsignText(b.callsign[0], b.callsign[1])) || (b.pubkey ? b.pubkey.slice(0, 8) : 'unknown');
+    const row = document.createElement('div'); row.className = 'log-row';
+    const nm = document.createElement('span'); nm.className = 'log-name'; nm.textContent = cs; row.appendChild(nm);
+    const un = document.createElement('button'); un.className = 'mini-chip'; un.textContent = 'Unblock';
+    un.onclick = (e) => { e.stopPropagation(); try { NET.unblock(b.pubkey); } catch (x) {} renderBlockedList(el); syncNetworkSettings(); };
+    row.appendChild(un); el.appendChild(row);
+  }
+}
+function syncNetworkSettings() {
+  if (!NET) return;
+  const active = netLive();
+  const info = active ? NET.info() : null;
+  document.querySelectorAll('.net-customrelay-val').forEach((e) => { e.textContent = settings.netRelay || 'Off'; });
+  const modeLabel = { default: 'Default', custom: 'Custom URL', list: 'Server List' }[settings.netRelayMode] || 'Default';
+  document.querySelectorAll('.net-relaymode-val').forEach((e) => { e.textContent = modeLabel; });
+  document.querySelectorAll('.net-radio-opt').forEach((e) => { e.classList.toggle('sel', e.dataset.mode === settings.netRelayMode); });
+  document.querySelectorAll('.net-relayurl').forEach((e) => { e.style.display = settings.netRelayMode === 'custom' ? '' : 'none'; });
+  document.querySelectorAll('.net-relaylist').forEach((e) => { e.style.display = settings.netRelayMode === 'list' ? '' : 'none'; });
+  document.querySelectorAll('.net-status-row').forEach((e) => {
+    if (active && info) { e.style.display = ''; e.innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · <span class="num">' + (info.rttMs | 0) + 'ms</span>'; }
+    else e.style.display = 'none';
+  });
+  const nb = NET.blocklist().length;
+  document.querySelectorAll('.net-blocked-count').forEach((e) => { e.textContent = nb ? String(nb) : 'None'; });
+  document.querySelectorAll('.net-leave-btn').forEach((e) => { e.style.display = active ? '' : 'none'; });
+}
+
+/* ===========================================================================
+   Run Together — IN-RUN SURFACES (N3): interpolated ghosts (drawPlayer reuse),
+   always-on race strip, spectator HUD (WATCHING + follow + TOUR auto-director),
+   emotes (desktop 1-6 / mobile long-press-jump wheel), slipstream bonus, and
+   the unstable-room banner. Everything below is gated on netLive(); a solo run
+   enters none of it, so #shot=play/dead/pause stay byte-identical.
+   =========================================================================== */
+const GHOST_CAP = 32, ghosts = [];
+for (let i = 0; i < GHOST_CAP; i++) ghosts.push({
+  active: false, p: 0, callsign: '', suit: 'classic', hat: 'none', unverified: false, host: false,
+  x0: 0, y0: 0, t0: 0, x1: 0, y1: 0, t1: 0, vx: 0, facing: 1, onGround: true, inRun: false, slip: false,
+  chain: 0, score: 0, dist: 0, runId: 0, rx: 0, ry: 0, alpha: 0, lastSeen: 0,
+  emoteId: -1, emoteSeq: 0, emoteT: 0, badge: null, badgeKey: '',
+});
+const ghostByP = new Map();
+const EMOTE_GLYPH = ['👋', '😂', '💀', '❤', 'GG', '😱'];   // 0 wave 1 laugh 2 skull 3 heart 4 GG 5 panic (§4.6)
+const spec = { watchP: 0, tour: false, tourAt: 0 };        // spectator follow/TOUR state
+let selfEmote = { id: -1, t: 0, seq: 0 };
+let sitOutNext = false;                                     // "SPECTATE THIS ROUND" armed → sit out at next run start
+let slipT = 0, slipRun = 0;                                // slipstream dwell + per-run bonus cap
+
+// A single monotonic ms clock for interpolation. Under a shot/mock the wall clock
+// is frozen, so we derive it from the sim frame count — deterministic goldens.
+function netClock() { return (NET && NET.mockActive) ? (G.frameCount * STEP * 1000) : performance.now(); }
+function netSpectating() { return netLive() && NET.info().role === 1; }
+function netInRun() { return netLive() && (G.mode === 'play' || G.mode === 'resume' || G.mode === 'pause' || (G.player && G.player.dead)); }
+
+function freeGhost(g) { g.active = false; g.rx = 0; ghostByP.delete(g.p); }
+function ghostFor(p) {
+  let g = ghostByP.get(p);
+  if (g && g.active) return g;
+  for (const c of ghosts) if (!c.active) {
+    c.active = true; c.p = p; c.alpha = 0; c.rx = 0; c.x0 = c.x1 = c.t0 = c.t1 = 0;
+    c.emoteId = -1; c.emoteSeq = 0; c.emoteT = 0; c.badgeKey = '';
+    ghostByP.set(p, c); return c;
+  }
+  return null;
+}
+
+// Pull the latest presence snapshot into the ghost pool (identity + interp
+// samples). Zero per-frame allocation beyond the transient presence array the
+// net layer already builds; no sim rng touched.
+function netSampleGhosts(now) {
+  if (!NET || !netLive()) return;
+  if (NET.mockActive && NET.mockAnchor) NET.mockAnchor(G.player ? G.player.x + G.player.w / 2 : 0, G.player ? G.player.y + G.player.h / 2 : 0, G.frameCount);
+  const pres = NET.presence(), myP = NET.info().myP, seen = ghostSeen; seen.clear();
+  for (const s of pres) {
+    if (s.you || s.p === myP || s.spectator) continue;      // never ghost the local player / spectators stream none
+    seen.add(s.p);
+    const g = ghostFor(s.p); if (!g) continue;
+    g.callsign = s.callsign; g.unverified = !!s.unverified; g.host = !!s.host;
+    g.suit = (PALETTES[SUIT_ORDER[s.suit]] ? SUIT_ORDER[s.suit] : 'classic');   // W-rule: unknown suit → classic (I8)
+    g.hat = (HATS[HAT_ORDER[s.hat]] ? HAT_ORDER[s.hat] : 'none');
+    g.chain = s.chain; g.score = s.score; g.dist = s.dist; g.runId = s.runId;
+    g.inRun = !!(s.state & 8); g.slip = !!(s.state & 16);
+    g.onGround = !!(s.state & 2); g.facing = (s.state & 1) ? 1 : -1;
+    if (!g.t1 || now - g.t1 >= 80) {                        // ≥80ms → new interp keyframe
+      g.x0 = g.t0 ? g.x1 : s.x; g.y0 = g.t0 ? g.y1 : s.y; g.t0 = g.t0 ? g.t1 : now - 100;
+      g.x1 = s.x; g.y1 = s.y; g.t1 = now; g.vx = s.vx;
+    } else { g.x1 = s.x; g.y1 = s.y; g.vx = s.vx; }          // refine the open keyframe
+    g.lastSeen = now;
+    if (s.emoteId != null && s.emoteSeq && s.emoteSeq !== g.emoteSeq) {
+      g.emoteSeq = s.emoteSeq;                               // consume the seq even when muted (no replay on re-enable)
+      if (settings.netEmotes) { g.emoteId = s.emoteId; g.emoteT = 1.2; netEmoteSfx(); }   // per-viewer suppress (§4.6)
+    }
+  }
+  for (const g of ghosts) if (g.active && !seen.has(g.p) && now - g.lastSeen > 4200) freeGhost(g);
+}
+const ghostSeen = new Set();
+function netEmoteSfx() { try { if (settings.sfx && !settings.muted) Audio.sfx.ui(2); } catch (e) {} }
+
+// Per-rAF net upkeep: sampling, emote decay, slipstream scoring, TOUR director.
+function netTick(dt) {
+  if (!netLive()) return;
+  const now = netClock();
+  netSampleGhosts(now);
+  for (const g of ghosts) if (g.emoteT > 0) g.emoteT = Math.max(0, g.emoteT - dt);
+  if (selfEmote.t > 0) selfEmote.t = Math.max(0, selfEmote.t - dt);
+  // Open the armed emote wheel once the press can no longer affect the jump (D5).
+  if (emWheel.armed && !emWheel.open) {
+    const dead = G.player && G.player.dead;
+    const settled = dead || (G.player && (G.player.onGround || G.player.vy >= 0));
+    if (performance.now() - emWheel.armT >= 400 && settled) { emWheel.open = true; emWheel.sel = -1; }
+  }
+  // Slipstream (§4.7): live same-run ghost within 64px for >0.25s → +2 pts/s,
+  // client-side only, capped 200/run, never authoritative. Sets our own state
+  // bit so peers can see the intent (routed through sendPresence's state byte).
+  if (G.mode === 'play' && G.player && !G.player.dead && !netSpectating()) {
+    let near = false;
+    for (const g of ghosts) if (g.active && g.alpha > 0.3 && g.runId === (NET.info().runId || g.runId)) {
+      const dx = g.rx - (G.player.x + G.player.w / 2), dy = g.ry - (G.player.y + G.player.h / 2);
+      if (dx * dx + dy * dy < 64 * 64) { near = true; break; }
+    }
+    slipT = near ? slipT + dt : 0;
+    if (slipT > 0.25 && slipRun < 200) {
+      const add = Math.min(2 * dt, 200 - slipRun); slipRun += add; G.score += add;
+    }
+  } else { slipT = 0; }
+  // TOUR auto-director (§10.4): 6s minimum shot, cut to leader or nearest-flare.
+  if (netSpectating() && spec.tour && now - spec.tourAt >= 6000) directorPick(now);
+  if (netSpectating() && !validWatch()) { const g = firstGhost(); if (g) { spec.watchP = g.p; } }
+}
+function firstGhost() { for (const g of ghosts) if (g.active) return g; return null; }
+function watchedGhost() { const g = ghostByP.get(spec.watchP); return (g && g.active) ? g : null; }
+function validWatch() { return !!watchedGhost(); }
+function directorPick(now) {
+  let best = null, bestKey = -1;
+  for (const g of ghosts) if (g.active) {
+    const key = g.dist;                                     // leader = furthest; ties settle by P#
+    if (key > bestKey) { bestKey = key; best = g; }
+  }
+  if (best && best.p !== spec.watchP) { spec.watchP = best.p; spec.tourAt = now; }
+  else spec.tourAt = now;
+}
+function cycleWatch(dir) {
+  const live = ghosts.filter((g) => g.active).sort((a, b) => a.p - b.p);
+  if (!live.length) return;
+  let i = live.findIndex((g) => g.p === spec.watchP);
+  i = (i < 0 ? 0 : i + dir + live.length) % live.length;
+  spec.watchP = live[i].p; spec.tour = false;
+}
+function netFollowCamera() {
+  const g = watchedGhost() || firstGhost(); if (!g) return;
+  const tx = (g.t1 ? g.x1 : g.rx) - view.w * 0.42, ty = (g.t1 ? g.y1 : g.ry) - view.h * (view.h > view.w ? 0.64 : 0.58);
+  G.camX += (tx - G.camX) * 0.10;
+  G.camY += (ty - G.camY) * 0.08;
+}
+
+/* ---- ghost render: reuse drawPlayer via a scratch actor (Stage-D arms, suit,
+       hat, squash all inherited for free), then a pre-rendered P#/callsign badge
+       and emote bubble in world space. No per-frame shadowBlur, no measureText. */
+let ghostActor = null, ghostCos = null;
+function drawGhosts(alpha, iCamX) {
+  if (!netInRun()) return;
+  const now = netClock();
+  for (const g of ghosts) {
+    if (!g.active) continue;
+    const rt = now - 150;                                   // render 150ms in the past (§4.2)
+    let tx, ty;
+    if (g.t1 > g.t0 && rt <= g.t1) { const t = clamp((rt - g.t0) / (g.t1 - g.t0), 0, 1); tx = lerp(g.x0, g.x1, t); ty = lerp(g.y0, g.y1, t); }
+    else { const over = clamp(rt - g.t1, 0, 120); tx = g.x1 + g.vx * (over / 1000) * 10; ty = g.y1; }   // ≤120ms extrapolate
+    if (!g.rx) { g.rx = tx; g.ry = ty; } else { g.rx += (tx - g.rx) * 0.3; g.ry += (ty - g.ry) * 0.3; }
+    const targetA = (now - g.lastSeen > 4000) ? 0 : 1;
+    g.alpha += (targetA - g.alpha) * 0.12;
+    if (g.alpha < 0.02) continue;
+    if (Math.abs(g.rx - iCamX) > view.w / 2 + 120) continue;   // cull off-camera
+    drawGhostActor(g);
+  }
+  // Own emote bubble echoes locally over the live sprite (§4.6).
+  if (selfEmote.t > 0 && G.player && !netSpectating()) drawEmoteBubble(G.player.x + G.player.w / 2, G.player.y - 30, selfEmote.id, selfEmote.t);
+}
+function drawGhostActor(g) {
+  if (!ghostActor) {
+    ghostActor = { w: CFG.pw, h: CFG.ph, px: 0, py: 0, x: 0, y: 0, vx: 0, vy: 0, onGround: true, facing: 1, sqX: 1, sqY: 1, landDip: 0, pose: 4, runCycle: 0, glint: 0, idle: 0, dead: false, groundPlat: null };
+    ghostCos = { suit: 'classic', hat: 'none', callsign: null, unlocked: [] };
+  }
+  const a = ghostActor;
+  a.x = a.px = g.rx - CFG.pw / 2; a.y = a.py = g.ry - CFG.ph / 2;
+  a.vx = Math.abs(g.vx) * 6 * g.facing; a.facing = g.facing; a.onGround = g.onGround;
+  a.vy = g.onGround ? 0 : 30; a.pose = g.onGround ? 4 : 0;
+  a.runCycle = g.rx * 0.03;                                 // deterministic gait from world-x — no rng, no per-ghost timer
+  a.sqX = 1; a.sqY = 1; a.landDip = 0; a.glint = 0; a.idle = 0;
+  ghostCos.suit = g.suit; ghostCos.hat = g.hat;
+  const sp = G.player, sc = G.cosmetics, sv = vigPose, sw = G.wave, sf = G.fireT, stw = G.twirlT, sh = G.holsterT, sgl = G.glanceT, sfr = SEASON.frost;
+  G.player = a; G.cosmetics = ghostCos; vigPose = null; G.wave = 0; G.fireT = 0; G.twirlT = 0; G.holsterT = 0; G.glanceT = 0; SEASON.frost = false;
+  ctx.save();
+  ctx.globalAlpha *= clamp(settings.netGhosts, 0.25, 1) * g.alpha * (g.unverified ? 0.6 : 1);
+  drawPlayer(1);
+  ctx.restore();
+  G.player = sp; G.cosmetics = sc; vigPose = sv; G.wave = sw; G.fireT = sf; G.twirlT = stw; G.holsterT = sh; G.glanceT = sgl; SEASON.frost = sfr;
+  // badge + emote (world space, upright, no shadowBlur)
+  ctx.save(); ctx.globalAlpha *= clamp(g.alpha, 0, 1);
+  const b = ghostBadge(g);
+  ctx.drawImage(b.canvas, g.rx - b.w / 2, g.ry - CFG.ph / 2 - 22, b.w, b.h);
+  if (spec.watchP === g.p && netSpectating()) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(g.rx, g.ry, CFG.ph / 2 + 6, 0, TAU); ctx.stroke(); }
+  ctx.restore();
+  if (g.emoteT > 0) drawEmoteBubble(g.rx, g.ry - CFG.ph / 2 - 34, g.emoteId, g.emoteT);
+}
+// Pre-rendered P#/callsign plate (§4.2): built once per identity change, no
+// per-frame measureText/fillText on the hot path.
+function ghostBadge(g) {
+  const key = g.p + '|' + g.callsign + '|' + g.host;
+  if (g.badge && g.badgeKey === key) return g.badge;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const pn = 'P' + g.p, name = (g.callsign && g.callsign !== pn) ? g.callsign : '';
+  const mctx = makeCanvas(4, 4).getContext('2d');
+  mctx.font = '700 9px ' + FONT_NUM; const wPn = mctx.measureText(pn).width;
+  mctx.font = '700 9px ' + FONT; const wNm = name ? mctx.measureText(' ' + name).width : 0;
+  const padX = 6, w = Math.ceil(wPn + wNm + padX * 2), h = 15;
+  const c = makeCanvas(w * dpr, h * dpr); const gx = c.getContext('2d'); gx.scale(dpr, dpr);
+  gx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect2(gx, 0, 0, w, h, 4); gx.fill();
+  gx.textBaseline = 'middle';
+  gx.font = '700 9px ' + FONT_NUM; gx.fillStyle = g.host ? '#FFC93C' : '#38E1FF'; gx.fillText(pn, padX, h / 2 + 0.5);
+  if (name) { gx.font = '700 9px ' + FONT; gx.fillStyle = '#F4F7FF'; gx.fillText(' ' + name, padX + wPn, h / 2 + 0.5); }
+  g.badge = { canvas: c, w, h }; g.badgeKey = key;
+  return g.badge;
+}
+function roundRect2(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function drawEmoteBubble(wx, wy, id, t) {
+  const a = clamp(Math.min(t * 4, (1.2 - t) * 6 + 1, 1), 0, 1);
+  ctx.save(); ctx.globalAlpha *= a;
+  ctx.fillStyle = 'rgba(10,14,32,0.85)'; ctx.beginPath(); ctx.arc(wx, wy, 11, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(56,225,255,0.5)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = '#F4F7FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = (id === 4 ? '900 10px ' + FONT : '13px ' + FONT_NUM);
+  ctx.fillText(EMOTE_GLYPH[id] || '', wx, wy + 1);
+  ctx.restore();
+}
+
+/* ---- screen-space net HUD: race strip (always on), spectator chrome, emote
+       wheel, unstable banner. Called every frame netInRun(); view-px coords. */
+let _specHits = null, _unstableHit = null;
+function drawNetHUD() {
+  if (!netInRun()) return;
+  if (netSpectating()) drawSpectatorHUD(); else { _specHits = null; }
+  if (emWheel.open) drawEmoteWheel();
+  if (netLive() && NET.info().unstable) drawUnstableBanner(); else _unstableHit = null;
+}
+function raceRunners() {
+  const out = [];
+  if (G.player && !netSpectating() && (G.mode === 'play' || G.mode === 'resume')) out.push({ x: G.player.x + G.player.w / 2, suit: G.cosmetics.suit, p: NET.info().myP || 1, you: true });
+  for (const g of ghosts) if (g.active && g.alpha > 0.15) out.push({ x: g.rx, suit: g.suit, p: g.p, you: false });
+  return out;
+}
+function drawRaceStrip() {
+  const us = uiScale(), x = 12, y = 12, w = view.w - 24, h = 26;
+  const runners = raceRunners(); if (!runners.length) return;
+  let maxX = -Infinity; for (const r of runners) if (r.x > maxX) maxX = r.x;
+  const right = Math.max(maxX + 200, G.flare.x + 400), left = right - 20000;   // ~2000m window (10px/m)
+  const sx = (wx) => x + clamp((wx - left) / (right - left), 0, 1) * w;
+  ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
+  ctx.strokeStyle = 'rgba(56,225,255,0.18)'; ctx.lineWidth = 1; ctx.stroke();
+  // flare edge (danger) with a short trailing fade
+  const fx = sx(G.flare.x);
+  const grad = ctx.createLinearGradient(fx - 40, 0, fx, 0);
+  grad.addColorStop(0, 'rgba(255,138,107,0)'); grad.addColorStop(1, 'rgba(255,138,107,0.35)');
+  ctx.fillStyle = grad; ctx.fillRect(fx - 40, y + 1, 40, h - 2);
+  ctx.strokeStyle = '#FF8A6B'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(fx, y + 1); ctx.lineTo(fx, y + h - 1); ctx.stroke();
+  // runner dots
+  const showLabels = w > 260;
+  for (const r of runners) {
+    const dx = sx(r.x), dy = y + h / 2, pal = PALETTES[r.suit] || PALETTES.classic;
+    if (netSpectating() && r.p === spec.watchP) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(dx, dy, 6, 0, TAU); ctx.stroke(); }
+    ctx.fillStyle = pal.fill || pal.suit || '#F4F7FF'; ctx.beginPath(); ctx.arc(dx, dy, 4, 0, TAU); ctx.fill();
+    if (showLabels) { ctx.fillStyle = '#0A0E20'; ctx.font = '700 6px ' + FONT_NUM; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(r.p), dx, dy + 0.5); }
+  }
+  ctx.textBaseline = 'alphabetic';
+}
+function drawSpectatorHUD() {
+  const us = uiScale(), left = 12 + safeInset('left');
+  const ps = 30 * us, pitch = Math.max(48 * view.w / window.innerWidth, ps + 10 * us);
+  const ox = left + pitch + ps + 8 * us, topY = 44;
+  const g = watchedGhost();
+  const call = g ? (g.callsign || ('P' + g.p)) : '—';
+  const board = NET.board(); let rank = 0; if (g) { const sorted = board.slice().sort((a, b) => b.bestDist - a.bestDist); rank = sorted.findIndex((b) => b.p === g.p) + 1; }
+  const rankTxt = rank ? (rank + (['ST', 'ND', 'RD'][rank - 1] || 'TH')) : '—';
+  const distM = g ? Math.round(g.dist) : 0;
+  // WATCHING banner
+  ctx.textAlign = 'left';
+  drawGlowText('WATCHING ' + call, ox, topY + 15 * us, 13 * us, '#38E1FF', '#F4F7FF');
+  ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + (10 * us) + 'px ' + FONT_NUM;
+  ctx.fillText(rankTxt + ' · ' + distM + 'm', ox, topY + 30 * us);
+  // follow arrows (hit-padded ≥44px)
+  const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+  ctx.fillStyle = '#CFE3FF'; ctx.font = '700 ' + (16 * us) + 'px ' + FONT;
+  const ay = topY + 15 * us;
+  ctx.fillText('‹', ox - 20 * us, ay); const lw = ctx.measureText('WATCHING ' + call).width;
+  ctx.fillText('›', ox + 150 * us, ay);
+  const hh = Math.max(ps * ky / 2 + 8, 22), pad = Math.max(20 * us * kx, 22);
+  const cyH = ay * ky;
+  _specHits = {
+    prev: { x0: (ox - 30 * us) * kx, x1: (ox - 8 * us) * kx, y0: cyH - hh, y1: cyH + hh },
+    next: { x0: (ox + 142 * us) * kx, x1: (ox + 168 * us) * kx, y0: cyH - hh, y1: cyH + hh },
+    tour: null,
+  };
+  // TOUR toggle pill (top-right where AMMO sits)
+  const tw = 54 * us, th = 20 * us, tx = view.w - left - tw, tyy = topY;
+  ctx.fillStyle = spec.tour ? '#38E1FF' : 'rgba(10,14,32,0.62)';
+  roundRect(tx, tyy, tw, th, th / 2); ctx.fill();
+  if (!spec.tour) { ctx.strokeStyle = 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke(); }
+  ctx.fillStyle = spec.tour ? '#06122A' : '#CFE3FF'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('TOUR', tx + tw / 2, tyy + th / 2 + 0.5); ctx.textBaseline = 'alphabetic';
+  _specHits.tour = { x0: tx * kx - 6, x1: (tx + tw) * kx + 6, y0: tyy * ky - 6, y1: (tyy + th) * ky + 6 };
+}
+function drawUnstableBanner() {
+  const us = uiScale(), y = safeInset('top') + 76 * us, x = view.w / 2;   // below the strip + shifted HUD chain line
+  const label = 'UNSTABLE ROOM', bw = 150 * us, bh = 22 * us, bx = x - bw / 2;
+  ctx.fillStyle = 'rgba(20,8,14,0.86)'; roundRect(bx, y, bw, bh, 6); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,79,102,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = '#FF8A9A'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, bx + 8 * us, y + bh / 2);
+  const lx = bx + bw - 40 * us;
+  ctx.fillStyle = '#FF4F66'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.fillText('LEAVE', lx, y + bh / 2);
+  ctx.textBaseline = 'alphabetic';
+  const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+  _unstableHit = { x0: lx * kx - 8, x1: (bx + bw) * kx + 8, y0: y * ky - 6, y1: (y + bh) * ky + 6 };
+}
+
+/* ---- emotes: desktop 1-6, mobile long-press-in-jump-zone radial wheel ---- */
+const emWheel = { open: false, armId: -1, cx: 0, cy: 0, sel: -1, armT: 0, armed: false };
+function inRect(p, r) { return r && p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1; }
+function netPointerDown(e) {
+  const p = pointerPos(e);
+  if (_unstableHit && inRect(p, _unstableHit)) { leaveRoom(); return true; }
+  if (netSpectating()) {
+    if (_specHits) {
+      if (inRect(p, _specHits.prev)) { cycleWatch(-1); return true; }
+      if (inRect(p, _specHits.next)) { cycleWatch(1); return true; }
+      if (_specHits.tour && inRect(p, _specHits.tour)) { spec.tour = !spec.tour; spec.tourAt = netClock(); return true; }
+    }
+    return true;                                    // spectators never drive the sim
+  }
+  // Emote-wheel arm (touch): a long-press that can no longer influence the jump
+  // opens the radial wheel (§4.6 / D5). Never on the move stick or fire button.
+  if (settings.netEmotes && e.pointerType !== 'mouse') {
+    const dead = G.player && G.player.dead;
+    if (dead || (G.mode === 'play' && !isMoveHalf(p) && !inShoot(p))) {
+      const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+      emWheel.armed = true; emWheel.open = false; emWheel.armId = e.pointerId; emWheel.sel = -1;
+      emWheel.armT = performance.now(); emWheel.cx = p.x / kx; emWheel.cy = p.y / ky;
+    }
+  }
+  return false;                                     // let the jump proceed; the wheel only opens on the hold
+}
+function sendEmote(id) {
+  if (!netLive() || !settings.netEmotes) return;
+  const e = NET.emote(id); if (e == null) return;
+  selfEmote = { id: e, t: 1.2, seq: (selfEmote.seq || 0) + 1 };
+  netEmoteSfx();
+}
+function drawEmoteWheel() {
+  const us = uiScale(), r = 70 * us, cx = emWheel.cx, cy = emWheel.cy;
+  ctx.save();
+  ctx.fillStyle = 'rgba(6,8,24,0.55)'; ctx.beginPath(); ctx.arc(cx, cy, r + 18 * us, 0, TAU); ctx.fill();
+  for (let i = 0; i < 6; i++) {
+    const a = -Math.PI / 2 + i * TAU / 6, ex = cx + Math.cos(a) * r, ey = cy + Math.sin(a) * r;
+    const on = emWheel.sel === i;
+    ctx.fillStyle = on ? '#38E1FF' : 'rgba(10,14,32,0.85)';
+    ctx.beginPath(); ctx.arc(ex, ey, 18 * us, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(56,225,255,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = on ? '#06122A' : '#F4F7FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = (i === 4 ? '900 ' + (12 * us) + 'px ' + FONT : (16 * us) + 'px ' + FONT_NUM);
+    ctx.fillText(EMOTE_GLYPH[i], ex, ey + 1);
+  }
+  ctx.textBaseline = 'alphabetic'; ctx.restore();
+}
+function emoteWheelSector(px, py) {
+  const dx = px / (window.innerWidth / view.w) - emWheel.cx, dy = py / (window.innerHeight / view.h) - emWheel.cy;
+  if (dx * dx + dy * dy < (24 * uiScale()) ** 2) return -1;   // dead zone: release near center = cancel
+  let a = Math.atan2(dy, dx) + Math.PI / 2; if (a < 0) a += TAU;
+  return Math.floor((a + TAU / 12) % TAU / (TAU / 6));
+}
+
+/* ---- roster long-press sheet (hide / block / kick) ---- */
+let rosterActionTarget = null;
+function openRosterActions(r) {
+  if (!r) return;
+  rosterActionTarget = r;
+  const info = netLive() ? NET.info() : { isHost: false };
+  const glyph = r.spectator ? '◎ ' : '';
+  $('rosterActionsHead').innerHTML = '<span class="glyph">' + (r.spectator ? '◎' : '') + '</span>' + escapeHtml(r.callsign || ('PLAYER ' + r.p)) + ' · P' + (r.p | 0);
+  $('btnRosterKick').style.display = (info.isHost && !r.you) ? '' : 'none';
+  hideAllOverlays(); showOverlay('ovRosterActions');
+}
+function rosterHexFor(r) { return r && (r.pubHex || r.pub || ('mk' + r.p)); }   // mock keys map to mk{p}
+function doRosterHide() {
+  const r = rosterActionTarget; if (r && NET) { try { NET.hide(rosterHexFor(r)); } catch (e) {} }
+  hideAllOverlays(); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard();
+  if (G.mode === 'attract') showOverlay('ovRoom');
+}
+function doRosterBlock() {
+  const r = rosterActionTarget; if (r && NET) { try { NET.block(rosterHexFor(r), { callsign: r.callsignIdx || null }); } catch (e) {} }
+  queueToast('Blocked ' + (r ? (r.callsign || ('PLAYER ' + r.p)) : ''), 'net');
+  announce('Blocked ' + (r ? (r.callsign || ('PLAYER ' + r.p)) : '') + '.');
+  hideAllOverlays(); if (G.mode === 'attract') showOverlay('ovRoom');
+  if (netLive() && $('ovRoom')) renderRoomCard();
+}
+function doRosterKick() { const r = rosterActionTarget; hideAllOverlays(); if (G.mode === 'attract') showOverlay('ovRoom'); if (r) kickPlayer(r); }
+
+/* ---- death-card ROOM column + spectate + emote buttons ---- */
+function renderRoomBoard() {
+  const cap = $('deadRoomCaption'), tbl = $('deadRoomScores'), sp = $('btnSpectateRound'), em = $('deadEmotes');
+  if (!netLive()) { cap.style.display = tbl.style.display = 'none'; sp.style.display = em.style.display = 'none'; return; }
+  const info = NET.info(), board = NET.board(), myP = info.myP;
+  // top 5 by bestScore + self always shown
+  const sorted = board.slice().sort((a, b) => b.bestScore - a.bestScore);
+  const rows = sorted.slice(0, 5);
+  if (!rows.some((b) => b.p === myP)) { const me = sorted.find((b) => b.p === myP); if (me) rows.push(me); }
+  let html = '';
+  for (const b of rows) {
+    const me = b.p === myP;
+    html += '<tr class="' + (me ? 'me' : '') + (b.unverified ? ' unverified' : '') + '"><td class="rank">P' + b.p + '</td><td>' + escapeHtml(b.callsign || ('PLAYER ' + b.p)) + '</td><td class="sc">' + b.bestScore.toLocaleString() + '</td></tr>';
+  }
+  tbl.innerHTML = html || '<tr><td colspan="3" class="empty">NO ROOM SCORES YET</td></tr>';
+  cap.style.display = ''; tbl.style.display = '';
+  // Spectate this round — only for a player currently in the room (§12.2)
+  sp.style.display = (info.role !== 1) ? '' : 'none';
+  // 6 emote buttons (below the install chip; hidden on the compact card via CSS)
+  if (settings.netEmotes) { if (!em.dataset.built) { for (let i = 0; i < 6; i++) { const b = document.createElement('button'); b.className = 'btn ghost emote-btn'; b.textContent = EMOTE_GLYPH[i]; b.onclick = () => sendEmote(i); em.appendChild(b); } em.dataset.built = '1'; } em.style.display = ''; }
+  else em.style.display = 'none';
+}
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+/* ---- sit-out (SPECTATE THIS ROUND) / jump-in ---- */
+function spectateThisRound() {
+  if (!netLive()) return;
+  try { NET.setRole(1); } catch (e) {}
+  sitOutNext = true;
+  announce('Now spectating.');
+  if (G.mode === 'pause') { togglePause(); }
+  else if (G.mode === 'dead') { /* sits out; next run starts as spectator */ }
+}
+$('btnSpectateRound').onclick = () => spectateThisRound();
+$('btnPauseSpectate').onclick = () => spectateThisRound();
+$('btnRosterHide').onclick = () => doRosterHide();
+$('btnRosterBlock').onclick = () => doRosterBlock();
+$('btnRosterKick').onclick = () => doRosterKick();
+$('btnRosterCancel').onclick = () => { hideAllOverlays(); if (G.mode === 'attract') showOverlay('ovRoom'); };
+// LEAVE from the unstable banner / spectator taps route through the canvas
+// pointer handler below (added, netInRun-gated, so solo input is untouched).
+
+/* ---------------------------------------------------------------------------
    25. UI WIRING
    ------------------------------------------------------------------------- */
 $('btnPlay').onclick = () => { Audio.ensure(); Audio.resume(); startRun(); };
@@ -4449,6 +5524,28 @@ $('btnQuit').onclick = () => {
 };
 $('btnAgain').onclick = () => tryRestart();
 $('btnInitialsOk').onclick = () => commitInitials();
+// --- Run Together wiring ---
+$('btnTogether').onclick = () => openRoomFlow();
+$('btnRoomCopy').onclick = () => copyRoomLink();
+$('btnRoomShare').onclick = () => shareRoomLink();
+$('btnRoomBack').onclick = () => showAttract();               // Back keeps the session alive
+$('btnRoomLeave').onclick = () => leaveRoom();
+$('btnRoomNewLink').onclick = () => { try { NET.rotateLink(); } catch (e) {} renderRoomCard(); };
+$('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} };
+$('roomApprove').onclick = () => { settings.netApprove = !settings.netApprove; persistAll(); renderRoomCard(); syncSettingsUI(); };
+$('btnJoinPlay').onclick = () => acceptInvite(0);
+$('btnJoinWatch').onclick = () => acceptInvite(1);
+$('btnJoinNotNow').onclick = () => showAttract();
+$('btnBlockedNotNow').onclick = () => showAttract();
+$('btnJoinAnyway').onclick = () => { resetJoinPrompt(); hideAllOverlays(); showOverlay('ovJoin'); };
+$('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
+$('btnCallsignDone').onclick = () => commitCallsign();
+// Screen-reader announcements at the moment each net event fires (§14.1).
+if (NET) NET.onEvent((e) => {
+  if (e === 'reconnecting') announce('Reconnecting.');
+  else if (e === 'bye') announce('Removed from the room.');
+  else if (e === 'roster' || e === 'ok') { if (netLive()) renderRoomCard(); }
+});
 $('btnReset').onclick = () => {
   if (!confirm('Erase all scores, stats, and settings?')) return;
   try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
@@ -4544,6 +5641,48 @@ function runShot() {
     G.mode = 'attract'; hideAllOverlays();
     for (let i = 0; i < 40; i++) update();
     showWardrobe();
+    el.textContent = window.__errors.join('\n');
+    G.trauma = 0; G.kickX = 0; G.kickY = 0;
+    render(1);
+    shotFrozen = true; lastT = 0; rafId = requestAnimationFrame(frame);
+    return;
+  }
+  if (SHOT === 'room') {   // deterministic Run Together fixtures over the idle scene
+    const scene = HASH.scene || 'card';
+    hideAllOverlays();
+    if (scene === 'card') {   // room card (N2b golden — unchanged)
+      G.mode = 'attract';
+      for (let i = 0; i < 40; i++) update();
+      if (NET && NET.mock) { NET.mock(SHOT_SEED !== null ? SHOT_SEED : 42); renderRoomCard(); showOverlay('ovRoom'); }
+      if (HASH.sheet && NET) openRosterActions(NET.roster().find((r) => r.p === 3));   // QA: hide/block/kick sheet
+    } else if (scene === 'play' || scene === 'watch') {   // ghosts + race strip (+ spectator chrome)
+      if (NET && NET.mock) NET.mock(SHOT_SEED !== null ? SHOT_SEED : 42, { scene });
+      G.mode = 'play';
+      const N = SHOT_FRAMES || 220;
+      for (let i = 0; i < N; i++) { if (G.player.dead) break; botInput(); G.freeze = 0; G.timescale = 1; G.slowTimer = 0; update(); netTick(STEP); }
+      if (HASH.wheel) { emWheel.open = true; emWheel.cx = view.w / 2; emWheel.cy = view.h * 0.60; emWheel.sel = 3; }   // QA: emote wheel
+      if (HASH.unstable && NET._n1 && NET._n1.session()) NET._n1.session().unstable = true;   // QA: unstable-room banner
+    } else if (scene === 'dead') {   // death card with the ROOM column populated
+      if (NET && NET.mock) NET.mock(SHOT_SEED !== null ? SHOT_SEED : 42, { scene: 'play' });
+      G.mode = 'play';
+      for (let i = 0; i < 120; i++) { if (G.player.dead) break; botInput(); G.freeze = 0; G.timescale = 1; G.slowTimer = 0; update(); netTick(STEP); }
+      const p = G.player; p.dead = false; p.y = G.groundY - p.h; p.vx = 0; p.vy = 0; p.facing = 1;
+      die('contact');
+      for (let i = 0; i < 50; i++) finishTick();
+      G.deathSeq = 1.0; G.deathZoom = 1.25; G.hudFade = 0; G.deathCardShown = true; finalizeDeath();
+      G.mode = 'dead'; G.qualifies = false; renderDeathCard();
+    } else if (scene === 'timing') {   // live-path restart stopwatch with a room active
+      if (NET && NET.mock) NET.mock(SHOT_SEED !== null ? SHOT_SEED : 42, { scene: 'play' });
+      G.mode = 'play';
+      for (let i = 0; i < 120; i++) { if (G.player.dead) break; botInput(); G.freeze = 0; G.timescale = 1; G.slowTimer = 0; update(); netTick(STEP); }
+      const p = G.player; p.dead = false; p.y = G.groundY - p.h; p.vx = 0; p.vy = 0; p.facing = 1;
+      die('contact'); for (let i = 0; i < 50; i++) finishTick();
+      G.deathSeq = 1.0; G.deathZoom = 1.25; G.hudFade = 0; G.deathCardShown = true; finalizeDeath(); G.mode = 'dead'; G.qualifies = false;
+      const t0 = performance.now(); renderDeathCard(); const t1 = performance.now();
+      const t2 = performance.now(); startRun(); const t3 = performance.now();
+      el.textContent = 'renderDeathCard ' + (t1 - t0).toFixed(2) + 'ms · startRun ' + (t3 - t2).toFixed(2) + 'ms · netLive=' + netLive() + ' role=' + NET.info().role;
+      render(1); shotFrozen = true; lastT = 0; rafId = requestAnimationFrame(frame); return;
+    }
     el.textContent = window.__errors.join('\n');
     G.trauma = 0; G.kickX = 0; G.kickY = 0;
     render(1);
@@ -5044,6 +6183,7 @@ function boot() {
   setupAnimatedFavicon();
   if (SHOT) { runShot(); return; }
   showAttract();
+  maybeShowJoinPrompt();   // a #j= invite in the URL raises the join prompt over attract
   lastT = 0; rafId = requestAnimationFrame(frame);
 }
 try {

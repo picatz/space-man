@@ -1,6 +1,6 @@
 // Space Man 2.0 service worker.
 // Bump VERSION in the same commit as any asset change or clients keep the old build.
-const VERSION = 'v2.10.0';
+const VERSION = 'v3.0.0';
 const SHELL_CACHE = `sm2-shell-${VERSION}`;
 
 const SHELL = [
@@ -9,6 +9,10 @@ const SHELL = [
   './src/contracts.js',
   './src/save-schema.js',
   './src/input-snapshot.js',
+  './src/callsigns.js',
+  './src/relay-directory.js',
+  './src/qr.js',
+  './src/net.js',
   './manifest.json',
   './favicon.png',
   './screenshots/gameplay-wide.png',

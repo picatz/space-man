@@ -1406,6 +1406,41 @@
       s.state = state & 0x1f; s.chain = Math.min(4, chain | 0);
       s.score = Math.min(9999999, score >>> 0); s.dist = Math.min(60000, dist | 0); s.runId = S.runId;
     };
+    // Presence + session-board projections for the render stage (N3). Read-only
+    // views over host state — self (P1) plus each roster runner's last accepted
+    // PRES. Spectators contribute no ghost (pres stays null / role-hidden).
+    // board() accumulates per-P session bests (score/dist/chain), monotonic, and
+    // carries the "unverified" dim (Layer-1 anti-cheat, G.1).
+    S._board = new Map();
+    function boardBump(p, callsign, score, dist, chain, unverified) {
+      let b = S._board.get(p);
+      if (!b) { b = { p, callsign, bestScore: 0, bestDist: 0, bestChain: 0, unverified: false }; S._board.set(p, b); }
+      b.callsign = callsign;
+      if (score > b.bestScore) b.bestScore = score;
+      if (dist > b.bestDist) b.bestDist = dist;
+      if (chain > b.bestChain) b.bestChain = chain;
+      b.unverified = !!unverified;
+    }
+    S.presence = () => {
+      const cs = (a, n, p) => callsignText(a, n) || ('P' + p);
+      const out = [];
+      const selfCall = cs(S.adjIdx, S.nounIdx, 1), sp = S.self;
+      if (S.role !== ROLE_SPECTATOR && sp) {
+        out.push({ p: 1, you: true, host: true, spectator: false, x: sp.x, y: sp.y, vx: sp.vx, state: sp.state, chain: sp.chain, score: sp.score, dist: sp.dist, runId: sp.runId, suit: S.suit, hat: S.hat, callsign: selfCall, unverified: false });
+        boardBump(1, selfCall, sp.score, sp.dist, sp.chain, false);
+      }
+      for (const r of S.roster.values()) {
+        const call = cs(r.adjIdx, r.nounIdx, r.p);
+        if (r.pres && r.role !== ROLE_SPECTATOR) {
+          const q = r.pres;
+          out.push({ p: r.p, you: false, host: false, spectator: false, x: q.x, y: q.y, vx: q.vx, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: r.suit, hat: r.hat, callsign: call, unverified: !!r.unverified, emoteId: r.emoteId, emoteSeq: r.emoteSeq });
+          boardBump(r.p, call, q.score, q.dist, q.chain, r.unverified);
+        }
+      }
+      return out;
+    };
+    S.board = () => Array.from(S._board.values()).sort((a, b) => b.bestScore - a.bestScore);
+    S.myP = () => 1;
     // Host sits out / rejoins (Addendum A: administration ≠ participation).
     S.setRole = (role) => { S.role = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER; sendRoster(0).catch(() => {}); };
     S.setCallsign = (a, n) => { S.adjIdx = a & 0xff; S.nounIdx = n & 0xff; sendRoster(0).catch(() => {}); };
@@ -1553,6 +1588,33 @@
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, encRole(S.out, S.roleSeq, nr)));
     };
     S.setCallsign = (a, n) => { S.adjIdx = a & 0xff; S.nounIdx = n & 0xff; };
+    // Presence + session board for the render stage (N3). A guest projects the
+    // host's SNAP fan-out (S.peers, p → last snap row) joined to the roster
+    // identity (S.rosterMap). The local player's own P is flagged you:true so
+    // the renderer never draws a ghost over the sprite drawPlayer already owns.
+    S._board = new Map();
+    function gBoardBump(p, callsign, score, dist, chain, unverified) {
+      let b = S._board.get(p);
+      if (!b) { b = { p, callsign, bestScore: 0, bestDist: 0, bestChain: 0, unverified: false }; S._board.set(p, b); }
+      b.callsign = callsign;
+      if (score > b.bestScore) b.bestScore = score;
+      if (dist > b.bestDist) b.bestDist = dist;
+      if (chain > b.bestChain) b.bestChain = chain;
+      b.unverified = !!unverified;
+    }
+    S.presence = () => {
+      const out = [];
+      for (const [p, q] of S.peers) {
+        const id = S.rosterMap.get(p) || {};
+        if (id.role === ROLE_SPECTATOR) continue;               // spectators stream no ghost
+        const call = id.callsign || ('P' + p);
+        out.push({ p, you: p === S.p, host: p === 1, spectator: false, x: q.x, y: q.y, vx: q.vx, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: id.suit || 0, hat: id.hat || 0, callsign: call, unverified: false });
+        gBoardBump(p, call, q.score, q.dist, q.chain, false);
+      }
+      return out;
+    };
+    S.board = () => Array.from(S._board.values()).sort((a, b) => b.bestScore - a.bestScore);
+    S.myP = () => S.p;
     S._onPacket = onPacket;                                    // harness seam (offline drive)
     S.close = () => {
       if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
@@ -1655,8 +1717,21 @@
       if (session) session.close();
       session = null;
       NET.active = false;
+      NET.mockActive = false;
     },
-    rotateLink() {}, newWorld() {}, kick() {}, approve() {}, emote() {},   // room-lifecycle stage
+    rotateLink() {}, newWorld() {}, kick() {}, approve() {},   // room-lifecycle stage
+
+    // Emote (Addendum §4.6). Clamp to the shipped set 0-5; record a local
+    // self-echo the renderer reads for the immediate own-bubble, and best-effort
+    // relay it (the EMOTE/EMOTEB wire lands with the emote-frame stage — until
+    // then this is a local echo only, never a throw).
+    emote(id) {
+      const e = id | 0;
+      if (e < 0 || e > 5) return;
+      NET._selfEmote = { id: e, seq: (NET._emoteSeq = (NET._emoteSeq || 0) + 1) };
+      if (session && session.sendEmote) { try { session.sendEmote(e); } catch (x) {} }
+      return e;
+    },
 
     // Roles (Addendum A). Host sits out via setRole; a guest requests via the
     // rate-limited role frame. spectator=1, player=0.
@@ -1690,6 +1765,7 @@
         for (const r of session.roster.values()) out.push({
           p: r.p, tag: r.tag, role: r.role, spectator: r.role === ROLE_SPECTATOR,
           callsign: cs(r.adjIdx, r.nounIdx, r.p), unverified: !!r.unverified, dimmed: !!r.unverified,
+          pubHex: r.pub ? hex(r.pub) : undefined,   // for the hide/block/kick sheet (§7); guests can't see peer pubs
         });
         return out.sort((a, b) => a.p - b.p);
       }
@@ -1701,9 +1777,14 @@
       if (!out.length) for (const p of session.peers.keys()) out.push({ p, you: p === session.p, callsign: 'P' + p });
       return out.sort((a, b) => a.p - b.p);
     },
-    board() { return []; },                            // session leaderboard arrives with the room stage
+    // Live ghost samples for the render pool (N3): [{p, you, host, spectator,
+    // x, y, vx, state, chain, score, dist, runId, suit, hat, callsign,
+    // unverified, emoteId, emoteSeq}]. Allocation-light; the pool + interpolation
+    // live on the game side (drawPlayer reuse). Empty when idle.
+    presence() { return session && session.presence ? session.presence() : []; },
+    board() { return session && session.board ? session.board() : []; },   // session leaderboard (per-P bests)
     info() {
-      if (!session) return { city: '', rttMs: 0, players: 0, spectators: 0, cap: ROOM_CAP, specCap: SPECTATOR_CAP, code: '', link: '', isHost: false, caps: CAPS, role: ROLE_PLAYER, hostEpoch: 0 };
+      if (!session) return { city: '', rttMs: 0, players: 0, spectators: 0, cap: ROOM_CAP, specCap: SPECTATOR_CAP, code: '', link: '', isHost: false, caps: CAPS, role: ROLE_PLAYER, hostEpoch: 0, myP: 0, unstable: false };
       const c = session.isHost && session.counts ? session.counts() : null;
       return {
         city: cityOfHost(session.isHost ? session.relayHostName : ((session.inv.flags & 2) ? session.inv.relayHost : (regionOf(session.inv.region) || { hosts: [''] }).hosts[0])),
@@ -1717,10 +1798,99 @@
         caps: session.caps || CAPS,
         role: session.role,
         hostEpoch: session.hostEpoch || 0,
+        myP: session.myP ? session.myP() : (session.isHost ? 1 : session.p || 0),
+        mobility: session.mobility || [],
+        unstable: !!session.unstable,
       };
     },
     onEvent(cb) { ev.on(cb); },
-    mock() {},                                         // #shot=room mock arrives with the room stage
+    // #shot=room — offline, deterministic room-card fixture (net-spec §6.2).
+    // Pure data: a fake host session the read-only getters (info/roster/board)
+    // project exactly like a real one. Constructs NO sockets, keys, or timers;
+    // wall-clock never read (rtt/link/code are literals). Safe to call once at
+    // boot under SHOT === 'room' only; a no-op if a real session already exists.
+    mock(seed, opts) {
+      if (session) return;
+      NET.mockActive = true;
+      const scene = (opts && opts.scene) || 'card';
+      // Roster: 5 entries (host + 4). One spectator, one out-of-range callsign
+      // index (→ P-number fallback, pins I7/I8: the hostile tag never reaches
+      // DOM — the card shows the P#), one unverified/dimmed (Layer-1 anti-cheat).
+      const R = new Map();
+      R.set('mk2', { p: 2, tag: 'BLU', suit: 1, hat: 0, role: ROLE_PLAYER, adjIdx: 2, nounIdx: 0, unverified: false });    // COMET FOX
+      R.set('mk3', { p: 3, tag: 'MAX', suit: 2, hat: 1, role: ROLE_SPECTATOR, adjIdx: 1, nounIdx: 2, unverified: false }); // TURBO WOMBAT (watching)
+      R.set('mk4', { p: 4, tag: '<b>!', suit: 250, hat: 0, role: ROLE_PLAYER, adjIdx: 250, nounIdx: 3, unverified: false });// out-of-range → PLAYER 4
+      R.set('mk5', { p: 5, tag: 'REX', suit: 4, hat: 3, role: ROLE_PLAYER, adjIdx: 0, nounIdx: 3, unverified: true });     // LUCKY SPUTNIK (dimmed)
+      const DUMMY_LINK = 'https://picatz.github.io/space-man/#j=AQBrYWctcm9vbS1tb2NrLWZpeGVkLWRldGVybWluaXN0aWMtcXItcGF5bG9hZC1kZW1v';
+      // Deterministic in-run fixture (net-spec §6.2, addenda A/B/G.1). Ghost
+      // positions are a closed-form phase-offset of a world anchor the game side
+      // supplies (mockAnchor) — no rng stream is touched, so the worldgen budget
+      // is untouched and #shot goldens stay stable. P2 fires a heart emote in a
+      // 1.2 s window at frame 180; P5 is an unverified/dimmed runner whose jitter
+      // reads as "broken" to a watcher (Layer-2 anti-cheat is a visible property).
+      const S1 = 1, S2 = 0, S3 = 4;   // suit ids for P2 / P4(→classic via whitelist) / P5
+      function mstate(f, ph, air, slip) {
+        let s = 1 | 8;                 // facing-right + in-run
+        if (!air || Math.sin(f * 0.11 + ph) < 0.55) s |= 2;   // mostly grounded, brief hops
+        if (slip) s |= 16;
+        return s;
+      }
+      const anchor = { x: 0, y: 0, f: 0 };
+      const spectate = scene === 'watch';
+      session = {
+        isHost: true, mock: true, scene, anchor,
+        tag: 'KAG', adjIdx: 3, nounIdx: 1,
+        role: spectate ? ROLE_SPECTATOR : ROLE_PLAYER,                     // NOVA OTTER (viewer sits out in the watch fixture)
+        roster: R,
+        relayHostName: 'derp12d.tailscale.com',                            // → cityOfHost = "Chicago"
+        relay: { rtt: 23 },
+        code: 'TANGO-42',
+        link: DUMMY_LINK,
+        caps: CAPS, hostEpoch: 0,
+        counts() { let players = spectate ? 0 : 1, spectators = spectate ? 1 : 0; for (const r of R.values()) { if (r.role === ROLE_SPECTATOR) spectators++; else players++; } return { players, spectators }; },
+        myP: () => 1,
+        presence() {
+          const a = anchor, f = a.f, out = [];
+          const heart = (f >= 180 && f < 252) ? { emoteId: 3, emoteSeq: 1 } : {};
+          // P1 NOVA OTTER (host). A runner in the watch fixture; the local sprite
+          // (you:true) in the play fixture, where the renderer skips its ghost.
+          out.push(Object.assign({ p: 1, you: !spectate, host: true, spectator: false,
+            x: a.x + Math.sin(f * 0.06) * 22, y: a.y + Math.sin(f * 0.10) * 16,
+            vx: Math.cos(f * 0.06) * 40, state: mstate(f, 0.5, true, false), chain: 1,
+            score: 980 + (f * 3 | 0), dist: 812 + (f | 0), runId: 1, suit: 0, hat: 0, callsign: 'NOVA OTTER', unverified: false }));
+          // P2 COMET FOX — just ahead, the emote source.
+          out.push(Object.assign({ p: 2, you: false, host: false, spectator: false,
+            x: a.x + 118 + Math.sin(f * 0.05) * 34, y: a.y - 8 + Math.sin(f * 0.09) * 22,
+            vx: 70, state: mstate(f, 0.0, true, false), chain: 2,
+            score: 1204 + (f * 4 | 0), dist: 940 + (f * 1.2 | 0), runId: 1, suit: S1, hat: 0, callsign: 'COMET FOX', unverified: false }, heart));
+          // P4 PLAYER 4 — trailing, occasionally slipstreaming the pack.
+          out.push({ p: 4, you: false, host: false, spectator: false,
+            x: a.x - 96 + Math.sin(f * 0.045) * 18, y: a.y + 4 + Math.sin(f * 0.13) * 10,
+            vx: 55, state: mstate(f, 2.0, false, Math.sin(f * 0.08) > 0), chain: 0,
+            score: 640 + (f * 2 | 0), dist: 705 + (f | 0), runId: 1, suit: S2, hat: 0, callsign: 'PLAYER 4', unverified: false });
+          // P5 LUCKY SPUTNIK — implausible pace: the ghost jitters through geometry
+          // (a lie that LOOKS broken), row rendered dimmed/unverified.
+          out.push({ p: 5, you: false, host: false, spectator: false,
+            x: a.x + 250 + Math.sin(f * 0.5) * 44, y: a.y - 48 + Math.cos(f * 0.6) * 30,
+            vx: 120, state: mstate(f, 1.0, true, false), chain: 4,
+            score: 1500 + (f * 12 | 0), dist: 1480 + (f * 3 | 0), runId: 1, suit: S3, hat: 3, callsign: 'LUCKY SPUTNIK', unverified: true });
+          return out;
+        },
+        board() {
+          return [
+            { p: 5, callsign: 'LUCKY SPUTNIK', bestScore: 1500, bestDist: 1480, bestChain: 4, unverified: true },
+            { p: 2, callsign: 'COMET FOX', bestScore: 1204, bestDist: 940, bestChain: 2, unverified: false },
+            { p: 1, callsign: 'NOVA OTTER', bestScore: 980, bestDist: 812, bestChain: 1, unverified: false },
+            { p: 4, callsign: 'PLAYER 4', bestScore: 640, bestDist: 705, bestChain: 0, unverified: false },
+          ];
+        },
+        close() {},
+      };
+    },
+    // #shot=room only: the game side feeds the deterministic ghost fixture a world
+    // anchor (the local player's position + sim frame) so mock ghosts render around
+    // the run. No-op unless a mock session is live.
+    mockAnchor(x, y, f) { if (session && session.mock && session.anchor) { session.anchor.x = x; session.anchor.y = y; session.anchor.f = f | 0; } },
 
     // Internal seam for the Dockerized QA harness and later stages. Not a
     // stability contract; underscore = do not wire game code to it.
