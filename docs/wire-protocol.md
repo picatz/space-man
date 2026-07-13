@@ -607,26 +607,42 @@ Minimum 14 bytes. **Gate rule (guest MUST enforce):**
 `epoch` scopes pair keys (rotate-link), while `hostEpoch` scopes control authority (host
 handoff/migration).
 
-### 10.8 Frames specified but not in this snapshot
+### 10.8 Frames now implemented (emote + host-control stage)
 
-The following application frame types are defined by the design and reserved by value, but
-are **not implemented** in the current protocol snapshot. A conforming client MUST tolerate
-their absence and treat any unknown *core-range* type as ignorable. Byte layouts below are
-the design's intended shapes and may change before they ship; do not depend on them yet.
+The following application frame types are implemented and carried on the wire. A conforming
+client SHOULD handle them; all are core-range and are validated (not ignored).
+
+| Name | Type | Dir | Layout |
+|---|---|---|---|
+| EMOTE | `0x06` | G→H | `emoteId u8 (0–5) || seq u8` |
+| BYE | `0x09` | H→G | `reason u8 (0 kicked…6 not-approved) || detail u8` |
+| ROUND | `0x0a` | H→all | `seed u32 || runId u8 || countdown u8 || flags u8` (rides the control envelope: room id, host epoch, seq) |
+| EMOTEB | `0x16` | H→all | `P u8 || emoteId u8 || seq u8` |
+
+Receipt rules a conforming host/guest MUST honor: `emoteId` is clamped to `0–5` **at receipt**
+(out-of-range is dropped, not just unrendered); EMOTE is per-key rate-limited; the broadcast
+`P` is taken from the sender's authenticated roster row, never from the payload; ROUND is
+rejected unless it passes the control-envelope gate (matching room id + current host epoch,
+non-replayed seq); a guest that emits any host→all opcode (`EMOTEB`/`ROUND`/roster/snap/`BYE`)
+earns a strike. `BYE(reason=0)` is sent to a kicked peer, whose key is then banned for the
+room's life. "New link" is a local host action (epoch + secret bump) with no wire frame — it
+simply staleifies prior invites.
+
+### 10.9 Frames specified but not in this snapshot
+
+Still reserved by value, defined by the design, not yet implemented. Tolerate their absence;
+byte layouts are intended shapes and may change before they ship.
 
 | Name | Type | Dir | Intended layout |
 |---|---|---|---|
-| EMOTE | `0x06` | G→H | `emoteId u8 (0–5) || seq u8` |
 | MOMENT | `0x07` | H→all | `kind u8 (0–4) || P u8 || value u32 || reserved u8×3` |
 | LEAVE | `0x08` | G→H | `reason u8` |
-| BYE | `0x09` | H→G | `reason u8 (0 kicked…6 not-approved) || detail u8` |
-| ROUND | `0x0a` | H→all | `seed u32 || runId u8 || countdown u8 || flags u8 || reserved u8` |
 | MIGRATE | `0x0b` | new-host→all | `newHostP u8 || epoch u8 || oldHostPub 32 || proof 16 || reserved u8` |
-| EMOTEB | `0x16` | H→all | `P u8 || emoteId u8 || seq u8` |
 
-In this snapshot, the host expresses "full room", "version mismatch", and "not approved" by
-**silently dropping** the HELLO rather than sending BYE. A joining client MUST therefore
-treat "no WELCOME after retries" as a soft failure, not wait for an explicit rejection.
+In this snapshot, the host still expresses "full room", "version mismatch", and "not approved"
+by **silently dropping** the HELLO rather than sending a `BYE` with those reason codes. A
+joining client MUST therefore treat "no WELCOME after retries" as a soft failure, not wait for
+an explicit rejection. (`BYE` itself is implemented for the kick path, reason `0`.)
 
 ---
 
@@ -791,9 +807,11 @@ snapshot) is authoritative.** Discrepancies found:
    hostEpoch / seq` envelope adds anti-replay only. Functionally equivalent for a two-party
    pair, but a client author should not look for an Ed25519-style signature field — there
    isn't one.
-9. **BYE / EMOTE / MOMENT / LEAVE / ROUND / MIGRATE / EMOTEB not implemented.** These appear
-   in the design catalog and Appendix A but are absent from this snapshot ([§10.8](#108-frames-specified-but-not-in-this-snapshot)).
-   In particular the host currently drops rejected HELLOs silently instead of sending BYE.
+9. **EMOTE / BYE / ROUND / EMOTEB now implemented; MOMENT / LEAVE / MIGRATE still reserved.**
+   The emote and host-control frames landed ([§10.8](#108-frames-now-implemented-emote--host-control-stage));
+   the remainder are still design-only ([§10.9](#109-frames-specified-but-not-in-this-snapshot)).
+   The host still drops *rejected HELLOs* silently rather than sending BYE with a reason code;
+   `BYE` is used for the kick path (reason `0`).
 10. **Region code data.** The design example map uses `chi` for Chicago; the code's built-in
     seed uses `ord`. Region codes are directory data, not protocol; a client MUST take
     region codes from the active directory / invite, not hardcode them.

@@ -28,6 +28,12 @@
   // App frame types (plaintext, inside the AEAD envelope).
   const A_HELLO = 0x01, A_WELCOME = 0x02, A_PRES = 0x04, A_SNAP = 0x05;
   const A_ROSTER = 0x03, A_ROLE = 0x0c;   // roster fan-out (roles + callsigns), role-change request
+  // Emote (guest→host request 0x06, host→all broadcast 0x16), BYE (0x09), and
+  // ROUND (0x0a, new-world) — opcodes are the spec's core-range reservations
+  // (Appendix A). EMOTEB=0x16 is still ≤ FRAME_CORE_HI so it is validated, not
+  // ignored. Emote ids are the shipped set 0-5 (wave/laugh/skull/heart/gg/panic).
+  const A_EMOTE = 0x06, A_EMOTEB = 0x16, A_BYE = 0x09, A_ROUND = 0x0a;
+  const EMOTE_MAX = 5;                     // shipped emote id ceiling (clamp 0..5 at RECEIPT)
   // Frame-type space partition (Addendum D headroom): 0x00-0x3F core (specced),
   // 0x40-0x7F reserved for future standard extensions (records/social, and the
   // M2 mobility move/handoff/migrate frames), 0x80-0xFF experimental/private.
@@ -929,6 +935,33 @@
     return { tick, rows };
   }
 
+  // EMOTE (0x06 G→H) — body {emoteId u8, seq u8}. EMOTEB (0x16 H→all) — body
+  // {P u8, emoteId u8, seq u8}. The guest's seq is advisory; the host stamps a
+  // monotonic per-sender seq into EMOTEB so the renderer detects a fresh bubble
+  // without any clear-state handshake. emoteId is validated (clamp 0..5) by the
+  // host at RECEIPT, not merely at render.
+  function encEmote(s, emoteId, seq) { const u = s.u8; u[0] = A_EMOTE; u[1] = emoteId & 0xff; u[2] = seq & 0xff; return u.subarray(0, 3); }
+  function decEmote(pt) { return pt.length < 3 ? null : { emoteId: pt[1], seq: pt[2] }; }
+  function encEmoteB(s, p, emoteId, seq) { const u = s.u8; u[0] = A_EMOTEB; u[1] = p & 0xff; u[2] = emoteId & 0xff; u[3] = seq & 0xff; return u.subarray(0, 4); }
+  function decEmoteB(pt) { return pt.length < 4 ? null : { p: pt[1], emoteId: pt[2], seq: pt[3] }; }
+  // BYE (0x09 H→G) — body {reason u8, detail u8}. reason: 0 kicked, 1 closed,
+  // 2 rotated, 3 version, 4 full, 5 banned, 6 not approved.
+  function encBye(s, reason, detail) { const u = s.u8; u[0] = A_BYE; u[1] = reason & 0xff; u[2] = (detail || 0) & 0xff; return u.subarray(0, 3); }
+  function decBye(pt) { return pt.length < 3 ? null : { reason: pt[1], detail: pt[2] }; }
+  // ROUND body (rides the control-frame envelope §8.5): seed u32, runId u8,
+  // countdown u8, flags u8. Players adopt seed at their NEXT run start (never
+  // yanks a live run); runId scopes the leaderboard + PRES monotonicity.
+  function encRoundBody(seed, runId, countdown, flags) {
+    const b = new Uint8Array(7);
+    new DataView(b.buffer).setUint32(0, seed >>> 0, true);
+    b[4] = runId & 0xff; b[5] = (countdown || 0) & 0xff; b[6] = (flags || 0) & 0xff;
+    return b;
+  }
+  function decRoundBody(b) {
+    if (!b || b.length < 5) return null;
+    return { seed: new DataView(b.buffer, b.byteOffset).getUint32(0, true), runId: b[4], countdown: b.length > 5 ? b[5] : 0, flags: b.length > 6 ? b[6] : 0 };
+  }
+
   /* -------------------------------------------------------------------------
      8.5 ROOM PROTOCOL LAYER (Run Together, addenda A/C/D/F/G) — callsigns,
      roster/role codecs, the ~20-line anti-cheat envelope, the control-frame
@@ -1130,6 +1163,7 @@
       roomId: null, secret: null, epoch: 0, hostEpoch: 0, ctrlSeq: 0, caps: CAPS, seed: 0, runId: 1,
       roster: new Map(),         // pubHex → {p, pub, tag, suit, hat, role, adjIdx, nounIdx, pair, pres, strikes, bucket, lastHello, helloN, unverified, lastRole, runT0}
       banned: new Set(), joinTimes: [], prelim: new Map(),
+      approveJoins: opts.approve === true, pending: new Map(), selfEmoteSeq: 0,   // held joins (approve mode) + host self-emote seq
       p: 1, tag: wTag(opts.tag || 'AAA'), suit: opts.suit | 0, hat: opts.hat | 0,
       role: opts.role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER,   // host may sit out while hosting
       adjIdx: opts.adjIdx == null ? CALLSIGN_NONE : opts.adjIdx & 0xff,
@@ -1181,6 +1215,31 @@
       // Frame-type partition (Addendum D): reserved (0x40-0x7F) & experimental
       // (0x80-0xFF) types are ignored silently and NEVER striked.
       if (pt[0] > FRAME_CORE_HI) return;
+      // Host-only broadcast/control types never legitimately travel guest→host.
+      // A guest emitting one is forging host authority (a fabricated kick /
+      // new-world / roster / snap / emote-broadcast) → strike. The pair AEAD
+      // already proved WHICH guest sent it; this refuses the forged ROLE.
+      if (pt[0] === A_WELCOME || pt[0] === A_ROSTER || pt[0] === A_SNAP ||
+          pt[0] === A_BYE || pt[0] === A_ROUND || pt[0] === A_EMOTEB) return strike(row, 'host-frame');
+      if (pt[0] === A_EMOTE) {                                   // guest emote (spectators MAY emote, §4.6/Addendum A)
+        const em = decEmote(pt);
+        if (!em) return;
+        if (em.emoteId > EMOTE_MAX) return;                     // clamp 0..5 AT RECEIPT: out-of-range dropped (no strike)
+        // EMOTE token bucket: burst 3, refill 1 per 2s. Over-rate → drop, NO
+        // strike (mashing is human, §3.4). Bucket seeded full at admit.
+        const te = performance.now();
+        row.emoteBucket = Math.min(3, row.emoteBucket + (te - row.emoteBucketT) / 2000);
+        row.emoteBucketT = te;
+        if (row.emoteBucket < 1) return;
+        row.emoteBucket -= 1;
+        // Attribute to the SENDER's P# (the guest cannot forge another peer's id
+        // — P# comes from the authenticated pair's roster row, not the payload)
+        // and surface it via the host's own presence() projection.
+        row.emoteSeq = (row.emoteSeq | 0) + 1;
+        row.emoteId = em.emoteId;
+        broadcastEmoteB(row.p, em.emoteId, row.emoteSeq).catch(() => {});
+        return;
+      }
       if (pt[0] === A_PRES) {
         // Spectators are keepalive-only (Addendum A): a presence frame from a
         // spectator is a protocol violation → strike.
@@ -1264,6 +1323,26 @@
       const c = counts();
       if (h.role === ROLE_SPECTATOR ? c.spectators >= SPECTATOR_CAP : c.players >= PLAYER_CAP) return;  // full → BYE(4) in N2
       S.joinTimes.push(t);
+      // Approve-mode (Addendum G / §2.6): hold the proven join; the host UI shows
+      // "X wants to join [✓][✕]" and calls approve(pubHex, ok). The join is fully
+      // authenticated (proof verified) — approval gates ADMISSION, not identity.
+      if (S.approveJoins) {
+        if (!S.pending.has(key)) {
+          S.pending.set(key, { srcPub: srcPub.slice(), h, pair });
+          S.ev.emit('approve-wait', { pubHex: key, tag: h.tag, role: h.role });
+        }
+        S.prelim.delete(key);
+        return;
+      }
+      await admitJoin(srcPub, key, h, pair);
+    }
+    // Roster insert + WELCOME + join-announce. Shared by the immediate join path
+    // and approve() (an admitted held join). Re-checks caps at admit time — a
+    // queue delay may have filled the room.
+    async function admitJoin(srcPub, key, h, pair) {
+      const c = counts();
+      if (h.role === ROLE_SPECTATOR ? c.spectators >= SPECTATOR_CAP : c.players >= PLAYER_CAP) return false;
+      const t = performance.now();
       let p = 2;
       const used = new Set([1]);
       for (const r of S.roster.values()) used.add(r.p);
@@ -1271,18 +1350,20 @@
       const row = {
         p, pub: srcPub.slice(), tag: h.tag, suit: h.suit, hat: h.hat,
         role: h.role, adjIdx: h.adjIdx, nounIdx: h.nounIdx, caps: h.caps, pair,
-        pres: null, strikes: pre.strikes, lastSeen: t, bucket: 20, bucketT: t,
+        pres: null, strikes: 0, lastSeen: t, bucket: 20, bucketT: t,
+        emoteBucket: 3, emoteBucketT: t, emoteId: 0, emoteSeq: 0,
         unverified: false, lastRole: 0, runT0: null, runId: S.runId,
       };
       S.roster.set(key, row);
       S.prelim.delete(key);
       const w = encWelcome(S.out, {
         yourP: p, seed: S.seed, runId: S.runId, epoch: S.epoch, hostEpoch: S.hostEpoch, caps: S.caps,
-        hostTag: S.tag, rosterN: S.roster.size + 1, boardN: 0, roomFlags: 0,
+        hostTag: S.tag, rosterN: S.roster.size + 1, boardN: 0, roomFlags: (S.approveJoins ? 1 : 0),
       });
       S.relay.send(row.pub, await sealApp(row.pair, w));
       S.ev.emit('join', { p, tag: row.tag, role: row.role });
       sendRoster(1, [row]).catch(() => {});                      // announce the new member to everyone
+      return true;
     }
     function prelimSet(key, pre) {                                 // bounded: evict oldest under key spray
       if (S.prelim.size >= PRELIM_CAP) S.prelim.delete(S.prelim.keys().next().value);
@@ -1315,6 +1396,24 @@
         const pt = encRoster(S.outRoster, op, ci, chunks.length, chunks[ci]).slice();
         for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
       }
+    }
+
+    // Emote re-broadcast (H→all): one encode, n seals. Fans the sender's P# +
+    // clamped id + host-stamped seq to every peer (incl. the sender, whose UI
+    // already self-echoed). Spectators are legitimate emote sources.
+    async function broadcastEmoteB(p, emoteId, seq) {
+      if (!S.relay || S.relay.state !== 'established') return;
+      const pt = encEmoteB(S.out, p, emoteId, seq).slice();
+      for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
+    }
+    // ROUND (new-world) broadcast — rides the host-epoch/seq control envelope so
+    // a guest CANNOT forge or replay it: encCtrl binds {roomId, hostEpoch, seq}
+    // under the pair AEAD, guests validate via ctrlGate before adopting.
+    async function broadcastRound(countdown) {
+      if (!S.relay || S.relay.state !== 'established') return;
+      const body = encRoundBody(S.seed, S.runId, countdown, 0);
+      const pt = encCtrl(S.out, A_ROUND, S.roomId, S.hostEpoch, ++S.ctrlSeq, body).slice();
+      for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
     }
 
     async function snapTick() {
@@ -1445,6 +1544,94 @@
     S.setRole = (role) => { S.role = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER; sendRoster(0).catch(() => {}); };
     S.setCallsign = (a, n) => { S.adjIdx = a & 0xff; S.nounIdx = n & 0xff; sendRoster(0).catch(() => {}); };
     S.sendRoster = sendRoster; S.counts = counts;
+
+    // --- HOST CONTROL (§4.4 room card). All authenticated as coming from the
+    // current host by construction: broadcasts ride the pair AEAD (only host+peer
+    // share the key) and, for adopt-frames (new-world), the epoch/seq control
+    // envelope on top. Guests reject anything not from the host key (I12) and any
+    // stale/replayed control frame (ctrlGate) — a guest can forge none of these.
+
+    // Emote from the host itself: authoritative, so fan EMOTEB(p=1) directly. The
+    // UI self-echo is owned by NET.emote(); this shows the host's bubble to guests.
+    S.sendEmote = (id) => {
+      const e = id | 0;
+      if (e < 0 || e > EMOTE_MAX) return;
+      S.selfEmoteSeq = (S.selfEmoteSeq + 1) & 0xffff;
+      broadcastEmoteB(1, e, S.selfEmoteSeq).catch(() => {});
+    };
+    // Kick (§4.4, Addendum G): ban the key for the room lifetime (survives
+    // reconnect — the ban set is checked FIRST in onPacket, forever), BYE(0) the
+    // target on its own pair, drop it from the roster, and announce op:3 to the
+    // rest. The rotate-link prompt ("cut the link so they can't return?") is a UI
+    // concern the caller drives next.
+    S.kick = async (pubOrP) => {
+      let row = null;
+      if (typeof pubOrP === 'number') { for (const r of S.roster.values()) if (r.p === pubOrP) { row = r; break; } }
+      else if (typeof pubOrP === 'string') row = S.roster.get(pubOrP) || null;
+      if (!row) return false;
+      const key = hex(row.pub);
+      S.banned.add(key);                                          // room-lifetime key ban (I17)
+      try { S.relay.send(row.pub, await sealApp(row.pair, encBye(S.out, 0, 0).slice())); } catch (e) {}   // BYE(kicked)
+      S.roster.delete(key);
+      S.ev.emit('kick', { p: row.p });
+      await sendRoster(3, [{ p: row.p, pub: row.pub, tag: row.tag, suit: row.suit, hat: row.hat, role: row.role, adjIdx: row.adjIdx, nounIdx: row.nounIdx }]).catch(() => {});
+      return true;
+    };
+    // New link / rotate (D8, I16): bump the PAIR epoch + issue a fresh secret so
+    // prior invites & proofs go stale for FUTURE joins; existing members keep
+    // their vetted pair keys (we never re-derive them). A fresh code + code
+    // keypair replaces the old listener. Returns the fresh invite for the card.
+    S.rotateLink = () => {
+      S.epoch = (S.epoch + 1) & 0xff;
+      S.secret = rand(16);
+      if (opts.code !== false) {
+        S.code = randomCode();
+        S.codeKeys = codeKeypair(S.region, S.code);
+        if (S.codeRelay) {                                        // reopen the listener on the new key (live only)
+          try { S.codeRelay.close(); } catch (e) {}
+          S.codeRelay = RelayClient(S.relayHostName, S.codeKeys, {
+            onOpen: () => S.ev.emit('code-live', { code: S.code }),
+            onPacket: onCodePacket, onRtt: () => {}, onDown: () => {}, onPeerGone: () => {}, onLog: () => {},
+          });
+          S.codeRelay.connect();
+        }
+      }
+      S.invite = encodeInvite({
+        flags: (opts.relayHost ? 2 : 0), roomId: S.roomId, epoch: S.epoch, hostPub: S.keys.pub,
+        region: S.region || RELAY_MAP.regions[0].code, relayHost: opts.relayHost || '', secret: S.secret,
+        expiryMin: opts.expiryMin || Math.floor(Date.now() / 60000) + 1440,
+      });
+      S.link = 'https://picatz.github.io/space-man/#j=' + S.invite;
+      S.ev.emit('rotated', { epoch: S.epoch, code: S.code, link: S.link });
+      return { link: S.link, code: S.code, epoch: S.epoch };
+    };
+    // New world (D7): pick a fresh seed + runId and broadcast ROUND. Players adopt
+    // the seed at their NEXT run start (a live run is never yanked); runId scopes
+    // the leaderboard + PRES monotonicity from here on.
+    S.newWorld = () => {
+      S.seed = new DataView(rand(4).buffer).getUint32(0, true);
+      S.runId = S.runId >= 255 ? 1 : S.runId + 1;                 // u8, never 0 (0 = unknown → render-only ghost)
+      S.self.runId = S.runId;
+      broadcastRound(0).catch(() => {});
+      S.ev.emit('world', { seed: S.seed, runId: S.runId });
+      return { seed: S.seed, runId: S.runId };
+    };
+    // Approve a held join (approve-mode). ok=false rejects with BYE(6). The
+    // pending peer was already proof-verified; this only gates admission.
+    S.approve = async (pubHex, ok) => {
+      const key = typeof pubHex === 'string' ? pubHex : null;
+      if (!key) return false;
+      const pend = S.pending.get(key);
+      if (!pend) return false;
+      S.pending.delete(key);
+      if (ok === false) {
+        try { S.relay.send(pend.srcPub, await sealApp(pend.pair, encBye(S.out, 6, 0).slice())); } catch (e) {}
+        S.ev.emit('reject', { pubHex: key });
+        return true;
+      }
+      return admitJoin(pend.srcPub, key, pend.h, pend.pair);
+    };
+    S.setApprove = (on) => { S.approveJoins = !!on; };
     S._onPacket = onPacket; S._onCodePacket = onCodePacket;   // harness seam (offline drive; underscore = not a contract)
     S.close = () => {
       if (S.snapTimer) clearInterval(S.snapTimer);
@@ -1463,8 +1650,8 @@
       nounIdx: opts.nounIdx == null ? CALLSIGN_NONE : opts.nounIdx & 0xff,
       caps: 0, hostEpoch: 0, gate: makeCtrlGate(), rosterMap: new Map(),   // p → {tag,suit,hat,role,adjIdx,nounIdx,you}
       pair: null, peers: new Map(),    // p → latest snap row
-      ev: emitter(), out: makeScratch(), seq: 0, roleSeq: 0, hostHex: hex(inv.hostPub),
-      helloTimer: null, slots: makeSlots(),
+      ev: emitter(), out: makeScratch(), seq: 0, roleSeq: 0, emoteSeq: 0, hostHex: hex(inv.hostPub),
+      helloTimer: null, slots: makeSlots(), byed: null,
     };
 
     async function sendHello() {
@@ -1526,8 +1713,42 @@
       if (pt[0] === A_SNAP) {
         const snap = decSnap(pt);
         if (!snap) return;
-        for (const row of snap.rows) S.peers.set(row.p, row);
+        for (const row of snap.rows) {
+          const prev = S.peers.get(row.p);                       // carry the transient emote across position updates
+          if (prev) { row.emoteId = prev.emoteId; row.emoteSeq = prev.emoteSeq; }
+          S.peers.set(row.p, row);
+        }
         S.ev.emit('snap', { tick: snap.tick, n: snap.rows.length });
+        return;
+      }
+      if (pt[0] === A_EMOTEB) {                                  // host emote fan-out → this peer's bubble
+        const eb = decEmoteB(pt);
+        if (!eb || eb.emoteId > EMOTE_MAX) return;               // ignore out-of-range (defense in depth; host already clamped)
+        let peer = S.peers.get(eb.p);
+        if (!peer) { peer = { p: eb.p }; S.peers.set(eb.p, peer); }
+        peer.emoteId = eb.emoteId; peer.emoteSeq = eb.seq;       // presence() surfaces {emoteId,emoteSeq} to the renderer
+        S.ev.emit('emote', { p: eb.p, id: eb.emoteId, seq: eb.seq });
+        return;
+      }
+      if (pt[0] === A_ROUND) {                                   // new-world: host-authenticated control envelope
+        const cf = decCtrl(pt);
+        if (!cf) return;
+        // Anti-forge / anti-stale: wrong-room, stale hostEpoch, or replayed seq
+        // are DEAD ON ARRIVAL (ctrlGate). Pair AEAD already proved it is the host.
+        if (!ctrlGate(S.gate, cf.roomId, S.inv.roomId, cf.hostEpoch, cf.seq)) { S.ev.emit('drop', { why: 'ctrl-stale' }); return; }
+        if (cf.hostEpoch > S.hostEpoch) S.hostEpoch = cf.hostEpoch;
+        const rb = decRoundBody(cf.body);
+        if (!rb) return;
+        if (S.welcomed) { S.welcomed.seed = rb.seed; S.welcomed.runId = rb.runId; }   // adopted at NEXT run start (game side)
+        S.ev.emit('round', { seed: rb.seed, runId: rb.runId, countdown: rb.countdown });
+        return;
+      }
+      if (pt[0] === A_BYE) {                                     // host kicked us / closed / rotated
+        const b = decBye(pt);
+        if (!b) return;
+        S.byed = b.reason;                                       // stop presence + hello retries; reason maps to a kind message
+        if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
+        S.ev.emit('bye', { reason: b.reason, detail: b.detail });
         return;
       }
       /* unknown core app type: ignore silently */
@@ -1566,13 +1787,23 @@
       return S;
     };
     S.sendPresence = async (x, y, vx, state, chain, score, dist) => {
-      if (!S.welcomed || !S.relay || S.relay.state !== 'established') return;
+      if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
       if (S.role === ROLE_SPECTATOR) return;                     // spectators are keepalive-only (Addendum A)
       S.seq = (S.seq + 1) & 0xffff;
       const pt = encPres(S.out, {
         seq: S.seq, x, y, vx, state, chain, score, dist, runId: S.welcomed.runId,
       });
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, pt));
+    };
+    // Emote → host (§4.6). Spectators MAY emote (no role gate). The host clamps,
+    // rate-limits, and re-broadcasts EMOTEB; the local self-echo is owned by
+    // NET.emote(). seq is advisory (host re-stamps its own into EMOTEB).
+    S.sendEmote = async (id) => {
+      if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
+      const e = id | 0;
+      if (e < 0 || e > EMOTE_MAX) return;
+      S.emoteSeq = (S.emoteSeq + 1) & 0xff;
+      S.relay.send(S.inv.hostPub, await sealApp(S.pair, encEmote(S.out, e, S.emoteSeq)));
     };
     // Request a role change (Addendum A). Host validates caps + rate; the switch
     // is acked via the next ROSTER broadcast. Only the SPECTATOR direction flips
@@ -1607,8 +1838,9 @@
       for (const [p, q] of S.peers) {
         const id = S.rosterMap.get(p) || {};
         if (id.role === ROLE_SPECTATOR) continue;               // spectators stream no ghost
+        if (q.x == null) continue;                              // emote-only stub with no position yet → nothing to draw
         const call = id.callsign || ('P' + p);
-        out.push({ p, you: p === S.p, host: p === 1, spectator: false, x: q.x, y: q.y, vx: q.vx, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: id.suit || 0, hat: id.hat || 0, callsign: call, unverified: false });
+        out.push({ p, you: p === S.p, host: p === 1, spectator: false, x: q.x, y: q.y, vx: q.vx, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: id.suit || 0, hat: id.hat || 0, callsign: call, unverified: false, emoteId: q.emoteId, emoteSeq: q.emoteSeq });
         gBoardBump(p, call, q.score, q.dist, q.chain, false);
       }
       return out;
@@ -1707,6 +1939,16 @@
       NET.active = true;
       return NET.info();
     },
+    // Peek an invite's host key WITHOUT connecting — pure decode, no sockets,
+    // keys, crypto, or storage (safe to call on the join prompt before the user
+    // commits). Returns {hostHex, custom, region} for the local-blocklist gate
+    // (§6) + custom-relay disclosure (F.1: joining IS directory consent), or
+    // {err} for a malformed/expired link (the real acceptJoin surfaces copy).
+    peekInvite(payloadStr) {
+      const dec = decodeInvite(payloadStr);
+      if (dec.err) return { err: dec.err };
+      return { hostHex: hex(dec.inv.hostPub), custom: !!(dec.inv.flags & 2), region: dec.inv.region };
+    },
     async enterCode(str, opts) {
       const o = opts || {};
       const region = o.region || (session ? session.region : null) || RELAY_MAP.regions[0].code;
@@ -1719,7 +1961,14 @@
       NET.active = false;
       NET.mockActive = false;
     },
-    rotateLink() {}, newWorld() {}, kick() {}, approve() {},   // room-lifecycle stage
+    // Host-control surface (§4.4 room card). No-ops for a guest session (only the
+    // host holds these). kick/approve return a Promise<boolean>; rotateLink/
+    // newWorld return the fresh {link,code,epoch} / {seed,runId} for the card.
+    rotateLink() { return session && session.rotateLink ? session.rotateLink() : undefined; },
+    newWorld() { return session && session.newWorld ? session.newWorld() : undefined; },
+    kick(pubOrP) { return session && session.kick ? session.kick(pubOrP) : Promise.resolve(false); },
+    approve(pubHex, ok) { return session && session.approve ? session.approve(pubHex, ok) : Promise.resolve(false); },
+    setApprove(on) { if (session && session.setApprove) session.setApprove(on); },
 
     // Emote (Addendum §4.6). Clamp to the shipped set 0-5; record a local
     // self-echo the renderer reads for the immediate own-bubble, and best-effort
@@ -1784,7 +2033,7 @@
     presence() { return session && session.presence ? session.presence() : []; },
     board() { return session && session.board ? session.board() : []; },   // session leaderboard (per-P bests)
     info() {
-      if (!session) return { city: '', rttMs: 0, players: 0, spectators: 0, cap: ROOM_CAP, specCap: SPECTATOR_CAP, code: '', link: '', isHost: false, caps: CAPS, role: ROLE_PLAYER, hostEpoch: 0, myP: 0, unstable: false };
+      if (!session) return { city: '', rttMs: 0, players: 0, spectators: 0, cap: ROOM_CAP, specCap: SPECTATOR_CAP, code: '', link: '', isHost: false, caps: CAPS, role: ROLE_PLAYER, hostEpoch: 0, myP: 0, seed: 0, runId: 0, unstable: false };
       const c = session.isHost && session.counts ? session.counts() : null;
       return {
         city: cityOfHost(session.isHost ? session.relayHostName : ((session.inv.flags & 2) ? session.inv.relayHost : (regionOf(session.inv.region) || { hosts: [''] }).hosts[0])),
@@ -1799,6 +2048,10 @@
         role: session.role,
         hostEpoch: session.hostEpoch || 0,
         myP: session.myP ? session.myP() : (session.isHost ? 1 : session.p || 0),
+        // Room world (D7): the seed the game reads at startRun and the runId that
+        // scopes the board. Host owns them; a guest mirrors WELCOME/ROUND.
+        seed: (session.isHost ? session.seed : (session.welcomed ? session.welcomed.seed : 0)) >>> 0,
+        runId: (session.isHost ? session.runId : (session.welcomed ? session.welcomed.runId : 0)) | 0,
         mobility: session.mobility || [],
         unstable: !!session.unstable,
       };
@@ -1916,6 +2169,9 @@
       block: { hideKey, unhideKey, blockKey, unblockKey, droppedKeys, blocklist, BLOCK_CAP },
       roster: { encRoster, decRoster, ROSTER_ENTRY, ROSTER_MAX },
       role: { encRole, decRole },
+      emote: { encEmote, decEmote, encEmoteB, decEmoteB, EMOTE_MAX, A_EMOTE, A_EMOTEB },
+      bye: { encBye, decBye, A_BYE },
+      round: { encRoundBody, decRoundBody, A_ROUND },
       ctrl: { encCtrl, decCtrl, makeCtrlGate, ctrlGate },
       mobility: { makeSlots, mobilityGate, moveUnstable, reconnectJitter, MOVE_MIN_INTERVAL, HANDOFF_MIN_INTERVAL },
       dir: { activeMap, setActiveMap },

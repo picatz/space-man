@@ -478,6 +478,7 @@
   .roster-row .who .tag { color: var(--ui); font-weight: 500; opacity: 0.7; text-transform: none; letter-spacing: 0.5px; }
   .roster-row .glyph { flex: 0 0 14px; text-align: center; color: var(--cyan-lt); }
   .roster-row.unverified { opacity: 0.5; }
+  .roster-row.pending .who { color: var(--gold); text-transform: none; letter-spacing: 0.3px; }
   .roster-row.pending { color: var(--gold); }
   .roster-row.pending .who { color: var(--gold); }
 
@@ -2192,7 +2193,10 @@ function startRun() {
   const day = new Date().toISOString().slice(0, 10);
   if (!Array.isArray(flags.playDays)) flags.playDays = [];
   if (flags.playDays.indexOf(day) < 0) { flags.playDays.push(day); if (flags.playDays.length > 7) flags.playDays.shift(); }
-  const seed = SHOT_SEED !== null ? SHOT_SEED : (Math.random() * 1e9) | 0;
+  // Run Together (D7): in a live room the world seed is host-owned — adopt it so
+  // every peer runs the same course (New World resyncs here on the next run).
+  // Solo play and #shot goldens never enter this branch, so they stay identical.
+  const seed = SHOT_SEED !== null ? SHOT_SEED : ((netLive() && NET.info().seed) ? (NET.info().seed >>> 0) : (Math.random() * 1e9) | 0);
   // Drop any buffered jump/held keys from the restart keypress itself, or the
   // astronaut performs an involuntary full jump on frame 1 of every run.
   clearInput();
@@ -4833,6 +4837,31 @@ function attachRosterLongPress(el, r) {
   el.addEventListener('pointerleave', cancel);
   el.addEventListener('pointercancel', cancel);
 }
+// Approve-mode held joins (Addendum G / §4.6): a proven-but-unadmitted peer waits
+// as an inline "wants to join [✓][✕]" row. Keyed by pubHex; the raw HELLO tag is
+// never rendered (I7) — the generic "Someone" avoids leaking a hostile tag to DOM.
+const pendingJoins = new Map();
+function renderPendingJoins() {
+  const host = $('roomRoster');
+  for (const pj of pendingJoins.values()) {
+    const row = document.createElement('div'); row.className = 'roster-row pending';
+    const who = document.createElement('span'); who.className = 'who';
+    who.textContent = 'Someone wants to join' + (pj.role === 1 ? ' (watching)' : '');
+    row.appendChild(who);
+    const ok = document.createElement('button'); ok.className = 'mini-chip'; ok.textContent = '✓';
+    ok.setAttribute('aria-label', 'Admit'); ok.onclick = () => resolvePending(pj.pubHex, true);
+    const no = document.createElement('button'); no.className = 'mini-chip coral'; no.textContent = '✕';
+    no.setAttribute('aria-label', 'Reject'); no.onclick = () => resolvePending(pj.pubHex, false);
+    row.appendChild(ok); row.appendChild(no);
+    host.insertBefore(row, host.firstChild);   // pending rows sit above the live roster
+  }
+}
+function resolvePending(pubHex, ok) {
+  pendingJoins.delete(pubHex);
+  try { NET.approve(pubHex, ok); } catch (e) {}   // admit → ROSTER join; reject → BYE(6)
+  announce(ok ? 'Admitted a player.' : 'Rejected a join.');
+  if (netLive()) renderRoomCard();
+}
 function renderRoster(roster, isHost) {
   const host = $('roomRoster'); host.innerHTML = '';
   for (const r of roster) {
@@ -4886,6 +4915,7 @@ function renderRoomCard() {
   $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · <span class="num">' + (info.rttMs | 0) + 'ms</span>';
   renderMobilityLog();
   renderRoster(roster, isHost);
+  if (isHost) renderPendingJoins();
 }
 function copyRoomLink() {
   const link = netLive() ? NET.info().link : '';
@@ -4904,8 +4934,10 @@ function kickPlayer(r) {
   // Native confirm — the app's one existing confirm pattern (btnReset); host-only,
   // rare, consequential (§4.3). Handlers degrade to no-op stubs until the
   // room-lifecycle implementer lands them (§4.1 🔶).
-  if (!window.confirm('Kick ' + (r.callsign || ('PLAYER ' + r.p)) + '?')) return;
-  try { NET.kick(r.p); } catch (e) {}
+  const nm = r.callsign || ('PLAYER ' + r.p);
+  if (!window.confirm('Kick ' + nm + '?')) return;
+  try { NET.kick(r.p); } catch (e) {}   // authenticated kick frame → ban + drop the target key forever (survives reconnect)
+  queueToast(nm + ' was removed from the room.', 'net');
   announce('Removed from the room.');
   if (window.confirm("Kicked. Rotate the invite so they can't return?")) { try { NET.rotateLink(); } catch (e) {} }
   renderRoomCard();
@@ -4919,7 +4951,7 @@ async function openRoomFlow() {
     const relayDir = { mode: settings.netRelayMode };
     if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
     else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-    await NET.openRoom({ relayDir, relayHost: settings.netRelay || undefined });
+    await NET.openRoom({ relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove });
     applyCallsignToNet();
     renderRoomCard();
     announce('Room created. Invite link ready.');
@@ -4937,7 +4969,14 @@ function leaveRoom() {
 
 // --- Join prompt (#j= invite) --------------------------------------------
 let joinPayload = null;
+let joinOverride = false;   // "Join Anyway" past a blocked host — single-use (§6)
 function setJoinState(msg) { $('joinState').textContent = msg || ''; }
+// Does the invite's host key sit on the local blocklist? Compared against the
+// persisted blocklist (§6); hex from the pre-connect peek — no socket/key/crypto.
+function netHostBlocked(hostHex) {
+  if (!NET || !hostHex) return false;
+  try { return NET.blocklist().some((b) => b.pubkey === hostHex); } catch (e) { return false; }
+}
 function resetJoinPrompt() {
   $('joinTitle').textContent = 'Join This Run Together?';
   $('joinChoices').style.display = '';
@@ -4962,6 +5001,15 @@ function rejectMessage(e) {
 async function acceptInvite(role) {
   if (!joinPayload) return;
   if (!hasCallsign()) { showCallsign(() => { resetJoinPrompt(); showOverlay('ovJoin'); acceptInvite(role); }); return; }
+  // Consent gate (§6 / F.1): peek the host key WITHOUT connecting. A blocked host
+  // needs a deliberate one-time override (default-safe = Not Now); a custom relay
+  // is disclosed at the commit moment — joining IS directory consent.
+  const peek = NET.peekInvite ? NET.peekInvite(joinPayload) : null;
+  if (peek && peek.hostHex && !joinOverride && netHostBlocked(peek.hostHex)) {
+    hideAllOverlays(); showOverlay('ovBlockedHost'); return;
+  }
+  joinOverride = false;                                    // override consumed (single-use)
+  if (peek && peek.custom) $('joinCustomDir').classList.add('show');
   $('joinChoices').style.display = 'none';
   $('btnJoinNotNow').style.display = 'none';
   setJoinState('Joining…');
@@ -5530,21 +5578,26 @@ $('btnRoomCopy').onclick = () => copyRoomLink();
 $('btnRoomShare').onclick = () => shareRoomLink();
 $('btnRoomBack').onclick = () => showAttract();               // Back keeps the session alive
 $('btnRoomLeave').onclick = () => leaveRoom();
-$('btnRoomNewLink').onclick = () => { try { NET.rotateLink(); } catch (e) {} renderRoomCard(); };
-$('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} };
-$('roomApprove').onclick = () => { settings.netApprove = !settings.netApprove; persistAll(); renderRoomCard(); syncSettingsUI(); };
+$('btnRoomNewLink').onclick = () => { try { NET.rotateLink(); } catch (e) {} renderRoomCard(); queueToast('New invite link ready', 'net'); announce('New invite link ready.'); };   // rotate bumps the epoch → prior invites go stale (I16); card re-reads the fresh link/code/QR
+$('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} queueToast('New world — starts next run', 'net'); announce('New world set. It starts on the next run.'); renderRoomCard(); };   // broadcasts a new seed+runId all peers adopt at their next startRun
+$('roomApprove').onclick = () => { settings.netApprove = !settings.netApprove; try { NET.setApprove(settings.netApprove); } catch (e) {} persistAll(); renderRoomCard(); syncSettingsUI(); announce(settings.netApprove ? 'Approve joins on.' : 'Approve joins off.'); };
 $('btnJoinPlay').onclick = () => acceptInvite(0);
 $('btnJoinWatch').onclick = () => acceptInvite(1);
 $('btnJoinNotNow').onclick = () => showAttract();
 $('btnBlockedNotNow').onclick = () => showAttract();
-$('btnJoinAnyway').onclick = () => { resetJoinPrompt(); hideAllOverlays(); showOverlay('ovJoin'); };
+$('btnJoinAnyway').onclick = () => { joinOverride = true; resetJoinPrompt(); hideAllOverlays(); showOverlay('ovJoin'); };   // deliberate one-time override past the block (§6)
 $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
-if (NET) NET.onEvent((e) => {
+if (NET) NET.onEvent((e, d) => {
   if (e === 'reconnecting') announce('Reconnecting.');
   else if (e === 'bye') announce('Removed from the room.');
-  else if (e === 'roster' || e === 'ok') { if (netLive()) renderRoomCard(); }
+  else if (e === 'approve-wait') {   // a held join is waiting for the host (§4.6)
+    if (d && d.pubHex) { pendingJoins.set(d.pubHex, { pubHex: d.pubHex, role: d.role }); queueToast('Someone wants to join', 'net'); announce('Someone wants to join.'); }
+    if (netLive()) renderRoomCard();
+  } else if (e === 'reject') { if (d && d.pubHex) pendingJoins.delete(d.pubHex); if (netLive()) renderRoomCard(); }
+  else if (e === 'rotated') { if (netLive()) renderRoomCard(); }   // fresh link/code/QR after New Link
+  else if (e === 'roster' || e === 'ok' || e === 'kick') { if (netLive()) renderRoomCard(); }
 });
 $('btnReset').onclick = () => {
   if (!confirm('Erase all scores, stats, and settings?')) return;
@@ -5682,6 +5735,12 @@ function runShot() {
       const t2 = performance.now(); startRun(); const t3 = performance.now();
       el.textContent = 'renderDeathCard ' + (t1 - t0).toFixed(2) + 'ms · startRun ' + (t3 - t2).toFixed(2) + 'ms · netLive=' + netLive() + ' role=' + NET.info().role;
       render(1); shotFrozen = true; lastT = 0; rafId = requestAnimationFrame(frame); return;
+    } else if (scene === 'blocked') {   // QA: blocked-host consent card (§6) — DOM overlay only, no net
+      G.mode = 'attract'; for (let i = 0; i < 40; i++) update();
+      showOverlay('ovBlockedHost');
+    } else if (scene === 'join') {   // QA: join prompt (+ custom-relay disclosure line via custom=1)
+      G.mode = 'attract'; for (let i = 0; i < 40; i++) update();
+      resetJoinPrompt(); if (HASH.custom) $('joinCustomDir').classList.add('show'); showOverlay('ovJoin');
     }
     el.textContent = window.__errors.join('\n');
     G.trauma = 0; G.kickX = 0; G.kickY = 0;
