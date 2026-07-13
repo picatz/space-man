@@ -951,15 +951,31 @@
   // ROUND body (rides the control-frame envelope §8.5): seed u32, runId u8,
   // countdown u8, flags u8. Players adopt seed at their NEXT run start (never
   // yanks a live run); runId scopes the leaderboard + PRES monotonicity.
-  function encRoundBody(seed, runId, countdown, flags) {
-    const b = new Uint8Array(7);
-    new DataView(b.buffer).setUint32(0, seed >>> 0, true);
+  // SHARED-ROUND CLOCK (additive, back-compat): + startDelayMs u16 (pre-roll
+  // remaining, 0 once the round is running) + elapsedMs u32 (ms since the host's
+  // roundT0 at SEND time, 0 during pre-roll). Exactly one is non-zero. A client
+  // anchors localRoundT0 = now + startDelayMs - elapsedMs - rtt/2, then derives a
+  // flare that is a pure function of shared time+seed → coherent on every screen.
+  // Older peers (7B body) decode startDelayMs/elapsedMs as 0 and keep the legacy
+  // seed-adopt-at-next-run behaviour; decRoundBody length-guards every field.
+  function encRoundBody(seed, runId, countdown, flags, startDelayMs, elapsedMs) {
+    const b = new Uint8Array(13);
+    const dv = new DataView(b.buffer);
+    dv.setUint32(0, seed >>> 0, true);
     b[4] = runId & 0xff; b[5] = (countdown || 0) & 0xff; b[6] = (flags || 0) & 0xff;
+    dv.setUint16(7, Math.max(0, Math.min(65535, startDelayMs | 0)), true);
+    dv.setUint32(9, Math.max(0, elapsedMs | 0) >>> 0, true);
     return b;
   }
   function decRoundBody(b) {
     if (!b || b.length < 5) return null;
-    return { seed: new DataView(b.buffer, b.byteOffset).getUint32(0, true), runId: b[4], countdown: b.length > 5 ? b[5] : 0, flags: b.length > 6 ? b[6] : 0 };
+    const dv = new DataView(b.buffer, b.byteOffset);
+    return {
+      seed: dv.getUint32(0, true), runId: b[4],
+      countdown: b.length > 5 ? b[5] : 0, flags: b.length > 6 ? b[6] : 0,
+      startDelayMs: b.length >= 9 ? dv.getUint16(7, true) : 0,
+      elapsedMs: b.length >= 13 ? dv.getUint32(9, true) : 0,
+    };
   }
 
   /* -------------------------------------------------------------------------
@@ -1149,6 +1165,8 @@
      ------------------------------------------------------------------------- */
   const STRIKE_LIMIT = 3;
   const PRELIM_CAP = 1024;     // pre-join tracking rows; oldest evicted (key-rotation spray must not grow host memory)
+  const ROUND_PREROLL = 3000;  // New-Round pre-roll (ms): a synchronized 3-2-1 so every screen starts together
+  const PRES_STALE = 2500;     // ms without a fresh PRES → stop fanning the row out (paused/backgrounded peers hide promptly)
   function emitter() {
     const subs = [];
     return {
@@ -1161,6 +1179,8 @@
     const S = {
       isHost: true, keys: null, relay: null, codeRelay: null, code: null, codeKeys: null,
       roomId: null, secret: null, epoch: 0, hostEpoch: 0, ctrlSeq: 0, caps: CAPS, seed: 0, runId: 1,
+      roundT0: 0, roundRunId: 0,   // shared-round clock: roundT0 is the perf.now() the flare reads zero for roundRunId
+
       roster: new Map(),         // pubHex → {p, pub, tag, suit, hat, role, adjIdx, nounIdx, pair, pres, strikes, bucket, lastHello, helloN, unverified, lastRole, runT0}
       banned: new Set(), joinTimes: [], prelim: new Map(),
       approveJoins: opts.approve === true, pending: new Map(), selfEmoteSeq: 0,   // held joins (approve mode) + host self-emote seq
@@ -1178,8 +1198,20 @@
     // Separate caps (Addendum A): count players vs spectators across the roster.
     function counts() {
       let players = S.role === ROLE_SPECTATOR ? 0 : 1, spectators = S.role === ROLE_SPECTATOR ? 1 : 0;
-      for (const r of S.roster.values()) { if (r.role === ROLE_SPECTATOR) spectators++; else players++; }
+      for (const r of S.roster.values()) { if (r.absent) continue; if (r.role === ROLE_SPECTATOR) spectators++; else players++; }
       return { players, spectators };
+    }
+    // A peer's transport dropped (relay F_PEER_GONE) — hide its ghost at once and
+    // tell the room, but KEEP the roster row (keyed by pub) so a reconnect
+    // re-HELLO re-WELCOMEs the SAME P#. row.absent gates the rejoin re-announce
+    // and hides the row from counts()/roster()/snap fan-out until it returns.
+    function hostPeerGone(pub) {
+      if (!pub) return;
+      const row = S.roster.get(hex(pub));
+      if (!row || row.absent) return;
+      row.pres = null; row.absent = true; row.lastSeen = 0;
+      S.ev.emit('leave', { p: row.p, tag: row.tag });
+      sendRoster(2, [row]).catch(() => {});   // ROSTER leave → peers drop the ghost + roster entry
     }
 
     function strike(row, why) {
@@ -1301,6 +1333,10 @@
           hostTag: S.tag, rosterN: S.roster.size + 1, boardN: 0, roomFlags: 0,
         });
         S.relay.send(row.pub, await sealApp(row.pair, w));
+        // A reconnect after a transport drop: un-hide + re-announce the SAME P#,
+        // and re-anchor the reconnecting peer to the live shared round at once.
+        if (row.absent) { row.absent = false; S.ev.emit('rejoin', { p: row.p, tag: row.tag }); sendRoster(1, [row]).catch(() => {}); }
+        if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});
         return;
       }
       /* unknown core app type: ignore silently (forward compat) */
@@ -1367,6 +1403,7 @@
       S.relay.send(row.pub, await sealApp(row.pair, w));
       S.ev.emit('join', { p, tag: row.tag, role: row.role });
       sendRoster(1, [row]).catch(() => {});                      // announce the new member to everyone
+      if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});   // anchor the joiner to the live shared round
       return true;
     }
     function prelimSet(key, pre) {                                 // bounded: evict oldest under key spray
@@ -1413,18 +1450,26 @@
     // ROUND (new-world) broadcast — rides the host-epoch/seq control envelope so
     // a guest CANNOT forge or replay it: encCtrl binds {roomId, hostEpoch, seq}
     // under the pair AEAD, guests validate via ctrlGate before adopting.
-    async function broadcastRound(countdown) {
+    async function broadcastRound(countdown, target) {
       if (!S.relay || S.relay.state !== 'established') return;
-      const body = encRoundBody(S.seed, S.runId, countdown, 0);
+      const now = performance.now();
+      const startDelayMs = S.roundT0 > now ? (S.roundT0 - now) : 0;         // pre-roll remaining
+      const elapsedMs = (S.roundT0 && S.roundT0 <= now) ? (now - S.roundT0) : 0;   // since roundT0 (0 during pre-roll)
+      const body = encRoundBody(S.seed, S.runId, countdown, 0, startDelayMs, elapsedMs);
       const pt = encCtrl(S.out, A_ROUND, S.roomId, S.hostEpoch, ++S.ctrlSeq, body).slice();
+      if (target) { S.relay.send(target.pub, await sealApp(target.pair, pt)); return; }   // targeted anchor for a fresh joiner
       for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
     }
 
     async function snapTick() {
       if (S.relay.state !== 'established') return;
-      S.tick = (performance.now() - S.started) | 0;
+      const nowTick = performance.now();
+      S.tick = (nowTick - S.started) | 0;
       const live = [];
-      for (const r of S.roster.values()) if (r.pres && r.role !== ROLE_SPECTATOR) live.push(r);
+      // Skip absent rows AND rows whose last PRES has gone stale (paused / backgrounded
+      // peer that stopped streaming): don't rebroadcast a frozen position — peers age
+      // it out and hide the ghost promptly even without a transport F_PEER_GONE.
+      for (const r of S.roster.values()) if (r.pres && !r.absent && r.role !== ROLE_SPECTATOR && (nowTick - r.lastSeen) <= PRES_STALE) live.push(r);
       const rows = S.role === ROLE_SPECTATOR ? [] : [{ p: 1, pres: S.self }];   // a sitting-out host streams no ghost
       for (let i = 0; i < live.length && rows.length < SNAP_MAX; i++) {
         rows.push({ p: live[(S.rr + i) % live.length].p, pres: live[(S.rr + i) % live.length].pres });
@@ -1484,7 +1529,7 @@
           onOpen: () => { if (!settled) { settled = true; resolve(); } S.ev.emit('state', { state: 'established' }); },
           onPacket, onRtt: (ms) => S.ev.emit('rtt', { ms }),
           onDown: (why) => { S.ev.emit('state', { state: 'down', why }); },
-          onPeerGone: () => {},
+          onPeerGone: (pub) => hostPeerGone(pub),
           onLog: (m) => S.ev.emit('log', { m }),
         });
         S.relay.connect();
@@ -1609,17 +1654,42 @@
       S.ev.emit('rotated', { epoch: S.epoch, code: S.code, link: S.link });
       return { link: S.link, code: S.code, epoch: S.epoch };
     };
-    // New world (D7): pick a fresh seed + runId and broadcast ROUND. Players adopt
-    // the seed at their NEXT run start (a live run is never yanked); runId scopes
-    // the leaderboard + PRES monotonicity from here on.
-    S.newWorld = () => {
-      S.seed = new DataView(rand(4).buffer).getUint32(0, true);
-      S.runId = S.runId >= 255 ? 1 : S.runId + 1;                 // u8, never 0 (0 = unknown → render-only ghost)
-      S.self.runId = S.runId;
-      broadcastRound(0).catch(() => {});
+    // Shared-round clock (host-authoritative). A "round" anchors roundT0 — the
+    // shared moment every screen's flare reads zero. beginRound starts a NEW round
+    // (optionally a fresh seed) with an optional pre-roll countdown and broadcasts
+    // ROUND; markRoundStart lazily anchors the CURRENT runId the first time the
+    // host itself starts a run so peers already in the room sync to it.
+    S.beginRound = (o) => {
+      o = o || {};
+      const now = performance.now();
+      if (o.newSeed) {
+        S.seed = new DataView(rand(4).buffer).getUint32(0, true);
+        S.runId = S.runId >= 255 ? 1 : S.runId + 1;              // u8, never 0 (0 = unknown → render-only ghost)
+        S.self.runId = S.runId;
+      }
+      const delay = Math.max(0, o.delayMs | 0);
+      S.roundT0 = now + delay; S.roundRunId = S.runId;
+      broadcastRound(Math.ceil(delay / 1000)).catch(() => {});
       S.ev.emit('world', { seed: S.seed, runId: S.runId });
-      return { seed: S.seed, runId: S.runId };
+      S.ev.emit('round-begin', { seed: S.seed, runId: S.runId, startInMs: delay });
+      return { seed: S.seed, runId: S.runId, startInMs: delay };
     };
+    S.markRoundStart = (delayMs) => {
+      if (S.roundRunId === S.runId && S.roundT0) return { startInMs: Math.max(0, S.roundT0 - performance.now()) };
+      const delay = Math.max(0, delayMs | 0);
+      S.roundT0 = performance.now() + delay; S.roundRunId = S.runId;
+      broadcastRound(Math.ceil(delay / 1000)).catch(() => {});
+      S.ev.emit('round-begin', { seed: S.seed, runId: S.runId, startInMs: delay });
+      return { startInMs: delay };
+    };
+    S.roundClock = () => {
+      const now = performance.now();
+      const active = !!(S.roundT0 && S.roundRunId === S.runId);
+      return { active, runId: S.runId, elapsedMs: active ? (now - S.roundT0) : 0, startInMs: active ? Math.max(0, S.roundT0 - now) : 0 };
+    };
+    // New world (D7): a fresh seed + runId, started as a synchronized new round
+    // with a short pre-roll so every screen counts down and starts together.
+    S.newWorld = () => S.beginRound({ newSeed: true, delayMs: ROUND_PREROLL });
     // Approve a held join (approve-mode). ok=false rejects with BYE(6). The
     // pending peer was already proof-verified; this only gates admission.
     S.approve = async (pubHex, ok) => {
@@ -1636,7 +1706,7 @@
       return admitJoin(pend.srcPub, key, pend.h, pend.pair);
     };
     S.setApprove = (on) => { S.approveJoins = !!on; };
-    S._onPacket = onPacket; S._onCodePacket = onCodePacket;   // harness seam (offline drive; underscore = not a contract)
+    S._onPacket = onPacket; S._onCodePacket = onCodePacket; S._onPeerGone = hostPeerGone; S._snapTick = snapTick;   // harness seam (offline drive; underscore = not a contract)
     S.close = () => {
       if (S.snapTimer) clearInterval(S.snapTimer);
       if (S.relay) S.relay.close();
@@ -1653,6 +1723,7 @@
       adjIdx: opts.adjIdx == null ? CALLSIGN_NONE : opts.adjIdx & 0xff,
       nounIdx: opts.nounIdx == null ? CALLSIGN_NONE : opts.nounIdx & 0xff,
       caps: 0, hostEpoch: 0, gate: makeCtrlGate(), rosterMap: new Map(),   // p → {tag,suit,hat,role,adjIdx,nounIdx,you}
+      localRoundT0: null, roundRunId: 0,   // shared-round clock, anchored from ROUND (host time − rtt/2)
       pair: null, peers: new Map(),    // p → latest snap row
       ev: emitter(), out: makeScratch(), seq: 0, roleSeq: 0, emoteSeq: 0, hostHex: hex(inv.hostPub),
       helloTimer: null, slots: makeSlots(), byed: null,
@@ -1700,7 +1771,7 @@
       if (pt[0] === A_ROSTER) {                                  // roster with roles + callsigns (addenda A/C)
         const r = decRoster(pt);
         if (!r) return;
-        if (r.op === 2 || r.op === 3) { for (const e of r.entries) S.rosterMap.delete(e.p); }
+        if (r.op === 2 || r.op === 3) { for (const e of r.entries) { S.rosterMap.delete(e.p); S.peers.delete(e.p); } }   // leave: drop the ghost too, not just the roster row
         else for (const e of r.entries) S.rosterMap.set(e.p, {
           tag: e.tag, suit: e.suit, hat: e.hat, role: e.role, adjIdx: e.adjIdx, nounIdx: e.nounIdx,
           callsign: callsignText(e.adjIdx, e.nounIdx), you: e.p === S.p,
@@ -1744,7 +1815,14 @@
         const rb = decRoundBody(cf.body);
         if (!rb) return;
         if (S.welcomed) { S.welcomed.seed = rb.seed; S.welcomed.runId = rb.runId; }   // adopted at NEXT run start (game side)
-        S.ev.emit('round', { seed: rb.seed, runId: rb.runId, countdown: rb.countdown });
+        // Anchor the shared-round clock: localRoundT0 is the local perf.now() the
+        // flare reads zero. host time − rtt/2 corrects for the one-way delay so
+        // both screens compute the same flareX to within rtt/2. Pre-roll and
+        // running are the two encodings (one of startDelayMs/elapsedMs is set).
+        const rttHalf = (S.relay && S.relay.rtt) ? S.relay.rtt / 2 : 0;
+        S.localRoundT0 = performance.now() + (rb.startDelayMs || 0) - (rb.elapsedMs || 0) - rttHalf;
+        S.roundRunId = rb.runId;
+        S.ev.emit('round', { seed: rb.seed, runId: rb.runId, countdown: rb.countdown, startInMs: rb.startDelayMs || 0, elapsedMs: rb.elapsedMs || 0 });
         return;
       }
       if (pt[0] === A_BYE) {                                     // host kicked us / closed / rotated
@@ -1851,6 +1929,14 @@
     };
     S.board = () => Array.from(S._board.values()).sort((a, b) => b.bestScore - a.bestScore);
     S.myP = () => S.p;
+    // Shared-round clock mirror: active only once a ROUND anchored localRoundT0 for
+    // the runId the host has us on. elapsedMs<0 during the pre-roll countdown.
+    S.roundClock = () => {
+      const runId = S.welcomed ? S.welcomed.runId : 0;
+      const active = S.localRoundT0 != null && S.roundRunId === runId;
+      const now = performance.now();
+      return { active, runId, elapsedMs: active ? (now - S.localRoundT0) : 0, startInMs: active ? Math.max(0, S.localRoundT0 - now) : 0 };
+    };
     S._onPacket = onPacket;                                    // harness seam (offline drive)
     S.close = () => {
       if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
@@ -1970,6 +2056,14 @@
     // newWorld return the fresh {link,code,epoch} / {seed,runId} for the card.
     rotateLink() { return session && session.rotateLink ? session.rotateLink() : undefined; },
     newWorld() { return session && session.newWorld ? session.newWorld() : undefined; },
+    // Shared-round clock (§4.1). startRound = host begins a synchronized round
+    // (opt fresh seed + pre-roll); markRoundStart = host lazily anchors the current
+    // runId on its own first run; roundClock = the shared anchor every screen's
+    // in-room flare derives from ({active,runId,elapsedMs,startInMs}). Guests are
+    // read-only mirrors — a guest anchors only from the host-authenticated ROUND.
+    startRound(o) { return session && session.beginRound ? session.beginRound(o || {}) : undefined; },
+    markRoundStart(delayMs) { return session && session.markRoundStart ? session.markRoundStart(delayMs) : undefined; },
+    roundClock() { return session && session.roundClock ? session.roundClock() : null; },
     kick(pubOrP) { return session && session.kick ? session.kick(pubOrP) : Promise.resolve(false); },
     approve(pubHex, ok) { return session && session.approve ? session.approve(pubHex, ok) : Promise.resolve(false); },
     setApprove(on) { if (session && session.setApprove) session.setApprove(on); },
@@ -2015,11 +2109,11 @@
       const cs = (a, n, p) => callsignText(a, n) || ('P' + p);   // P-number fallback (Addendum C)
       if (session.isHost) {
         const out = [{ p: 1, tag: session.tag, you: true, host: true, role: session.role, spectator: session.role === ROLE_SPECTATOR, callsign: cs(session.adjIdx, session.nounIdx, 1), unverified: false }];
-        for (const r of session.roster.values()) out.push({
+        for (const r of session.roster.values()) { if (r.absent) continue; out.push({
           p: r.p, tag: r.tag, role: r.role, spectator: r.role === ROLE_SPECTATOR,
           callsign: cs(r.adjIdx, r.nounIdx, r.p), unverified: !!r.unverified, dimmed: !!r.unverified,
           pubHex: r.pub ? hex(r.pub) : undefined,   // for the hide/block/kick sheet (§7); guests can't see peer pubs
-        });
+        }); }
         return out.sort((a, b) => a.p - b.p);
       }
       const out = [];

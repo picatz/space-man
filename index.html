@@ -699,7 +699,7 @@
     </div>
     <div class="row" id="roomHostControls">
       <button class="btn ghost" id="btnRoomNewLink">New Link</button>
-      <button class="btn ghost" id="btnRoomNewWorld">New World</button>
+      <button class="btn ghost" id="btnRoomNewWorld">New Round</button>
     </div>
     <button class="btn ghost coral" id="btnRoomLeave">Leave Room</button>
     <button class="btn ghost" id="btnRoomBack">Back</button>
@@ -2158,6 +2158,10 @@ function resetRun(seed) {
   G.camY = G.groundY - view.h * (view.h > view.w ? 0.64 : 0.58); G.camYprev = G.camY;
   G.hudDuck = 0; G.hudFade = 1;
   G.flare.x = G.player.x - CFG.flareStartBehind; G.flare.prevX = G.flare.x; G.flare.speed = BANDS[0].flare;
+  // Run Together shared-flare integrator (in-room only; spawn line is seed- and
+  // player-independent so x0 is identical on every screen). synced=false makes the
+  // first shared-flare frame fast-forward to the shared position (Play-Again continuity).
+  G.flareShared = { x: G.flare.x, x0: G.flare.x, speed: BANDS[0].flare, steps: 0, synced: false };
   G.score = 0; G.dispScore = 0; G.dist = 0; G.maxX = G.player.x;
   G.chain = 0; G.bestChainRun = 1; G.killsRun = 0; G.chainFade = 0; G.chainFadeMult = 0;
   G.ammo = CFG.ammoStart; G.ammoPulse = 0; G.cooldown = 0;
@@ -2219,7 +2223,7 @@ function startRun() {
   if (!Array.isArray(flags.playDays)) flags.playDays = [];
   if (flags.playDays.indexOf(day) < 0) { flags.playDays.push(day); if (flags.playDays.length > 7) flags.playDays.shift(); }
   // Run Together (D7): in a live room the world seed is host-owned — adopt it so
-  // every peer runs the same course (New World resyncs here on the next run).
+  // every peer runs the same course (New Round resyncs here on the next run).
   // Solo play and #shot goldens never enter this branch, so they stay identical.
   const seed = SHOT_SEED !== null ? SHOT_SEED : ((netLive() && NET.info().seed) ? (NET.info().seed >>> 0) : (Math.random() * 1e9) | 0);
   // Drop any buffered jump/held keys from the restart keypress itself, or the
@@ -2233,6 +2237,12 @@ function startRun() {
     if (sitOutNext) sitOutNext = false;                       // consume the one-round sit-out
     else if (NET.info().role === 1) { try { NET.setRole(0); } catch (e) {} announce('Now playing.'); }
     slipRun = 0; slipT = 0;
+    // Shared-round clock (§4.1): the HOST anchors the round the first time it runs
+    // (idempotent per runId — a New Round resets it), so peers already in the room
+    // sync to this course. A guest is a read-only mirror: it anchors only from the
+    // host-authenticated ROUND (arriving on join, on New Round, or already held —
+    // Play-Again keeps localRoundT0, so its flare continues from shared elapsed).
+    if (NET.info().isHost && NET.markRoundStart) { try { NET.markRoundStart(0); } catch (e) {} }
   }
   beginArrival();   // E13: render-side greeting; sim ticks under it from frame 1
   G.mode = 'play'; buzz('light');
@@ -2611,6 +2621,50 @@ function updateFlare() {
   if (G.frameCount % 3 === 0) G.crackle = rng();
 }
 
+// Run Together SHARED flare (§4.1) — a SEPARATE in-room path. The flare position
+// is a pure function of the host-shared round clock + the fixed spawn line, never
+// of the local player's x/maxX, so every screen computes the identical G.flare.x
+// to within rtt/2 (coherent on both phones). Falling behind = overtaken = death
+// by flare, exactly as the owner intends. The SOLO rubber-band updateFlare() above
+// is byte-identical and untouched; this runs only when netRoundActive() is true
+// (real room + anchored round), so #shot/solo goldens never reach it.
+function updateFlareShared() {
+  const fs = G.flareShared;
+  const rc = (NET && NET.roundClock) ? NET.roundClock() : null;
+  G.flare.prevX = G.flare.x;
+  const tMs = rc ? rc.elapsedMs : 0;
+  if (tMs <= 0) {                       // pre-roll / not yet started: hold at the shared spawn line
+    fs.x = fs.x0; fs.speed = BANDS[0].flare; fs.steps = 0; fs.synced = true;
+  } else {
+    const targetSteps = Math.floor(tMs / (STEP * 1000));
+    // Integrate the flare deterministically over shared sim-steps (band keyed on
+    // the FLARE's own travelled distance, not the player's — same schedule on
+    // every screen). First frame after a (re)start fast-forwards once so Play-Again
+    // seats the flare at the shared position instead of sweeping it across screen.
+    let budget = fs.synced ? 240 : 40000;
+    while (fs.steps < targetSteps && budget-- > 0) {
+      const B = BANDS[bandFor(Math.max(0, (fs.x - fs.x0) / 10))];
+      fs.speed += (B.flare - fs.speed) * 0.01;
+      fs.x += fs.speed;
+      fs.steps++;
+    }
+    fs.synced = true;
+  }
+  G.flare.x = fs.x;
+  // Render-facing flare state (mirrors updateFlare's post-advance block) against
+  // the LOCAL player so vignette/embers/flirt read exactly like solo.
+  const gap = G.player.x - G.flare.x;
+  G.vignette = clamp(1 - gap / 400, 0, 1);
+  if (gap < 300) G.trauma = Math.max(G.trauma, 0.1 * (1 - gap / 300));
+  if (gap < 40) { G.flareFlirtT += STEP; if (G.flareFlirtT >= 3) G.flareFlirt = true; }
+  else G.flareFlirtT = 0;
+  if (G.frameCount % 18 === 0)
+    spawnP(G.player.x + rnd(-view.w * 0.5, view.w * 0.6), G.groundY + rnd(90, 280), rnd(-0.2, 0.2), -rnd(0.3, 0.9), 60, 2, 'rgba(255,110,90,0.5)', -0.005, false, 0);
+  if (G.frameCount % 2 === 0)
+    spawnP(G.flare.x - rnd(0, 30), G.camY + rnd(0, view.h), rnd(-0.5, 0.5), -rnd(1, 3), 30, 2.5, 'rgba(255,180,120,0.9)', -0.02, false, 0);
+  if (G.frameCount % 3 === 0) G.crackle = rng();
+}
+
 // E4: render-only "the flare is a visible antagonist" state. threat is a
 // slewed read of the gap — never written back into anything updateFlare()
 // reads, so the difficulty rubber-band (G.flare.x itself) is untouched.
@@ -2888,7 +2942,7 @@ function update() {
     // Camera is parked while dead — sync prev so interpolation can't shimmer
     // against a stale frame (magnified by deathZoom).
     if (G.player.dead) { G.camXprev = G.camX; G.camYprev = G.camY; finishTick(); return; }
-    updateFlare();
+    if (netRoundActive() && !netSpectating()) updateFlareShared(); else updateFlare();
     updateThreat();
     updateCamera();
     if (netSpectating()) netFollowCamera();   // spectator follows the watched runner, not the local bot
@@ -4399,7 +4453,7 @@ function medalGlyphs() {
 function showAttract() {
   hideAllOverlays();
   const meta = $('tmeta'); if (meta) meta.content = '#060818';
-  $('btnPlay').textContent = matchMedia('(pointer: coarse)').matches ? 'Tap to Start' : 'Press Space';
+  netLabelPlayButton();
   $('attractBest').textContent = 'BEST ' + bestScore.toLocaleString();
   $('attractMedals').innerHTML = medalGlyphs();
   const logN = logbookCount();
@@ -5243,6 +5297,15 @@ let slipT = 0, slipRun = 0;                                // slipstream dwell +
 // is frozen, so we derive it from the sim frame count — deterministic goldens.
 function netClock() { return (NET && NET.mockActive) ? (G.frameCount * STEP * 1000) : performance.now(); }
 function netSpectating() { return netLive() && NET.info().role === 1; }
+// True while a host-shared round clock is anchored for THIS room (real session
+// only — never the offline #shot mock, whose ghosts keep the solo rubber-band
+// flare). The in-room shared flare derives from this; solo/#shot always take the
+// untouched updateFlare rubber-band.
+function netRoundActive() {
+  if (!netLive() || NET.mockActive || !NET.roundClock) return false;
+  const rc = NET.roundClock();
+  return !!(rc && rc.active);
+}
 // True while the LIVE run/spectate view owns the screen. Once the RUN OVER death
 // card is up (deathCardShown), the spectate chrome — race strip, WATCHING banner,
 // TOUR pill — and the live ghosts belong to the card's past, not on top of it, so
@@ -5309,7 +5372,10 @@ function netSampleGhosts(now) {
       if (settings.netEmotes) { g.emoteId = s.emoteId; g.emoteT = 1.2; netEmoteSfx(); }   // per-viewer suppress (§4.6)
     }
   }
-  for (const g of ghosts) if (g.active && !seen.has(g.p) && now - g.lastSeen > 4200) freeGhost(g);
+  // Prompt hide (§4.4): the host stops fanning a paused/gone peer within PRES_STALE
+  // (2.5s) and a ROSTER leave drops it from presence() at once, so a peer missing
+  // from the snapshot ages out in ~2s here — a tidy fade, not a 4.2s freeze.
+  for (const g of ghosts) if (g.active && !seen.has(g.p) && now - g.lastSeen > 2000) freeGhost(g);
 }
 const ghostSeen = new Set();
 function netEmoteSfx() { try { if (settings.sfx && !settings.muted) Audio.sfx.ui(2); } catch (e) {} }
@@ -5384,17 +5450,42 @@ function netFollowCamera() {
        hat, squash all inherited for free), then a pre-rendered P#/callsign badge
        and emote bubble in world space. No per-frame shadowBlur, no measureText. */
 let ghostActor = null, ghostCos = null;
+// Surface y of the SHARED-world platform under a ghost's x, if one sits plausibly
+// under its reported feet — used to ground-snap peers so they never float/sink on
+// terrain that drifted from theirs. null = no plausible platform (treat as air).
+function ghostGroundY(gx, feetY) {
+  let best = null, bestD = 140;
+  for (const pl of G.platforms) {
+    if (gx < pl.x - 4 || gx > pl.x + pl.w + 4) continue;
+    const d = Math.abs(pl.y - feetY);
+    if (d < bestD) { bestD = d; best = pl; }
+  }
+  return best ? best.y : null;
+}
 function drawGhosts(alpha, iCamX) {
   if (!netInRun()) return;
   const now = netClock();
+  const myRunId = (!NET.mockActive && NET.info) ? (NET.info().runId | 0) : 0;
   for (const g of ghosts) {
     if (!g.active) continue;
+    // Cross-world ghost (different runId — the New-Round adoption window or a late
+    // joiner mid-round): its y maps onto foreign terrain, so don't draw it as a
+    // grounded body. The race strip still lists it. Real session only.
+    if (!NET.mockActive && g.runId && myRunId && g.runId !== myRunId) continue;
     const rt = now - 150;                                   // render 150ms in the past (§4.2)
     let tx, ty;
     if (g.t1 > g.t0 && rt <= g.t1) { const t = clamp((rt - g.t0) / (g.t1 - g.t0), 0, 1); tx = lerp(g.x0, g.x1, t); ty = lerp(g.y0, g.y1, t); }
     else { const over = clamp(rt - g.t1, 0, 120); tx = g.x1 + g.vx * (over / 1000) * 10; ty = g.y1; }   // ≤120ms extrapolate
     if (!g.rx) { g.rx = tx; g.ry = ty; } else { g.rx += (tx - g.rx) * 0.3; g.ry += (ty - g.ry) * 0.3; }
-    const targetA = (now - g.lastSeen > 4000) ? 0 : 1;
+    // Ground-snap (§4.3): a peer reporting on-ground (state bit 2) stands on the
+    // shared-world platform under its x, eased so it never floats — while airborne
+    // it keeps smooth interpolation. Real session only; the #shot=room mock keeps
+    // its authored motion (P5's through-geometry jitter is a deliberate tell).
+    if (!NET.mockActive && g.onGround) {
+      const sy = ghostGroundY(g.rx, g.ry + CFG.ph / 2);
+      if (sy != null) g.ry += ((sy - CFG.ph / 2) - g.ry) * 0.5;
+    }
+    const targetA = (now - g.lastSeen > 1800) ? 0 : 1;   // fade a stalled/gone peer out promptly (§4.4)
     g.alpha += (targetA - g.alpha) * 0.12;
     if (g.alpha < 0.02) continue;
     if (Math.abs(g.rx - iCamX) > view.w / 2 + 120) continue;   // cull off-camera
@@ -5632,7 +5723,25 @@ function doRosterBlock() {
 function doRosterKick() { const r = rosterActionTarget; hideAllOverlays(); if (G.mode === 'attract') showOverlay('ovRoom'); if (r) kickPlayer(r); }
 
 /* ---- death-card ROOM column + spectate + emote buttons ---- */
+// Run-start button copy per room state (§4.1, item 6). Solo / net-off keep their
+// existing labels byte-for-byte (so #shot goldens are unchanged); in a room the
+// copy says clearly when/how a run starts. No brand/vendor names.
+function netLabelPlayButton() {
+  const b = $('btnPlay'); if (!b) return;
+  if (!netLive() || NET.mockActive) { b.textContent = matchMedia('(pointer: coarse)').matches ? 'Tap to Start' : 'Press Space'; b.removeAttribute('aria-label'); return; }
+  if (NET.info().isHost) { b.textContent = 'Start Round'; b.setAttribute('aria-label', 'Start the round — everyone runs this course together.'); }
+  else if (netRoundActive()) { b.textContent = 'Join Round'; b.setAttribute('aria-label', 'Join the round already in progress.'); }
+  else { b.textContent = 'Start Run'; b.setAttribute('aria-label', 'Start a run — you sync to the round when the host starts it.'); }
+}
+function netLabelAgainButton() {
+  const b = $('btnAgain'); if (!b) return;
+  if (!netLive() || NET.mockActive) { b.textContent = 'Play Again'; b.removeAttribute('aria-label'); return; }
+  if (anyLiveRunner()) { b.textContent = 'Rejoin Round'; b.setAttribute('aria-label', 'Rejoin the round already in progress.'); }
+  else if (NET.info().isHost) { b.textContent = 'Start New Round'; b.setAttribute('aria-label', 'Start a fresh round for the room.'); }
+  else { b.textContent = 'Play Again'; b.setAttribute('aria-label', 'Start a run — you sync to the round when the host starts it.'); }
+}
 function renderRoomBoard() {
+  netLabelAgainButton();
   const cap = $('deadRoomCaption'), tbl = $('deadRoomScores'), sp = $('btnSpectateRound'), em = $('deadEmotes');
   if (!netLive()) { cap.style.display = tbl.style.display = 'none'; sp.style.display = em.style.display = 'none'; return; }
   const info = NET.info(), board = NET.board(), myP = info.myP;
@@ -5701,7 +5810,7 @@ $('btnRoomShare').onclick = () => shareRoomLink();
 $('btnRoomBack').onclick = () => showAttract();               // Back keeps the session alive
 $('btnRoomLeave').onclick = () => leaveRoom();
 $('btnRoomNewLink').onclick = () => { try { NET.rotateLink(); } catch (e) {} renderRoomCard(); queueToast('New invite link ready', 'net'); announce('New invite link ready.'); };   // rotate bumps the epoch → prior invites go stale (I16); card re-reads the fresh link/code/QR
-$('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} queueToast('New world — starts next run', 'net'); announce('New world set. It starts on the next run.'); renderRoomCard(); };   // broadcasts a new seed+runId all peers adopt at their next startRun
+$('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} renderRoomCard(); };   // fresh seed + runId + a synchronized pre-roll; the 'round-begin' handler toasts the countdown, and ROUND anchors every screen's shared flare clock
 $('roomApprove').onclick = () => { settings.netApprove = !settings.netApprove; try { NET.setApprove(settings.netApprove); } catch (e) {} persistAll(); renderRoomCard(); syncSettingsUI(); announce(settings.netApprove ? 'Approve joins on.' : 'Approve joins off.'); };
 $('btnJoinPlay').onclick = () => acceptInvite(0);
 $('btnJoinWatch').onclick = () => acceptInvite(1);
@@ -5721,7 +5830,26 @@ if (NET) NET.onEvent((e, d) => {
   else if (e === 'rotated') { if (netLive()) renderRoomCard(); }   // fresh link/code/QR after New Link
   else if (e === 'roster' || e === 'ok' || e === 'kick') { if (netLive()) renderRoomCard(); }
   else if (e === 'emote') netEmoteToast(d);
+  // Shared-round clock (§4.1): a genuinely NEW round (pre-roll countdown) toasts;
+  // the targeted anchor a joiner/reconnector receives (startInMs 0) stays silent.
+  else if (e === 'round' || e === 'round-begin') { if (d && d.startInMs > 0) netRoundToast(d); }
+  // Clean disconnect (§4.4): the host surfaces a peer's departure/return.
+  else if (e === 'leave') { netPeerToast(d, 'left'); if (netLive()) renderRoomCard(); }
+  else if (e === 'rejoin') { netPeerToast(d, 'reconnected'); if (netLive()) renderRoomCard(); }
 });
+function netRoundToast(d) {
+  const secs = Math.max(1, Math.ceil((d.startInMs || 0) / 1000));
+  queueToast('New round in ' + secs + '…', 'net');
+  announce('New round starting in ' + secs + ' seconds.');
+  if (netLive()) { renderRoomCard(); netLabelPlayButton(); }
+}
+function netPeerToast(d, verb) {
+  if (!d) return;
+  const row = (NET.roster() || []).find((r) => r.p === d.p);
+  const who = (row && row.callsign) || ('PLAYER ' + d.p);
+  queueToast(who + ' ' + verb, 'net');
+  announce(who + ' ' + verb + '.');
+}
 // A world emote bubble only draws over a positioned ghost (peer runner) or your
 // own player. Spectators are positionless (presence() emits no row for them), and
 // your own bubble is hidden while you watch — so those emotes would vanish. Toast
@@ -6077,6 +6205,11 @@ function beginArrival() {
   runsThisSession++;
   vigPose = null;
   if (!DELIGHT) return;
+  // Run Together: a synchronized round starts clean, not with a personal from-above
+  // cinematic (the sprite is grounded and live from frame 1 — the drop-in vignette
+  // is what the owner reads as "restart spawns me up high then fall"). Suppressed in
+  // a real room only; solo and #shot keep every arrival greeting.
+  if (netLive() && NET.active && !NET.mockActive) return;
   // NEVER on the restart path: only a fresh session or a >60s sit-out — and the
   // sim runs underneath regardless, so worst case the greeting costs zero frames.
   if (!(runsThisSession === 1 || (lastRunEnd >= 0 && performance.now() / 1000 - lastRunEnd > 60))) return;
