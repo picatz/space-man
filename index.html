@@ -108,6 +108,14 @@
     transition: opacity 0.16s cubic-bezier(.2, .9, .3, 1), transform 0.16s cubic-bezier(.2, .9, .3, 1);
   }
   .overlay.in .panel { opacity: 1; transform: translateY(0) scale(1); }
+  /* Never taller than the viewport: a long panel (Settings/Pause with the Run
+     Together rows live, ~1127px) scrolls internally so Resume/Back always stay
+     reachable. Gated ≥640px tall so the 980×620 solo #shot goldens — where the
+     panel is left at its natural height, exactly as before — don't move a pixel;
+     the short-landscape case (≤430px) is already handled by its own rule below. */
+  @media (min-height: 640px) {
+    .panel { max-height: calc(100dvh - 40px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  }
   /* Death card sits low so the ragdoll/helmet stay in frame above it (E9.2). */
   .dead-anchor { justify-content: flex-end; }
 
@@ -443,13 +451,21 @@
 
   /* Room card. On short (landscape) viewports the card is taller than the
      screen — cap it and scroll internally so title/link/roster stay reachable. */
-  #ovRoom .panel { max-height: calc(100vh - 32px); overflow-y: auto; }
+  #ovRoom .panel { max-height: calc(100dvh - 32px); overflow-y: auto; }
   .room-top { display: flex; gap: 14px; align-items: flex-start; margin: 4px 0 10px; text-align: left; }
-  .room-qr { flex: 0 0 auto; width: 168px; height: 168px; border-radius: 10px; background: #fff; image-rendering: pixelated; }
+  /* QR bumped to a scannable 245px (5px/module at the invite's V6 size) —
+     phone cameras couldn't lock the old 168px grid. Integer-module-friendly. */
+  .room-qr { flex: 0 0 auto; width: 245px; height: 245px; border-radius: 10px; background: #fff; image-rendering: pixelated; }
+  /* On narrow phones the 245px code stacks above the invite so neither is
+     squeezed; side-by-side returns as soon as there's room. */
+  @media (max-width: 430px) {
+    .room-top { flex-direction: column; align-items: center; }
+    .room-invite { width: 100%; }
+  }
   .room-invite { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
   .invite-block .k { font-size: 9px; letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
   .invite-block .v { font-family: var(--font-num); font-size: 12px; color: var(--suit); word-break: break-all; margin-top: 2px; }
-  .invite-block .code { font-size: 20px; letter-spacing: 3px; color: var(--cyan-lt); }
+  .invite-block .code { font-size: 20px; letter-spacing: 3px; color: var(--cyan-lt); white-space: nowrap; }
   .chip-row { display: flex; gap: 8px; margin-top: 6px; }
   .mini-chip {
     font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
@@ -653,7 +669,7 @@
     <div class="title-lg" id="roomTitle" style="font-size:20px;">Room</div>
     <div class="net-sub" id="roomCounts"></div>
     <div class="room-top" id="roomTop">
-      <canvas class="room-qr" id="roomQr" width="168" height="168"></canvas>
+      <canvas class="room-qr" id="roomQr" width="245" height="245"></canvas>
       <div class="room-invite">
         <div class="invite-block">
           <div class="k">Link</div>
@@ -864,7 +880,7 @@ const rnd = (a, b) => a + (b - a) * rng();
 /* ---------------------------------------------------------------------------
    4. STORAGE — schema + legacy migration
    ------------------------------------------------------------------------- */
-const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries', achievements: 'sm2.achievements' };
+const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries', achievements: 'sm2.achievements', autorunReset: 'sm2.autorunReset' };
 function loadJSON(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
 function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
@@ -872,9 +888,16 @@ const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
 const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, autorun: true, musicVol: 1, sfxVol: 1, muted: false,
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, autorun: false, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.55, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
+// G: default AUTO-RUN (touch) to OFF — touch movement is free left/right, no
+// forced forward. Legacy profiles persisted autorun:true from the old default,
+// so a key-presence check can't tell "chose it" from "got the old default".
+// One-time reset: force autorun off ONCE per device (clearing the legacy
+// default), then respect the player's explicit choice forever after. Touch-layer
+// + a settings flag only; the core sim and desktop #shot goldens are untouched.
+if (loadJSON(LS.autorunReset, null) !== 1) { settings.autorun = false; saveJSON(LS.autorunReset, 1); }
 // Net settings sanitized here (schema v5 will own this): opacity clamps to 0.25–1,
 // mode falls back to 'default' for any unknown value.
 settings.netGhosts = Math.min(1, Math.max(0.25, (typeof settings.netGhosts === 'number' && isFinite(settings.netGhosts)) ? settings.netGhosts : 0.55));
@@ -2784,6 +2807,14 @@ function die(cause) {
   // words of comfort: 1-in-6 non-best deaths, decor stream — the delta line never shares its card space with a lie
   G.quip = (DELIGHT && !G.newBest && G.decorRng() < 1 / 6) ? QUIPS[(G.decorRng() * QUIPS.length) | 0] : null;
   Audio.sfx.death(G.newBest, K.pitch);
+  // Run Together (D5): send one final presence with the dead bit (value 4) set
+  // and inRun cleared — a dead player otherwise stops broadcasting, so peers see
+  // a frozen ghost with no signal. net.js already carries all 5 state bits, so
+  // no wire change; this is the one packet that tells co-runners you went down.
+  if (netLive() && !netSpectating()) {
+    const st = (p.facing > 0 ? 1 : 0) | 4;   // facing + deadRagdoll (bit2); onGround/inRun cleared
+    NET.sendPresence(p.x + p.w / 2, p.y + p.h / 2, 0, st, G.chain, Math.floor(G.finalScore), G.dist);
+  }
 }
 
 function finalizeDeath() {
@@ -2899,12 +2930,29 @@ function update() {
     // Live hero scene: idle astronaut breathing on its platform, gentle parallax sway.
     const p = G.player;
     if (p) { p.idle += STEP; p.glint += STEP; p.facing = 1; p.onGround = true; p.vx = 0; p.vy = 0; }
-    if (G.attractBase === undefined && p) {
-      // E7: the platform frames below the wordmark, not a fixed 50% — the
-      // astronaut always breathes in clear space under the logo.
+    if (p) {
+      // E7 + D1: the platform frames below the wordmark, not a fixed 50% — the
+      // astronaut always breathes in clear space under the logo. On SHORT
+      // viewports the bottom-anchored menu card (grown by Run Together) rises
+      // over the hero, so — like the wardrobe podium — measure the card top and
+      // lift the platform above it so the hero clears the card at every height.
       const wm = wordmarkMetrics();
-      const platformScreenY = Math.max(view.h * 0.52, wm.cy + wm.size * 1.1) + 40;
-      G.attractBase = { x: p.x - view.w * 0.46, y: G.groundY - platformScreenY };
+      let platformScreenY = Math.max(view.h * 0.52, wm.cy + wm.size * 1.1) + 40;
+      const card = $('ovAttract').classList.contains('show') ? $('ovAttract').firstElementChild : null;
+      if (card) {
+        const topCss = card.getBoundingClientRect().top;
+        if (topCss > 0) {
+          const topView = topCss * (view.h / window.innerHeight);
+          // keep the hero (drawn above the platform line) fully clear of the card
+          platformScreenY = Math.min(platformScreenY, topView - 14);
+        }
+      }
+      // The min() above keeps the hero above the card; this floor only stops him
+      // leaving the top edge on a very short (landscape) viewport, where clearing
+      // the card has to win over sitting neatly below the wordmark.
+      platformScreenY = Math.max(platformScreenY, 24);
+      if (G.attractBase === undefined) G.attractBase = { x: p.x - view.w * 0.46, y: 0 };
+      G.attractBase.y = G.groundY - platformScreenY;
     }
     if (G.attractBase) {
       G.camXprev = G.camX; G.camYprev = G.camY;
@@ -3104,7 +3152,14 @@ function render(alpha) {
   vigPose = arrivalPose();          // E13: this frame's pose morph + prop anchors
   drawArrivalBack();
   drawGhosts(alpha, iCamX);          // under-player layer (Run Together); no-op solo
-  if (G.player && !netSpectating()) drawPlayer(alpha);
+  if (G.player && !netSpectating()) {
+    // D6: in a live room, a default-suit local player also gets their per-slot
+    // tint so they're distinct from other defaults. Swap only for the draw and
+    // only when net is live — solo/#shot never enters here, goldens unchanged.
+    const eff = netLive() ? effectiveSuit(G.cosmetics.suit, NET.info().myP) : null;
+    if (eff && eff !== G.cosmetics.suit) { const s0 = G.cosmetics.suit; G.cosmetics.suit = eff; drawPlayer(alpha); G.cosmetics.suit = s0; }
+    else drawPlayer(alpha);
+  }
   drawArrivalFront();
   drawParticles(alpha);
   drawHints(iCamX, iCamY);
@@ -3529,25 +3584,40 @@ function drawPlatforms(camX) {
     }
   }
 }
-// Attract diorama (E7): one alien peeks from a starter platform's edge — the
-// existing enemy sprite's antennae+eyes only, cropped above the slab line so
-// no live enemy needs to exist in attract mode. World-space, called from
-// drawPlatforms right after that platform's own slab so it layers cleanly.
+// Attract diorama (E7): one full-bodied alien stands on a starter platform's
+// edge — the same dome+body+antennae+eyes+smile the gameplay enemy uses (the
+// look the owner signed off on), so it reads as a deliberate greeter, not a
+// broken floating head. World-space, called from drawPlatforms right after that
+// platform's own slab so it layers cleanly on top of the surface.
 function drawAttractAlien(pl) {
-  const ax = pl.x + pl.w - 40, ay = pl.y - 8 + Math.sin(G.time * 1.4) * 1.5;
+  const w = 20, h = 22, bob = Math.sin(G.time * 1.4);
+  // Feet rest on the slab top (pl.y); a gentle breathing bob, no rng.
+  const ax = pl.x + pl.w - 40, ay = pl.y - h / 2 - 1 + bob * 1.2;
+  const squash = 1 + bob * 0.06;
   ctx.save(); ctx.translate(ax, ay);
-  ctx.drawImage(GLOW.green, -18, -22, 36, 36);
-  ctx.fillStyle = '#4EF07A'; ctx.beginPath(); ctx.ellipse(0, 0, 10, 9, 0, Math.PI, TAU); ctx.fill();
+  ctx.drawImage(GLOW.green, -30, -30, 60, 60);
+  // dome (top-half ellipse) + rounded body, exactly as drawEnemies builds it
+  ctx.fillStyle = '#4EF07A';
+  ctx.beginPath(); ctx.ellipse(0, 0, w / 2, (h / 2) * squash, 0, Math.PI, TAU); ctx.fill();
+  roundRect(-w / 2, -1, w, h / 2 + 2, 5); ctx.fill();
+  // antennae
   ctx.strokeStyle = '#2FBF5F'; ctx.lineWidth = 1.5;
   for (const sgn of SGN) {
-    ctx.beginPath(); ctx.moveTo(sgn * 4, -7);
-    ctx.quadraticCurveTo(sgn * 8, -15, sgn * 6, -21); ctx.stroke();
-    ctx.fillStyle = '#BFFFD0'; ctx.beginPath(); ctx.arc(sgn * 6, -21, 2.5, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(sgn * 4, -h / 2 + 2);
+    ctx.quadraticCurveTo(sgn * 8, -h / 2 - 6, sgn * 6 + bob * 2, -h / 2 - 12); ctx.stroke();
+    ctx.fillStyle = '#BFFFD0'; ctx.beginPath(); ctx.arc(sgn * 6 + bob * 2, -h / 2 - 12, 2.5, 0, TAU); ctx.fill();
   }
+  // eyes glancing toward the idle astronaut (to its left)
   for (const sgn of SGN) {
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(sgn * 5, -2, 3.5, 4.5, 0, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#0a1428'; ctx.beginPath(); ctx.arc(sgn * 5, -2, 1.8, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#0a1428'; ctx.beginPath(); ctx.arc(sgn * 5 - 1.2, -2, 1.8, 0, TAU); ctx.fill();
   }
+  // friendly smile + little feet, matching the gameplay patrol alien
+  ctx.strokeStyle = '#176B3A'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, 4, 4, 0.25, Math.PI - 0.25); ctx.stroke();
+  ctx.fillStyle = '#1F9E4E';
+  ctx.beginPath(); ctx.arc(-5, h / 2 - 1 + Math.abs(bob) * 1.5, 3, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(5, h / 2 - 1 + Math.abs(bob) * 1.5, 3, 0, TAU); ctx.fill();
   ctx.restore();
 }
 
@@ -4344,7 +4414,7 @@ function togglePause() {
     if (G.player && G.player.dead) return;     // death sequence owns the screen
     clearInput();
     G.mode = 'pause'; syncSettingsUI(); showOverlay('ovPause');
-    $('btnPauseSpectate').style.display = (netLive() && NET.info().role !== 1) ? '' : 'none';
+    $('btnPauseSpectate').style.display = (netLive() && NET.info().role !== 1 && anyLiveRunner()) ? '' : 'none';
     Audio.musicEvent('pause');
   } else if (G.mode === 'pause') {
     hideAllOverlays(); Audio.resume(); clearInput();
@@ -4447,7 +4517,11 @@ function renderDeathCard() {
     du.textContent = 'UNLOCKED: ' + G.newCosmetics.map(cosmeticName).join(' · ') + ' ✦ SUIT UP';
     du.style.display = 'block';
   } else du.style.display = 'none';
-  renderScoreTable('deadScores', true);
+  // In a live room the ROOM board is the standings that matter — don't stack the
+  // five local solo bests next to it (they'd read as duplicate/foreign, D4b). Solo
+  // play (net off) is untouched, so the #shot=dead golden stays pixel-identical.
+  if (netLive()) { $('deadScores').style.display = 'none'; }
+  else { $('deadScores').style.display = ''; renderScoreTable('deadScores', true); }
   renderRoomBoard();               // Run Together: ROOM column + spectate/emote controls (no-op solo)
   const chip = $('installChip');
   if (deferredPrompt && !flags.installDismissed && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
@@ -4515,6 +4589,15 @@ function showTrophy() {
 /* ---- wardrobe: suits, hats, unlocks ---- */
 const SUIT_ORDER = ['classic', 'mint', 'rose', 'gold', 'lilac', 'coral', 'aurora', 'graphite'];
 const HAT_ORDER = ['none', 'antenna', 'sprout', 'beanie', 'halo', 'crown', 'cone', 'catears', 'phones'];
+// D6: two players on the DEFAULT suit ('classic') would render as identical blue.
+// Give each slot a distinct default tint from the shipped palette (P1 first, all
+// non-classic so a default never collides with another default). This is a
+// render-side derivation from the peer's P# — every client knows every P# — and
+// NEVER overrides an explicitly chosen suit (only 'classic' is remapped). Applies
+// to self and ghosts consistently. Solo/net-off is unaffected (only used under a
+// live room), so #shot goldens stay pixel-identical.
+const DEFAULT_SLOT_SUITS = ['gold', 'coral', 'mint', 'lilac', 'aurora', 'rose', 'graphite'];
+function effectiveSuit(name, p) { return (name === 'classic' && p) ? DEFAULT_SLOT_SUITS[(p - 1) % DEFAULT_SLOT_SUITS.length] : name; }
 const UNLOCK_HINTS = {
   rose: 'REACH A 750m BEST', gold: 'EARN A GOLD MEDAL', coral: 'SKIM THE FLARE FOR 3 SECONDS',
   lilac: '10 RUNS PAST 600m', aurora: 'COMPLETE 5 MISSIONS', graphite: 'REACH LAST LIGHT',
@@ -4807,7 +4890,7 @@ function shortLink(link) {
 }
 function drawRoomQr(link) {
   const c = $('roomQr'); if (!c || !window.SpaceManQR) return;
-  try { window.SpaceManQR.draw(c.getContext('2d'), 0, 0, 168, link || 'https://picatz.github.io/space-man/'); } catch (e) {}
+  try { window.SpaceManQR.draw(c.getContext('2d'), 0, 0, c.width, link || 'https://picatz.github.io/space-man/'); } catch (e) {}
 }
 function renderMobilityLog() {
   const log = netLive() && NET.info ? (NET.info().mobility || []) : [];
@@ -5156,7 +5239,24 @@ let slipT = 0, slipRun = 0;                                // slipstream dwell +
 // is frozen, so we derive it from the sim frame count — deterministic goldens.
 function netClock() { return (NET && NET.mockActive) ? (G.frameCount * STEP * 1000) : performance.now(); }
 function netSpectating() { return netLive() && NET.info().role === 1; }
-function netInRun() { return netLive() && (G.mode === 'play' || G.mode === 'resume' || G.mode === 'pause' || (G.player && G.player.dead)); }
+// True while the LIVE run/spectate view owns the screen. Once the RUN OVER death
+// card is up (deathCardShown), the spectate chrome — race strip, WATCHING banner,
+// TOUR pill — and the live ghosts belong to the card's past, not on top of it, so
+// this goes false and every net draw it gates no-ops (D4a/C). The ragdoll window
+// (dead but card not yet shown) still counts as in-run so ghosts play out the beat.
+function netInRun() { return netLive() && !G.deathCardShown && (G.mode === 'play' || G.mode === 'resume' || G.mode === 'pause' || (G.player && G.player.dead)); }
+// A co-runner (not us) still alive in the current run — the only condition under
+// which "Spectate This Round" has anything to watch (D4c). Everyone dead → the
+// round is over → offer the clean death card + a fresh run instead.
+function anyLiveRunner() {
+  if (!netLive()) return false;
+  const myP = NET.info().myP;
+  for (const s of NET.presence()) {
+    if (s.you || s.p === myP || s.spectator) continue;
+    if ((s.state & 8) && !(s.state & 4)) return true;   // inRun bit set, dead bit clear
+  }
+  return false;
+}
 
 function freeGhost(g) { g.active = false; g.rx = 0; ghostByP.delete(g.p); }
 function ghostFor(p) {
@@ -5165,6 +5265,7 @@ function ghostFor(p) {
   for (const c of ghosts) if (!c.active) {
     c.active = true; c.p = p; c.alpha = 0; c.rx = 0; c.x0 = c.x1 = c.t0 = c.t1 = 0;
     c.emoteId = -1; c.emoteSeq = 0; c.emoteT = 0; c.badgeKey = '';
+    c.dead = false; c.aliveSeen = false;
     ghostByP.set(p, c); return c;
   }
   return null;
@@ -5182,11 +5283,18 @@ function netSampleGhosts(now) {
     seen.add(s.p);
     const g = ghostFor(s.p); if (!g) continue;
     g.callsign = s.callsign; g.unverified = !!s.unverified; g.host = !!s.host;
-    g.suit = (PALETTES[SUIT_ORDER[s.suit]] ? SUIT_ORDER[s.suit] : 'classic');   // W-rule: unknown suit → classic (I8)
+    g.suit = effectiveSuit(PALETTES[SUIT_ORDER[s.suit]] ? SUIT_ORDER[s.suit] : 'classic', s.p);   // W-rule → classic (I8), then per-slot default tint (D6)
     g.hat = (HATS[HAT_ORDER[s.hat]] ? HAT_ORDER[s.hat] : 'none');
     g.chain = s.chain; g.score = s.score; g.dist = s.dist; g.runId = s.runId;
     g.inRun = !!(s.state & 8); g.slip = !!(s.state & 16);
     g.onGround = !!(s.state & 2); g.facing = (s.state & 1) ? 1 : -1;
+    // Teammate death beat (D5): the dead bit (value 4) flips a ghost from live to
+    // down. Announce only a witnessed alive→dead transition — a peer we first see
+    // already dead (joined mid-death) gets no phantom "went down".
+    const nowDead = !!(s.state & 4);
+    if (!nowDead) g.aliveSeen = true;
+    else if (!g.dead && g.aliveSeen) netAnnounceDeath(g);
+    g.dead = nowDead;
     if (!g.t1 || now - g.t1 >= 80) {                        // ≥80ms → new interp keyframe
       g.x0 = g.t0 ? g.x1 : s.x; g.y0 = g.t0 ? g.y1 : s.y; g.t0 = g.t0 ? g.t1 : now - 100;
       g.x1 = s.x; g.y1 = s.y; g.t1 = now; g.vx = s.vx;
@@ -5201,6 +5309,15 @@ function netSampleGhosts(now) {
 }
 const ghostSeen = new Set();
 function netEmoteSfx() { try { if (settings.sfx && !settings.muted) Audio.sfx.ui(2); } catch (e) {} }
+// Cohesive teammate-death feedback (D5): a coral net toast + a11y announce + a
+// skull beat over the ghost (reuses the emote bubble, so no new draw path, no
+// shadowBlur, no rng). Cheap — fires once per witnessed death.
+function netAnnounceDeath(g) {
+  const who = g.callsign || ('P' + g.p);
+  queueToast(who + ' went down', 'net');
+  announce(who + ' went down.');
+  g.emoteId = 2; g.emoteT = 1.2;   // skull glyph as the on-ghost death beat
+}
 
 // Per-rAF net upkeep: sampling, emote decay, slipstream scoring, TOUR director.
 function netTick(dt) {
@@ -5351,12 +5468,12 @@ function drawNetHUD() {
 }
 function raceRunners() {
   const out = [];
-  if (G.player && !netSpectating() && (G.mode === 'play' || G.mode === 'resume')) out.push({ x: G.player.x + G.player.w / 2, suit: G.cosmetics.suit, p: NET.info().myP || 1, you: true });
+  if (G.player && !netSpectating() && (G.mode === 'play' || G.mode === 'resume')) { const myP = NET.info().myP || 1; out.push({ x: G.player.x + G.player.w / 2, suit: effectiveSuit(G.cosmetics.suit, myP), p: myP, you: true }); }
   for (const g of ghosts) if (g.active && g.alpha > 0.15) out.push({ x: g.rx, suit: g.suit, p: g.p, you: false });
   return out;
 }
 function drawRaceStrip() {
-  const us = uiScale(), x = 12, y = 12, w = view.w - 24, h = 26;
+  const us = uiScale(), x = 12, y = 12 + safeInset('top'), w = view.w - 24, h = 26;
   const runners = raceRunners(); if (!runners.length) return;
   let maxX = -Infinity; for (const r of runners) if (r.x > maxX) maxX = r.x;
   const right = Math.max(maxX + 200, G.flare.x + 400), left = right - 20000;   // ~2000m window (10px/m)
@@ -5382,7 +5499,7 @@ function drawRaceStrip() {
 function drawSpectatorHUD() {
   const us = uiScale(), left = 12 + safeInset('left');
   const ps = 30 * us, pitch = Math.max(48 * view.w / window.innerWidth, ps + 10 * us);
-  const ox = left + pitch + ps + 8 * us, topY = 44;
+  const ox = left + pitch + ps + 8 * us, topY = 44 + safeInset('top');   // clears the strip, which now respects the notch too
   const g = watchedGhost();
   const call = g ? (g.callsign || ('P' + g.p)) : '—';
   const board = NET.board(); let rank = 0; if (g) { const sorted = board.slice().sort((a, b) => b.bestDist - a.bestDist); rank = sorted.findIndex((b) => b.p === g.p) + 1; }
@@ -5526,8 +5643,9 @@ function renderRoomBoard() {
   }
   tbl.innerHTML = html || '<tr><td colspan="3" class="empty">NO ROOM SCORES YET</td></tr>';
   cap.style.display = ''; tbl.style.display = '';
-  // Spectate this round — only for a player currently in the room (§12.2)
-  sp.style.display = (info.role !== 1) ? '' : 'none';
+  // Spectate this round — only for a player, and only when a co-runner is still
+  // alive to watch. Everyone dead → round over → hide it (no stalled watch view, D4c).
+  sp.style.display = (info.role !== 1 && anyLiveRunner()) ? '' : 'none';
   // 6 emote buttons (below the install chip; hidden on the compact card via CSS)
   if (settings.netEmotes) { if (!em.dataset.built) { for (let i = 0; i < 6; i++) { const b = document.createElement('button'); b.className = 'btn ghost emote-btn'; b.textContent = EMOTE_GLYPH[i]; b.onclick = () => sendEmote(i); em.appendChild(b); } em.dataset.built = '1'; } em.style.display = ''; }
   else em.style.display = 'none';

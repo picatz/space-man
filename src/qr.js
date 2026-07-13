@@ -328,11 +328,20 @@
   function writeInfo(mat, n, version, maskId) {
     var fb = formatBits(maskId);
     function fbit(i) { return (fb >> i) & 1; }
-    for (var i = 0; i <= 5; i++) mat[8][i] = fbit(i);
-    mat[8][7] = fbit(6); mat[8][8] = fbit(7); mat[7][8] = fbit(8);
-    for (var i2 = 9; i2 <= 14; i2++) mat[14 - i2][8] = fbit(i2);
-    for (var i3 = 0; i3 <= 7; i3++) mat[n - 1 - i3][8] = fbit(i3);
-    for (var i4 = 8; i4 <= 14; i4++) mat[8][n - 15 + i4] = fbit(i4);
+    // ISO 18004 Table 25 / §8.9: 15 format bits (LSB = fbit(0)), written as two
+    // full copies — a VERTICAL strip down column 8 and a HORIZONTAL strip along
+    // row 8. The two strips are NOT transposes of each other; swapping row/col
+    // here makes the symbol self-consistent but leaves a conformant reader
+    // (phone camera) recovering the wrong mask/EC level, so nothing scans.
+    for (var i = 0; i < 15; i++) {
+      var b = fbit(i);
+      if (i < 6) mat[i][8] = b;            // vertical: rows 0..5, column 8
+      else if (i < 8) mat[i + 1][8] = b;   //           rows 7,8 (skip timing row 6)
+      else mat[n - 15 + i][8] = b;         //           rows n-7..n-1
+      if (i < 8) mat[8][n - 1 - i] = b;    // horizontal: cols n-1..n-8, row 8
+      else if (i === 8) mat[8][7] = b;     //             col 7 (skip timing col 6)
+      else mat[8][14 - i] = b;             //             cols 5..0
+    }
     mat[n - 8][8] = 1; // fixed dark module
     if (version >= 7) {
       var vb = versionBits(version);
@@ -377,12 +386,22 @@
     var q = encode(text);
     var quiet = 4, total = q.n + quiet * 2;
     var m = size / total;
+    // Snap every module edge to a whole pixel. At a sane on-screen size the
+    // scale is fractional (e.g. 245/57 ~= 4.3 px/module); filling modules at
+    // fractional coordinates lets the canvas anti-alias each edge to grey, so
+    // the crisp black/white grid a phone camera must threshold turns mushy and
+    // fails to lock. Rounding both edges of every grid line keeps modules on
+    // integer boundaries with no gaps or overlaps (adjacent modules share an
+    // edge exactly). edge[k] = integer pixel offset of grid line k.
+    var edge = new Array(total + 1);
+    for (var k = 0; k <= total; k++) edge[k] = Math.round(k * m);
     ctx.fillStyle = '#fff';
     ctx.fillRect(x, y, size, size);
     ctx.fillStyle = '#000';
     for (var r = 0; r < q.n; r++) {
+      var y0 = edge[r + quiet], yh = edge[r + quiet + 1] - y0;
       for (var c = 0; c < q.n; c++) {
-        if (q.mat[r][c]) ctx.fillRect(x + (c + quiet) * m, y + (r + quiet) * m, m, m);
+        if (q.mat[r][c]) ctx.fillRect(x + edge[c + quiet], y + y0, edge[c + quiet + 1] - edge[c + quiet], yh);
       }
     }
   }
