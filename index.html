@@ -2216,6 +2216,68 @@ function resetRun(seed) {
   generateAhead();
 }
 
+// platform whose horizontal span brackets px, ignoring height (the joiner teleports
+// onto it, so any elevation is fine). If px lands in a gap, returns the last platform
+// entirely behind px (solid ground just before the gap); null only if none exists.
+function platAtX(px) {
+  let behind = null;
+  for (const pl of G.platforms) {
+    if (px >= pl.x && px <= pl.x + pl.w) return pl;
+    if (pl.x + pl.w < px) behind = pl;
+  }
+  return behind;
+}
+
+// Mid-round join / rejoin (D7). Joining OR rejoining a LIVE shared round leaves the
+// fresh resetRun spawn (world-x≈30) far LEFT of the advanced shared flare, so the
+// player dies on frame 1. Re-seat them INTO the run: the normal flare gap AHEAD of
+// the shared flare, on the SAME seeded ground the team already runs. Gated by the
+// caller to real rooms past pre-roll (netRoundActive + elapsed>0) — solo/#shot/mock
+// never reach it, so seeded goldens are untouched.
+function seatMidRound(elapsedMs) {
+  const p = G.player, fs = G.flareShared;
+  // 1. Shared flare world-x from the round clock — the SAME integration
+  //    updateFlareShared steps per frame (one helper, never forked).
+  const flare = sharedFlareXAt(elapsedMs, fs.x0);
+  const targetX = flare.x + CFG.flareStartBehind;      // normal, survivable gap behind
+  // 2. Burst-generate the seeded world forward until it covers target + lookahead.
+  //    generateAhead streams off the same seeded rng the team used and only keys on
+  //    genX / startX / the last platform, so chunked catch-up yields the IDENTICAL
+  //    course. Walk player.x forward in bounded chunks so one absurdly old round can
+  //    never spin the generator unbounded — cap and seat on the furthest ground.
+  let guard = 8000;
+  while (G.genX < targetX + 1400) {
+    if (guard-- <= 0) { if (window.__errors) window.__errors.push('seatMidRound: gen cap hit @' + (targetX | 0)); break; }
+    p.x = Math.min(targetX, G.genX);
+    generateAhead();
+  }
+  // 3. Seat on the platform bracketing the target (nearest solid ground behind it if
+  //    the target lands in a gap; the furthest generated slab if the walk was capped).
+  const plat = platAtX(targetX) || G.platforms[G.platforms.length - 1];
+  p.x = clamp(targetX, plat.x + 4, plat.x + plat.w - 4);   // keep feet on the slab
+  p.y = plat.y - CFG.ph; p.px = p.x; p.py = p.y; p.vx = 0; p.vy = 0;
+  p.onGround = true; p.jumping = false; p.airFrames = 0; p.coyote = 0; p.buffer = 0;
+  p.groundPlat = plat; p.jumpPlat = plat; p.jumpStartX = p.x;
+  // Reseat the camera on the grounded target (matches updateCamera's grounded aim
+  // exactly, off the platform's own height) so frame 1 never eases a phantom jump.
+  G.camX = p.x - view.w * 0.42; G.camXprev = G.camX;
+  G.camY = plat.y - view.h * (view.h > view.w ? 0.64 : 0.58); G.camYprev = G.camY;
+  // 4. Seat the shared flare AT its computed position (synced → no fast-forward sweep
+  //    on the first frame) and resume distance co-located with the team.
+  fs.x = flare.x; fs.speed = flare.speed; fs.steps = flare.steps; fs.synced = true;
+  G.flare.x = fs.x; G.flare.prevX = fs.x; G.flare.speed = fs.speed;
+  G.maxX = p.x;
+  G.dist = Math.max(0, Math.floor((G.maxX - G.startX) / 10));
+  G.score = G.dist; G.dispScore = G.dist;                // odometer resumes world-coherent
+  if (G.mission && G.mission.kind === 'distance') G.mission.progress = G.dist;
+  // Pre-arm position-derived milestones already passed at the seat so frame 1 doesn't
+  // replay a stale "1000m" stinger or a "past your flag" pop for ground behind us.
+  if (G.dist >= 1000) G.deep1000 = true;
+  if (G.pbFlagX !== null && p.x >= G.pbFlagX) G.pbPassed = true;
+  // Far-behind platforms already trimmed by generateAhead's player-relative cull
+  // (everything behind the flare); genX is intact so streaming continues correctly.
+}
+
 function startRun() {
   Audio.ensure(); Audio.resume(); hideAllOverlays();
   // sprout-hat calendar: distinct play days, capped at 7 date strings
@@ -2243,6 +2305,16 @@ function startRun() {
     // host-authenticated ROUND (arriving on join, on New Round, or already held —
     // Play-Again keeps localRoundT0, so its flare continues from shared elapsed).
     if (NET.info().isHost && NET.markRoundStart) { try { NET.markRoundStart(0); } catch (e) {} }
+    // Mid-round join / rejoin: once the shared round is anchored past pre-roll, the
+    // fresh resetRun spawn sits behind the advanced flare and dies instantly. Re-seat
+    // the player INTO the run, ahead of the shared flare on the team's seeded ground.
+    // First-join and rejoin-after-death both land here (both flow through startRun);
+    // pre-roll (elapsed<=0) keeps the normal spawn. netRoundActive is false under
+    // solo / #shot / mock, so the seeded goldens never reach this.
+    if (netRoundActive() && !netSpectating()) {
+      const rc = NET.roundClock();
+      if (rc && rc.elapsedMs > 0) seatMidRound(rc.elapsedMs);
+    }
   }
   beginArrival();   // E13: render-side greeting; sim ticks under it from frame 1
   G.mode = 'play'; buzz('light');
@@ -2621,6 +2693,32 @@ function updateFlare() {
   if (G.frameCount % 3 === 0) G.crackle = rng();
 }
 
+// ONE deterministic integration step of the shared flare, advanced in place. x0 is
+// the fixed spawn line; the band keys on the FLARE's own travelled distance so every
+// screen (and the mid-round spawn seat) steps identically. Factored so the per-frame
+// integrator below and the join seat in seatMidRound() can never fork the math.
+function stepFlareShared(fs, x0) {
+  const B = BANDS[bandFor(Math.max(0, (fs.x - x0) / 10))];
+  fs.speed += (B.flare - fs.speed) * 0.01;
+  fs.x += fs.speed;
+  fs.steps++;
+}
+// Shared flare state after `elapsedMs` of round time, integrated from the fixed
+// spawn line x0. Pure (touches no G) so a mid-round join can compute the exact
+// position the per-frame integrator converges to and seat the player ahead of it.
+// Iteration-capped: an absurdly old round resolves to the furthest stepped state
+// instead of spinning the loop (the caller then seats on the furthest ground).
+function sharedFlareXAt(elapsedMs, x0) {
+  const targetSteps = Math.max(0, Math.floor(elapsedMs / (STEP * 1000)));
+  const fs = { x: x0, speed: BANDS[0].flare, steps: 0 };
+  // Bounded, but high enough (~4.6 h of round) that any plausible session integrates
+  // to the SAME position the per-frame integrator converges toward — otherwise a
+  // capped-short seat would sit behind the still-advancing flare and die on frame 1.
+  let cap = 1000000;
+  while (fs.steps < targetSteps && cap-- > 0) stepFlareShared(fs, x0);
+  return fs;                            // { x, speed, steps }
+}
+
 // Run Together SHARED flare (§4.1) — a SEPARATE in-room path. The flare position
 // is a pure function of the host-shared round clock + the fixed spawn line, never
 // of the local player's x/maxX, so every screen computes the identical G.flare.x
@@ -2642,12 +2740,7 @@ function updateFlareShared() {
     // every screen). First frame after a (re)start fast-forwards once so Play-Again
     // seats the flare at the shared position instead of sweeping it across screen.
     let budget = fs.synced ? 240 : 40000;
-    while (fs.steps < targetSteps && budget-- > 0) {
-      const B = BANDS[bandFor(Math.max(0, (fs.x - fs.x0) / 10))];
-      fs.speed += (B.flare - fs.speed) * 0.01;
-      fs.x += fs.speed;
-      fs.steps++;
-    }
+    while (fs.steps < targetSteps && budget-- > 0) stepFlareShared(fs, fs.x0);
     fs.synced = true;
   }
   G.flare.x = fs.x;
