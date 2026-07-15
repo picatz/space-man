@@ -6,16 +6,19 @@
    existing relay fleet and directory endpoint is compatible for free.
 
    Three first-class sourcing modes (settings → network):
-     1. DEFAULT   — the official public directory endpoint, fetched by the HOST at
-                    room creation, cached in localStorage (24h TTL). Guests never
+     1. DEFAULT   — the verbatim BAKED copy of the official public directory
+                    below (the official endpoint sends no CORS headers, so a
+                    browser can never live-fetch it cross-origin; it is
+                    refreshed dev-time via the procedure below). Guests never
                     need the map (the invite carries the chosen relay).
-     2. CUSTOM    — any endpoint serving the same format (self-hosted fleet map).
+     2. CUSTOM    — any CORS-enabled endpoint serving the same format
+                    (self-hosted fleet map), live-fetched + cached (24h TTL).
      3. LIST      — a plain list of relay hostnames; synthesized into one region
                     internally (zero-infrastructure office / LAN mode).
 
-   Fallback ladder: live fetch → localStorage cache → the verbatim BAKED copy
-   below. Never a hard failure; worst case the baked copy's nearest region is
-   probed like any other.
+   Fallback ladder: live fetch (custom only) → localStorage cache → the
+   verbatim BAKED copy below. Never a hard failure; worst case the baked
+   copy's nearest region is probed like any other.
 
    INERT ON LOAD: BAKED_JSON is only PARSED on demand; no fetch, no localStorage
    read/write happens until load() runs. The cache key lives under the game's
@@ -146,9 +149,15 @@
     // https (http would be mixed-content-blocked anyway), and rejecting other
     // schemes here kills javascript:/file:/ws: tricks before fetch sees them.
     // A non-https custom URL simply falls through the ladder (cache → baked).
+    //
+    // DEFAULT mode never live-fetches: the official endpoint sends no CORS
+    // headers, so a cross-origin browser fetch is guaranteed to fail (red
+    // console error, wasted request) before falling through anyway. The baked
+    // verbatim copy IS the default source (refreshed via the dev procedure
+    // above); the ladder for default is cache → baked only.
     var url = o.mode === 'custom'
       ? (typeof o.url === 'string' && /^https:\/\//i.test(o.url) ? o.url : null)
-      : DEFAULT_ENDPOINT;
+      : null;
     if (url && typeof fetch === 'function' && o.fetch !== false) {                 // 1) live
       try {
         var ctl = new AbortController();

@@ -721,14 +721,17 @@ endpoint or self-hosted fleet works without a schema change.
 
 **Three sourcing modes** (`setRelayDirectory(mode, opts)`):
 
-1. `default` — the public directory endpoint, fetched by the **host** at room creation,
-   cached with a 24-hour TTL. Guests never fetch a map; they get their relay from the
+1. `default` — the baked verbatim copy of the public directory shipped in the app,
+   refreshed at dev time. (The public endpoint sends no CORS headers, so a browser can
+   never live-fetch it cross-origin — attempting it only guarantees a console error
+   before falling through.) Guests never need a map; they get their relay from the
    invite.
-2. `custom` — any endpoint serving the same format (self-hosted fleet).
+2. `custom` — any CORS-enabled endpoint serving the same format (self-hosted fleet),
+   live-fetched by the **host** at room creation and cached with a 24-hour TTL.
 3. `list` — a plain list of relay hostnames synthesized into a single-region map
    (zero-infrastructure LAN/office mode).
 
-**Fallback ladder (never a hard failure):**
+**Fallback ladder (never a hard failure; live fetch applies to `custom` only):**
 
 ```
 live fetch  →  local cache  →  baked verbatim copy in the app  →  built-in seed regions
