@@ -805,7 +805,7 @@ const HASH = (() => {
   });
   return h;
 })();
-const SHOT = HASH.shot || null;                 // 'play' | 'dead' | 'pause' | 'wardrobe' | 'room' | null
+const SHOT = HASH.shot || null;                 // 'play' | 'dead' | 'pause' | 'wardrobe' | 'room' | 'grab' | null
 const SHOT_SEED = HASH.seed !== undefined ? (parseInt(HASH.seed, 10) || 0) : null;
 const SHOT_FRAMES = HASH.frames !== undefined ? (parseInt(HASH.frames, 10) || 0) : 600;
 const FORCE_TOUCH = HASH.touch == '1' || HASH.touch === true;
@@ -831,6 +831,17 @@ const CFG = {
   fricGround: 0.8, fricAir: 0.95, turnMult: 2,
   jumpVel: -13.2, gravRise: 0.5, gravFall: 0.8, varJumpCut: 0.45, maxFall: 14,
   coyote: 6, buffer: 8, ledgeForgive: 12,
+  // LEDGE GRAB — a near-miss catch. Trigger is a pure read of sim state (no rng):
+  // grabReach = how close the leading edge must come to the lip (14px ≈ a hair past
+  // ledgeForgive's landing zone, so a true miss, never a stolen landing); grabBand
+  // = how far below the platform TOP the hands (sprite top) may be to still catch
+  // (4..30 → the lip just passed the fingertips); grabGrip = px the leading edge
+  // clasps onto the corner; grabDrop = where the sprite-top settles in the hang.
+  grabReach: 14, grabBandTop: 4, grabBandBot: 30, grabGrip: 3, grabDrop: 6,
+  // hangPullDelay 0.28s reads as a real beat — long enough to feel the save, short
+  // enough that jump (immediate) is always the skilled, faster read. grabCooldown
+  // (frames) blocks re-grabbing the SAME edge right after letting go, killing flutter.
+  hangPullDelay: 0.28, grabCooldown: 30, grabPushOff: 2.2,
   stompBounce: -11, stompBounceHeld: -15, stompOverlap: 24, stompGrace: 4,
   pBulletSpeed: 11, pBulletCooldown: 8,
   ammoStart: 5, ammoCap: 9, killDropChance: 0.5, killDropAmt: 5,
@@ -1680,7 +1691,7 @@ function buzz(kind) {
    9. INPUT — keyboard + per-pointerId touch zones (CSS-pixel space)
    ------------------------------------------------------------------------- */
 const input = {
-  left: false, right: false, jumpHeld: false, jumpPressed: false, shoot: false,
+  left: false, right: false, down: false, jumpHeld: false, jumpPressed: false, shoot: false,
   usingTouch: false, usingKeys: false, usingGamepad: false, stickX: 0, gamepadX: 0,
   stick: { active: false, cx: 0, cy: 0, x: 0, y: 0, id: -1, cooldown: 0 },   // cooldown: E11 auto-run resume delay after release
   jumpZone: { active: false, id: -1 },
@@ -1701,7 +1712,7 @@ function pollGamepad() {
     for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
   }
   if (!gp) {
-    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
+    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
     return;
   }
   if (!input.pad.connected) {
@@ -1717,6 +1728,7 @@ function pollGamepad() {
   const jump = padState.jump;
   if (jump && !input.pad.prev[0]) { input.jumpPressed = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   if (jump || input.pad.prev[0]) input.jumpHeld = jump;
+  input.down = pressed(13) || (gp.axes[1] || 0) > 0.5;   // dpad-down / left-stick-down → let go of a ledge
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   if (padState.pause && just(9)) {
     if (G.mode === 'attract') startRun();
@@ -1735,7 +1747,7 @@ window.addEventListener('gamepadconnected', (e) => { input.pad.index = e.gamepad
 window.addEventListener('gamepaddisconnected', (e) => { if (input.pad.index === e.gamepad.index) { input.pad.index = -1; pollGamepad(); } });
 function onKey(e, down) {
   const k = e.key.toLowerCase();
-  const map = { a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right' };
+  const map = { a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', s: 'down', arrowdown: 'down' };
   if (map[k]) input[map[k]] = down;
   if (k === ' ' || k === 'w' || k === 'arrowup') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
   if ((k === 'j' || k === 'f' || k === 'x') && down) { input.shoot = true; flags.taughtShoot = true; }
@@ -2158,6 +2170,9 @@ function resetRun(seed) {
     coyote: 0, buffer: 0, jumping: false, sqX: 1, sqY: 1, landDip: 0, pose: 4,
     runCycle: 0, glint: 0, idle: 0, dead: false, groundPlat: p0, holdFor: 0,
     airFrames: 0, jumpStartX: p0.x + 90, jumpPlat: p0, boostT: 0,
+    // LEDGE GRAB state: hang = { plat, side, t } while clinging (null otherwise);
+    // hangCooldown (frames) + hangLastPlat/Side lock out an instant same-edge re-grab.
+    hang: null, hangCooldown: 0, hangLastPlat: null, hangLastSide: 0,
   };
   G.camX = G.player.x - view.w * 0.42; G.camXprev = G.camX;
   // Matches updateCamera()'s grounded target exactly so frame 1 never has to
@@ -2335,7 +2350,7 @@ function tryRestart() {
   startRun();
 }
 function clearInput() {
-  input.left = input.right = input.jumpHeld = input.jumpPressed = input.shoot = false;
+  input.left = input.right = input.down = input.jumpHeld = input.jumpPressed = input.shoot = false;
   input.stickX = 0;
   input.stick.active = false; input.stick.id = -1;
   input.jumpZone.active = false; input.jumpZone.id = -1;
@@ -2354,6 +2369,8 @@ function updatePlayer() {
   const p = G.player;
   p.px = p.x; p.py = p.y;
   if (p.dead) return;
+  if (p.hangCooldown > 0) p.hangCooldown--;
+  if (p.hang) { updateHang(p); return; }   // clinging to a lip owns the whole tick
 
   let ix = 0;
   if (input.usingTouch) ix = input.stickX;
@@ -2380,12 +2397,14 @@ function updatePlayer() {
   if (p.buffer > 0) p.buffer--;
   if (p.onGround) p.coyote = CFG.coyote; else if (p.coyote > 0) p.coyote--;
 
+  let jumpedThisFrame = false;
   if (p.buffer > 0 && p.coyote > 0 && !p.jumping) {
     p.vy = CFG.jumpVel; p.jumping = true; p.onGround = false; p.coyote = 0; p.buffer = 0;
     p.sqX = 0.8; p.sqY = 1.2;
     if (G.mode === 'play') { Audio.sfx.jump(false); buzz('light'); }
     flags.taughtJump = true;
     p.airFrames = 0; p.jumpStartX = p.x; p.jumpPlat = p.groundPlat;
+    jumpedThisFrame = true;
   }
   if (p.jumping && p.vy < 0 && !input.jumpHeld) { p.vy *= CFG.varJumpCut; p.jumping = false; if (G.mode === 'play') Audio.sfx.jump(true); }
 
@@ -2457,6 +2476,11 @@ function updatePlayer() {
     }
   }
 
+  // LEDGE GRAB — the landing scan above wins first; only a genuine near-miss (falling,
+  // still airborne, didn't just jump, not mid-arrival) reaches for the lip.
+  if (!p.onGround && !p.hang && p.vy > 0 && !jumpedThisFrame && !G.vigHold && G.mode === 'play')
+    tryLedgeGrab(p);
+
   if (p.onGround && Math.abs(p.vx) > 2.5 && G.frameCount % 6 === 0)
     spawnP(p.x - p.facing * 6, p.y + p.h, -p.facing * rnd(0.3, 1), -rnd(0.2, 0.8), 16, 2, frostDust(palNow().trailDim), 0.05, false, 0);
   if (p.vy < -2 && G.frameCount % 2 === 0)
@@ -2481,6 +2505,87 @@ function updatePlayer() {
   p.idle = (Math.abs(p.vx) < 0.3 && p.onGround) ? p.idle + STEP : 0;
   p.glint += STEP;
   if (Math.abs(p.vx) > 1) flags.taughtRun = true;
+}
+
+/* ---- LEDGE GRAB ---------------------------------------------------------------
+   A near-miss catch. tryLedgeGrab is a pure read of sim state (no rng): it scans
+   for a platform whose TOP the sprite has just fallen past, with the leading edge a
+   hair (grabReach) from that platform's near VERTICAL face. Both faces are supported
+   (left face when moving right, right face when moving left) — movement is free now. */
+function tryLedgeGrab(p) {
+  const top = p.y, rightEdge = p.x + p.w, leftEdge = p.x;
+  for (const pl of G.platforms) {
+    const below = top - pl.y;                       // hands (sprite top) vs the lip
+    if (below < CFG.grabBandTop || below > CFG.grabBandBot) continue;
+    // LEFT face (wall to the right): approached from the left, moving toward / flush.
+    const dL = pl.x - rightEdge;                     // >0 short of the lip, <0 past it
+    if (dL <= CFG.grabReach && dL >= -CFG.grabGrip && p.vx > -0.5) { grabLedge(p, pl, 1); return; }
+    // RIGHT face (wall to the left): approached from the right.
+    const dR = leftEdge - (pl.x + pl.w);
+    if (dR <= CFG.grabReach && dR >= -CFG.grabGrip && p.vx < 0.5) { grabLedge(p, pl, -1); return; }
+  }
+}
+
+// side +1 = platform to the player's RIGHT (grab its LEFT face); -1 = mirror.
+function grabLedge(p, pl, side) {
+  // no re-grab of the SAME edge within grabCooldown of letting go (kills flutter)
+  if (p.hangCooldown > 0 && p.hangLastPlat === pl && p.hangLastSide === side) return;
+  if (side > 0) p.x = pl.x - p.w + CFG.grabGrip;    // right hand clasps the corner
+  else p.x = pl.x + pl.w - CFG.grabGrip;            // left hand clasps the corner
+  p.y = pl.y + CFG.grabDrop;                        // sprite settles just below the lip
+  p.px = p.x; p.py = p.y;
+  p.vx = 0; p.vy = 0; p.onGround = false; p.jumping = false; p.coyote = 0; p.airFrames = 0;
+  p.facing = side;                                  // face the wall he's clinging to
+  p.hang = { plat: pl, side, t: 0 };
+  p.sqX = 1.18; p.sqY = 0.82;                       // catch squash, eases out over the hang
+  // CATCH FEEL: dust at the hands, a 1-frame downward camera nudge, a soft catch sfx.
+  const handX = side > 0 ? pl.x : pl.x + pl.w;
+  burst(handX, pl.y, 7, 1.6, 16, 2.2, frostDust(palNow().trailHot), 0.06, 0);
+  if (settings.shake) { G.trauma = Math.max(G.trauma, 0.10); G.kickX = 0; G.kickY = 6; G.kickAt = G.time; }
+  if (G.mode === 'play') { Audio.sfx.land(5); buzz('light'); }
+}
+
+function updateHang(p) {
+  const h = p.hang;
+  h.t += STEP;
+  if (input.jumpPressed) { p.buffer = CFG.buffer; input.jumpPressed = false; }
+  if (p.buffer > 0) p.buffer--;
+  // Directional intent from whichever source is live (matches updatePlayer's read).
+  let ix = 0;
+  if (input.usingTouch) ix = input.stickX;
+  else if (input.usingGamepad && Math.abs(input.gamepadX) > .01) ix = input.gamepadX;
+  else { if (input.left) ix -= 1; if (input.right) ix += 1; }
+  const awayHeld = (h.side > 0 && ix < -0.3) || (h.side < 0 && ix > 0.3);   // pull AWAY from the wall
+  const stickDown = input.usingTouch && input.stick.active && (input.stick.y - input.stick.cy) > 22;
+  const downHeld = input.down || stickDown;
+  if (p.buffer > 0) { pullUpFromHang(p); return; }          // JUMP → immediate pull-up (buffered)
+  if (awayHeld || downHeld) { releaseHang(p); return; }     // DOWN / away → let go
+  if (h.t >= CFG.hangPullDelay) { pullUpFromHang(p); return; }   // AUTO pull-up after the beat
+  p.sqX += (1 - p.sqX) * 0.2; p.sqY += (1 - p.sqY) * 0.2;   // squash settles into the dangle
+}
+
+function pullUpFromHang(p) {
+  const pl = p.hang.plat, side = p.hang.side;
+  p.hang = null;
+  // Snap onto the slab: feet on top, body carried fully inboard of the lip.
+  p.x = side > 0 ? pl.x + CFG.grabGrip : pl.x + pl.w - p.w - CFG.grabGrip;
+  p.y = pl.y - p.h;                                 // px/py left at the hang → a 1-frame pull-up slide
+  p.vx = 0; p.vy = 0; p.buffer = 0;
+  p.onGround = true; p.jumping = false; p.groundPlat = pl; p.coyote = CFG.coyote;
+  p.sqX = 1.2; p.sqY = 0.8; p.landDip = 3;          // brief squash-land
+  // Reset the flight-discovery anchors so BIG AIR / ORBITAL LEAP can't misfire off the hang.
+  p.airFrames = 0; p.jumpStartX = p.x; p.jumpPlat = pl;
+  burst(p.x + p.w / 2, p.y + p.h, 6, 1.4, 16, 2, frostDust(palNow().trailDim), 0.06, 0);
+  if (G.mode === 'play') { Audio.sfx.land(4); buzz('light'); }
+}
+
+function releaseHang(p) {
+  const pl = p.hang.plat, side = p.hang.side;
+  p.hang = null;
+  p.hangCooldown = CFG.grabCooldown; p.hangLastPlat = pl; p.hangLastSide = side;
+  p.vx = -side * CFG.grabPushOff;                   // tiny push-off away from the wall
+  p.vy = 1.5; p.onGround = false; p.jumping = false; p.airFrames = 1;
+  if (G.mode === 'play') buzz('light');
 }
 
 // Ticked every fixed 60Hz step (not per render call) so the 0.3s ease-in lands
@@ -2925,7 +3030,7 @@ function updateDelight() {
    ------------------------------------------------------------------------- */
 function die(cause) {
   const p = G.player; if (p.dead) return;
-  p.dead = true; G.deathSeq = 0; G.deathCause = cause;
+  p.dead = true; p.hang = null; G.deathSeq = 0; G.deathCause = cause;
   // One canonical final score from the instant of death — HUD, card, and
   // top-5 all read this so they can never disagree.
   G.finalScore = Math.floor(G.score);
@@ -4117,7 +4222,9 @@ function drawPlayer(alpha) {
 
   // Legs: two capsules in a cooler shade so they separate from the white torso
   // instead of merging into one blob; back leg a touch darker for depth.
-  const legSwing = p.onGround ? Math.sin(p.runCycle) * Math.min(Math.abs(p.vx) * 1.2, 6) : p.pose;
+  // Ledge hang: legs dangle near-straight with a subtle sway; else run/air pose.
+  const legSwing = p.hang ? Math.sin(p.hang.t * 6) * 1.4
+    : (p.onGround ? Math.sin(p.runCycle) * Math.min(Math.abs(p.vx) * 1.2, 6) : p.pose);
   ctx.lineWidth = 4.5; ctx.lineCap = 'round';
   ctx.strokeStyle = PAL.legB;
   ctx.beginPath(); ctx.moveTo(4, hh - 13); ctx.lineTo(4 - legSwing * 0.5, hh - 1); ctx.stroke();   // back leg
@@ -4152,6 +4259,10 @@ function drawPlayer(alpha) {
   nearA += rec * 0.24;
   if (V && V.nearA !== undefined && V.armW > 0) {   // E13: nap fold/stretch, hop reach, hang grip, goodbye wave
     nearA = lerp(nearA, V.nearA, V.armW); farA = lerp(farA, V.farA, V.armW);
+  }
+  if (p.hang) {   // both arms up, clasping the lip; a subtle sway sells the dangle
+    const sway = Math.sin(p.hang.t * 6) * 0.07;
+    nearA = 2.78 + sway; farA = 2.62 + sway;
   }
   ctx.strokeStyle = PAL.legB; ctx.lineWidth = 4;
   armCapsule(-5, -6 + bob, farA, 12, -1.8);
@@ -6106,6 +6217,23 @@ function runShot() {
       G.mode = 'attract'; for (let i = 0; i < 40; i++) update();
       resetJoinPrompt(); if (HASH.custom) $('joinCustomDir').classList.add('show'); showOverlay('ovJoin');
     }
+    el.textContent = window.__errors.join('\n');
+    G.trauma = 0; G.kickX = 0; G.kickY = 0;
+    render(1);
+    shotFrozen = true; lastT = 0; rafId = requestAnimationFrame(frame);
+    return;
+  }
+  if (SHOT === 'grab') {   // deterministic mid-hang golden — inert (no bot, no net, no death)
+    G.mode = 'play'; hideAllOverlays();
+    const p = G.player, pl = G.platforms[2];   // a seeded starter slab, comfortably on-screen
+    // Seat him a hair past the LEFT lip, falling — then fire the REAL grab entry so
+    // the pose, props, and catch dust read exactly as a live near-miss would.
+    p.vx = 1.5; p.vy = 3.5; p.onGround = false; p.jumping = false; p.buffer = 0;
+    p.x = pl.x - p.w + CFG.grabGrip; p.y = pl.y + CFG.grabBandTop + 8; p.px = p.x; p.py = p.y;
+    grabLedge(p, pl, 1);
+    for (let i = 0; i < 10; i++) { updateHang(p); finishTick(); }   // settle the squash + sway
+    G.camX = p.x - view.w * 0.32; G.camXprev = G.camX;
+    G.camY = pl.y - view.h * (view.h > view.w ? 0.64 : 0.58); G.camYprev = G.camY;
     el.textContent = window.__errors.join('\n');
     G.trauma = 0; G.kickX = 0; G.kickY = 0;
     render(1);

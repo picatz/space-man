@@ -21,7 +21,7 @@
      7. Zigzag data placement skipping reserved modules.
      8. Mask trial (all 8 patterns) + 4-rule penalty scoring -> best mask.
      9. Format/version info bits (BCH) written for the chosen mask.
-    10. Render: quiet zone + module fills onto the caller's ctx.
+    10. Render: quiet zone + module fills + a scan-safe Space Man mission patch.
    ========================================================================== */
 (function (root) {
   'use strict';
@@ -372,14 +372,120 @@
       if (s < bestScore) { bestScore = s; bestMat = candidate; bestMask = mId; }
     }
     writeInfo(bestMat, built.n, version, bestMask);
-    return { n: built.n, mat: bestMat, version: version };
+    // Keep the reserved/function map for the branded renderer. The mission
+    // patch may erase DATA modules (which Reed-Solomon can restore), but must
+    // never cover a finder, timing, alignment, format, or version module.
+    return { n: built.n, mat: bestMat, reserved: built.rsv, version: version };
   }
 
   /* -------------------------------------------------------------------------
-     10. RENDER — quiet zone (4 modules) + solid module fills on the caller's
-         ctx. No canvas allocation, no DOM lookups; ctx is used exactly as
-         handed in. Re-encodes each call (cheap: link only changes rarely,
-         per net-spec §4.5 "re-rendered only on link change").
+     SPACE MAN PATCH — a fixed 5x5-module erasure containing a pixel astronaut
+     and two tiny stars. The patch location is the nearest data-only square to
+     the symbol center; it never touches QR function modules. Star placement is
+     derived from the invite text, so each invite gets a subtle constellation
+     while repeated renders of the same invite remain perfectly stable.
+
+     Most importantly, every constellation lives inside the SAME fixed white
+     footprint. Moving a star therefore changes no additional QR modules and
+     consumes no additional error-correction budget.
+     ------------------------------------------------------------------------- */
+  function textHash(text) {
+    // FNV-1a, kept in uint32 space. This is visual variety, not security.
+    var h = 0x811c9dc5;
+    for (var i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return h >>> 0;
+  }
+
+  function findPatch(q, span) {
+    var best = null, center = (q.n - 1) / 2;
+    // Stay clear of the outer finder neighborhoods even though reserved[] is
+    // already authoritative; this also keeps the badge visually near center.
+    for (var row = 9; row <= q.n - span - 9; row++) {
+      for (var col = 9; col <= q.n - span - 9; col++) {
+        var safe = true;
+        for (var r = row; safe && r < row + span; r++) {
+          for (var c = col; c < col + span; c++) {
+            if (q.reserved[r][c]) { safe = false; break; }
+          }
+        }
+        if (!safe) continue;
+        var dx = col + (span - 1) / 2 - center;
+        var dy = row + (span - 1) / 2 - center;
+        var score = dx * dx + dy * dy;
+        if (!best || score < best.score) best = { row: row, col: col, score: score };
+      }
+    }
+    return best;
+  }
+
+  function drawMissionPatch(ctx, x, y, edge, quiet, q, text) {
+    var span = 5, patch = findPatch(q, span);
+    if (!patch) return; // tiny/unusual symbols stay plain rather than risk function modules
+
+    var x0 = x + edge[patch.col + quiet];
+    var y0 = y + edge[patch.row + quiet];
+    var x1 = x + edge[patch.col + quiet + span];
+    var y1 = y + edge[patch.row + quiet + span];
+    var w = x1 - x0, h = y1 - y0;
+
+    // The only QR erasure: one fixed, module-aligned white square.
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(x0, y0, w, h);
+
+    // A 14x14 virtual-pixel grid gives the 25px V6 patch enough character while
+    // keeping every silhouette edge crisp and deliberately QR-ish.
+    var px = new Array(15), py = new Array(15);
+    for (var i = 0; i <= 14; i++) {
+      px[i] = x0 + Math.round(i * w / 14);
+      py[i] = y0 + Math.round(i * h / 14);
+    }
+    function cell(cx, cy, cw, ch, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(px[cx], py[cy], px[cx + cw] - px[cx], py[cy + ch] - py[cy]);
+    }
+
+    var NAVY = '#060818', CYAN = '#38e1ff', CORAL = '#ff4f66';
+
+    // Pixel astronaut: helmet + visor, compact life-support body, outstretched
+    // arms, and split boots. It reads as Space Man at 25px without looking like
+    // an emoji or introducing soft vector edges.
+    cell(5, 2, 4, 1, NAVY);
+    cell(4, 3, 1, 3, NAVY); cell(9, 3, 1, 3, NAVY);
+    cell(5, 6, 4, 1, NAVY);
+    cell(5, 3, 4, 3, CYAN);
+    cell(6, 3, 2, 1, '#d9fbff'); // visor glint
+    cell(5, 7, 4, 4, NAVY);
+    cell(3, 7, 2, 2, NAVY); cell(9, 7, 2, 2, NAVY);
+    cell(6, 8, 2, 1, CORAL); // tiny mission-control chest light
+    cell(5, 11, 1, 2, NAVY); cell(8, 11, 1, 2, NAVY);
+    cell(4, 13, 2, 1, NAVY); cell(8, 13, 2, 1, NAVY);
+
+    // Two distinct corner slots per invite. Their movement is entirely inside
+    // the already-erased patch, so visual variety cannot reduce scan safety.
+    var slots = [[1, 1], [12, 1], [1, 12], [12, 12]];
+    var hash = textHash(String(text));
+    var a = hash & 3;
+    var b = (a + 1 + ((hash >>> 2) % 3)) & 3;
+    function star(slot, color, tiny) {
+      var sx = slots[slot][0], sy = slots[slot][1];
+      cell(sx, sy, 1, 1, color);
+      if (!tiny) {
+        cell(sx - 1, sy, 1, 1, color); cell(sx + 1, sy, 1, 1, color);
+        cell(sx, sy - 1, 1, 1, color); cell(sx, sy + 1, 1, 1, color);
+      }
+    }
+    star(a, CORAL, false);
+    star(b, CYAN, true);
+  }
+
+  /* -------------------------------------------------------------------------
+     10. RENDER — quiet zone (4 modules) + solid module fills + branded patch
+         on the caller's ctx. No canvas allocation or DOM lookups; ctx is used
+         exactly as handed in. Re-encodes each call (cheap: link only changes
+         rarely, per net-spec §4.5 "re-rendered only on link change").
      ------------------------------------------------------------------------- */
   function draw(ctx, x, y, size, text) {
     if (!ctx || !text) return;
@@ -404,6 +510,7 @@
         if (q.mat[r][c]) ctx.fillRect(x + edge[c + quiet], y + y0, edge[c + quiet + 1] - edge[c + quiet], yh);
       }
     }
+    drawMissionPatch(ctx, x, y, edge, quiet, q, String(text));
   }
 
   root.SpaceManQR = { draw: draw };
