@@ -14,7 +14,9 @@
   // owns globally can never be bound, and a map with any invalid or duplicate
   // entry falls back whole — a half-applied map could leave an action unreachable.
   const DEFAULT_KEYS = Object.freeze({ left: 'a', right: 'd', jump: 'w', fire: 'f' });
-  const RESERVED_KEYS = ['escape', 'enter', 'tab', 'p', 'm', 'r', '1', '2', '3', '4', '5', '6'];
+  // Space is game-owned too: it starts/restarts runs outside play, so a Space
+  // binding could never be an isolated action.
+  const RESERVED_KEYS = ['escape', 'enter', 'tab', ' ', 'p', 'm', 'r', '1', '2', '3', '4', '5', '6'];
   function bindableKey(k) { return typeof k === 'string' && k.length > 0 && k.length <= 12 && k === k.toLowerCase() && RESERVED_KEYS.indexOf(k) < 0; }
   function sanitizeKeys(raw) {
     const k = obj(raw), out = {}, seen = [];

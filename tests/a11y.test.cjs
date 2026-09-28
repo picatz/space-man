@@ -148,3 +148,60 @@ test('the game canvas is exposed to assistive tech as a labelled image', () => {
   const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
   assert.match(html, /<canvas id="game" role="img" aria-label="[^"]+">/);
 });
+
+test('Space is game-owned: never bindable, and a saved Space binding falls back', (t) => {
+  const { hub, c } = solo(t);
+  assert.equal(c.run('SpaceManSave.bindableKey(" ")'), false);
+  assert.equal(c.run('rebinding = "fire"; rebindKey(" ")'), false);
+  assert.equal(c.run('settings.keys.fire'), 'f', 'refused key leaves the map untouched');
+  const g = client(hub, { storage: new Map([['sm2.settings', JSON.stringify({ keys: { left: 'a', right: 'd', jump: ' ', fire: 'f' } })]]) });
+  t.after(() => g.close());
+  assert.deepEqual({ ...g.run('settings.keys') }, { left: 'a', right: 'd', jump: 'w', fire: 'f' });
+});
+
+test('Start and Space never start a run from under a sub-menu', (t) => {
+  const { c } = solo(t);
+  const doc = c.context.document, pad = gamepad();
+  c.context.navigator.getGamepads = () => [pad];
+  const tap = (i) => { pad.buttons[i].pressed = true; c.run('pollGamepad()'); pad.buttons[i].pressed = false; c.run('pollGamepad()'); };
+  Object.assign(doc.getElementById('btnCloseSettings'), { getClientRects: () => [1], click() { this.onclick(); } });
+  c.run('pollGamepad()');   // connect
+
+  c.run('openSettings("attract")');
+  c.context.onKey(key(' '), true);
+  c.context.onKey(key('Enter'), true);
+  assert.equal(c.run('G.mode'), 'attract', 'keyboard start keys are inert under Settings');
+  assert.equal(c.run('topOverlayId()'), 'ovSettings');
+  tap(9);
+  assert.equal(c.run('G.mode'), 'attract', 'Start does not dump the player into a run');
+  assert.equal(c.run('topOverlayId()'), 'ovAttract', 'Start closes the sub-menu instead');
+  tap(9);
+  assert.notEqual(c.run('G.mode'), 'attract', 'on the title card itself Start still starts');
+
+  c.run('G.mode = "play"; togglePause(); openSettings("pause")');
+  tap(9);
+  assert.equal(c.run('G.mode'), 'pause', 'Start over Settings-from-pause returns to the pause card');
+  assert.equal(c.run('topOverlayId()'), 'ovPause');
+});
+
+test('a qualifying run is announced immediately, not after the initials picker', (t) => {
+  const { c } = solo(t);
+  c.run('top5 = [1, 2, 3, 4, 5].map((n) => ({ initials: "AAA", score: n * 10, dist: 1, chain: 1 }));');
+  c.run('startRun(); G.mode = "play"; G.prevBest = 50; G.score = 900; G.dist = 300; die("void"); showDeathCard();');
+  assert.equal(c.run('G.showPicker'), true);
+  assert.equal(c.run('topOverlayId()'), 'ovInitials');
+  assert.match(c.elements.get('srAnnounce').textContent, /^Run over: 900 points, 300 meters\. New personal best!.* New high score: enter your initials\.$/);
+});
+
+test('touch-only (not hybrid) hides key rows; the motion switch owns the CSS class', (t) => {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(html, /@media \(pointer: coarse\) and \(not \(any-pointer: fine\)\) \{ \.key-row \{ display: none; \} \}/);
+  assert.doesNotMatch(html, /@media \(pointer: coarse\) \{ \.key-row/);
+  assert.doesNotMatch(html, /@media \(prefers-reduced-motion/, 'the OS query only seeds the default; it cannot override the switch');
+  const { c } = solo(t);
+  assert.equal(c.run('document.body.classList.contains("reduce-motion")'), false);
+  c.run('toggleSetting("reduceMotion")');
+  assert.equal(c.run('document.body.classList.contains("reduce-motion")'), true);
+  c.run('toggleSetting("reduceMotion")');
+  assert.equal(c.run('document.body.classList.contains("reduce-motion")'), false, 'switching off restores motion');
+});

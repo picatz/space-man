@@ -167,8 +167,10 @@
   .overlay button:focus-visible, .overlay summary:focus-visible,
   body.gamepad-active .overlay button:focus, body.gamepad-active .overlay summary:focus,
   body.gamepad-active .overlay input:focus { outline: 2px solid var(--cyan-lt); outline-offset: 3px; }
-  /* Key-rebind rows are keyboard-only furniture. */
-  @media (pointer: coarse) { .key-row { display: none; } }
+  /* Key-rebind rows hide only on touch-ONLY devices: a touch-first hybrid with
+     a trackpad/mouse (any-pointer: fine) likely has a keyboard too. Browsers
+     without level-4 `not` just keep the rows visible (the safe side). */
+  @media (pointer: coarse) and (not (any-pointer: fine)) { .key-row { display: none; } }
   .btn.ghost {
     background: transparent;
     color: var(--ui);
@@ -192,18 +194,11 @@
     50% { box-shadow: 0 6px 26px rgba(56, 225, 255, 0.7); transform: scale(1.02); }
   }
   .btn.pulse { animation: pulseGlow 1.6s ease-in-out infinite; }
-  @media (prefers-reduced-motion: reduce) {
-    .btn.pulse { animation: none; }
-    .btn { transition: none; }
-    /* E9.1: panels appear, they don't slide/scale in; still dim the backdrop. */
-    .overlay, .panel { transition: none; }
-    .panel { opacity: 1; transform: none; }
-    #deadMedal.stamp { animation: none; }
-    #deadDelta { transition: none; opacity: 1; transform: none; }
-    #deadTapHint { transition: none; }
-  }
-  /* In-game Reduce Motion switch (mirrors the OS block above). */
+  /* Reduce Motion: body.reduce-motion follows the in-game switch, which
+     defaults to prefers-reduced-motion (and is the OS answer under #shot), so
+     turning the switch OFF really restores motion. */
   body.reduce-motion .btn.pulse { animation: none; }
+  /* E9.1: panels appear, they don't slide/scale in; still dim the backdrop. */
   body.reduce-motion .btn, body.reduce-motion .overlay, body.reduce-motion .panel { transition: none; }
   body.reduce-motion .panel { opacity: 1; transform: none; }
   body.reduce-motion #deadMedal.stamp { animation: none; }
@@ -1765,6 +1760,9 @@ function menuMove(dx, dy) {
   if (best) { best.focus(); if (best.scrollIntoView) best.scrollIntoView({ block: 'nearest' }); }
   return true;
 }
+// A sub-menu (Settings, Records, …) is open over the mode's own card — start /
+// restart / pause keys must not fire from under it.
+function menuSubOpen() { const t = topOverlayId(); return !!t && t !== PRIMARY_OVERLAY[G.mode]; }
 function menuActivate() {
   const id = topOverlayId(), a = document.activeElement;
   if (!id || !a || !a.click || !document.getElementById(id).contains(a)) return false;
@@ -1825,7 +1823,8 @@ function pollGamepad() {
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   const menuTook = pollMenuNav(gp, just);
   if (padState.pause && just(9)) {
-    if (G.mode === 'attract') startRun();
+    if (menuSubOpen()) menuBack();   // Start closes a sub-menu like B (no-op for the initials picker)
+    else if (G.mode === 'attract') startRun();
     else if (G.mode === 'dead') tryRestart();
     else togglePause();
   } else if (!menuTook && just(0)) {
@@ -1870,14 +1869,14 @@ function onKey(e, down) {
     }
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
-    if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
+    if (G.mode === 'attract' && (k === ' ' || k === 'enter')) { if (!menuSubOpen()) startRun(); }
     else if (G.mode === 'dead') {
       if ($('ovInitials').classList.contains('show')) {
         // Enter confirms initials; a restart key skips the picker but the entry
         // is already committed, so nothing is ever lost.
         if (k === 'enter') commitInitials();
         else if (k === ' ' || k === 'r') { commitInitials(); tryRestart(); }
-      } else if (k === ' ' || k === 'enter' || k === 'r') tryRestart();
+      } else if ((k === ' ' || k === 'enter' || k === 'r') && !menuSubOpen()) tryRestart();
     }
   }
 }
@@ -4918,8 +4917,17 @@ function showDeathCard() {
   }, 300));
   deathTimers.push(setTimeout(revealDeathDelta, 550));
   deathTimers.push(setTimeout(revealTapHint, 900));   // matches the tap-anywhere arm time (E9.6)
+  announceRunOver();   // before the picker branch: a qualifying run is narrated immediately too
   if (G.showPicker) { showInitials(); return; }   // only a full-table crack blocks; else auto-committed
   renderDeathCard();
+}
+function announceRunOver() {
+  if (netSpectating()) return;
+  const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score), m = G.runMedal;
+  announceMoment('Run over: ' + fs.toLocaleString() + ' points, ' + G.dist.toLocaleString() + ' meters.'
+    + (fs > G.prevBest && G.prevBest > 0 ? ' New personal best!' : '')
+    + (m ? ' ' + m.name.charAt(0) + m.name.slice(1).toLowerCase() + ' medal.' : '')
+    + (G.showPicker ? ' New high score: enter your initials.' : ''), true);
 }
 function renderDeathCard() {
   const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
@@ -4929,8 +4937,6 @@ function renderDeathCard() {
   // Computed exactly as before; only its reveal (showDeathCard's timer) is staged.
   if (fs > G.prevBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${(fs - G.prevBest).toLocaleString()}</span>`;
   else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
-  if (!netSpectating()) announceMoment('Run over: ' + fs.toLocaleString() + ' points, ' + G.dist.toLocaleString() + ' meters.'
-    + (fs > G.prevBest && G.prevBest > 0 ? ' New personal best!' : '') + (G.runMedal ? ' ' + G.runMedal.name.charAt(0) + G.runMedal.name.slice(1).toLowerCase() + ' medal.' : ''), true);
   const missionMark = G.mission && G.mission.done ? ' · MISSION ✓' : '';
   $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
   const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
@@ -5233,7 +5239,7 @@ function toggleSetting(key) {
   syncSettingsUI(); persistAll();
 }
 // Mirrors the live switch onto the CSS motion rules; render/sim read lessMotion() per frame.
-function applyMotionPref() { if (!SHOT) document.body.classList.toggle('reduce-motion', settings.reduceMotion); }
+function applyMotionPref() { document.body.classList.toggle('reduce-motion', lessMotion()); refreshFaviconSkin(); }
 
 /* ---- keyboard rebinding: activate a row, press a key (Escape cancels) ---- */
 const KEY_NAMES = { ' ': 'Space', arrowleft: '←', arrowright: '→', arrowup: '↑', arrowdown: '↓' };
@@ -6602,8 +6608,9 @@ function faviconHatGlyph(g) {
 }
 function setupAnimatedFavicon() {
   const link = document.getElementById('faviconLink');
-  // SHOT never touches the tab icon; reduced motion keeps the static file.
-  if (!link || lessMotion() || SHOT) return;
+  // SHOT never touches the tab icon; reduced motion keeps (or restores) the
+  // static file — checked per paint so the in-game switch applies live.
+  if (!link || SHOT) return;
   const icon = new Image(); icon.src = 'favicon.png';
   icon.onload = () => {
     const c = document.createElement('canvas'); c.width = c.height = 32;
@@ -6627,6 +6634,7 @@ function setupAnimatedFavicon() {
     };
     const paint = () => {
       if (broken || document.hidden) return;
+      if (lessMotion()) { if (String(link.href).indexOf('data:') === 0) link.href = 'favicon.png'; return; }
       if (G.mode === 'play' || G.mode === 'resume') return;   // toDataURL hitches the run; identity motion belongs to attract/pause/dead
       try {
         tint();
