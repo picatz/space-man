@@ -168,6 +168,7 @@ test('the hello loop keeps retrying past five attempts until a WELCOME arrives',
   gs.relay.send = (pub, w) => { hellos++; send(pub, w); };
   // Fire the interval body directly instead of waiting 5.5 s per attempt.
   for (let i = 0; i < 7; i++) { assert.ok(gs.helloTimer, 'still retrying after ' + (i + 1) + ' attempts'); gs.helloTimer._onTimeout?.(); }
+  await until(() => hellos >= 7, 'seven more HELLOs actually sent');
   hostRows(host)[0].lastHello = 0;
   gs.helloTimer._onTimeout?.();
   await until(() => hostRows(host)[0].absent === false, 'finally welcomed');
@@ -187,4 +188,29 @@ test('a mid-round seat never lands a late joiner on an enemy', async (t) => {
     return bad;
   })())`));
   assert.equal(hits.length, 0, 'enemies on the seat platform at ' + hits.join(', ') + ' ms');
+});
+
+test('a full roster snapshot drops members the guest missed leaving', async (t) => {
+  const { host, guest } = await room(t);
+  const gs = guest.net._n1.session();
+  gs.rosterMap.set(9, { tag: 'AAA', role: 0, callsign: 'GONE', you: false }); // left while our link was down
+  gs.peers.set(9, { p: 9, x: 100, y: 100 });
+  host.net._n1.session().setCallsign(3, 3); // any full roster
+  await until(() => !gs.rosterMap.has(9), 'stale member dropped');
+  assert.equal(gs.peers.has(9), false);
+  assert.equal(guest.net.roster().length, 2);
+});
+
+test('a rejoin gets the full snapshot; others only see an upsert', async (t) => {
+  const { hub, host, guest, link } = await room(t);
+  const other = client(hub, { game: false });
+  t.after(() => other.close());
+  await other.net.acceptJoin(link, { adjIdx: 4, nounIdx: 4 });
+  await until(() => guest.net.roster().length === 3, 'three members');
+  const ops = [];
+  other.net._n1.session().ev.on((e, d) => { if (e === 'roster') ops.push(d.op); });
+  drop(guest);
+  await until(() => hostRows(host).find((r) => r.p === 2)?.absent === false, 'guest back');
+  await until(() => ops.includes(1), 'others told of the return');
+  assert.equal(ops.includes(0), false, 'the rest of the room is not re-sent a snapshot');
 });
