@@ -322,3 +322,13 @@ test('a room round reports runners left, then ROUND OVER standings on every card
     assert.equal(c.run('[...roundResults.values()].some((r) => r.you)'), true);
   }
 });
+
+test('a New Round never fans out the host\'s last-run sample under the new runId', async (t) => {
+  const { host, guest } = await room(t);
+  host.net.startRound({ delayMs: 0 });
+  host.net._n1.session().setPresence(5000, 200, 0, 4, 0, 900, 497); // host went down far along the old course
+  host.net.newWorld();
+  await host.net._n1.session()._snapTick();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(guest.net.presence().some((p) => p.p === 1 && p.runId === host.net.info().runId), false);
+});

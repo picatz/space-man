@@ -1707,6 +1707,10 @@
         S.seed = new DataView(rand(4).buffer).getUint32(0, true);
         S.runId = S.runId >= 255 ? 1 : S.runId + 1;              // u8, never 0 (0 = unknown → render-only ghost)
         S.self.runId = S.runId;
+        // S.self still holds the last run's sample (often dead, far down the old
+        // course). Stop fanning it out under the new runId until the host's game
+        // reports from the new course, or peers see a dead host at the start.
+        S.selfSeen = -Infinity;
       }
       const delay = Math.max(0, o.delayMs | 0);
       S.roundT0 = now + delay; S.roundRunId = S.runId;
