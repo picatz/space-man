@@ -12,7 +12,7 @@
   /* -------------------------------------------------------------------------
      0. WIRE CONSTANTS — relay frame types, app frame types, hard caps
      ------------------------------------------------------------------------- */
-  const PROTO = 1;                       // app protocol version (envelope ver)
+  const PROTO = 2;                       // app protocol version (envelope ver)
   const ROOM_CAP = 32;
   const WIRE_MAX = 256;                  // hard cap per encrypted app packet (pre-decrypt gate)
   const RELAY_FRAME_MAX = 65536;         // declared relay frame length above this = protocol violation
@@ -51,7 +51,7 @@
   // presence frame from a spectator is a protocol violation (strike).
   const ROLE_PLAYER = 0, ROLE_SPECTATOR = 1;
   const PLAYER_CAP = ROOM_CAP, SPECTATOR_CAP = 16;
-  const ROLE_MIN_INTERVAL = 10000;        // ≤1 role change / 10s per key (host-enforced)
+  const ROLE_MIN_INTERVAL = 1500;         // debounce role changes without trapping viewers for 10 seconds
 
   // Capability bitfield (Addendum D) — features negotiate, never assume. HELLO
   // and WELCOME carry a u32; peers AND-mask before using a feature.
@@ -423,7 +423,16 @@
     aad[0] = PROTO; aad.set(pair.roomId, 1); aad[9] = pair.epoch; aad[10] = dir;
     return { iv, aad };
   }
-  async function sealApp(pair, pt) {
+  function sealApp(pair, pt) {
+    // WebCrypto completion order is not guaranteed. The receiver requires
+    // increasing counters, so preserve invocation order per pair (also across
+    // SNAP/ROSTER/ROUND). Copy scratch-backed plaintext before waiting.
+    const bytes = pt.slice();
+    const pending = (pair.sealQueue || Promise.resolve()).then(() => sealAppFrame(pair, bytes));
+    pair.sealQueue = pending.catch(() => {});
+    return pending;
+  }
+  async function sealAppFrame(pair, pt) {
     if (pair.sendCtr >= 4294967296) throw new Error('pair exhausted');   // ~13y @10Hz; assert anyway
     const ctr = pair.sendCtr++;
     const { iv, aad } = envHead(pair, pair.dir, ctr);
@@ -466,7 +475,7 @@
      ------------------------------------------------------------------------- */
   function encodeInvite(inv) {   // {flags, roomId8, epoch, hostPub, region, relayHost?, secret16, expiryMin}
     const head = new Uint8Array(46);
-    head[0] = 1; head[1] = inv.flags & 0xff;
+    head[0] = PROTO; head[1] = inv.flags & 0xff;
     head.set(inv.roomId, 2); head[10] = inv.epoch;
     head.set(inv.hostPub, 11);
     for (let i = 0; i < 3; i++) head[43 + i] = (inv.region || 'nyc').charCodeAt(i) & 0x7f;
@@ -484,7 +493,7 @@
   function decodeInvite(str) {   // → {inv} | {err: 'parse'|'version'|'expired'|'relayhost'}
     const b = b64uDec(String(str || '').trim());
     if (!b || b.length < 66) return { err: 'parse' };
-    if (b[0] !== 1) return { err: 'version' };
+    if (b[0] !== PROTO) return { err: 'version' };
     const flags = b[1];
     const roomId = b.slice(2, 10), epoch = b[10], hostPub = b.slice(11, 43);
     let region = '', off = 46;
@@ -949,8 +958,8 @@
   function encBye(s, reason, detail) { const u = s.u8; u[0] = A_BYE; u[1] = reason & 0xff; u[2] = (detail || 0) & 0xff; return u.subarray(0, 3); }
   function decBye(pt) { return pt.length < 3 ? null : { reason: pt[1], detail: pt[2] }; }
   // ROUND body (rides the control-frame envelope §8.5): seed u32, runId u8,
-  // countdown u8, flags u8. Players adopt seed at their NEXT run start (never
-  // yanks a live run); runId scopes the leaderboard + PRES monotonicity.
+  // countdown u8, flags u8. Participating clients adopt the host round together;
+  // runId scopes the course and presence monotonicity.
   // SHARED-ROUND CLOCK (additive, back-compat): + startDelayMs u16 (pre-roll
   // remaining, 0 once the round is running) + elapsedMs u32 (ms since the host's
   // roundT0 at SEND time, 0 during pre-roll). Exactly one is non-zero. A client
@@ -1025,7 +1034,13 @@
     TELEPORT_TOL: 4,       // ×tolerance before a position delta is "impossible"
     TELEPORT_SLACK: 1500,  // px slack (spawn, camera warp, interp) before hard-flag
     DIST_TOL: 1.35, DIST_SLACK: 50, SCORE_SLACK: 1000,
+    SPAWN_X: 30,           // world-x of the fixed spawn line (index.html: starter platform x −60 + 90)
   };
+  // prev = the last accepted sample of the SAME movement trace, or null when a
+  // trace starts (first packet, new round, respawn). A fresh trace has nothing
+  // to diff against, so its position is bounded by the round instead: nobody
+  // can be behind the spawn line, or further ahead of it than VMAX allows over
+  // cur.elapsedMs (a late join seats beside the crew, who obey the same cap).
   function checkEnvelope(prev, cur, dtMs) {   // → {teleport, unverified}
     const out = { teleport: false, unverified: false };
     const dt = Math.max(0.001, dtMs / 1000);
@@ -1033,6 +1048,9 @@
       const dx = Math.abs(cur.x - prev.x), dy = Math.abs(cur.y - prev.y);
       if (dx > AC.VMAX_PX * dt * AC.TELEPORT_TOL + AC.TELEPORT_SLACK ||
           dy > AC.VYMAX_PX * dt * AC.TELEPORT_TOL + AC.TELEPORT_SLACK) out.teleport = true;
+    } else {
+      const reach = AC.VMAX_PX * Math.max(0, cur.elapsedMs || 0) / 1000 * AC.DIST_TOL;
+      if (cur.x < AC.SPAWN_X - AC.TELEPORT_SLACK || cur.x > AC.SPAWN_X + reach + AC.TELEPORT_SLACK) out.teleport = true;
     }
     if (cur.elapsedMs > 0) {                  // dist/score vs elapsed run time
       const es = cur.elapsedMs / 1000;
@@ -1168,9 +1186,9 @@
   const ROUND_PREROLL = 3000;  // New-Round pre-roll (ms): a synchronized 3-2-1 so every screen starts together
   const PRES_STALE = 2500;     // ms without a fresh PRES → stop fanning the row out (paused/backgrounded peers hide promptly)
   function emitter() {
-    const subs = [];
+    const subs = new Set();
     return {
-      on: (cb) => { if (typeof cb === 'function') subs.push(cb); },
+      on: (cb) => { if (typeof cb === 'function') subs.add(cb); return () => subs.delete(cb); },
       emit: (ev, data) => { for (const cb of subs) { try { cb(ev, data || {}); } catch (e) {} } },
     };
   }
@@ -1289,6 +1307,10 @@
         const pres = decPres(pt, row.pres);
         if (pres.err === 'nan') return strike(row, 'nan');
         if (pres.err) return;
+        // Frames still in flight across a New Round carry the old runId; the
+        // sender restarts on ROUND, so drop them (no strike) rather than let a
+        // stale course position open a fresh trace on the new one.
+        if (pres.runId !== S.runId) return;
         // Anti-cheat envelope (Addendum G.1): hard teleport → strike; soft
         // dist/score-vs-time inconsistency → dim the row "unverified" (no strike).
         // New run → fresh trace: reset the run clock AND the dim flag (the
@@ -1308,7 +1330,13 @@
           row.runT0 = anchorRound ? S.roundT0 : t; row.runId = pres.runId; row.unverified = false;
         }
         pres.elapsedMs = t - row.runT0;
-        const env = checkEnvelope(row.pres, pres, row.lastSeen ? t - row.lastSeen : 0);
+        // A trace starts on the first sample, a new round, or a respawn (a dead
+        // sample followed by a live in-run one). It is still bounded: the
+        // envelope then checks the spawn/round reach instead of the delta, so
+        // alternating dead/alive frames cannot teleport a ghost across the course.
+        const prev = row.pres;
+        const freshTrace = !prev || pres.runId !== prev.runId || ((prev.state & 4) && (pres.state & 8) && !(pres.state & 4));
+        const env = checkEnvelope(freshTrace ? null : prev, pres, row.lastSeen ? t - row.lastSeen : 0);
         if (env.teleport) return strike(row, 'teleport');
         if (env.unverified) row.unverified = true;
         row.pres = pres;
@@ -1319,17 +1347,17 @@
         const rc = decRole(pt);
         if (!rc) return;
         const t3 = performance.now();
-        if (row.lastRole && t3 - row.lastRole < ROLE_MIN_INTERVAL) return;   // ≤1/10s per key
+        if (row.lastRole && t3 - row.lastRole < ROLE_MIN_INTERVAL) { sendRoster(0, [row], row).catch(() => {}); return; }
         const c = counts();
-        if (rc.newRole === ROLE_SPECTATOR && row.role !== ROLE_SPECTATOR && c.spectators >= SPECTATOR_CAP) return;
-        if (rc.newRole === ROLE_PLAYER && row.role !== ROLE_PLAYER && c.players >= PLAYER_CAP) return;
+        if (rc.newRole === ROLE_SPECTATOR && row.role !== ROLE_SPECTATOR && c.spectators >= SPECTATOR_CAP) { sendRoster(0, [row], row).catch(() => {}); return; }
+        if (rc.newRole === ROLE_PLAYER && row.role !== ROLE_PLAYER && c.players >= PLAYER_CAP) { sendRoster(0, [row], row).catch(() => {}); return; }
         row.lastRole = t3;
         if (row.role !== rc.newRole) {
           row.role = rc.newRole;
           if (rc.newRole === ROLE_SPECTATOR) row.pres = null;   // spectators hide their ghost
           S.ev.emit('role', { p: row.p, role: row.role });
-          sendRoster(0).catch(() => {});                        // ack via roster broadcast
         }
+        sendRoster(0).catch(() => {});                          // ack even an unchanged/rejected role
         return;
       }
       if (pt[0] === A_HELLO) {                                   // reconnect re-hello: verify proof, re-WELCOME
@@ -1414,7 +1442,7 @@
       });
       S.relay.send(row.pub, await sealApp(row.pair, w));
       S.ev.emit('join', { p, tag: row.tag, role: row.role });
-      sendRoster(1, [row]).catch(() => {});                      // announce the new member to everyone
+      sendRoster(0).catch(() => {});                           // newcomers need the existing players too
       if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});   // anchor the joiner to the live shared round
       return true;
     }
@@ -1434,12 +1462,12 @@
     }
     function allEntries() {
       const out = [selfEntry()];
-      for (const r of S.roster.values()) out.push({ p: r.p, pub: r.pub, tag: r.tag, suit: r.suit, hat: r.hat, role: r.role, adjIdx: r.adjIdx, nounIdx: r.nounIdx });
+      for (const r of S.roster.values()) if (!r.absent) out.push({ p: r.p, pub: r.pub, tag: r.tag, suit: r.suit, hat: r.hat, role: r.role, adjIdx: r.adjIdx, nounIdx: r.nounIdx });
       return out.sort((a, b) => a.p - b.p);
     }
     // ROSTER fan-out (op 0 full / 1 join / 2 leave / 3 kick), chunked ≤ 5/entry,
     // sealed per peer. Roster carries roles + callsigns.
-    async function sendRoster(op, entriesOpt) {
+    async function sendRoster(op, entriesOpt, target) {
       if (!S.relay || S.relay.state !== 'established') return;
       const entries = entriesOpt || (op === 0 ? allEntries() : []);
       const chunks = [];
@@ -1447,7 +1475,7 @@
       if (!chunks.length) chunks.push([]);
       for (let ci = 0; ci < chunks.length; ci++) {
         const pt = encRoster(S.outRoster, op, ci, chunks.length, chunks[ci]).slice();
-        for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
+        for (const r of target ? [target] : S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
       }
     }
 
@@ -1482,12 +1510,12 @@
       // peer that stopped streaming): don't rebroadcast a frozen position — peers age
       // it out and hide the ghost promptly even without a transport F_PEER_GONE.
       for (const r of S.roster.values()) if (r.pres && !r.absent && r.role !== ROLE_SPECTATOR && (nowTick - r.lastSeen) <= PRES_STALE) live.push(r);
-      const rows = S.role === ROLE_SPECTATOR ? [] : [{ p: 1, pres: S.self }];   // a sitting-out host streams no ghost
+      const rows = S.role === ROLE_SPECTATOR || nowTick - (S.selfSeen || 0) > PRES_STALE ? [] : [{ p: 1, pres: S.self }];
       for (let i = 0; i < live.length && rows.length < SNAP_MAX; i++) {
         rows.push({ p: live[(S.rr + i) % live.length].p, pres: live[(S.rr + i) % live.length].pres });
       }
       S.rr = live.length ? (S.rr + (SNAP_MAX - 1)) % live.length : 0;
-      const pt = encSnap(S.outSnap, (S.tick >> 4) & 0xffff, rows);
+      const pt = encSnap(S.outSnap, (S.tick >> 4) & 0xffff, rows).slice();
       for (const r of S.roster.values()) {
         S.relay.send(r.pub, await sealApp(r.pair, pt));          // one encode, n seals
       }
@@ -1560,6 +1588,7 @@
       return S;
     };
     S.setPresence = (x, y, vx, state, chain, score, dist) => {
+      S.selfSeen = performance.now();
       const s = S.self;
       s.seq = (s.seq + 1) & 0xffff;
       s.x = x; s.y = y; s.vx = Math.max(-127, Math.min(127, vx | 0));
@@ -1591,7 +1620,7 @@
       }
       for (const r of S.roster.values()) {
         const call = cs(r.adjIdx, r.nounIdx, r.p);
-        if (r.pres && r.role !== ROLE_SPECTATOR) {
+        if (r.pres && !r.absent && r.role !== ROLE_SPECTATOR && performance.now() - r.lastSeen <= PRES_STALE) {
           const q = r.pres;
           out.push({ p: r.p, you: false, host: false, spectator: false, x: q.x, y: q.y, vx: q.vx, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: r.suit, hat: r.hat, callsign: call, unverified: !!r.unverified, emoteId: r.emoteId, emoteSeq: r.emoteSeq });
           boardBump(r.p, call, q.score, q.dist, q.chain, r.unverified);
@@ -1793,8 +1822,16 @@
         // streaming PRES while the host still holds it as spectator would eat
         // spectator-pres strikes → ban an honest client on a rejected request.
         const me = S.p ? S.rosterMap.get(S.p) : null;
-        if (me) S.role = me.role;
-        S.ev.emit('roster', { op: r.op, n: S.rosterMap.size });
+        // A full roster sent for an unrelated reason (a join, a callsign) can
+        // cross our ROLE frame in flight, so it only acks a pending request
+        // once it shows the requested role. Rejections arrive as a targeted
+        // single-entry roster (a real full roster always carries the host too).
+        const selfUpdated = r.entries.some((entry) => entry.p === S.p);
+        if (me && selfUpdated) S.role = me.role;
+        const selfAck = !!me && selfUpdated && S.requestedRole != null &&
+          (me.role === S.requestedRole || (r.op === 0 && r.entries.length === 1));
+        if (selfAck) S.requestedRole = null;
+        S.ev.emit('roster', { op: r.op, n: S.rosterMap.size, selfUpdated, selfAck });
         return;
       }
       if (pt[0] === A_SNAP) {
@@ -1803,6 +1840,7 @@
         for (const row of snap.rows) {
           const prev = S.peers.get(row.p);                       // carry the transient emote across position updates
           if (prev) { row.emoteId = prev.emoteId; row.emoteSeq = prev.emoteSeq; }
+          row.receivedAt = performance.now();
           S.peers.set(row.p, row);
         }
         S.ev.emit('snap', { tick: snap.tick, n: snap.rows.length });
@@ -1882,7 +1920,7 @@
     };
     S.sendPresence = async (x, y, vx, state, chain, score, dist) => {
       if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
-      if (S.role === ROLE_SPECTATOR) return;                     // spectators are keepalive-only (Addendum A)
+      if (S.role === ROLE_SPECTATOR || S.requestedRole === ROLE_SPECTATOR) return;
       S.seq = (S.seq + 1) & 0xffff;
       const pt = encPres(S.out, {
         seq: S.seq, x, y, vx, state, chain, score, dist, runId: S.welcomed.runId,
@@ -1900,16 +1938,14 @@
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, encEmote(S.out, e, S.emoteSeq)));
     };
     // Request a role change (Addendum A). Host validates caps + rate; the switch
-    // is acked via the next ROSTER broadcast. Only the SPECTATOR direction flips
-    // optimistically (stopping presence early is always safe); the PLAYER
-    // direction waits for the roster ack — sending PRES before the host applied
-    // the change would be striked as spectator-pres (rate-limited / cap-full
-    // requests are silently rejected by the host).
+    // is acked via ROSTER in both directions. While requesting spectator, stop
+    // presence early; do not claim the new role until the host confirms it.
+    // Rejected requests return the authoritative roster entry as well.
     S.requestRole = async (role) => {
       if (!S.welcomed || !S.relay || S.relay.state !== 'established') return;
       const nr = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER;
+      S.requestedRole = nr;
       S.roleSeq = (S.roleSeq + 1) & 0xffff;
-      if (nr === ROLE_SPECTATOR) S.role = ROLE_SPECTATOR;        // stop streaming a ghost at once
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, encRole(S.out, S.roleSeq, nr)));
     };
     S.setCallsign = (a, n) => { S.adjIdx = a & 0xff; S.nounIdx = n & 0xff; };
@@ -1932,7 +1968,7 @@
       for (const [p, q] of S.peers) {
         const id = S.rosterMap.get(p) || {};
         if (id.role === ROLE_SPECTATOR) continue;               // spectators stream no ghost
-        if (q.x == null) continue;                              // emote-only stub with no position yet → nothing to draw
+        if (q.x == null || performance.now() - q.receivedAt > PRES_STALE) continue;
         const call = id.callsign || ('P' + p);
         out.push({ p, you: p === S.p, host: p === 1, spectator: false, x: q.x, y: q.y, vx: q.vx, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: id.suit || 0, hat: id.hat || 0, callsign: call, unverified: false, emoteId: q.emoteId, emoteSeq: q.emoteSeq });
         gBoardBump(p, call, q.score, q.dist, q.chain, false);
@@ -2020,9 +2056,11 @@
       // Optional live directory refresh (host only) before picking a relay; the
       // baked copy already backs activeMap() so a failed fetch never blocks.
       if (o.relayDir) { try { await NET.setRelayDirectory(o.relayDir.mode, o.relayDir); } catch (e) {} }
-      session = HostSession(o);
-      session.ev.on((e, d) => ev.emit(e, d));
-      await session.open();
+      const next = session = HostSession(o);
+      next.ev.on((e, d) => ev.emit(e, d));
+      try { await next.open(); }
+      catch (e) { next.close(); if (session === next) session = null; throw e; }
+      if (session !== next) { next.close(); throw new Error('Room cancelled'); }
       NET.active = true;
       return NET.info();
     },
@@ -2035,9 +2073,22 @@
           : 'that invite did not scan — ask for a fresh link';
         throw new Error(msg);
       }
-      session = GuestSession(dec.inv, opts || {});
-      session.ev.on((e, d) => ev.emit(e, d));
-      await session.join();
+      const next = session = GuestSession(dec.inv, opts || {});
+      next.ev.on((e, d) => ev.emit(e, d));
+      // A relay socket is not room admission. Do not expose seed=0 / player=0
+      // or claim success until the host has authenticated and welcomed us.
+      let timer, unsubscribe;
+      const admitted = new Promise((resolve, reject) => {
+        timer = setTimeout(() => reject(new Error('Host did not admit this join. Ask them to check the room and approvals.')), 30000);
+        unsubscribe = next.ev.on((e) => {
+          if (e === 'welcomed') resolve();
+          if (e === 'bye') reject(new Error('The host declined or ended this room.'));
+        });
+      });
+      try { await Promise.all([next.join(), admitted]); }
+      catch (e) { next.close(); if (session === next) session = null; throw e; }
+      finally { clearTimeout(timer); unsubscribe(); }
+      if (session !== next) { next.close(); throw new Error('Join cancelled'); }
       NET.active = true;
       return NET.info();
     },
@@ -2095,9 +2146,17 @@
     // Roles (Addendum A). Host sits out via setRole; a guest requests via the
     // rate-limited role frame. spectator=1, player=0.
     setRole(role) {
-      if (!session) return;
-      if (session.isHost) session.setRole(role);
-      else session.requestRole(role).catch(() => {});
+      if (!session) return Promise.resolve(false);
+      const current = session, wanted = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER;
+      if (current.role === wanted) return Promise.resolve(true);
+      if (current.isHost) { current.setRole(wanted); return Promise.resolve(true); }
+      return new Promise((resolve) => {
+        let done = false;
+        const finish = (ok) => { if (done) return; done = true; current.requestedRole = null; clearTimeout(timer); unsubscribe(); resolve(ok); };
+        const timer = setTimeout(() => finish(false), 5000);
+        const unsubscribe = current.ev.on((e, d) => { if (e === 'roster' && d.selfAck) finish(session === current && current.role === wanted); });
+        current.requestRole(wanted).catch(() => finish(false));
+      });
     },
     // Callsigns (Addendum C) — indexes only; the picker uses the validator to
     // re-roll out-of-range / denied pairs. UI (N2b) owns the spinner.
@@ -2148,8 +2207,8 @@
       return {
         city: cityOfHost(session.isHost ? session.relayHostName : ((session.inv.flags & 2) ? session.inv.relayHost : (regionOf(session.inv.region) || { hosts: [''] }).hosts[0])),
         rttMs: session.relay ? Math.round(session.relay.rtt) : 0,
-        players: c ? c.players : Math.max(1, session.peers.size),
-        spectators: c ? c.spectators : 0,
+        players: c ? c.players : Array.from(session.rosterMap.values()).filter((r) => r.role !== ROLE_SPECTATOR).length,
+        spectators: c ? c.spectators : Array.from(session.rosterMap.values()).filter((r) => r.role === ROLE_SPECTATOR).length,
         cap: PLAYER_CAP, specCap: SPECTATOR_CAP,
         code: session.code || '',
         link: session.link || '',

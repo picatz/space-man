@@ -700,6 +700,8 @@
       <div id="roomLogLines"></div>
     </details>
     <div class="roster" id="roomRoster"></div>
+    <p class="room-relay" id="roomStatus" role="status"></p>
+    <button class="btn" id="btnRoomPlay">Start Together</button>
     <div class="toggle-row" id="roomApproveRow">
       <span>Approve Joins</span>
       <button class="switch" id="roomApprove" role="switch" aria-label="Approve joins"></button>
@@ -910,7 +912,7 @@ const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-m
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) });
 let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, autorun: false, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
-  netGhosts: 0.55, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
+  netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
 // G: default AUTO-RUN (touch) to OFF — touch movement is free left/right, no
 // forced forward. Legacy profiles persisted autorun:true from the old default,
 // so a key-presence check can't tell "chose it" from "got the old default".
@@ -920,7 +922,7 @@ let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: le
 if (loadJSON(LS.autorunReset, null) !== 1) { settings.autorun = false; saveJSON(LS.autorunReset, 1); }
 // Net settings sanitized here (schema v5 will own this): opacity clamps to 0.25–1,
 // mode falls back to 'default' for any unknown value.
-settings.netGhosts = Math.min(1, Math.max(0.25, (typeof settings.netGhosts === 'number' && isFinite(settings.netGhosts)) ? settings.netGhosts : 0.55));
+settings.netGhosts = Math.min(1, Math.max(0.25, (typeof settings.netGhosts === 'number' && isFinite(settings.netGhosts)) ? settings.netGhosts : 0.85));
 settings.netEmotes = settings.netEmotes !== false;
 settings.netApprove = settings.netApprove === true;
 if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
@@ -1756,6 +1758,11 @@ function onKey(e, down) {
     // Run Together emotes (§4.6): digits 1-6 in play/dead, only while netLive and
     // never while the initials overlay is swallowing keys. Solo: no NET, no-op.
     if (k >= '1' && k <= '6' && netInRun() && !$('ovInitials').classList.contains('show')) { sendEmote(+k - 1); return; }
+    if (netSpectating() && netInRun()) {
+      if (k === 'arrowleft' || k === 'a') { cycleWatch(-1); return; }
+      if (k === 'arrowright' || k === 'd') { cycleWatch(1); return; }
+      if (k === 'enter') { startRun(); return; }
+    }
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
@@ -2050,7 +2057,8 @@ function addEnemyOn(plat, distHere, mercyOn) {
   let type = 'patrol';
   if (B.shooter && rng() < 0.4) {
     let ok = true;
-    for (const e of G.enemies) if (e.type === 'shoot' && Math.abs(e.x - (plat.x + plat.w / 2)) < 400) ok = false;
+    if (G.worldRng) ok = Math.abs(G.worldLastShooterX - (plat.x + plat.w / 2)) >= 400;
+    else for (const e of G.enemies) if (e.type === 'shoot' && Math.abs(e.x - (plat.x + plat.w / 2)) < 400) ok = false;
     if (ok) type = 'shoot';
   }
   const ex = plat.x + rnd(plat.w * 0.25, plat.w * 0.75);
@@ -2060,6 +2068,7 @@ function addEnemyOn(plat, distHere, mercyOn) {
     const high = G.band >= 4 && rng() < 0.3;
     const sy = plat.y - (high ? 90 : 34);
     const sx = high ? plat.x + (rng() < 0.5 ? plat.w * 0.12 : plat.w * 0.88) : ex;
+    G.worldLastShooterX = sx;
     G.enemies.push({ type: 'shoot', x: sx, y: sy, px: sx, py: sy, baseY: sy, w: 26, h: 24, dir: 1,
       fireT: rnd(0.6, B.shootIvl), telegraph: 0, dead: false, squash: 0, bob: rng() * TAU, lookX: 0, lookY: 0 });
   } else {
@@ -2079,6 +2088,13 @@ function addEnemyOn(plat, distHere, mercyOn) {
 }
 
 function generateAhead() {
+  // Gameplay particles, kills, and personal history must never fork the course.
+  if (!G.worldRng) return generateWorldAhead();
+  const gameplayRng = rng;
+  rng = G.worldRng;
+  try { generateWorldAhead(); } finally { rng = gameplayRng; }
+}
+function generateWorldAhead() {
   // Fixed, player-relative lookahead (never view.w). Enemies' fire timers start when they
   // spawn, so spawning must happen at the same player-distance on every viewport or the
   // seeded run diverges. 1400px comfortably covers the widest view without visible pop-in.
@@ -2150,6 +2166,8 @@ function seedRng(seed) { rng = (seed === null || seed === undefined) ? Math.rand
 
 function resetRun(seed) {
   seedRng(seed);
+  G.worldRng = netLive() && !NET.mockActive ? mulberry32((seed >>> 0) ^ 0x574F524C) : null;
+  G.worldLastShooterX = -Infinity;
   // World is anchored to a FIXED reference height (not view.h) so a given seed produces
   // the identical layout on phone (360) and tablet/desktop (400). view.h only controls
   // how much of that world is visible, never the layout — keeping QA fully deterministic.
@@ -2217,7 +2235,7 @@ function resetRun(seed) {
   G.glanceIn = 4; G.glanceAlt = false;
   G.sectorFadeT = 999; G.themeHueFrom = G.themeHueTo = BAND_HUE[0];
   // A human profile's deadStreak must never fork a seeded #shot world.
-  G.frameCount = 0; G.runStart = G.time; G.prevBest = bestScore; G.mercy = stats.mercy && !SHOT;
+  G.frameCount = 0; G.runStart = G.time; G.prevBest = bestScore; G.mercy = stats.mercy && !SHOT && !G.worldRng;
   G.mercyLvl = G.mercy ? clamp(stats.deadStreak - 2, 1, 3) : 0;
   G.pbFlagX = stats.bestDist > 0 ? G.startX + stats.bestDist * 10 : null;
   G.hints = [];
@@ -2261,7 +2279,9 @@ function seatMidRound(elapsedMs) {
   // 1. Shared flare world-x from the round clock — the SAME integration
   //    updateFlareShared steps per frame (one helper, never forked).
   const flare = sharedFlareXAt(elapsedMs, fs.x0);
-  const targetX = flare.x + CFG.flareStartBehind;      // normal, survivable gap behind
+  const maxCrewX = G.startX + Math.max(0, elapsedMs) * 0.57 + 1500; // boosted speed + protocol slack
+  const crew = NET.presence().filter((s) => !s.you && s.runId === NET.info().runId && (s.state & 8) && !(s.state & 4) && s.x > flare.x + 200 && s.x <= maxCrewX).sort((a, b) => a.x - b.x);
+  const targetX = crew.length ? crew[Math.floor(crew.length / 2)].x : flare.x + CFG.flareStartBehind;
   // 2. Burst-generate the seeded world forward until it covers target + lookahead.
   //    generateAhead streams off the same seeded rng the team used and only keys on
   //    genX / startX / the last platform, so chunked catch-up yields the IDENTICAL
@@ -2300,7 +2320,26 @@ function seatMidRound(elapsedMs) {
   // (everything behind the flare); genX is intact so streaming continues correctly.
 }
 
-function startRun() {
+function startRun(options) {
+  const opts = options || {};
+  if (netLive() && !NET.mockActive) {
+    if (!opts.watch && netSpectating()) {
+      if (G.rolePending) return;
+      G.rolePending = true;
+      NET.setRole(0).then((ok) => {
+        G.rolePending = false;
+        if (ok && netLive()) startRun(opts);
+        else queueToast('Still watching — player slots may be full. Try again shortly.', 'net');
+      });
+      return;
+    }
+    if (!opts.sync && NET.info().isHost && (!netRoundActive() || (G.mode === 'dead' && !anyLiveRunner()))) {
+      G.netParticipating = true; G.netRoundAnchored = false;
+      NET.startRound({ newSeed: netRoundActive(), delayMs: 3000 });
+      return;
+    }
+  }
+  cancelDeathAnim(); Audio.killSting();
   Audio.ensure(); Audio.resume(); hideAllOverlays();
   // sprout-hat calendar: distinct play days, capped at 7 date strings
   const day = new Date().toISOString().slice(0, 10);
@@ -2309,24 +2348,24 @@ function startRun() {
   // Run Together (D7): in a live room the world seed is host-owned — adopt it so
   // every peer runs the same course (New Round resyncs here on the next run).
   // Solo play and #shot goldens never enter this branch, so they stay identical.
-  const seed = SHOT_SEED !== null ? SHOT_SEED : ((netLive() && NET.info().seed) ? (NET.info().seed >>> 0) : (Math.random() * 1e9) | 0);
+  const seed = SHOT_SEED !== null ? SHOT_SEED : (netLive() ? (NET.info().seed >>> 0) : (Math.random() * 1e9) | 0);
   // Drop any buffered jump/held keys from the restart keypress itself, or the
   // astronaut performs an involuntary full jump on frame 1 of every run.
   clearInput();
   resetRun(seed);
   Audio.musicReset(seed);
-  // Run Together role at run start (Addendum A): a sit-out watches THIS round,
-  // then the next run auto-jumps back in; otherwise starting a run IS the jump-in.
+  // Explicit Watch preserves spectator role across rounds. Join Run waits for
+  // the host-confirmed player role before starting a local simulation.
   if (netLive()) {
-    if (sitOutNext) sitOutNext = false;                       // consume the one-round sit-out
-    else if (NET.info().role === 1) { try { NET.setRole(0); } catch (e) {} announce('Now playing.'); }
+    G.netParticipating = true;
+    G.netRunId = NET.info().runId;
+    G.netRoundAnchored = netRoundActive();
     slipRun = 0; slipT = 0;
     // Shared-round clock (§4.1): the HOST anchors the round the first time it runs
     // (idempotent per runId — a New Round resets it), so peers already in the room
     // sync to this course. A guest is a read-only mirror: it anchors only from the
     // host-authenticated ROUND (arriving on join, on New Round, or already held —
     // Play-Again keeps localRoundT0, so its flare continues from shared elapsed).
-    if (NET.info().isHost && NET.markRoundStart) { try { NET.markRoundStart(0); } catch (e) {} }
     // Mid-round join / rejoin: once the shared round is anchored past pre-roll, the
     // fresh resetRun spawn sits behind the advanced flare and dies instantly. Re-seat
     // the player INTO the run, ahead of the shared flare on the team's seeded ground.
@@ -3123,6 +3162,14 @@ function finalizeDeath() {
 function update() {
   G.frameCount++;
   if (G.mode === 'play') {
+    if (netLive() && !NET.mockActive) {
+      const rc = NET.roundClock();
+      // Everybody holds the start line until the same host-owned countdown ends.
+      if (!rc || !rc.active || rc.startInMs > 0) {
+        clearInput(); sendLocalPresence(); finishTick(); return;
+      }
+      if (netSpectating()) { updateSpectator(); finishTick(); return; }
+    }
     if (input.shoot || input.shootBtn.pressed) { tryShoot(); input.shoot = false; }
     if (G.cooldown > 0) G.cooldown--;
     updatePlayer();
@@ -4662,6 +4709,7 @@ function medalGlyphs() {
 }
 
 function showAttract() {
+  G.netParticipating = false;
   hideAllOverlays();
   const meta = $('tmeta'); if (meta) meta.content = '#060818';
   netLabelPlayButton();
@@ -5089,6 +5137,11 @@ function getCallsign() {
 }
 function hasCallsign() { return !!getCallsign(); }
 function applyCallsignToNet() { const c = getCallsign(); if (c && NET) NET.setCallsign(c[0], c[1]); }
+function netIdentity() {
+  const c = getCallsign();
+  return { adjIdx: c ? c[0] : undefined, nounIdx: c ? c[1] : undefined,
+    suit: Math.max(0, SUIT_ORDER.indexOf(G.cosmetics.suit)), hat: Math.max(0, HAT_ORDER.indexOf(G.cosmetics.hat)) };
+}
 
 let callsignSel = [0, 0];
 function callsignData() { return window.SpaceManCallsigns || { adj: ['PLAYER'], noun: ['ONE'], deny: [] }; }
@@ -5265,6 +5318,8 @@ function renderRoomCard() {
   $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · <span class="num">' + (info.rttMs | 0) + 'ms</span>';
   renderMobilityLog();
   renderRoster(roster, isHost);
+  $('btnRoomPlay').textContent = netRoundActive() ? (info.role === 1 ? 'Watch Round' : 'Join Round') : (isHost ? 'Start Together' : 'Ready to Run');
+  $('roomStatus').textContent = netRoundActive() ? 'A round is in progress. Jump in with the crew.' : (isHost ? 'Invite your crew, then start a shared countdown.' : 'You’re connected. Ready up and wait for the host to start.');
   if (isHost) renderPendingJoins();
 }
 function copyRoomLink() {
@@ -5301,7 +5356,7 @@ async function openRoomFlow() {
     const relayDir = { mode: settings.netRelayMode };
     if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
     else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-    await NET.openRoom({ relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove });
+    await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove });
     applyCallsignToNet();
     renderRoomCard();
     announce('Room created. Invite link ready.');
@@ -5313,6 +5368,9 @@ async function openRoomFlow() {
 }
 function leaveRoom() {
   try { NET.leave(); } catch (e) {}
+  for (const g of ghosts) freeGhost(g);
+  spec.watchP = 0; spec.cameraP = 0;
+  G.netRunId = 0; G.netRoundAnchored = false;
   announce('Left the room.');
   showAttract();
 }
@@ -5346,6 +5404,7 @@ function rejectMessage(e) {
   if (/expired/i.test(m)) return 'This invite has expired.';
   if (/scan|right/i.test(m)) return "This link doesn't look right.";
   if (/full/i.test(m)) return 'This room is full.';
+  if (/admit|declined|cancelled/i.test(m)) return m;
   return 'relay unreachable — the room may have ended, or your network blocks it. A host can supply a custom relay in Settings.';
 }
 async function acceptInvite(role) {
@@ -5364,16 +5423,15 @@ async function acceptInvite(role) {
   $('btnJoinNotNow').style.display = 'none';
   setJoinState('Joining…');
   try {
-    await NET.acceptJoin(joinPayload, { role: role });
-    applyCallsignToNet();
-    if (role === 1) NET.setRole(1);
+    await NET.acceptJoin(joinPayload, { ...netIdentity(), role });
     const info = NET.info();
     if (info.city) setJoinState('Joining… relay ' + info.city);
-    if ((info.caps || 0) && settings && false) { /* placeholder */ }
     announce('Joined the room.');
     renderRoomCard();
-    hideAllOverlays(); showOverlay('ovRoom');
+    startRun({ watch: role === 1, sync: true });
   } catch (e) {
+    $('joinChoices').style.display = '';
+    $('btnJoinNotNow').style.display = '';
     setJoinState(rejectMessage(e));
   }
 }
@@ -5501,7 +5559,6 @@ const ghostByP = new Map();
 const EMOTE_GLYPH = ['👋', '😂', '💀', '❤', 'GG', '😱'];   // 0 wave 1 laugh 2 skull 3 heart 4 GG 5 panic (§4.6)
 const spec = { watchP: 0, tour: false, tourAt: 0 };        // spectator follow/TOUR state
 let selfEmote = { id: -1, t: 0, seq: 0 };
-let sitOutNext = false;                                     // "SPECTATE THIS ROUND" armed → sit out at next run start
 let slipT = 0, slipRun = 0;                                // slipstream dwell + per-run bonus cap
 
 // A single monotonic ms clock for interpolation. Under a shot/mock the wall clock
@@ -5531,7 +5588,7 @@ function anyLiveRunner() {
   const myP = NET.info().myP;
   for (const s of NET.presence()) {
     if (s.you || s.p === myP || s.spectator) continue;
-    if ((s.state & 8) && !(s.state & 4)) return true;   // inRun bit set, dead bit clear
+    if (s.runId === NET.info().runId && (s.state & 8) && !(s.state & 4)) return true;
   }
   return false;
 }
@@ -5631,12 +5688,13 @@ function netTick(dt) {
   if (netSpectating() && spec.tour && now - spec.tourAt >= 6000) directorPick(now);
   if (netSpectating() && !validWatch()) { const g = firstGhost(); if (g) { spec.watchP = g.p; } }
 }
-function firstGhost() { for (const g of ghosts) if (g.active) return g; return null; }
-function watchedGhost() { const g = ghostByP.get(spec.watchP); return (g && g.active) ? g : null; }
+function watchable(g) { return g && g.active && g.inRun && !g.dead && netClock() - g.lastSeen < 1800 && (NET.mockActive || g.runId === NET.info().runId); }
+function firstGhost() { for (const g of ghosts) if (watchable(g)) return g; return null; }
+function watchedGhost() { const g = ghostByP.get(spec.watchP); return watchable(g) ? g : null; }
 function validWatch() { return !!watchedGhost(); }
 function directorPick(now) {
   let best = null, bestKey = -1;
-  for (const g of ghosts) if (g.active) {
+  for (const g of ghosts) if (watchable(g)) {
     const key = g.dist;                                     // leader = furthest; ties settle by P#
     if (key > bestKey) { bestKey = key; best = g; }
   }
@@ -5644,7 +5702,7 @@ function directorPick(now) {
   else spec.tourAt = now;
 }
 function cycleWatch(dir) {
-  const live = ghosts.filter((g) => g.active).sort((a, b) => a.p - b.p);
+  const live = ghosts.filter(watchable).sort((a, b) => a.p - b.p);
   if (!live.length) return;
   let i = live.findIndex((g) => g.p === spec.watchP);
   i = (i < 0 ? 0 : i + dir + live.length) % live.length;
@@ -5655,6 +5713,39 @@ function netFollowCamera() {
   const tx = (g.t1 ? g.x1 : g.rx) - view.w * 0.42, ty = (g.t1 ? g.y1 : g.ry) - view.h * (view.h > view.w ? 0.64 : 0.58);
   G.camX += (tx - G.camX) * 0.10;
   G.camY += (ty - G.camY) * 0.08;
+}
+
+function sendLocalPresence() {
+  if (!netLive() || netSpectating() || !G.player || G.frameCount % 6) return;
+  const p = G.player;
+  NET.sendPresence(p.x + p.w / 2, p.y + p.h / 2, (p.vx * 10) | 0,
+    (p.facing > 0 ? 1 : 0) | (p.onGround ? 2 : 0) | 8, G.chain, Math.floor(G.score), G.dist);
+}
+
+function updateSpectator() {
+  // The local actor is only a world-generation cursor. Never simulate its
+  // movement, collisions, pickups, score, or death while watching someone else.
+  const g = watchedGhost() || firstGhost();
+  clearInput();
+  if (!g) { G.camXprev = G.camX; G.camYprev = G.camY; return; }
+  spec.watchP = g.p;
+  if (G.platforms.length && g.x1 < G.platforms[0].x) resetRun(NET.info().seed);
+  const p = G.player;
+  let budget = 128;
+  while (G.genX < g.x1 + 1400 && budget-- > 0) { p.x = Math.min(g.x1, G.genX); generateAhead(); }
+  p.x = p.px = g.x1 - p.w / 2; p.y = p.py = g.y1 - p.h / 2;
+  G.dist = g.dist; G.band = bandFor(g.dist);
+  G.camXprev = G.camX; G.camYprev = G.camY;
+  if (spec.cameraP !== g.p) {
+    G.camX = G.camXprev = g.x1 - view.w * 0.42;
+    G.camY = G.camYprev = g.y1 - view.h * (view.h > view.w ? 0.64 : 0.58);
+    spec.cameraP = g.p;
+  }
+  netFollowCamera();
+  updateFlareShared();
+  // Keep the replicated course bounded, including when switching far ahead.
+  G.enemies = G.enemies.filter((e) => e.x > p.x - 900);
+  G.pickups = G.pickups.filter((k) => k.x > p.x - 900);
 }
 
 /* ---- ghost render: reuse drawPlayer via a scratch actor (Stage-D arms, suit,
@@ -5699,7 +5790,7 @@ function drawGhosts(alpha, iCamX) {
     const targetA = (now - g.lastSeen > 1800) ? 0 : 1;   // fade a stalled/gone peer out promptly (§4.4)
     g.alpha += (targetA - g.alpha) * 0.12;
     if (g.alpha < 0.02) continue;
-    if (Math.abs(g.rx - iCamX) > view.w / 2 + 120) continue;   // cull off-camera
+    if (g.rx < iCamX - 120 || g.rx > iCamX + view.w + 120) continue;
     drawGhostActor(g);
   }
   // Own emote bubble echoes locally over the live sprite (§4.6).
@@ -5712,7 +5803,7 @@ function drawGhostActor(g) {
   }
   const a = ghostActor;
   a.x = a.px = g.rx - CFG.pw / 2; a.y = a.py = g.ry - CFG.ph / 2;
-  a.vx = Math.abs(g.vx) * 6 * g.facing; a.facing = g.facing; a.onGround = g.onGround;
+  a.vx = Math.abs(g.vx) / 10 * g.facing; a.facing = g.facing; a.onGround = g.onGround;
   a.vy = g.onGround ? 0 : 30; a.pose = g.onGround ? 4 : 0;
   a.runCycle = g.rx * 0.03;                                 // deterministic gait from world-x — no rng, no per-ghost timer
   a.sqX = 1; a.sqY = 1; a.landDip = 0; a.glint = 0; a.idle = 0;
@@ -5769,6 +5860,8 @@ let _specHits = null, _unstableHit = null;
 function drawNetHUD() {
   if (!netInRun()) return;
   if (netSpectating()) drawSpectatorHUD(); else { _specHits = null; }
+  drawRoundStatus();
+  if (!netSpectating()) drawCrewDirections();
   if (emWheel.open) drawEmoteWheel();
   if (netLive() && NET.info().unstable) drawUnstableBanner(); else _unstableHit = null;
 }
@@ -5782,7 +5875,8 @@ function drawRaceStrip() {
   const us = uiScale(), x = 12, y = 12 + safeInset('top'), w = view.w - 24, h = 26;
   const runners = raceRunners(); if (!runners.length) return;
   let maxX = -Infinity; for (const r of runners) if (r.x > maxX) maxX = r.x;
-  const right = Math.max(maxX + 200, G.flare.x + 400), left = right - 20000;   // ~2000m window (10px/m)
+  const right = Math.max(maxX + 200, G.flare.x + 400);
+  const left = Math.min(right - 1000, G.flare.x - 100, ...runners.map((r) => r.x - 100));
   const sx = (wx) => x + clamp((wx - left) / (right - left), 0, 1) * w;
   ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
   ctx.strokeStyle = 'rgba(56,225,255,0.18)'; ctx.lineWidth = 1; ctx.stroke();
@@ -5802,41 +5896,53 @@ function drawRaceStrip() {
   }
   ctx.textBaseline = 'alphabetic';
 }
+function drawRoundStatus() {
+  if (NET.mockActive) return;
+  const rc = NET.roundClock();
+  const waiting = !rc || !rc.active;
+  const counting = rc && rc.startInMs > 0;
+  if (!waiting && !counting) return;
+  const us = uiScale(), x = view.w / 2, y = view.h * 0.42;
+  ctx.fillStyle = 'rgba(6,12,30,.88)'; roundRect(x - 145 * us, y - 36 * us, 290 * us, 94 * us, 12); ctx.fill();
+  ctx.textAlign = 'center';
+  drawGlowText(waiting ? 'CREW CONNECTED' : String(Math.ceil(rc.startInMs / 1000)), x, y, (waiting ? 17 : 36) * us, '#38E1FF', '#F4F7FF');
+  ctx.fillStyle = '#CFE3FF'; ctx.font = '600 ' + 11 * us + 'px ' + FONT_NUM;
+  ctx.fillText(waiting ? 'Waiting for the host to start together' : 'GET READY · SAME COURSE, SAME START', x, y + 25 * us);
+  ctx.fillText(NET.info().players + ' runners · ' + NET.info().spectators + ' watching', x, y + 43 * us);
+}
+function drawCrewDirections() {
+  const us = uiScale(), y = view.h * 0.38;
+  for (const dir of [-1, 1]) {
+    const candidates = ghosts.filter((g) => watchable(g) && (dir < 0 ? g.rx < G.camX : g.rx > G.camX + view.w));
+    candidates.sort((a, b) => Math.abs(a.rx - G.player.x) - Math.abs(b.rx - G.player.x));
+    const g = candidates[0]; if (!g) continue;
+    const x = dir < 0 ? 12 : view.w - 12;
+    ctx.textAlign = dir < 0 ? 'left' : 'right';
+    ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + 11 * us + 'px ' + FONT_NUM;
+    const distance = Math.round(Math.abs(g.rx - G.player.x) / 10);
+    ctx.fillText((dir < 0 ? '‹ ' : '') + (g.callsign || 'P' + g.p) + ' · ' + distance + 'm' + (dir > 0 ? ' ›' : ''), x, y, view.w * 0.42);
+  }
+}
 function drawSpectatorHUD() {
-  const us = uiScale(), left = 12 + safeInset('left');
-  const ps = 30 * us, pitch = Math.max(48 * view.w / window.innerWidth, ps + 10 * us);
-  const ox = left + pitch + ps + 8 * us, topY = 44 + safeInset('top');   // clears the strip, which now respects the notch too
-  const g = watchedGhost();
-  const call = g ? (g.callsign || ('P' + g.p)) : '—';
-  const board = NET.board(); let rank = 0; if (g) { const sorted = board.slice().sort((a, b) => b.bestDist - a.bestDist); rank = sorted.findIndex((b) => b.p === g.p) + 1; }
-  const rankTxt = rank ? (rank + (['ST', 'ND', 'RD'][rank - 1] || 'TH')) : '—';
-  const distM = g ? Math.round(g.dist) : 0;
-  // WATCHING banner
-  ctx.textAlign = 'left';
-  drawGlowText('WATCHING ' + call, ox, topY + 15 * us, 13 * us, '#38E1FF', '#F4F7FF');
-  ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + (10 * us) + 'px ' + FONT_NUM;
-  ctx.fillText(rankTxt + ' · ' + distM + 'm', ox, topY + 30 * us);
-  // follow arrows (hit-padded ≥44px)
+  const us = uiScale(), g = watchedGhost(), left = 12 + safeInset('left');
+  const y = 60 + safeInset('top');
+  ctx.textAlign = 'center'; ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + 13 * us + 'px ' + FONT_NUM;
+  ctx.fillText(g ? 'WATCHING ' + (g.callsign || 'P' + g.p) : 'WAITING FOR A RUNNER', view.w / 2, y, view.w - 2 * left);
+  ctx.font = '600 ' + 11 * us + 'px ' + FONT_NUM;
+  ctx.fillText(g ? Math.round(g.dist) + 'm · ' + Math.floor(g.score) + ' points' : 'Stay here for the next round, or join the run', view.w / 2, y + 18 * us, view.w - 2 * left);
   const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
-  ctx.fillStyle = '#CFE3FF'; ctx.font = '700 ' + (16 * us) + 'px ' + FONT;
-  const ay = topY + 15 * us;
-  ctx.fillText('‹', ox - 20 * us, ay); const lw = ctx.measureText('WATCHING ' + call).width;
-  ctx.fillText('›', ox + 150 * us, ay);
-  const hh = Math.max(ps * ky / 2 + 8, 22), pad = Math.max(20 * us * kx, 22);
-  const cyH = ay * ky;
-  _specHits = {
-    prev: { x0: (ox - 30 * us) * kx, x1: (ox - 8 * us) * kx, y0: cyH - hh, y1: cyH + hh },
-    next: { x0: (ox + 142 * us) * kx, x1: (ox + 168 * us) * kx, y0: cyH - hh, y1: cyH + hh },
-    tour: null,
-  };
-  // TOUR toggle pill (top-right where AMMO sits)
-  const tw = 54 * us, th = 20 * us, tx = view.w - left - tw, tyy = topY;
-  ctx.fillStyle = spec.tour ? '#38E1FF' : 'rgba(10,14,32,0.62)';
-  roundRect(tx, tyy, tw, th, th / 2); ctx.fill();
-  if (!spec.tour) { ctx.strokeStyle = 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke(); }
-  ctx.fillStyle = spec.tour ? '#06122A' : '#CFE3FF'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('TOUR', tx + tw / 2, tyy + th / 2 + 0.5); ctx.textBaseline = 'alphabetic';
-  _specHits.tour = { x0: tx * kx - 6, x1: (tx + tw) * kx + 6, y0: tyy * ky - 6, y1: (tyy + th) * ky + 6 };
+  const labels = [['prev', '‹ PREV'], ['next', 'NEXT ›'], ['tour', spec.tour ? 'TOUR ON' : 'TOUR'], ['play', G.rolePending ? 'JOINING…' : 'JOIN RUN']];
+  const w = (view.w - 2 * left - 18) / 4, h = Math.max(32 * us, 44 / ky), by = view.h - safeInset('bottom') - h - 12;
+  _specHits = {};
+  labels.forEach(([key, label], i) => {
+    const x = left + i * (w + 6);
+    ctx.fillStyle = key === 'play' || (key === 'tour' && spec.tour) ? '#38E1FF' : 'rgba(10,14,32,.9)';
+    roundRect(x, by, w, h, 8); ctx.fill();
+    ctx.fillStyle = key === 'play' || (key === 'tour' && spec.tour) ? '#06122A' : '#CFE3FF';
+    ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
+    ctx.fillText(label, x + w / 2, by + h / 2 + 4 * us, w - 8);
+    _specHits[key] = { x0: x * kx, x1: (x + w) * kx, y0: by * ky, y1: (by + h) * ky };
+  });
 }
 function drawUnstableBanner() {
   const us = uiScale(), y = safeInset('top') + 76 * us, x = view.w / 2;   // below the strip + shifted HUD chain line
@@ -5860,6 +5966,7 @@ function netPointerDown(e) {
   if (_unstableHit && inRect(p, _unstableHit)) { leaveRoom(); return true; }
   if (netSpectating()) {
     if (_specHits) {
+      if (inRect(p, _specHits.play)) { startRun(); return true; }
       if (inRect(p, _specHits.prev)) { cycleWatch(-1); return true; }
       if (inRect(p, _specHits.next)) { cycleWatch(1); return true; }
       if (_specHits.tour && inRect(p, _specHits.tour)) { spec.tour = !spec.tour; spec.tourAt = netClock(); return true; }
@@ -5942,7 +6049,7 @@ function netLabelPlayButton() {
   if (!netLive() || NET.mockActive) { b.textContent = matchMedia('(pointer: coarse)').matches ? 'Tap to Start' : 'Press Space'; b.removeAttribute('aria-label'); return; }
   if (NET.info().isHost) { b.textContent = 'Start Round'; b.setAttribute('aria-label', 'Start the round — everyone runs this course together.'); }
   else if (netRoundActive()) { b.textContent = 'Join Round'; b.setAttribute('aria-label', 'Join the round already in progress.'); }
-  else { b.textContent = 'Start Run'; b.setAttribute('aria-label', 'Start a run — you sync to the round when the host starts it.'); }
+  else { b.textContent = 'Ready to Run'; b.setAttribute('aria-label', 'Wait at the start line for the host’s countdown.'); }
 }
 function netLabelAgainButton() {
   const b = $('btnAgain'); if (!b) return;
@@ -5977,13 +6084,10 @@ function renderRoomBoard() {
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 /* ---- sit-out (SPECTATE THIS ROUND) / jump-in ---- */
-function spectateThisRound() {
+async function spectateThisRound() {
   if (!netLive()) return;
-  try { NET.setRole(1); } catch (e) {}
-  sitOutNext = true;
-  announce('Now spectating.');
-  if (G.mode === 'pause') { togglePause(); }
-  else if (G.mode === 'dead') { /* sits out; next run starts as spectator */ }
+  if (await NET.setRole(1)) { startRun({ watch: true, sync: true }); announce('Now spectating.'); }
+  else queueToast('Unable to switch yet. Try again shortly.', 'net');
 }
 $('btnSpectateRound').onclick = () => spectateThisRound();
 $('btnPauseSpectate').onclick = () => spectateThisRound();
@@ -6018,6 +6122,7 @@ $('btnInitialsOk').onclick = () => commitInitials();
 $('btnTogether').onclick = () => openRoomFlow();
 $('btnRoomCopy').onclick = () => copyRoomLink();
 $('btnRoomShare').onclick = () => shareRoomLink();
+$('btnRoomPlay').onclick = () => startRun({ watch: netSpectating() });
 $('btnRoomBack').onclick = () => showAttract();               // Back keeps the session alive
 $('btnRoomLeave').onclick = () => leaveRoom();
 $('btnRoomNewLink').onclick = () => { try { NET.rotateLink(); } catch (e) {} renderRoomCard(); queueToast('New invite link ready', 'net'); announce('New invite link ready.'); };   // rotate bumps the epoch → prior invites go stale (I16); card re-reads the fresh link/code/QR
@@ -6033,7 +6138,7 @@ $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
   if (e === 'reconnecting') announce('Reconnecting.');
-  else if (e === 'bye') announce('Removed from the room.');
+  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast('The host ended your room connection.', 'net'); }
   else if (e === 'approve-wait') {   // a held join is waiting for the host (§4.6)
     if (d && d.pubHex) { pendingJoins.set(d.pubHex, { pubHex: d.pubHex, role: d.role }); queueToast('Someone wants to join', 'net'); announce('Someone wants to join.'); }
     if (netLive()) renderRoomCard();
@@ -6043,7 +6148,12 @@ if (NET) NET.onEvent((e, d) => {
   else if (e === 'emote') netEmoteToast(d);
   // Shared-round clock (§4.1): a genuinely NEW round (pre-roll countdown) toasts;
   // the targeted anchor a joiner/reconnector receives (startInMs 0) stays silent.
-  else if (e === 'round' || e === 'round-begin') { if (d && d.startInMs > 0) netRoundToast(d); }
+  else if (e === 'round' || e === 'round-begin') {
+    if (netLive() && d && (G.netParticipating || $('ovRoom').classList.contains('show')) &&
+        (G.netRunId !== d.runId || !G.netRoundAnchored)) startRun({ watch: netSpectating(), sync: true });
+    if (d && d.startInMs > 0) netRoundToast(d);
+  }
+  else if (e === 'join') { netPeerToast(d, 'joined'); if (netLive()) renderRoomCard(); }
   // Clean disconnect (§4.4): the host surfaces a peer's departure/return.
   else if (e === 'leave') { netPeerToast(d, 'left'); if (netLive()) renderRoomCard(); }
   else if (e === 'rejoin') { netPeerToast(d, 'reconnected'); if (netLive()) renderRoomCard(); }
