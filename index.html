@@ -5375,6 +5375,7 @@ function leaveRoom() {
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
   pendingJoins.clear();                                     // held joins belong to the room we just left
+  resetRoundResults(0);
   spec.watchP = 0; spec.cameraP = 0;
   G.netRunId = 0; G.netRoundAnchored = false;
   announce('Left the room.');
@@ -5608,6 +5609,9 @@ function liveRunnerCount() {
 // mock never feeds it, so the net goldens stay identical).
 const roundResults = new Map();
 let roundResultsRunId = 0, roundResultKey = '';
+// Every room starts again at runId 1, so leaving a room must clear the field
+// too; keying on runId alone would carry old runners into the next room.
+function resetRoundResults(runId) { roundResults.clear(); roundResultsRunId = runId; roundResultKey = ''; }
 function roundFeed(p, callsign, dist, score, dead, you) {
   let r = roundResults.get(p);
   if (!r) { r = { p, callsign: '', dist: 0, score: 0, dead: false, you: false }; roundResults.set(p, r); }
@@ -5683,7 +5687,7 @@ function netSampleGhosts(now) {
   if (NET.mockActive && NET.mockAnchor) NET.mockAnchor(G.player ? G.player.x + G.player.w / 2 : 0, G.player ? G.player.y + G.player.h / 2 : 0, G.frameCount);
   const pres = NET.presence(), myP = NET.info().myP, seen = ghostSeen; seen.clear();
   const runId = NET.info().runId | 0;
-  if (runId !== roundResultsRunId) { roundResults.clear(); roundResultsRunId = runId; }
+  if (runId !== roundResultsRunId) resetRoundResults(runId);
   for (const s of pres) {
     if (s.you || s.p === myP || s.spectator) continue;      // never ghost the local player / spectators stream none
     seen.add(s.p);

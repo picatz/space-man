@@ -332,3 +332,13 @@ test('a New Round never fans out the host\'s last-run sample under the new runId
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(guest.net.presence().some((p) => p.p === 1 && p.runId === host.net.info().runId), false);
 });
+
+test('round results never carry into the next room, even with a reused runId', async (t) => {
+  const r = await room(t), { host, guest } = r;
+  await start(r);
+  host.run('netTick(0.1)');
+  await until(() => host.run('roundResults.size') >= 1, 'results fed');
+  host.run('leaveRoom()');
+  assert.equal(host.run('roundResults.size'), 0);
+  assert.equal(host.run('roundResultsRunId'), 0);
+});
