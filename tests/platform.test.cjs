@@ -123,3 +123,22 @@ test('adaptive resolution never runs under #shot (fixed-DPR goldens)', (t) => {
   assert.equal(c.run('view.dpr'), 2);
   assert.equal(c.run('SETTINGS_DEF.find((d) => d.key === "sharp").noShot'), true, 'row stays out of the settings goldens');
 });
+
+test('a guarded update reload is deferred, not dropped, and never re-stamps the guard', (t) => {
+  const c = client(relay());
+  t.after(() => c.close());
+  const store = new Map();
+  let reloads = 0;
+  c.context.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
+  c.context.location.reload = () => { reloads++; };
+  c.run("showAttract(); swu.ready = true; swu.readyAt = G.time - 10; swu.reg = null;");
+  const recent = String(Date.now() - 5000);
+  store.set('sm2.swReload', recent);               // the 4s fallback reload just ran
+  c.run('tickUpdate()');
+  assert.equal(reloads, 0);
+  assert.equal(c.run('swu.ready'), true, 'still waiting to apply');
+  assert.equal(store.get('sm2.swReload'), recent, 'a refused attempt must not move the guard');
+  store.set('sm2.swReload', String(Date.now() - 31000));   // guard window has passed
+  c.run('swu.readyAt = G.time - 10; tickUpdate()');
+  assert.equal(reloads, 1);
+});

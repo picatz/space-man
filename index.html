@@ -6296,10 +6296,14 @@ function swSafeMoment() {
 function tickUpdate() {   // once per rAF; cheap until an update is actually waiting
   if (!swu.ready || swu.reloading || G.time - swu.readyAt < 2 || !swSafeMoment()) return;
   // Loop guard: one update reload per 30s per tab, even if a worker keeps
-  // reporting itself waiting (a stuck install must not strobe the title).
+  // reporting itself waiting (a stuck install must not strobe the title). A
+  // guarded attempt is deferred, not dropped — and only a real attempt stamps
+  // the clock, or the 4s fallback reload could keep the update waiting forever.
   let last = 0;
-  try { last = +sessionStorage.getItem('sm2.swReload') || 0; sessionStorage.setItem('sm2.swReload', String(Date.now())); } catch (e) {}
-  if (Date.now() - last < 30000) { swu.ready = false; return; }
+  try { last = +sessionStorage.getItem('sm2.swReload') || 0; } catch (e) {}
+  const wait = 30000 - (Date.now() - last);
+  if (wait > 0) { swu.readyAt = G.time + wait / 1000; return; }
+  try { sessionStorage.setItem('sm2.swReload', String(Date.now())); } catch (e) {}
   swu.reloading = true;
   const waiting = swu.reg && swu.reg.waiting;
   if (waiting) {
