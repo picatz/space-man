@@ -139,3 +139,37 @@ test('a reused P# does not inherit the previous player board', async (t) => {
   assert.equal(next.net.info().myP, 3);
   assert.equal(host.net._n1.session()._board.has(3), false);
 });
+
+test('a full P# range reclaims the longest-absent slot instead of admitting an invisible P33', async (t) => {
+  const { hub, host, link } = await room(t);
+  const hs = host.net._n1.session();
+  // Occupy P3..P32 with members who dropped moments ago (still inside the grace).
+  const hex = host.net._n1.bytes.hex, keyOf = (p) => hex(new Uint8Array(32).fill(p));
+  for (let p = 3; p <= 32; p++) {
+    hs.roster.set(keyOf(p), { p, pub: new Uint8Array(32).fill(p), tag: 'AAA', role: 0, absent: true, absentAt: hub.now() - (40 - p), strikes: 0 });
+  }
+  const g = client(hub, { game: false });
+  t.after(() => g.close());
+  await g.net.acceptJoin(link, { adjIdx: 2, nounIdx: 2 });
+  assert.equal(g.net.info().myP, 3, 'the longest-absent slot (P3) is reused');
+  assert.equal(hs.roster.has(keyOf(3)), false);
+  assert.equal(hs.roster.has(keyOf(4)), true, 'only one slot is reclaimed');
+  await until(() => g.net.roster().some((e) => e.you), 'the newcomer sees itself');
+});
+
+test('the hello loop keeps retrying past five attempts until a WELCOME arrives', async (t) => {
+  const { host, guest } = await room(t);
+  const gs = guest.net._n1.session();
+  let hellos = 0;
+  const send = gs.relay.send.bind(gs.relay);
+  hostRows(host)[0].lastHello = Infinity; // the host drops every re-hello for now
+  drop(guest);
+  await until(() => gs.relay.state === 'established' && gs.helloTimer, 'reconnected and re-helloing');
+  gs.relay.send = (pub, w) => { hellos++; send(pub, w); };
+  // Fire the interval body directly instead of waiting 5.5 s per attempt.
+  for (let i = 0; i < 7; i++) { assert.ok(gs.helloTimer, 'still retrying after ' + (i + 1) + ' attempts'); gs.helloTimer._onTimeout?.(); }
+  hostRows(host)[0].lastHello = 0;
+  gs.helloTimer._onTimeout?.();
+  await until(() => hostRows(host)[0].absent === false, 'finally welcomed');
+  await until(() => !gs.helloTimer || gs.welcomeGen > 0, 'loop ends on WELCOME');
+});

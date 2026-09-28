@@ -1391,7 +1391,7 @@
         S.relay.send(row.pub, await sealApp(row.pair, w));
         // A reconnect after a transport drop: un-hide + re-announce the SAME P#,
         // and re-anchor the reconnecting peer to the live shared round at once.
-        if (row.absent) { row.absent = false; S.ev.emit('rejoin', { p: row.p, tag: row.tag }); sendRoster(1, [row]).catch(() => {}); }
+        if (row.absent) { row.absent = false; S.ev.emit('rejoin', { p: row.p, tag: row.tag }); sendRoster(0).catch(() => {}); }   // full: they missed changes while away
         if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});
         return;
       }
@@ -1449,6 +1449,16 @@
       const used = new Set([1]);
       for (const r of S.roster.values()) used.add(r.p);
       while (used.has(p)) p++;
+      // P# is capped at ROOM_CAP on the wire. Absent rows hold theirs through a
+      // reconnect grace, so when that leaves no slot, the longest-absent row
+      // gives its P# up now; with none absent the room is simply full.
+      if (p > ROOM_CAP) {
+        let oldest = null;
+        for (const r of S.roster.values()) if (r.absent && (!oldest || r.absentAt < oldest.absentAt)) oldest = r;
+        if (!oldest) return false;
+        removeRow(oldest);
+        p = oldest.p;
+      }
       const row = {
         p, pub: srcPub.slice(), tag: h.tag, suit: h.suit, hat: h.hat,
         role: h.role, adjIdx: h.adjIdx, nounIdx: h.nounIdx, caps: h.caps, pair,
@@ -1483,6 +1493,9 @@
     function selfEntry() {
       return { p: 1, pub: S.keys.pub, tag: S.tag, suit: S.suit, hat: S.hat, role: S.role, adjIdx: S.adjIdx, nounIdx: S.nounIdx };
     }
+    // Rows reachable right now. Absent rows (transport dropped) cost a seal per
+    // frame for nothing; a rejoin re-WELCOMEs them and resends the full roster.
+    function members() { return Array.from(S.roster.values()).filter((r) => !r.absent); }
     function allEntries() {
       const out = [selfEntry()];
       for (const r of S.roster.values()) if (!r.absent) out.push({ p: r.p, pub: r.pub, tag: r.tag, suit: r.suit, hat: r.hat, role: r.role, adjIdx: r.adjIdx, nounIdx: r.nounIdx });
@@ -1498,7 +1511,7 @@
       if (!chunks.length) chunks.push([]);
       for (let ci = 0; ci < chunks.length; ci++) {
         const pt = encRoster(S.outRoster, op, ci, chunks.length, chunks[ci]).slice();
-        for (const r of target ? [target] : S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
+        for (const r of target ? [target] : members()) S.relay.send(r.pub, await sealApp(r.pair, pt));
       }
     }
 
@@ -1508,7 +1521,7 @@
     async function broadcastEmoteB(p, emoteId, seq) {
       if (!S.relay || S.relay.state !== 'established') return;
       const pt = encEmoteB(S.out, p, emoteId, seq).slice();
-      for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
+      for (const r of members()) S.relay.send(r.pub, await sealApp(r.pair, pt));
     }
     // ROUND (new-world) broadcast — rides the host-epoch/seq control envelope so
     // a guest CANNOT forge or replay it: encCtrl binds {roomId, hostEpoch, seq}
@@ -1521,7 +1534,7 @@
       const body = encRoundBody(S.seed, S.runId, countdown, 0, startDelayMs, elapsedMs);
       const pt = encCtrl(S.out, A_ROUND, S.roomId, S.hostEpoch, ++S.ctrlSeq, body).slice();
       if (target) { S.relay.send(target.pub, await sealApp(target.pair, pt)); return; }   // targeted anchor for a fresh joiner
-      for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
+      for (const r of members()) S.relay.send(r.pub, await sealApp(r.pair, pt));
     }
 
     async function snapTick() {
@@ -1544,7 +1557,7 @@
       }
       S.rr = live.length ? (S.rr + (SNAP_MAX - 1)) % live.length : 0;
       const pt = encSnap(S.outSnap, (S.tick >> 4) & 0xffff, rows).slice();
-      for (const r of S.roster.values()) {
+      for (const r of members()) {
         S.relay.send(r.pub, await sealApp(r.pair, pt));          // one encode, n seals
       }
       if (S.roster.size) S.ev.emit('snap-out', { n: rows.length, peers: S.roster.size });
@@ -1831,11 +1844,9 @@
     function helloLoop() {
       if (S.helloTimer) clearInterval(S.helloTimer);
       const gen = S.welcomeGen;
-      let tries = 1;
       sendHello().catch(() => {});
       S.helloTimer = setInterval(() => {
-        if (S.welcomeGen !== gen || S.byed != null || tries >= 5) { clearInterval(S.helloTimer); S.helloTimer = null; return; }
-        tries++;
+        if (S.welcomeGen !== gen || S.byed != null) { clearInterval(S.helloTimer); S.helloTimer = null; return; }
         sendHello().catch(() => {});
       }, 5500);                                        // outside the host's 1-per-5s hello limiter
     }
