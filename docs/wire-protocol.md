@@ -882,6 +882,12 @@ from fixed sim constants:
   px/s`; `10 px = 1 m`; generous score ceiling `60 pts/m`.
 - A position delta beyond `VMAX·dt · 4 + 1500 px` (or the vertical equivalent) is a
   **hard teleport → strike**.
+- A fresh movement trace (first sample, a new `runId`, or a live sample right after a dead
+  one) has no delta to check, so its `x` is bounded by the round instead: within `1500 px`
+  behind the spawn line (`x = 30`) up to `VMAX·elapsed · 1.35 + 1500 px` ahead of it,
+  where `elapsed` is the host's own round clock. Outside that range is a **hard teleport →
+  strike**. PRES whose `runId` is not the host's current round is dropped without a strike
+  (it is in flight across a New Round).
 - A softer `dist`-vs-time or `score`-vs-`dist` inconsistency does **not** strike — the row
   renders **dimmed "unverified"** (visible but discounted). A laggy honest client must be
   allowed to live; the dim flag resets each new run.

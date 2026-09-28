@@ -176,12 +176,33 @@ test('new round movement is not rejected as a teleport', async (t) => {
   const { host, guest, hub } = await room(t);
   host.net.startRound({delayMs:0});
   await until(() => guest.net.roundClock()?.active);
+  hub.advance(20000); // 10000px is only reachable after ~13s of a round
   guest.net.sendPresence(10000, 200, 0, 11, 0, 1000, 997);
   await until(() => host.net.presence().some((p) => p.p === 2));
   host.net.newWorld(); await until(() => guest.net.info().runId === host.net.info().runId);
   hub.advance(3100); guest.net.sendPresence(40, 250, 0, 11, 0, 0, 1);
   await until(() => host.net.presence().some((p) => p.p === 2 && p.x === 40));
   assert.equal([...host.net._n1.session().roster.values()][0].strikes, 0);
+});
+
+test('respawns and first samples are bounded by the round, not skipped', async (t) => {
+  const { host, guest, hub } = await room(t);
+  const row = () => [...host.net._n1.session().roster.values()][0];
+  host.net.startRound({delayMs:0});
+  await until(() => guest.net.roundClock()?.active);
+  hub.advance(5000);
+  guest.net.sendPresence(2000, 250, 0, 11, 0, 100, 197);             // plausible after 5s
+  await until(() => host.net.presence().some((p) => p.p === 2 && p.x === 2000));
+  guest.net.sendPresence(2010, 250, 0, 4, 0, 100, 198);              // dies in place
+  await until(() => host.net.presence().some((p) => p.p === 2 && p.x === 2010));
+  assert.equal(row().strikes, 0);
+  hub.advance(100);
+  guest.net.sendPresence(900000, 250, 0, 11, 0, 100, 198);           // "respawns" across the course
+  await until(() => row().strikes === 1, 'respawn teleport strike');
+  assert.ok(!host.net.presence().some((p) => p.p === 2 && p.x === 900000));
+  guest.net.sendPresence(2500, 250, 0, 11, 0, 100, 198);             // honest respawn beside the crew
+  await until(() => host.net.presence().some((p) => p.p === 2 && p.x === 2500));
+  assert.equal(row().strikes, 1);
 });
 
 test('solo still starts immediately and simulates movement', (t) => {

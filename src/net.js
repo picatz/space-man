@@ -1034,7 +1034,13 @@
     TELEPORT_TOL: 4,       // ×tolerance before a position delta is "impossible"
     TELEPORT_SLACK: 1500,  // px slack (spawn, camera warp, interp) before hard-flag
     DIST_TOL: 1.35, DIST_SLACK: 50, SCORE_SLACK: 1000,
+    SPAWN_X: 30,           // world-x of the fixed spawn line (index.html: starter platform x −60 + 90)
   };
+  // prev = the last accepted sample of the SAME movement trace, or null when a
+  // trace starts (first packet, new round, respawn). A fresh trace has nothing
+  // to diff against, so its position is bounded by the round instead: nobody
+  // can be behind the spawn line, or further ahead of it than VMAX allows over
+  // cur.elapsedMs (a late join seats beside the crew, who obey the same cap).
   function checkEnvelope(prev, cur, dtMs) {   // → {teleport, unverified}
     const out = { teleport: false, unverified: false };
     const dt = Math.max(0.001, dtMs / 1000);
@@ -1042,6 +1048,9 @@
       const dx = Math.abs(cur.x - prev.x), dy = Math.abs(cur.y - prev.y);
       if (dx > AC.VMAX_PX * dt * AC.TELEPORT_TOL + AC.TELEPORT_SLACK ||
           dy > AC.VYMAX_PX * dt * AC.TELEPORT_TOL + AC.TELEPORT_SLACK) out.teleport = true;
+    } else {
+      const reach = AC.VMAX_PX * Math.max(0, cur.elapsedMs || 0) / 1000 * AC.DIST_TOL;
+      if (cur.x < AC.SPAWN_X - AC.TELEPORT_SLACK || cur.x > AC.SPAWN_X + reach + AC.TELEPORT_SLACK) out.teleport = true;
     }
     if (cur.elapsedMs > 0) {                  // dist/score vs elapsed run time
       const es = cur.elapsedMs / 1000;
@@ -1298,6 +1307,10 @@
         const pres = decPres(pt, row.pres);
         if (pres.err === 'nan') return strike(row, 'nan');
         if (pres.err) return;
+        // Frames still in flight across a New Round carry the old runId; the
+        // sender restarts on ROUND, so drop them (no strike) rather than let a
+        // stale course position open a fresh trace on the new one.
+        if (pres.runId !== S.runId) return;
         // Anti-cheat envelope (Addendum G.1): hard teleport → strike; soft
         // dist/score-vs-time inconsistency → dim the row "unverified" (no strike).
         // New run → fresh trace: reset the run clock AND the dim flag (the
@@ -1317,9 +1330,13 @@
           row.runT0 = anchorRound ? S.roundT0 : t; row.runId = pres.runId; row.unverified = false;
         }
         pres.elapsedMs = t - row.runT0;
-        // New rounds and respawns start a new movement trace, not a teleport.
-        const freshTrace = row.pres && (pres.runId !== row.pres.runId || ((row.pres.state & 4) && (pres.state & 8)));
-        const env = checkEnvelope(freshTrace ? null : row.pres, pres, row.lastSeen ? t - row.lastSeen : 0);
+        // A trace starts on the first sample, a new round, or a respawn (a dead
+        // sample followed by a live in-run one). It is still bounded: the
+        // envelope then checks the spawn/round reach instead of the delta, so
+        // alternating dead/alive frames cannot teleport a ghost across the course.
+        const prev = row.pres;
+        const freshTrace = !prev || pres.runId !== prev.runId || ((prev.state & 4) && (pres.state & 8) && !(pres.state & 4));
+        const env = checkEnvelope(freshTrace ? null : prev, pres, row.lastSeen ? t - row.lastSeen : 0);
         if (env.teleport) return strike(row, 'teleport');
         if (env.unverified) row.unverified = true;
         row.pres = pres;
