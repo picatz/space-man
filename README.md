@@ -30,6 +30,21 @@ Version 2.0 was a ground-up canvas rewrite designed and built by a Claude
 Fable 5 agent team. It's a fun research project exploring the capabilities
 of AI models for web game development.
 
+## Daily Course and challenges
+
+**Daily Course** on the title screen (or Y / Triangle on a controller) runs the
+same course for everyone in the world that UTC day. The card shows today's best
+and attempts; they start fresh each day, with nothing lost by skipping one.
+
+**Share Run** on the death card sends a short, spoiler-free result plus a link
+(the native share sheet where available, otherwise the clipboard). The link is a
+challenge on the exact same course: `#daily=YYYY-MM-DD&beat=<score>` for a Daily
+Course (accepted up to a week old), or `#seed=<n>&beat=<score>` for any other run.
+Opening one shows the score to beat, the next start plays that course, and the
+HUD carries the target beside your score. Course generation draws from its own
+seeded stream, so kills, effects and misses can never change the course. Runs
+where the mercy assist has eased the course share the game link without a seed.
+
 ## Run Together
 
 Choose **Run Together**, share the QR/link, and press **Start Together** once
@@ -56,15 +71,17 @@ Version 3.3 uses room protocol 2 because room terrain generation changed.
 Refresh both devices and create a fresh room/link after upgrading. Old invites
 show an update prompt instead of connecting incompatible courses.
 
-## Multiplayer regression tests
+## Regression tests
 
-Run `node --test tests/multiplayer.test.cjs` with Node 22 or newer. No dependency
+Run `node --test tests/*.test.cjs` with Node 22 or newer. No dependency
 installation is needed. The harness runs the shipped game in independent JS
 contexts, with real encryption and wire packets through an in-memory relay.
 Only browser APIs and relay transport are substituted. It covers admission,
 retry, complete/chunked rosters, countdowns, shared restart, presence expiry,
 watching, role acknowledgements, late joining, terrain determinism, visibility
-culling, version mismatch and solo behavior.
+culling, version mismatch and solo behavior. `tests/solo.test.cjs` covers the
+Daily Course (identical terrain for everyone on a date), shared-run challenges,
+strict challenge-link parsing and the daily record.
 
 These tests do not verify browser rendering or public relay connectivity. Before
 release, exercise a desktop host + phone player + spectator on separate networks:

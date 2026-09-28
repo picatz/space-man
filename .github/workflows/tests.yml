@@ -1,4 +1,4 @@
-name: Multiplayer regression tests
+name: Regression tests
 on:
   push:
     branches: [main]
@@ -14,4 +14,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/multiplayer.test.cjs
+      - run: node --test tests/*.test.cjs

@@ -455,6 +455,15 @@
   #attractRow { flex-wrap: wrap; }
   #attractRow .btn { flex: 1 1 42%; }
 
+  /* ============ DAILY COURSE + CHALLENGE LINKS ============ */
+  #btnDaily { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  #btnDaily .daily-info { font-family: var(--font-num); font-size: 11px; letter-spacing: 1px; color: var(--gold); text-transform: none; }
+  .challenge-banner {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--gold);
+    border: 1px solid rgba(255, 201, 60, 0.35); background: rgba(255, 201, 60, 0.08);
+    border-radius: 10px; padding: 8px 10px; margin: 0 0 8px;
+  }
+
   .net-sub { font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; margin: 2px 0 10px; }
   .net-sub .num { font-family: var(--font-num); }
 
@@ -561,7 +570,9 @@
   <div class="panel">
     <div id="attractBest" class="title-lg" style="font-size:17px;letter-spacing:2px;color:var(--gold);margin-bottom:4px;">BEST 0</div>
     <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
+    <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
     <button class="btn pulse" id="btnPlay">Tap to Start</button>
+    <button class="btn ghost" id="btnDaily" data-keys style="display:none;"><span>Daily Course</span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="control-guide desktop-guide" aria-label="Keyboard controls">
       <div><b>A D / ← →</b><span>MOVE</span></div>
       <div><b>SPACE</b><span>JUMP</span></div>
@@ -613,12 +624,14 @@
     <div id="deadDelta" class="sub" style="margin:8px 0;font-weight:700;letter-spacing:2px;"></div>
     <div id="deadStats" class="stats-line" style="opacity:0.8;"></div>
     <div id="deadTarget" class="sub" style="font-size:11px;opacity:0.7;margin-top:4px;display:none;"></div>
+    <div id="deadCourse" class="sub" style="font-size:11px;letter-spacing:1.5px;color:var(--gold);margin-top:6px;display:none;"></div>
     <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
     <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
     <table class="scores" id="deadScores"></table>
     <div class="room-caption" id="deadRoomCaption" style="display:none;">ROOM</div>
     <table class="scores" id="deadRoomScores" style="display:none;"></table>
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
+    <button class="btn ghost" id="btnShare" data-keys style="display:none;">Share Run</button>
     <button class="btn ghost" id="btnSpectateRound" style="display:none;">Spectate This Round</button>
     <div class="sub" id="deadTapHint">TAP TO RETRY</div>
     <div class="install-chip" id="installChip">Add Space Man to your home screen</div>
@@ -768,6 +781,7 @@
 <script src="src/contracts.js"></script>
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
+<script src="src/course.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
      #j= invite is accepted (net-spec §4.1 lazy gate). -->
@@ -808,7 +822,8 @@ const HASH = (() => {
   return h;
 })();
 const SHOT = HASH.shot || null;                 // 'play' | 'dead' | 'pause' | 'wardrobe' | 'room' | 'grab' | null
-const SHOT_SEED = HASH.seed !== undefined ? (parseInt(HASH.seed, 10) || 0) : null;
+// A #seed= carrying a &beat= score (outside #shot) is a friend's challenge, not a QA seed.
+const SHOT_SEED = HASH.seed !== undefined && (SHOT || HASH.beat === undefined) ? (parseInt(HASH.seed, 10) || 0) : null;
 const SHOT_FRAMES = HASH.frames !== undefined ? (parseInt(HASH.frames, 10) || 0) : 600;
 const FORCE_TOUCH = HASH.touch == '1' || HASH.touch === true;
 // Delight pack (sky guests, postcards, quips) is cosmetic-only and never runs
@@ -902,7 +917,7 @@ const rnd = (a, b) => a + (b - a) * rng();
 /* ---------------------------------------------------------------------------
    4. STORAGE — schema + legacy migration
    ------------------------------------------------------------------------- */
-const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries', achievements: 'sm2.achievements', autorunReset: 'sm2.autorunReset' };
+const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries', achievements: 'sm2.achievements', autorunReset: 'sm2.autorunReset', daily: 'sm2.daily' };
 function loadJSON(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
 function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
 
@@ -964,6 +979,30 @@ function persistAll() {
   saveJSON(LS.settings, settings); saveJSON(LS.stats, stats);
   saveJSON(LS.flags, flags); saveJSON(LS.top5, top5); saveJSON(LS.best, bestScore);
   saveJSON(LS.cosmetics, G.cosmetics); saveJSON(LS.discoveries, G.discoveries); saveJSON(LS.achievements, ach);
+}
+
+// Daily Course + challenge links. src/course.js validates; this owns the state.
+// sm2.daily = { day, best, bestDist, runs } for the current UTC day only — a new
+// day quietly starts fresh (no streaks, nothing to lose by skipping one).
+const COURSE = window.SpaceManCourse;
+function loadDaily() {
+  const today = COURSE.dayKey(Date.now()), d = loadJSON(LS.daily, null);
+  if (!d || typeof d !== 'object' || d.day !== today) return { day: today, best: 0, bestDist: 0, runs: 0 };
+  const n = (v) => Math.max(0, Math.min(1e9, v | 0));
+  return { day: today, best: n(d.best), bestDist: n(d.bestDist), runs: n(d.runs) };
+}
+// A validated #daily= / #seed=&beat= link waits here for the next START.
+let challenge = SHOT ? null : COURSE.parse(location.hash, Date.now());
+function takeChallenge() { const c = challenge; challenge = null; return c ? refreshCourse(c) : null; }
+function dailyCourse(day) {
+  const d = day || COURSE.dayKey(Date.now());
+  return refreshCourse({ kind: 'daily', day: d, seed: COURSE.daySeed(d), beat: 0 });
+}
+// target = the score the HUD chases: a friend's score if the link carried one,
+// else today's own daily best (re-read every retry so it tracks new bests).
+function refreshCourse(c) {
+  const d = loadDaily(), mine = c.kind === 'daily' && c.day === d.day ? d.best : 0;
+  return Object.assign({}, c, { target: c.beat > 0 ? c.beat : mine });
 }
 
 /* ---------------------------------------------------------------------------
@@ -1736,6 +1775,8 @@ function pollGamepad() {
     if (G.mode === 'attract') startRun();
     else if (G.mode === 'dead') tryRestart();
     else togglePause();
+  } else if (just(3) && G.mode === 'attract' && $('btnDaily').style.display !== 'none') {
+    startDaily();                                        // Y / △: today's Daily Course
   } else if (just(0)) {
     if (G.mode === 'attract') startRun();
     else if (G.mode === 'dead') tryRestart();
@@ -1765,6 +1806,8 @@ function onKey(e, down) {
     }
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
+    // A focused Daily / Share button activates itself — don't also start a run.
+    if (e.target && e.target.closest && e.target.closest('[data-keys]') && k === 'enter') return;
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
     else if (G.mode === 'dead') {
       if ($('ovInitials').classList.contains('show')) {
@@ -2164,9 +2207,12 @@ function generateWorldAhead() {
    ------------------------------------------------------------------------- */
 function seedRng(seed) { rng = (seed === null || seed === undefined) ? Math.random : mulberry32(seed >>> 0); }
 
-function resetRun(seed) {
+// replayable: a solo course that must be reproducible from its seed alone (Daily
+// Course, challenge links, and any shareable normal run) — so, like a live room,
+// worldgen draws from its own stream and gameplay randomness can't fork it.
+function resetRun(seed, replayable) {
   seedRng(seed);
-  G.worldRng = netLive() && !NET.mockActive ? mulberry32((seed >>> 0) ^ 0x574F524C) : null;
+  G.worldRng = (netLive() && !NET.mockActive) || replayable ? mulberry32((seed >>> 0) ^ 0x574F524C) : null;
   G.worldLastShooterX = -Infinity;
   // World is anchored to a FIXED reference height (not view.h) so a given seed produces
   // the identical layout on phone (360) and tablet/desktop (400). view.h only controls
@@ -2348,11 +2394,18 @@ function startRun(options) {
   // Run Together (D7): in a live room the world seed is host-owned — adopt it so
   // every peer runs the same course (New Round resyncs here on the next run).
   // Solo play and #shot goldens never enter this branch, so they stay identical.
-  const seed = SHOT_SEED !== null ? SHOT_SEED : (netLive() ? (NET.info().seed >>> 0) : (Math.random() * 1e9) | 0);
+  // Fixed courses (Daily / challenge link) are solo-only; a pending challenge is
+  // consumed by the first START that doesn't name a course (Play Again replays G.course).
+  // Normal solo runs stay randomly seeded but replayable (shareable as a challenge),
+  // except while the mercy assist reshapes the course for this player.
+  const solo = SHOT === null && SHOT_SEED === null && !netLive();
+  const course = !solo ? null : opts.course !== undefined ? opts.course : takeChallenge();
+  const seed = SHOT_SEED !== null ? SHOT_SEED : course ? course.seed : (netLive() ? (NET.info().seed >>> 0) : (Math.random() * 1e9) | 0);
   // Drop any buffered jump/held keys from the restart keypress itself, or the
   // astronaut performs an involuntary full jump on frame 1 of every run.
   clearInput();
-  resetRun(seed);
+  resetRun(seed, !!course || (solo && !stats.mercy));
+  G.course = course; G.runSeed = seed; G.targetBeaten = false;
   Audio.musicReset(seed);
   // Explicit Watch preserves spectator role across rounds. Join Run waits for
   // the host-confirmed player role before starting a local simulation.
@@ -2386,7 +2439,7 @@ function tryRestart() {
   if (G.time - G.deadShownAt < 0.4) return;      // guard so panic taps don't skip the card
   cancelDeathAnim();                             // count-up/stamp/reveal timers never fight the next run
   Audio.killSting();                             // a ringing jingle never delays the next run
-  startRun();
+  startRun({ course: G.course ? refreshCourse(G.course) : null });   // retry the same fixed course
 }
 function clearInput() {
   input.left = input.right = input.down = input.jumpHeld = input.jumpPressed = input.shoot = false;
@@ -2996,6 +3049,7 @@ function updateDistance() {
   // newBest — the death card's delta line must never lie.
   if (G.pbFlagX !== null && !G.pbPassed && p.x >= G.pbFlagX) { G.pbPassed = true; celebrate('PAST YOUR FLAG!'); }
   if (!G.newBest && bestScore > 0 && G.score > bestScore) { G.newBest = true; celebrate('NEW BEST!'); }
+  if (!G.targetBeaten && G.course && G.course.target > 0 && G.score > G.course.target) { G.targetBeaten = true; celebrate(G.course.beat > 0 ? 'CHALLENGE BEATEN!' : 'DAILY BEST!'); }
   if (!G.deep1000 && G.dist >= 1000) { G.deep1000 = true; G.stinger = 2.4; G.stingerText = '1000m'; }
 }
 
@@ -3152,6 +3206,16 @@ function finalizeDeath() {
     top5.sort((a, b) => b.score - a.score);
     top5 = top5.slice(0, 5);
     if (top5.indexOf(justAdded) < 0) justAdded = null;
+  }
+  // Today's Daily Course record (a replayed past day's course is just a run).
+  G.dailyPrev = null;
+  if (G.course && G.course.kind === 'daily' && !SHOT) {
+    const d = loadDaily();
+    if (d.day === G.course.day) {
+      G.dailyPrev = d.runs ? d.best : -1;   // -1: first attempt today
+      d.runs++; d.best = Math.max(d.best, fs); d.bestDist = Math.max(d.bestDist, G.dist);
+      saveJSON(LS.daily, d);
+    }
   }
   if (!SHOT) persistAll();   // QA bot runs must never write scores/stats
 }
@@ -4520,6 +4584,16 @@ function drawHUD() {
   }
 
   drawGlowText(String(Math.floor(G.dispScore)).padStart(5, '0'), ox, top + 46 * us, Math.max(12, 13 * us), '#38E1FF', '#CFE3FF');
+  // Fixed-course target (friend's score / today's daily best): quiet, gold once passed.
+  if (G.course && G.course.target > 0) {
+    ctx.save(); ctx.globalAlpha *= G.targetBeaten ? 0.9 : 0.6;
+    ctx.font = '900 ' + Math.max(12, 13 * us) + 'px ' + FONT;
+    const sw = ctx.measureText(String(Math.floor(G.dispScore)).padStart(5, '0')).width;   // sits just past the odometer
+    ctx.font = '700 ' + Math.max(9, 9 * us) + 'px ' + FONT_NUM;
+    ctx.fillStyle = G.targetBeaten ? '#FFC93C' : '#CFE3FF';
+    ctx.fillText((G.targetBeaten ? '✓ ' : '▸ ') + G.course.target.toLocaleString(), ox + sw + 8 * us, top + 46 * us);
+    ctx.restore();
+  }
 
   if (G.mission) {
     const m = G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
@@ -4718,11 +4792,26 @@ function showAttract() {
   const logN = logbookCount();
   $('attractStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m · BEST CHAIN ×${stats.bestChain}` + (logN ? ` · LOG ${logN}/${DISCOVERIES.length}` : '');
   updateWardrobeBadge();
+  renderDailyCard();
   showOverlay('ovAttract');
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
   G.mode = 'attract';
   attractGreet();   // E13: welcome-back wave + anniversary confetti (one-shots, DELIGHT-gated)
 }
+
+// Daily Course entry + a pending challenge banner. Solo only, never under #shot
+// (goldens untouched) or in a room (the host owns the course there). textContent only.
+function renderDailyCard() {
+  const solo = !SHOT && SHOT_SEED === null && !netLive(), d = loadDaily(), b = $('btnDaily');
+  b.style.display = solo ? '' : 'none';
+  $('dailyInfo').textContent = d.runs ? 'BEST ' + d.best.toLocaleString() + ' · ' + d.runs + (d.runs === 1 ? ' RUN' : ' RUNS') : 'NEW TODAY';
+  b.setAttribute('aria-label', 'Daily Course for ' + d.day + (d.runs ? ', today’s best ' + d.best : '') + '. Same course for everyone today.');
+  const cb = $('challengeBanner'), c = solo ? challenge : null;
+  if (c) cb.textContent = c.beat > 0 ? 'Beat ' + c.beat.toLocaleString() + (c.kind === 'daily' ? ' on the ' + c.day + ' Daily Course' : ' on this course')
+    : 'Daily Course ' + c.day + ' — start to play it';
+  cb.style.display = c ? '' : 'none';
+}
+function startDaily() { Audio.ensure(); Audio.resume(); startRun({ course: dailyCourse() }); }
 
 function togglePause() {
   if (G.mode === 'play') {
@@ -4822,6 +4911,10 @@ function renderDeathCard() {
   $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
   const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
   if (target) { dt.textContent = target; dt.style.display = 'block'; } else dt.style.display = 'none';
+  const dc = $('deadCourse'), courseText = deathCourseLine(fs);
+  if (courseText) { dc.textContent = courseText; dc.style.display = 'block'; } else dc.style.display = 'none';
+  const sb = $('btnShare');
+  sb.textContent = 'Share Run'; sb.style.display = SHOT || netLive() ? 'none' : '';
   // Words of comfort — plain text, never on a NEW BEST card, delta line untouched.
   const dq = $('deadQuip');
   if (G.quip && fs <= G.prevBest) { dq.textContent = G.quip; dq.style.display = 'block'; }
@@ -4845,6 +4938,34 @@ function renderDeathCard() {
   // now instead of waiting on the 300/550ms timers scheduled by showDeathCard
   // (which the SHOT=dead harness bypasses entirely by calling this directly).
   if (SHOT) { stampMedal(); revealDeathDelta(); revealTapHint(); }
+}
+// Daily / challenge verdict — plain text. Solo random runs have no line at all.
+function deathCourseLine(fs) {
+  const c = G.course; if (!c) return '';
+  const parts = [c.kind === 'daily' ? 'DAILY ' + c.day : 'CHALLENGE COURSE'];
+  if (G.dailyPrev === -1) parts.push('TODAY’S FIRST RUN');
+  else if (G.dailyPrev !== null) parts.push(fs > G.dailyPrev ? 'NEW DAILY BEST +' + (fs - G.dailyPrev).toLocaleString() : (G.dailyPrev - fs).toLocaleString() + ' TO TODAY’S BEST');
+  const b = c.beat;
+  if (b > 0) parts.push(fs > b ? 'BEAT ' + b.toLocaleString() + ' ✓' : fs === b ? 'TIED ' + b.toLocaleString() : (b - fs).toLocaleString() + ' TO BEAT ' + b.toLocaleString());
+  return parts.join(' · ');
+}
+// SHARE: spoiler-free result + a link that races the exact same course.
+function shareRun() {
+  const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
+  const c = G.course && G.course.kind === 'daily' ? G.course : { kind: 'seed', seed: G.runSeed };
+  const text = 'SPACE MAN · ' + (c.kind === 'daily' ? 'Daily ' + c.day + ' · ' : '') + fs.toLocaleString() + ' pts · ' + G.dist.toLocaleString() + ' m 🚀';
+  // A mercy-assisted course can't be rebuilt from its seed — share the game, not a race.
+  const url = G.worldRng ? COURSE.link(c, fs) : COURSE.SITE, b = $('btnShare');
+  const copied = () => {
+    b.textContent = 'Copied ✓'; announce('Result and challenge link copied.');
+    deathTimers.push(setTimeout(() => { b.textContent = 'Share Run'; }, 1800));
+  };
+  const manual = () => { try { window.prompt('Copy your result', text + ' ' + url); } catch (e) {} };
+  if (navigator.share) { try { navigator.share({ title: 'Space Man', text, url }).catch(() => {}); } catch (e) { manual(); } return; }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + '\n' + url).then(copied, manual);
+    else manual();
+  } catch (e) { manual(); }
 }
 function renderScoreTable(id, highlight) {
   // First-run dignity (E9.4): only filled rows render; an empty board never
@@ -6102,6 +6223,8 @@ $('btnRosterCancel').onclick = () => { hideAllOverlays(); if (G.mode === 'attrac
    25. UI WIRING
    ------------------------------------------------------------------------- */
 $('btnPlay').onclick = () => { Audio.ensure(); Audio.resume(); startRun(); };
+$('btnDaily').onclick = () => startDaily();
+$('btnShare').onclick = () => shareRun();
 $('btnTrophy').onclick = () => { Audio.ensure(); hideAllOverlays(); showTrophy(); };
 $('btnSettings').onclick = () => openSettings('attract');
 $('btnWardrobe').onclick = () => { Audio.ensure(); showWardrobe(); };
@@ -6186,7 +6309,7 @@ function netEmoteToast(d) {
 }
 $('btnReset').onclick = () => {
   if (!confirm('Erase all scores, stats, and settings?')) return;
-  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, LS.daily, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
   location.reload();
 };
 $('installChip').onclick = () => {
