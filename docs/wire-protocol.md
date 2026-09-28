@@ -459,7 +459,7 @@ Direction: **host → guest**. Total **23 bytes**.
 | offset | size | field | type | notes |
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x02` |
-| 1 | 1 | proto | u8 | = 1; guest drops WELCOME whose `proto ≠ 1` |
+| 1 | 1 | proto | u8 | = 3 (PROTO); guest drops WELCOME whose `proto ≠ 3` |
 | 2 | 1 | yourP | u8 | your P-number, 1..32 (1 is always the host) |
 | 3 | 4 | seed | u32 LE | shared world seed |
 | 7 | 1 | runId | u8 | current round id |
@@ -629,8 +629,17 @@ Receipt rules a conforming host/guest MUST honor: `emoteId` is clamped to `0–5
 rejected unless it passes the control-envelope gate (matching room id + current host epoch,
 non-replayed seq); a guest that emits any host→all opcode (`EMOTEB`/`ROUND`/roster/snap/`BYE`)
 earns a strike. `BYE(reason=0)` is sent to a kicked peer, whose key is then banned for the
-room's life. "New link" is a local host action (epoch + secret bump) with no wire frame — it
-simply staleifies prior invites.
+room's life; a strike ban announces itself to the room with ROSTER `op 3` like a kick.
+`BYE(reason=1)` is sent to every member when the host closes the room. A guest whose relay
+reports the host key gone (`PeerGone`) and hears nothing from it for 15 s treats the room as
+closed. "New link" is a local host action (epoch + secret bump) with no wire frame — it
+staleifies prior invites for **future** joins only: a member's reconnect re-HELLO is checked
+against the proof it was admitted with, so rotating never locks out existing members.
+
+A transport-dropped member keeps its roster row (and P#) as *absent* for 60 s so a reconnect
+re-WELCOMEs the same P#; after that the row is removed and its P# may be reused (the reused
+P# starts a fresh board row). A held approve-mode join is discarded when its key leaves the
+relay or after 35 s, so a late ✓ can never admit a peer that is gone.
 
 ### 10.9 Frames specified but not in this snapshot
 
