@@ -1,7 +1,7 @@
 # Space Man — Run Together Wire Protocol
 
 **Status:** public, versioned interoperability specification.
-**Protocol version:** `1` (the app-envelope version byte; see [§13](#13-protocol-version--compatibility)).
+**Protocol version:** `2` (the app-envelope version byte; see [§13](#13-protocol-version--compatibility)).
 **Audience:** an engineer building a third-party client (TUI, native mobile, bot, test
 harness) that must interoperate with Space Man rooms without access to the reference
 implementation.
@@ -273,7 +273,7 @@ envelope, which is the opaque packet inside `SendPacket` / `RecvPacket`:
 ```
 offset  size  field
 0       1     0x53                 ('S')
-1       1     0x01                 envelope version = PROTO = 1
+1       1     0x02                 envelope version = PROTO = 2
 2       1     dir                  0x01 guest→host, 0x02 host→guest
 3       8     counter u64 LE       per (pairKey, dir), starts at 0, +1 per frame
 11      ...   AES-GCM ciphertext   (plaintext frame + 16-byte tag appended)
@@ -317,7 +317,7 @@ the code channel are **random 24-byte** values (no counter state exists pre-join
 ```
 offset  size  field
 0       1     0x43                 ('C')
-1       1     0x01                 version = 1
+1       1     0x02                 version = 2
 2       24    nonce                random
 26      ...   NaCl box(payload)    crypto_box(payload, nonce, theirPub, myPriv) = tag(16)||ct
 ```
@@ -336,7 +336,7 @@ An invite is a fixed-order binary payload, base64url-encoded (alphabet
 
 | offset | size | field | notes |
 |---|---|---|---|
-| 0 | 1 | `ver` | = `1`; unknown → refuse ("update to play together") |
+| 0 | 1 | `ver` | = `2`; unknown → refuse ("update to play together") |
 | 1 | 1 | `flags` | bit0 = approve-joins hint; bit1 = custom relay present |
 | 2 | 8 | `roomId` | random; room namespace + HKDF salt |
 | 10 | 1 | `epoch` | current epoch at issue time |
@@ -351,7 +351,7 @@ Fixed-size total (no custom relay) = **66 bytes** → 88 base64url chars.
 ### 8.2 Decode & validation (MUST)
 
 - Reject non-base64url input, or a decoded length `< 66` → `parse` error.
-- Byte 0 ≠ 1 → `version` error.
+- Byte 0 ≠ 2 → `version` error.
 - `region` must match `^[a-z0-9]{3}$` after decode, else `parse` error.
 - If `flags & 2`: read `n = payload[46]`; require `4 ≤ n ≤ 64` and enough remaining bytes;
   `relayHost` must match `^[A-Za-z0-9.\-]+(:\d{1,5})?$`, else `relayhost` error (no scheme,
@@ -436,7 +436,7 @@ sealed under the pair key. Total **43 bytes** (36-byte historical core + 7 appen
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x01` |
 | 1 | 1 | protoMin | u8 | **S** if `protoMin > protoMax` |
-| 2 | 1 | protoMax | u8 | join rejected if no overlap with host `[1,1]` |
+| 2 | 1 | protoMax | u8 | join rejected if no overlap with host `[2,2]` |
 | 3 | 3 | tag | ASCII | **W**: `[A-Z0-9]{3}`, else `"AAA"` |
 | 6 | 1 | suit | u8 | **W**: cosmetic index, else 0 |
 | 7 | 1 | hat | u8 | **W**: cosmetic index, else 0 |
@@ -573,7 +573,7 @@ Direction: **guest → host** — a role-change request. Total **4 bytes**.
 | 1 | 2 | seq | u16 LE |
 | 3 | 1 | newRole | `0` player / `1` spectator (any other → player) |
 
-The host validates capability and rate (≤ 1 change / 10 s per key), applies it, and
+The host validates capability and rate (≤ 1 change / 1.5 s per key), applies it, and
 **acknowledges via the next ROSTER broadcast** — there is no dedicated ack frame. A guest
 switching *to* spectator MAY stop sending PRES immediately (always safe); a guest switching
 *to* player MUST wait for the roster ack before sending PRES, or it will be struck for
@@ -673,9 +673,10 @@ keepalives**. A PRES frame from a spectator is a protocol violation → **strike
 (`spectator-pres`). The host itself may sit out (role spectator) while hosting; a sitting-out
 host streams no ghost.
 
-Role changes are rate-limited to ≤ 1 / 10 s per key and acked via the next ROSTER. A guest
-must not assume the player role locally before the roster ack (doing so risks
-`spectator-pres` strikes on an honest client).
+Role changes are rate-limited to ≤ 1 / 1.5 s per key and acked via ROSTER. Both
+directions wait for confirmation. A spectator request suspends presence while pending;
+a rejected change returns the requester’s current entry. Chunked rosters only
+acknowledge a role when the requester’s own entry arrives.
 
 ### 12.2 Capability bitfield
 
@@ -751,11 +752,18 @@ invite. A custom relay in settings skips probing and sets `flags` bit1 + the hos
 
 ## 13. Protocol version & compatibility
 
-- **The protocol version is the app-envelope version byte = `1`** ([§7.1](#71-app-envelope-s--0x53)).
-  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 1` is
+Version 2 requires the isolated room world-generation stream and synchronized
+round adoption introduced in v3.3.0. Invite, app-envelope, code-envelope and
+HELLO/WELCOME version fields all use `2`; field layouts and crypto derivation
+labels are unchanged. Version 1 invites are refused before connecting, with an
+update prompt: mixing terrain algorithms would put peers on different courses.
+Refresh both clients and create a fresh room after upgrading.
+
+- **The protocol version is the app-envelope version byte = `2`** ([§7.1](#71-app-envelope-s--0x53)).
+  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 2` is
   dropped + struck.
 - **HELLO version negotiation.** HELLO carries `protoMin`/`protoMax`. The host requires
-  overlap with its own supported range (`[1,1]` today). No overlap → the join is refused
+  overlap with its own supported range (`[2,2]` today). No overlap → the join is refused
   (silent drop in this snapshot; a `BYE(reason=3)` "update to play together" in a later
   stage). `protoMin > protoMax` is itself a strike.
 - **Forward-compatibility contract (both directions MUST honor):**
@@ -768,7 +776,7 @@ invite. A custom relay in settings skips probing and sets `flags` bit1 + the hos
     supports a feature it did not advertise.
 - **Versioned side tables** (wordlists, emote sets, relay maps) evolve independently; an
   unknown index falls back safely (P-number, default cosmetic, nearest region).
-- This means a v1 client and a future v1-compatible client that adds reserved-range frames
+- This means a v2 client and a future v2-compatible client that adds reserved-range frames
   and new capabilities can share a room: the older client ignores what it doesn't understand
   and is never penalized for doing so.
 
@@ -854,7 +862,7 @@ table (evict-oldest under key-spray); 3 pre-join strikes ban the key too.
 | HELLO per key | 1 / 5 s, and ≤ 5 / session | drop |
 | Joins per room | 10 / min | drop (queue then drop) |
 | PRES per key | token bucket refill **14/s**, burst **20** | drop frame (no strike) |
-| Role change per key | ≤ 1 / 10 s | ignore |
+| Role change per key | ≤ 1 / 1.5 s | ignore |
 | CODEREQ replies (host) | ≤ 6 / min **and** ≤ 64 / room life | silence |
 | Roster | 32 players + 16 spectators | reject join |
 
@@ -885,9 +893,11 @@ A conforming client MUST uphold these (condensed from the reference security rev
 
 - **No socket, no key material, no crypto call before the user opts in** (taps "Run
   Together" or "Join"). Reading the URL fragment is free; everything else is lazy.
-- **Remote input cannot reach the simulation.** Net-derived values may write only ghost
-  render state, the roster/board, toasts, and the room card. They MUST NOT write the local
-  player, enemies, world, RNG, or input.
+- **Remote input never drives local controls or combat.** The authenticated host owns
+  the room seed and round clock. Validated presence drives ghost rendering and the
+  spectator camera; on an explicit join/rejoin, a current-round position within the
+  shared-clock speed envelope may select a nearby generated platform. Catch-up world
+  generation is bounded. Peer packets do not inject input, enemy mutations or RNG state.
 - **Guests hear the host only.** Drop any application `RecvPacket` whose source key is not
   the current host (or, transiently, the short-code listener). No guest-to-guest traffic
   exists.
@@ -902,7 +912,7 @@ A conforming client MUST uphold these (condensed from the reference security rev
 | envelope `dir` | matches sender role (0x01 G→H / 0x02 H→G) | strike |
 | envelope `counter` | `> highSeen(pair, dir)` | drop + strike |
 | wire size | ≤ 256 B | drop + strike (pre-decrypt) |
-| HELLO `protoMin/Max` | overlap [1,1], `min ≤ max` | refuse join / strike |
+| HELLO `protoMin/Max` | overlap [2,2], `min ≤ max` | refuse join / strike |
 | tag (HELLO/ROSTER) | `[A-Z0-9]{3}` | force `"AAA"` (**W**) |
 | suit/hat | index in local cosmetic tables | force 0 (**W**) |
 | HELLO `proof` | HMAC match | silent drop + strike |
@@ -956,8 +966,8 @@ joining fresh (no rejoin token), producing a HELLO **plaintext** (43 bytes):
 offset  bytes                                            field
 ------  -----------------------------------------------  ----------------------------------
 0x00    01                                               type = HELLO (0x01)
-0x01    01                                               protoMin = 1
-0x02    01                                               protoMax = 1
+0x01    02                                               protoMin = 2
+0x02    02                                               protoMax = 2
 0x03    4B 41 47                                          tag = "KAG"  (ASCII K,A,G)
 0x06    03                                               suit = 3
 0x07    01                                               hat = 1
@@ -976,7 +986,7 @@ offset  bytes                                            field
 Full 43-byte plaintext, contiguous:
 
 ```
-01 01 01 4B 41 47 03 01 00 00 00 00 00 00 00 00
+01 02 02 4B 41 47 03 01 00 00 00 00 00 00 00 00
 00 00 00 00 9F 12 4C A8 03 E1 55 7B BD 2A 66 90
 DF 04 C8 31 00 1F 00 00 00 05 11
 ```
@@ -985,10 +995,10 @@ DF 04 C8 31 00 1F 00 00 00 05 11
 envelope. The 11-byte cleartext header is:
 
 ```
-53 01 01 00 00 00 00 00 00 00 00
+53 02 01 00 00 00 00 00 00 00 00
 │  │  │  └──────────────────────┘ counter = 0  (u64 LE)
 │  │  └ dir = 0x01 (guest→host)
-│  └ envelope version = 1
+│  └ envelope version = 2
 └ 'S' (0x53)
 ```
 
@@ -999,7 +1009,7 @@ non-deterministic — depends on the pair key and the random-free counter nonce
 by the 32-byte host public key, itself wrapped in the 5-byte relay frame header:
 
 ```
-04 00 00 00 66  <hostPub·32>  53 01 01 00 00 00 00 00 00 00 00  <ct+tag·59>
+04 00 00 00 66  <hostPub·32>  53 02 01 00 00 00 00 00 00 00 00  <ct+tag·59>
 │  └─────────┘  └──────────┘  └───── 'S' envelope (70 B) ───────────────────┘
 │  len=0x66=102 relay dst key
 └ relay frameType = SendPacket (0x04)
@@ -1014,7 +1024,7 @@ envelope is little-endian.
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `PROTO` | 1 | app-envelope / protocol version |
+| `PROTO` | 2 | app-envelope / protocol version |
 | `ROOM_CAP` / `PLAYER_CAP` | 32 | player slots |
 | `SPECTATOR_CAP` | 16 | spectator slots |
 | `WIRE_MAX` | 256 | max app packet wire size (pre-decrypt gate) |
@@ -1030,7 +1040,7 @@ envelope is little-endian.
 | `RECONNECT_JITTER` | 2000 ms | reconnect spread |
 | `STRIKE_LIMIT` | 3 | strikes → ban |
 | PRES bucket | 14/s, burst 20 | per-key presence rate |
-| Role min interval | 10000 ms | ≤ 1 role change / 10 s |
+| Role min interval | 1500 ms | ≤ 1 role change / 1.5 s |
 | Move / handoff min | 300000 / 120000 ms | M2 mobility (reserved) |
 | Relay magic | `44 45 52 50 F0 9F 94 91` | fixed 8-byte hello constant |
 | App envelope marker | `0x53` (`'S'`) | AES-GCM app frame |

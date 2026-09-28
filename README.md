@@ -29,3 +29,45 @@ improved with `gpt-4o`, `o1-mini`, GitHub Copilot, and Claude 3.5 Sonnet.
 Version 2.0 was a ground-up canvas rewrite designed and built by a Claude
 Fable 5 agent team. It's a fun research project exploring the capabilities
 of AI models for web game development.
+
+## Run Together
+
+Choose **Run Together**, share the QR/link, and press **Start Together** once
+friends join. Accepting an invite enters the course directly; if the host has
+not started yet, everyone waits at the start line. The host's three-second
+countdown starts a shared course and flare clock. **New Round** resets the
+participating crew together. Late arrivals and rejoins land on a platform near
+a live runner when a plausible, recent position is available.
+
+Teammates have callsign badges, a live race strip, and off-screen direction /
+distance indicators. **Watch** follows a live runner without simulating an
+invisible player. Use Previous/Next or Left/Right to switch runners, Tour to
+follow the leader, and **Join Run** (Enter on keyboard) to play. Watching from
+the death screen starts immediately; spectators remain spectators across
+rounds until they choose to join.
+
+Run Together is currently a **shared-course race**. Positions, round starts,
+flare timing, identities and emotes are shared. Combat, enemy motion, pickups,
+missions and scores are still simulated locally; watching is a live positional
+view, not a frame-perfect broadcast of the runner's combat. Shared combat and
+cooperative objectives require an authoritative world-event protocol.
+
+Version 3.3 uses room protocol 2 because room terrain generation changed.
+Refresh both devices and create a fresh room/link after upgrading. Old invites
+show an update prompt instead of connecting incompatible courses.
+
+## Multiplayer regression tests
+
+Run `node --test tests/multiplayer.test.cjs` with Node 22 or newer. No dependency
+installation is needed. The harness runs the shipped game in independent JS
+contexts, with real encryption and wire packets through an in-memory relay.
+Only browser APIs and relay transport are substituted. It covers admission,
+retry, complete/chunked rosters, countdowns, shared restart, presence expiry,
+watching, role acknowledgements, late joining, terrain determinism, visibility
+culling, version mismatch and solo behavior.
+
+These tests do not verify browser rendering or public relay connectivity. Before
+release, exercise a desktop host + phone player + spectator on separate networks:
+scan/join, move apart and reunite, die/watch/rejoin, change rounds, background a
+phone, reconnect, and update an installed PWA. Check portrait/landscape controls
+and verify that both devices run the same asset version.
