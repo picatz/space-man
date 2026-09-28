@@ -58,7 +58,7 @@ show an update prompt instead of connecting incompatible courses.
 
 ## Multiplayer regression tests
 
-Run `node --test tests/multiplayer.test.cjs` with Node 22 or newer. No dependency
+Run `node --test tests/*.test.cjs` with Node 22 or newer. No dependency
 installation is needed. The harness runs the shipped game in independent JS
 contexts, with real encryption and wire packets through an in-memory relay.
 Only browser APIs and relay transport are substituted. It covers admission,
