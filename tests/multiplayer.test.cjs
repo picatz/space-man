@@ -316,7 +316,9 @@ test('a room round reports runners left, then ROUND OVER standings on every card
   host.run('netTick(0.1)'); guest.run('netTick(0.1)');
   for (const c of [host, guest]) {
     assert.equal(c.run('roundResultsRunId'), host.net.info().runId);
-    assert.equal(c.run('[...roundResults.values()].every((r) => r.you && !r.dead)'), true);
-    assert.equal(c.run('roundPlace()'), 0);
+    // Only new-round rows remain: nobody dead, everyone still on the start line
+    // (the other client's first countdown presence may already have arrived).
+    assert.equal(c.run('[...roundResults.values()].every((r) => !r.dead && r.dist === 0)'), true);
+    assert.equal(c.run('[...roundResults.values()].some((r) => r.you)'), true);
   }
 });
