@@ -173,3 +173,18 @@ test('the hello loop keeps retrying past five attempts until a WELCOME arrives',
   await until(() => hostRows(host)[0].absent === false, 'finally welcomed');
   await until(() => !gs.helloTimer || gs.welcomeGen > 0, 'loop ends on WELCOME');
 });
+
+test('a mid-round seat never lands a late joiner on an enemy', async (t) => {
+  const { host } = await room(t);
+  host.run('startRun({sync:true})');
+  const hits = JSON.parse(host.run(`JSON.stringify((() => {
+    const bad = [];
+    for (let ms = 4000; ms <= 90000; ms += 1500) {
+      resetRun(NET.info().seed); seatMidRound(ms);
+      const pl = G.player.groundPlat;
+      if (G.enemies.some((e) => !e.dead && e.x + e.w >= pl.x - 40 && e.x <= pl.x + pl.w + 40)) bad.push(ms);
+    }
+    return bad;
+  })())`));
+  assert.equal(hits.length, 0, 'enemies on the seat platform at ' + hits.join(', ') + ' ms');
+});
