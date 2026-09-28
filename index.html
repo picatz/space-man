@@ -5410,6 +5410,7 @@ async function openRoomFlow() {
 function leaveRoom() {
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
+  pendingJoins.clear();                                     // held joins belong to the room we just left
   spec.watchP = 0; spec.cameraP = 0;
   G.netRunId = 0; G.netRoundAnchored = false;
   announce('Left the room.');
@@ -6179,13 +6180,13 @@ $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
   if (e === 'reconnecting') announce('Reconnecting.');
-  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast('The host ended your room connection.', 'net'); }
+  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast(d && d.reason === 1 ? 'The host closed the room.' : 'The host ended your room connection.', 'net'); }
   else if (e === 'approve-wait') {   // a held join is waiting for the host (§4.6)
     if (d && d.pubHex) { pendingJoins.set(d.pubHex, { pubHex: d.pubHex, role: d.role }); queueToast('Someone wants to join', 'net'); announce('Someone wants to join.'); }
     if (netLive()) renderRoomCard();
   } else if (e === 'reject') { if (d && d.pubHex) pendingJoins.delete(d.pubHex); if (netLive()) renderRoomCard(); }
   else if (e === 'rotated') { if (netLive()) renderRoomCard(); }   // fresh link/code/QR after New Link
-  else if (e === 'roster' || e === 'ok' || e === 'kick') { if (netLive()) renderRoomCard(); }
+  else if (e === 'roster' || e === 'ok' || e === 'kick' || e === 'banned') { if (netLive()) renderRoomCard(); }
   else if (e === 'emote') netEmoteToast(d);
   // Shared-round clock (§4.1): a genuinely NEW round (pre-roll countdown) toasts;
   // the targeted anchor a joiner/reconnector receives (startInMs 0) stays silent.

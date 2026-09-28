@@ -1184,6 +1184,9 @@
   const STRIKE_LIMIT = 3;
   const PRELIM_CAP = 1024;     // pre-join tracking rows; oldest evicted (key-rotation spray must not grow host memory)
   const ROUND_PREROLL = 3000;  // New-Round pre-roll (ms): a synchronized 3-2-1 so every screen starts together
+  const ABSENT_GRACE = 60000;  // ms an absent (transport-dropped) row keeps its P# for a reconnect
+  const PENDING_TTL = 35000;   // ms a held approve-mode join waits (guest gives up at 30 s)
+  const HOST_GONE_GRACE = 15000; // ms after the relay reports the host gone before a guest leaves
   const PRES_STALE = 2500;     // ms without a fresh PRES → stop fanning the row out (paused/backgrounded peers hide promptly)
   function emitter() {
     const subs = new Set();
@@ -1225,20 +1228,29 @@
     // and hides the row from counts()/roster()/snap fan-out until it returns.
     function hostPeerGone(pub) {
       if (!pub) return;
+      dropPending(hex(pub));
       const row = S.roster.get(hex(pub));
       if (!row || row.absent) return;
-      row.pres = null; row.absent = true; row.lastSeen = 0;
+      row.pres = null; row.absent = true; row.lastSeen = 0; row.absentAt = performance.now();
       S.ev.emit('leave', { p: row.p, tag: row.tag });
       sendRoster(2, [row]).catch(() => {});   // ROSTER leave → peers drop the ghost + roster entry
     }
 
+    // Drop a row for good: its P# becomes reusable, so its board bests go too
+    // (a newcomer must never inherit someone else's score).
+    function removeRow(row) {
+      S.roster.delete(hex(row.pub));
+      S._board.delete(row.p);
+    }
     function strike(row, why) {
       row.strikes++;
       S.ev.emit('strike', { p: row.p, why, strikes: row.strikes });
       if (row.strikes >= STRIKE_LIMIT) {
         S.banned.add(hex(row.pub));
-        S.roster.delete(hex(row.pub));
+        removeRow(row);
         S.ev.emit('banned', { p: row.p });
+        // Tell the room like a kick, or guests keep a banned player listed.
+        sendRoster(3, [row]).catch(() => {});
       }
     }
 
@@ -1335,7 +1347,9 @@
         // envelope then checks the spawn/round reach instead of the delta, so
         // alternating dead/alive frames cannot teleport a ghost across the course.
         const prev = row.pres;
-        const freshTrace = !prev || pres.runId !== prev.runId || ((prev.state & 4) && (pres.state & 8) && !(pres.state & 4));
+        // A long silence (quit from pause, backgrounded tab) also starts over.
+        const freshTrace = !prev || pres.runId !== prev.runId || t - row.lastSeen > PRES_STALE ||
+          ((prev.state & 4) && (pres.state & 8) && !(pres.state & 4));
         const env = checkEnvelope(freshTrace ? null : prev, pres, row.lastSeen ? t - row.lastSeen : 0);
         if (env.teleport) return strike(row, 'teleport');
         if (env.unverified) row.unverified = true;
@@ -1366,8 +1380,10 @@
         row.lastHello = t2;
         const h = decHello(pt);
         if (!h) return strike(row, 'short');
-        const want = joinProof(S.secret, S.roomId, S.epoch, row.pub, S.keys.pub);
-        if (!ctEq(want, h.proof16)) return strike(row, 'proof');
+        // Members prove themselves with the invite they joined on. rotateLink
+        // bumps epoch + secret for FUTURE joins only, so check the admit-time
+        // proof, never the current one (that would strike every reconnect).
+        if (!ctEq(row.proof, h.proof16)) return strike(row, 'proof');
         const w = encWelcome(S.out, {
           yourP: row.p, seed: S.seed, runId: S.runId, epoch: S.epoch, hostEpoch: S.hostEpoch, caps: S.caps,
           hostTag: S.tag, rosterN: S.roster.size + 1, boardN: 0, roomFlags: 0,
@@ -1408,13 +1424,19 @@
       // authenticated (proof verified) — approval gates ADMISSION, not identity.
       if (S.approveJoins) {
         if (!S.pending.has(key)) {
-          S.pending.set(key, { srcPub: srcPub.slice(), h, pair });
+          S.pending.set(key, { srcPub: srcPub.slice(), h, pair, t });
           S.ev.emit('approve-wait', { pubHex: key, tag: h.tag, role: h.role });
         }
         S.prelim.delete(key);
         return;
       }
       await admitJoin(srcPub, key, h, pair);
+    }
+    // A held join whose guest gave up (timeout, closed tab) must never be
+    // admitted later as a phantom row that holds a player slot forever.
+    function dropPending(key) {
+      if (!S.pending.delete(key)) return;
+      S.ev.emit('reject', { pubHex: key });
     }
     // Roster insert + WELCOME + join-announce. Shared by the immediate join path
     // and approve() (an admitted held join). Re-checks caps at admit time — a
@@ -1432,7 +1454,8 @@
         role: h.role, adjIdx: h.adjIdx, nounIdx: h.nounIdx, caps: h.caps, pair,
         pres: null, strikes: 0, lastSeen: t, bucket: 20, bucketT: t,
         emoteBucket: 3, emoteBucketT: t, emoteId: 0, emoteSeq: 0,
-        unverified: false, lastRole: 0, runT0: null, runId: S.runId,
+        unverified: false, lastRole: 0, runT0: null, runId: S.runId, proof: h.proof16.slice(),
+        absentAt: 0,
       };
       S.roster.set(key, row);
       S.prelim.delete(key);
@@ -1504,6 +1527,11 @@
     async function snapTick() {
       if (S.relay.state !== 'established') return;
       const nowTick = performance.now();
+      // Housekeeping: an absent row keeps its P# through a short reconnect,
+      // then frees it (P# ≤ 32 on the wire) and stops costing a seal per tick;
+      // a held join outlives the guest's own admission timeout by nothing.
+      for (const r of S.roster.values()) if (r.absent && nowTick - r.absentAt > ABSENT_GRACE) removeRow(r);
+      for (const [key, pend] of S.pending) if (nowTick - pend.t > PENDING_TTL) dropPending(key);
       S.tick = (nowTick - S.started) | 0;
       const live = [];
       // Skip absent rows AND rows whose last PRES has gone stale (paused / backgrounded
@@ -1662,7 +1690,7 @@
       const key = hex(row.pub);
       S.banned.add(key);                                          // room-lifetime key ban (I17)
       try { S.relay.send(row.pub, await sealApp(row.pair, encBye(S.out, 0, 0).slice())); } catch (e) {}   // BYE(kicked)
-      S.roster.delete(key);
+      removeRow(row);
       S.ev.emit('kick', { p: row.p });
       await sendRoster(3, [{ p: row.p, pub: row.pub, tag: row.tag, suit: row.suit, hat: row.hat, role: row.role, adjIdx: row.adjIdx, nounIdx: row.nounIdx }]).catch(() => {});
       return true;
@@ -1748,10 +1776,17 @@
     };
     S.setApprove = (on) => { S.approveJoins = !!on; };
     S._onPacket = onPacket; S._onCodePacket = onCodePacket; S._onPeerGone = hostPeerGone; S._snapTick = snapTick;   // harness seam (offline drive; underscore = not a contract)
+    // Leaving tells every member (BYE closed) before the socket goes, so no
+    // guest sits in a dead room. Seals are async; close once they are sent.
     S.close = () => {
       if (S.snapTimer) clearInterval(S.snapTimer);
-      if (S.relay) S.relay.close();
       if (S.codeRelay) S.codeRelay.close();
+      const relay = S.relay;
+      if (!relay) return;
+      const rows = relay.state === 'established' ? Array.from(S.roster.values()).filter((r) => !r.absent) : [];
+      const bye = encBye(S.out, 1, 0).slice();
+      Promise.all(rows.map((r) => sealApp(r.pair, bye).then((w) => relay.send(r.pub, w)).catch(() => {})))
+        .finally(() => relay.close());
     };
     return S;
   }
@@ -1767,8 +1802,20 @@
       localRoundT0: null, roundRunId: 0,   // shared-round clock, anchored from ROUND (host time − rtt/2)
       pair: null, peers: new Map(),    // p → latest snap row
       ev: emitter(), out: makeScratch(), seq: 0, roleSeq: 0, emoteSeq: 0, hostHex: hex(inv.hostPub),
-      helloTimer: null, slots: makeSlots(), byed: null,
+      helloTimer: null, slots: makeSlots(), byed: null, welcomeGen: 0, hostGoneTimer: null, boardPub: new Map(),
     };
+    // Relay says the host key left. A host transport blip reconnects within
+    // seconds (and its SNAP resumes); only a lasting absence ends the room.
+    function hostGone(pub) {
+      if (hex(pub) !== S.hostHex || S.hostGoneTimer || S.byed != null) return;
+      S.hostGoneTimer = setTimeout(() => {
+        S.hostGoneTimer = null;
+        if (S.byed != null) return;
+        S.byed = 1;
+        if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
+        S.ev.emit('bye', { reason: 1, detail: 0 });
+      }, HOST_GONE_GRACE);
+    }
 
     async function sendHello() {
       const proof = joinProof(S.inv.secret, S.inv.roomId, S.inv.epoch, S.keys.pub, S.inv.hostPub);
@@ -1778,12 +1825,16 @@
       });
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, pt));
     }
-    function helloLoop() {                             // relay may drop a hello (host busy/limits): retry until WELCOME
+    // The relay may drop a hello (host busy/limits): retry until a WELCOME
+    // arrives for THIS loop. S.welcomed stays set from an earlier connection,
+    // so a reconnect keys on the welcome generation instead.
+    function helloLoop() {
       if (S.helloTimer) clearInterval(S.helloTimer);
+      const gen = S.welcomeGen;
       let tries = 1;
       sendHello().catch(() => {});
       S.helloTimer = setInterval(() => {
-        if (S.welcomed || tries >= 5) { clearInterval(S.helloTimer); S.helloTimer = null; return; }
+        if (S.welcomeGen !== gen || S.byed != null || tries >= 5) { clearInterval(S.helloTimer); S.helloTimer = null; return; }
         tries++;
         sendHello().catch(() => {});
       }, 5500);                                        // outside the host's 1-per-5s hello limiter
@@ -1794,13 +1845,14 @@
       if (droppedKeys.has(key)) return;                          // blocked host (Addendum G): dropped on receipt
       const res = await openApp(S.pair, wire);
       if (res.err) { S.ev.emit('drop', { why: res.err }); return; }
+      if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; }   // the host is back
       const pt = res.pt;
       if (!pt.length) return;
       if (pt[0] > FRAME_CORE_HI) return;                         // reserved/experimental: ignore, never strike (Addendum D)
       if (pt[0] === A_WELCOME) {
         const w = decWelcome(pt);
         if (!w || w.proto !== PROTO) return;
-        S.welcomed = w; S.p = w.yourP; S.caps = w.caps;
+        S.welcomed = w; S.p = w.yourP; S.caps = w.caps; S.welcomeGen++;
         // Adopt the host epoch MONOTONICALLY (Addendum F.1): a WELCOME must
         // never rewind the control gate — a downgrade would resurrect control
         // frames the stale-epoch rule already declared dead on arrival.
@@ -1812,11 +1864,16 @@
       if (pt[0] === A_ROSTER) {                                  // roster with roles + callsigns (addenda A/C)
         const r = decRoster(pt);
         if (!r) return;
-        if (r.op === 2 || r.op === 3) { for (const e of r.entries) { S.rosterMap.delete(e.p); S.peers.delete(e.p); } }   // leave: drop the ghost too, not just the roster row
-        else for (const e of r.entries) S.rosterMap.set(e.p, {
-          tag: e.tag, suit: e.suit, hat: e.hat, role: e.role, adjIdx: e.adjIdx, nounIdx: e.nounIdx,
-          callsign: callsignText(e.adjIdx, e.nounIdx), you: e.p === S.p,
-        });
+        if (r.op === 2 || r.op === 3) { for (const e of r.entries) { S.rosterMap.delete(e.p); S.peers.delete(e.p); if (r.op === 3) S._board.delete(e.p); } }   // leave: drop the ghost too, not just the roster row
+        else for (const e of r.entries) {
+          const pubHex = hex(e.pub);
+          if ((S.boardPub.get(e.p) || pubHex) !== pubHex) S._board.delete(e.p);   // a reused P# starts a fresh board row
+          S.boardPub.set(e.p, pubHex);
+          S.rosterMap.set(e.p, {
+            tag: e.tag, suit: e.suit, hat: e.hat, role: e.role, adjIdx: e.adjIdx, nounIdx: e.nounIdx,
+            callsign: callsignText(e.adjIdx, e.nounIdx), you: e.p === S.p,
+          });
+        }
         // Adopt OUR host-confirmed role (the roster IS the role-change ack,
         // Addendum A). Never assume player locally before this ack: a guest
         // streaming PRES while the host still holds it as spectator would eat
@@ -1905,7 +1962,7 @@
               },
               onPacket, onRtt: (ms) => S.ev.emit('rtt', { ms }),
               onDown: (why) => S.ev.emit('state', { state: 'down', why }),
-              onPeerGone: () => {},
+              onPeerGone: hostGone,
               onLog: (m) => S.ev.emit('log', { m }),
             });
             S.relay.connect();
@@ -1988,6 +2045,7 @@
     S._onPacket = onPacket;                                    // harness seam (offline drive)
     S.close = () => {
       if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
+      if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; }
       if (S.relay) S.relay.close();
     };
     return S;
@@ -2057,7 +2115,7 @@
       // baked copy already backs activeMap() so a failed fetch never blocks.
       if (o.relayDir) { try { await NET.setRelayDirectory(o.relayDir.mode, o.relayDir); } catch (e) {} }
       const next = session = HostSession(o);
-      next.ev.on((e, d) => ev.emit(e, d));
+      next.ev.on((e, d) => { if (session === next) ev.emit(e, d); });   // a closed session's late packets stay silent
       try { await next.open(); }
       catch (e) { next.close(); if (session === next) session = null; throw e; }
       if (session !== next) { next.close(); throw new Error('Room cancelled'); }
@@ -2074,7 +2132,7 @@
         throw new Error(msg);
       }
       const next = session = GuestSession(dec.inv, opts || {});
-      next.ev.on((e, d) => ev.emit(e, d));
+      next.ev.on((e, d) => { if (session === next) ev.emit(e, d); });   // a closed session's late packets stay silent
       // A relay socket is not room admission. Do not expose seed=0 / player=0
       // or claim success until the host has authenticated and welcomed us.
       let timer, unsubscribe;
