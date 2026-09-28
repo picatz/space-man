@@ -58,10 +58,13 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
 
   // Navigations: network-first so updates land, cache fallback for offline.
+  // Revalidate past the HTTP cache like scripts do, or a host max-age can hand
+  // back a stale page that then loads the fresh scripts (a split build again).
+  // A navigate-mode Request can't take an init, so fetch by URL.
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
       try {
-        const res = await fetch(req);
+        const res = await fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' });
         if (res.ok) {
           const cache = await caches.open(SHELL_CACHE);
           // Refresh both navigation keys so an offline launch at start_url

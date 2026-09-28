@@ -66,6 +66,8 @@ test('service worker: scripts are network-first with offline fallback; cross-ori
   // A deploy: the network copy wins over the install-time one and refreshes the cache.
   assert.equal((await sw.request('/src/net.js')).body, 'network /src/net.js');
   assert.equal(sw.net.at(-1).init.cache, 'no-cache', 'revalidates past the HTTP cache');
+  assert.equal((await sw.request('/', { mode: 'navigate', destination: 'document' })).body, 'network /');
+  assert.equal(sw.net.at(-1).init?.cache, 'no-cache', 'the page revalidates too, never a stale HTTP-cached copy');
   sw.setOnline(false);
   assert.equal((await sw.request('/src/net.js')).body, 'network /src/net.js', 'offline serves the refreshed copy');
   assert.equal((await sw.request('/src/qr.js')).body, 'precache /src/qr.js', 'offline serves the precache');
