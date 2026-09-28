@@ -550,6 +550,8 @@
   /* Run Together — in-run surfaces (N3) */
   .room-caption { font-size: 10px; letter-spacing: 3px; color: var(--ui); opacity: 0.7; margin: 12px 0 2px; }
   table.scores tr.unverified { opacity: 0.5; }
+  .round-head { font-size: 12px; letter-spacing: 3px; font-weight: 700; color: var(--cyan); margin: 12px 0 2px; }
+  .round-standings { font: 700 13px var(--font-num); line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
   .emote-row { display: flex; justify-content: center; gap: 8px; margin: 12px 0 2px; flex-wrap: wrap; }
   .emote-btn {
     width: 44px; height: 44px; min-height: 44px; padding: 0; border-radius: 50%;
@@ -628,6 +630,9 @@
     <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
     <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
     <table class="scores" id="deadScores"></table>
+    <div class="round-head" id="deadRound" style="display:none;"></div>
+    <div class="round-standings" id="deadStandings" style="display:none;"></div>
+    <div class="sub" id="deadRoundNext" style="font-size:11px;opacity:0.7;display:none;"></div>
     <div class="room-caption" id="deadRoomCaption" style="display:none;">ROOM</div>
     <table class="scores" id="deadRoomScores" style="display:none;"></table>
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
@@ -2346,6 +2351,11 @@ function seatMidRound(elapsedMs) {
   p.y = plat.y - CFG.ph; p.px = p.x; p.py = p.y; p.vx = 0; p.vy = 0;
   p.onGround = true; p.jumping = false; p.airFrames = 0; p.coyote = 0; p.buffer = 0;
   p.groundPlat = plat; p.jumpPlat = plat; p.jumpStartX = p.x;
+  // Land on a safe slab: enemies are local simulation, so clear the seat
+  // platform (and any shots in flight near it) rather than dropping a late
+  // joiner onto a patrol that kills them on frame 1.
+  G.enemies = G.enemies.filter((e) => e.x + e.w < plat.x - 40 || e.x > plat.x + plat.w + 40);
+  G.ebullets = G.ebullets.filter((b) => Math.abs(b.x - p.x) > 500);
   // Reseat the camera on the grounded target (matches updateCamera's grounded aim
   // exactly, off the platform's own height) so frame 1 never eases a phantom jump.
   G.camX = p.x - view.w * 0.42; G.camXprev = G.camX;
@@ -5490,6 +5500,8 @@ async function openRoomFlow() {
 function leaveRoom() {
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
+  pendingJoins.clear();                                     // held joins belong to the room we just left
+  resetRoundResults(0);
   spec.watchP = 0; spec.cameraP = 0;
   G.netRunId = 0; G.netRoundAnchored = false;
   announce('Left the room.');
@@ -5704,14 +5716,80 @@ function netInRun() { return netLive() && !G.deathCardShown && (G.mode === 'play
 // A co-runner (not us) still alive in the current run — the only condition under
 // which "Spectate This Round" has anything to watch (D4c). Everyone dead → the
 // round is over → offer the clean death card + a fresh run instead.
-function anyLiveRunner() {
-  if (!netLive()) return false;
+function anyLiveRunner() { return liveRunnerCount() > 0; }
+function liveRunnerCount() {
+  if (!netLive()) return 0;
   const myP = NET.info().myP;
+  let n = 0;
   for (const s of NET.presence()) {
     if (s.you || s.p === myP || s.spectator) continue;
-    if (s.runId === NET.info().runId && (s.state & 8) && !(s.state & 4)) return true;
+    if (s.runId === NET.info().runId && (s.state & 8) && !(s.state & 4)) n++;
   }
-  return false;
+  return n;
+}
+
+// Round results: everyone seen running the CURRENT runId (you included), keyed by
+// P#, holding their latest dist/score. Fed from presence every netTick, so a
+// peer's final dead PRES (bit 4) is kept after their ghost fades; a new runId
+// clears it. Local bookkeeping only — no wire change. Real rooms only (the #shot
+// mock never feeds it, so the net goldens stay identical).
+const roundResults = new Map();
+let roundResultsRunId = 0, roundResultKey = '';
+// Every room starts again at runId 1, so leaving a room must clear the field
+// too; keying on runId alone would carry old runners into the next room.
+function resetRoundResults(runId) { roundResults.clear(); roundResultsRunId = runId; roundResultKey = ''; }
+function roundFeed(p, callsign, dist, score, dead, you) {
+  let r = roundResults.get(p);
+  if (!r) { r = { p, callsign: '', dist: 0, score: 0, dead: false, you: false }; roundResults.set(p, r); }
+  r.callsign = callsign; r.dist = dist; r.score = score; r.dead = dead; r.you = you;
+}
+function roundFeedSelf() {
+  if (NET.mockActive || netSpectating() || !G.player || !G.netParticipating || G.mode === 'attract') return;
+  if (G.netRunId !== roundResultsRunId) return;
+  const dead = !!G.player.dead;
+  roundFeed(NET.info().myP, 'YOU', G.dist, dead ? (G.finalScore | 0) : Math.floor(G.score), dead, true);
+}
+// Placement order: furthest first, ties by score, then P# (stable across screens).
+function roundCmp(a, b) { return (b.dist - a.dist) || (b.score - a.score) || (a.p - b.p); }
+function roundPlace() {   // your live place in this runId, or 0 when fewer than 2 ran it
+  if (!netLive() || NET.mockActive || netSpectating() || roundResults.size < 2) return 0;
+  const me = roundResults.get(NET.info().myP); if (!me || !me.you) return 0;
+  let place = 1;
+  for (const r of roundResults.values()) if (r !== me && roundCmp(r, me) < 0) place++;
+  return place;
+}
+function ordinal(n) { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+// '' while the death card has no round to report; otherwise changes whenever the
+// runners-left count or the field does, so netTick knows to re-render the card.
+function roundResultKeyNow() {
+  if (!netLive() || NET.mockActive || netSpectating() || !netRoundActive() || !roundResults.size) return '';
+  return liveRunnerCount() + ':' + roundResults.size;
+}
+// Death-card round result (textContent only — callsigns are remote input). While
+// a co-runner is alive the card says so (Spectate/Rejoin already offered); once
+// nobody in this runId is left it becomes the ROUND OVER standings.
+function renderRoundResult() {
+  const head = $('deadRound'), list = $('deadStandings'), next = $('deadRoundNext');
+  if (netLive()) roundFeedSelf();
+  const key = roundResultKeyNow(), prev = roundResultKey;
+  roundResultKey = key;
+  if (!key) { head.style.display = list.style.display = next.style.display = 'none'; return; }
+  const left = liveRunnerCount();
+  head.style.display = '';
+  if (left) {
+    head.textContent = 'ROUND STILL RUNNING — ' + left + (left === 1 ? ' RUNNER' : ' RUNNERS') + ' LEFT';
+    list.style.display = next.style.display = 'none';
+    if (!prev) announce('Round still running. ' + left + (left === 1 ? ' runner' : ' runners') + ' left.');
+    return;
+  }
+  const rows = [...roundResults.values()].sort(roundCmp)
+    .map((r, i) => ordinal(i + 1) + ' ' + (r.you ? 'YOU' : (r.callsign || 'P' + r.p)) + ' ' + Math.floor(r.dist).toLocaleString() + ' m');
+  head.textContent = 'ROUND OVER';
+  list.textContent = rows.join('\n'); list.style.display = '';
+  const host = NET.info().isHost;
+  next.textContent = host ? '' : 'Waiting for host to start the next round';
+  next.style.display = host ? 'none' : '';
+  if (prev.split(':')[0] !== '0') announce('Round over. ' + rows.join(', ') + '.');
 }
 
 function freeGhost(g) { g.active = false; g.rx = 0; ghostByP.delete(g.p); }
@@ -5734,9 +5812,12 @@ function netSampleGhosts(now) {
   if (!NET || !netLive()) return;
   if (NET.mockActive && NET.mockAnchor) NET.mockAnchor(G.player ? G.player.x + G.player.w / 2 : 0, G.player ? G.player.y + G.player.h / 2 : 0, G.frameCount);
   const pres = NET.presence(), myP = NET.info().myP, seen = ghostSeen; seen.clear();
+  const runId = NET.info().runId | 0;
+  if (runId !== roundResultsRunId) resetRoundResults(runId);
   for (const s of pres) {
     if (s.you || s.p === myP || s.spectator) continue;      // never ghost the local player / spectators stream none
     seen.add(s.p);
+    if (!NET.mockActive && s.runId === runId && (s.state & 12)) roundFeed(s.p, s.callsign, s.dist, s.score, !!(s.state & 4), false);
     const g = ghostFor(s.p); if (!g) continue;
     g.callsign = s.callsign; g.unverified = !!s.unverified; g.host = !!s.host;
     g.suit = effectiveSuit(PALETTES[SUIT_ORDER[s.suit]] ? SUIT_ORDER[s.suit] : 'classic', s.p);   // W-rule → classic (I8), then per-slot default tint (D6)
@@ -5783,6 +5864,10 @@ function netTick(dt) {
   if (!netLive()) return;
   const now = netClock();
   netSampleGhosts(now);
+  roundFeedSelf();
+  // A co-runner going down (or dropping out) while our card is up can end the
+  // round — refresh the card's result + Again/Spectate actions when it changes.
+  if (G.mode === 'dead' && G.deathCardShown && roundResultKeyNow() !== roundResultKey) renderRoomBoard();
   for (const g of ghosts) if (g.emoteT > 0) g.emoteT = Math.max(0, g.emoteT - dt);
   if (selfEmote.t > 0) selfEmote.t = Math.max(0, selfEmote.t - dt);
   // Open the armed emote wheel once the press can no longer affect the jump (D5).
@@ -5993,13 +6078,15 @@ function raceRunners() {
   return out;
 }
 function drawRaceStrip() {
-  const us = uiScale(), x = 12, y = 12 + safeInset('top'), w = view.w - 24, h = 26;
+  // Live placement ("2nd / 4") rides the strip's right end once ≥2 ran this round.
+  const place = roundPlace(), tag = place ? ordinal(place) + ' / ' + roundResults.size : '', tagW = tag ? 60 : 0;
+  const us = uiScale(), x = 12, y = 12 + safeInset('top'), w = view.w - 24 - tagW, h = 26;
   const runners = raceRunners(); if (!runners.length) return;
   let maxX = -Infinity; for (const r of runners) if (r.x > maxX) maxX = r.x;
   const right = Math.max(maxX + 200, G.flare.x + 400);
   const left = Math.min(right - 1000, G.flare.x - 100, ...runners.map((r) => r.x - 100));
   const sx = (wx) => x + clamp((wx - left) / (right - left), 0, 1) * w;
-  ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
+  ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w + tagW, h, 6); ctx.fill();
   ctx.strokeStyle = 'rgba(56,225,255,0.18)'; ctx.lineWidth = 1; ctx.stroke();
   // flare edge (danger) with a short trailing fade
   const fx = sx(G.flare.x);
@@ -6015,6 +6102,7 @@ function drawRaceStrip() {
     ctx.fillStyle = pal.fill || pal.suit || '#F4F7FF'; ctx.beginPath(); ctx.arc(dx, dy, 4, 0, TAU); ctx.fill();
     if (showLabels) { ctx.fillStyle = '#0A0E20'; ctx.font = '700 6px ' + FONT_NUM; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(r.p), dx, dy + 0.5); }
   }
+  if (tag) { ctx.fillStyle = place === 1 ? '#FFC93C' : '#F4F7FF'; ctx.font = '700 11px ' + FONT_NUM; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(tag, x + w + tagW - 8, y + h / 2 + 0.5); }
   ctx.textBaseline = 'alphabetic';
 }
 function drawRoundStatus() {
@@ -6182,6 +6270,7 @@ function netLabelAgainButton() {
 function renderRoomBoard() {
   netLabelAgainButton();
   const cap = $('deadRoomCaption'), tbl = $('deadRoomScores'), sp = $('btnSpectateRound'), em = $('deadEmotes');
+  renderRoundResult();
   if (!netLive()) { cap.style.display = tbl.style.display = 'none'; sp.style.display = em.style.display = 'none'; return; }
   const info = NET.info(), board = NET.board(), myP = info.myP;
   // top 5 by bestScore + self always shown
@@ -6261,13 +6350,13 @@ $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
   if (e === 'reconnecting') announce('Reconnecting.');
-  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast('The host ended your room connection.', 'net'); }
+  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast(d && d.reason === 1 ? 'The host closed the room.' : 'The host ended your room connection.', 'net'); }
   else if (e === 'approve-wait') {   // a held join is waiting for the host (§4.6)
     if (d && d.pubHex) { pendingJoins.set(d.pubHex, { pubHex: d.pubHex, role: d.role }); queueToast('Someone wants to join', 'net'); announce('Someone wants to join.'); }
     if (netLive()) renderRoomCard();
   } else if (e === 'reject') { if (d && d.pubHex) pendingJoins.delete(d.pubHex); if (netLive()) renderRoomCard(); }
   else if (e === 'rotated') { if (netLive()) renderRoomCard(); }   // fresh link/code/QR after New Link
-  else if (e === 'roster' || e === 'ok' || e === 'kick') { if (netLive()) renderRoomCard(); }
+  else if (e === 'roster' || e === 'ok' || e === 'kick' || e === 'banned') { if (netLive()) renderRoomCard(); }
   else if (e === 'emote') netEmoteToast(d);
   // Shared-round clock (§4.1): a genuinely NEW round (pre-roll countdown) toasts;
   // the targeted anchor a joiner/reconnector receives (startInMs 0) stays silent.

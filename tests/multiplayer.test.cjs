@@ -269,3 +269,76 @@ test('delayed encryption preserves counter order and snapshots scratch plaintext
   assert.deepEqual(Array.from((await api.env.openApp(recv, delivered[0])).pt), [1]);
   assert.deepEqual(Array.from((await api.env.openApp(recv, delivered[1])).pt), [2]);
 });
+
+test('a room round reports runners left, then ROUND OVER standings on every card, and resets on a new round', async (t) => {
+  const r = await room(t), { host, guest, hub } = r;
+  await start(r);
+  const text = (c, id) => c.elements.get(id)?.textContent || '';
+  const shown = (c, id) => c.elements.get(id)?.style.display !== 'none';
+  // Host pulls ahead; the guest makes a short hop off the start line.
+  host.run('input.right=true'); guest.run('input.right=true'); tick(host, 60); tick(guest, 12);
+  await host.net._n1.session()._snapTick();
+  await until(() => guest.net.presence().some((p) => p.p === 1 && p.dist > 0) && host.net.presence().some((p) => p.p === 2), 'mutual presence');
+  tick(host, 1); tick(guest, 1);
+  assert.equal(host.run('roundPlace()'), 1); assert.equal(guest.run('roundPlace()'), 2);
+
+  const guestDist = guest.run("die('void'); showDeathCard(); G.dist");
+  assert.ok(guestDist > 0 && guestDist < host.run('G.dist'));
+  assert.equal(text(guest, 'deadRound'), 'ROUND STILL RUNNING — 1 RUNNER LEFT');
+  assert.equal(shown(guest, 'deadStandings'), false);
+  assert.equal(shown(guest, 'btnSpectateRound'), true);
+  assert.match(text(guest, 'srAnnounce'), /still running/i);
+
+  await until(() => host.net.presence().some((p) => p.p === 2 && (p.state & 4)), 'guest death reaches host');
+  host.run('netTick(0.1)');
+  hub.advance(3000);   // the guest's ghost fades — its final numbers must survive
+  assert.equal(host.net.presence().some((p) => p.p === 2), false);
+  host.run('netTick(0.1); die(\'void\'); showDeathCard();');
+  const hostCall = host.run('NET.presence().find((p) => p.you).callsign');
+  assert.equal(text(host, 'deadRound'), 'ROUND OVER');
+  assert.match(text(host, 'deadStandings'), new RegExp('^1st YOU [\\d,]+ m\\n2nd \\S.* ' + guestDist + ' m$'));
+  assert.equal(text(host, 'btnAgain'), 'Start New Round');
+  assert.equal(shown(host, 'deadRoundNext'), false);
+
+  await host.net._n1.session()._snapTick();
+  await until(() => guest.net.presence().some((p) => p.p === 1 && (p.state & 4)), 'host death reaches guest');
+  guest.run('netTick(0.1)');
+  assert.equal(text(guest, 'deadRound'), 'ROUND OVER');
+  const standings = text(guest, 'deadStandings');
+  assert.ok(standings.startsWith('1st ' + hostCall + ' '), standings);
+  assert.match(standings, new RegExp('\\n2nd YOU ' + guestDist + ' m$'));
+  assert.equal(text(guest, 'deadRoundNext'), 'Waiting for host to start the next round');
+  assert.match(text(guest, 'srAnnounce'), /^Round over\. 1st /);
+
+  const before = host.net.info().runId;
+  host.net.newWorld();
+  await until(() => guest.run('G.netRunId') !== before, 'new round');
+  host.run('netTick(0.1)'); guest.run('netTick(0.1)');
+  for (const c of [host, guest]) {
+    assert.equal(c.run('roundResultsRunId'), host.net.info().runId);
+    // Only new-round rows remain: nobody dead, everyone still on the start line
+    // (the other client's first countdown presence may already have arrived).
+    assert.equal(c.run('[...roundResults.values()].every((r) => !r.dead && r.dist === 0)'), true);
+    assert.equal(c.run('[...roundResults.values()].some((r) => r.you)'), true);
+  }
+});
+
+test('a New Round never fans out the host\'s last-run sample under the new runId', async (t) => {
+  const { host, guest } = await room(t);
+  host.net.startRound({ delayMs: 0 });
+  host.net._n1.session().setPresence(5000, 200, 0, 4, 0, 900, 497); // host went down far along the old course
+  host.net.newWorld();
+  await host.net._n1.session()._snapTick();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(guest.net.presence().some((p) => p.p === 1 && p.runId === host.net.info().runId), false);
+});
+
+test('round results never carry into the next room, even with a reused runId', async (t) => {
+  const r = await room(t), { host, guest } = r;
+  await start(r);
+  host.run('netTick(0.1)');
+  await until(() => host.run('roundResults.size') >= 1, 'results fed');
+  host.run('leaveRoom()');
+  assert.equal(host.run('roundResults.size'), 0);
+  assert.equal(host.run('roundResultsRunId'), 0);
+});

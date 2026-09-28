@@ -491,6 +491,12 @@ Header:
 | 3 | 1 | chunkTot | (SHOULD be ≤ 8) |
 | 4 | 1 | count | ≤ 5; **S** if `> 5` or the body would overrun |
 
+`op 0` is an **authoritative snapshot** of the whole room: when its last chunk
+(`chunkIdx = chunkTot − 1`) arrives, a guest drops every P# the snapshot omitted (except its
+own). The host queues roster fan-outs so two snapshots never interleave their chunks at a
+peer. `op 1` upserts the listed entries without touching anyone else (joins, a rejoin's
+return, targeted role-request rejections); `op 2`/`op 3` remove them.
+
 Entry (repeated `count` times, starting at offset 5):
 
 | rel. offset | size | field | rule |
@@ -575,7 +581,7 @@ Direction: **guest → host** — a role-change request. Total **4 bytes**.
 
 The host validates capability and rate (≤ 1 change / 1.5 s per key), applies it, and
 **acknowledges via the next ROSTER broadcast** — there is no dedicated ack frame. A
-rejected request (rate or cap) is answered with a ROSTER `op 0` carrying only the
+rejected request (rate or cap) is answered with a ROSTER `op 1` carrying only the
 requester's own entry, sent to the requester alone. Because an unrelated full roster (a
 join, a callsign change) can cross the ROLE frame in flight, a guest treats a roster as the
 ack only when its own entry shows the requested role, or when it is that single-entry
@@ -629,8 +635,17 @@ Receipt rules a conforming host/guest MUST honor: `emoteId` is clamped to `0–5
 rejected unless it passes the control-envelope gate (matching room id + current host epoch,
 non-replayed seq); a guest that emits any host→all opcode (`EMOTEB`/`ROUND`/roster/snap/`BYE`)
 earns a strike. `BYE(reason=0)` is sent to a kicked peer, whose key is then banned for the
-room's life. "New link" is a local host action (epoch + secret bump) with no wire frame — it
-simply staleifies prior invites.
+room's life; a strike ban announces itself to the room with ROSTER `op 3` like a kick.
+`BYE(reason=1)` is sent to every member when the host closes the room. A guest whose relay
+reports the host key gone (`PeerGone`) and hears nothing from it for 15 s treats the room as
+closed. "New link" is a local host action (epoch + secret bump) with no wire frame — it
+staleifies prior invites for **future** joins only: a member's reconnect re-HELLO is checked
+against the proof it was admitted with, so rotating never locks out existing members.
+
+A transport-dropped member keeps its roster row (and P#) as *absent* for 60 s so a reconnect
+re-WELCOMEs the same P#; after that the row is removed and its P# may be reused (the reused
+P# starts a fresh board row). A held approve-mode join is discarded when its key leaves the
+relay or after 35 s, so a late ✓ can never admit a peer that is gone.
 
 ### 10.9 Frames specified but not in this snapshot
 
@@ -871,7 +886,8 @@ table (evict-oldest under key-spray); 3 pre-join strikes ban the key too.
 | Roster | 32 players + 16 spectators | reject join |
 
 The guest's HELLO retry loop deliberately spaces retries at ~5.5 s (outside the host's
-1-per-5-s HELLO limiter) and stops after 5 tries or on WELCOME.
+1-per-5-s HELLO limiter) and stops only on a WELCOME for the current connection, a BYE,
+or close (the admission timeout and the host-gone grace bound it).
 
 ### 15.3 Anti-cheat envelope (advisory)
 
