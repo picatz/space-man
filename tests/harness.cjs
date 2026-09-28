@@ -6,7 +6,7 @@ const ROOT = path.resolve(__dirname, '..');
 
 // No game/network behavior is mocked. Only browser APIs and the opaque relay
 // transport are replaced; clients exchange the real encrypted wire protocol.
-function client(hub, { game = true, width = 1280, height = 720 } = {}) {
+function client(hub, { game = true, width = 1280, height = 720, storage = new Map() } = {}) {
   const timers = new Set();
   const drawing = new Proxy({}, { get(target, key) {
     if (key in target) return target[key];
@@ -26,7 +26,6 @@ function client(hub, { game = true, width = 1280, height = 720 } = {}) {
   const document = { getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
     createElement: element, createTextNode: (s) => ({ textContent: s }), querySelectorAll: () => [], querySelector: () => null,
     addEventListener() {}, body: element(), head: element(), documentElement: element(), hidden: false };
-  const storage = new Map();
   const sandbox = { console, TextEncoder, TextDecoder, URL, Uint8Array, Uint32Array, Int32Array, Float32Array, ArrayBuffer, DataView,
     crypto: webcrypto, performance: { now: () => hub.now() }, document,
     Image: class {}, navigator: {}, location: { hash: '', origin: 'https://space.test', href: 'https://space.test/' },

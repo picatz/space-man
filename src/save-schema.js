@@ -10,7 +10,24 @@
   const SUIT_IDS = ['classic', 'mint', 'rose', 'gold', 'lilac', 'coral', 'aurora', 'graphite'];
   const HAT_IDS = ['none', 'antenna', 'sprout', 'beanie', 'halo', 'crown', 'cone', 'catears', 'phones'];
   const FREE_IDS = ['classic', 'mint', 'none', 'antenna'];
-  function migrate(raw) {
+  // Rebindable keyboard actions (KeyboardEvent.key, lowercased). Keys the game
+  // owns globally can never be bound, and a map with any invalid or duplicate
+  // entry falls back whole — a half-applied map could leave an action unreachable.
+  const DEFAULT_KEYS = Object.freeze({ left: 'a', right: 'd', jump: 'w', fire: 'f' });
+  const RESERVED_KEYS = ['escape', 'enter', 'tab', 'p', 'm', 'r', '1', '2', '3', '4', '5', '6'];
+  function bindableKey(k) { return typeof k === 'string' && k.length > 0 && k.length <= 12 && k === k.toLowerCase() && RESERVED_KEYS.indexOf(k) < 0; }
+  function sanitizeKeys(raw) {
+    const k = obj(raw), out = {}, seen = [];
+    for (const a of Object.keys(DEFAULT_KEYS)) {
+      const v = k[a] === undefined ? DEFAULT_KEYS[a] : k[a];
+      if (!bindableKey(v) || seen.indexOf(v) >= 0) return Object.assign({}, DEFAULT_KEYS);
+      out[a] = v; seen.push(v);
+    }
+    return out;
+  }
+  // opts.reduceMotion: the OS prefers-reduced-motion answer, used only when the
+  // player never chose (the schema can't read media queries itself).
+  function migrate(raw, opts) {
     const input = obj(raw);
     const inSet = obj(input.settings);
     const s = Object.assign({ music: true, sfx: true, haptics: true, shake: true, lefty: false, autorun: true }, inSet);
@@ -21,6 +38,9 @@
     s.musicVol = clamp01(num(s.musicVol, 1));
     s.sfxVol = clamp01(num(s.sfxVol, 1));
     s.muted = s.muted === true;
+    // Additive a11y fields (no version bump): the reduce-motion switch and key map.
+    s.reduceMotion = typeof s.reduceMotion === 'boolean' ? s.reduceMotion : !!(opts && opts.reduceMotion);
+    s.keys = sanitizeKeys(s.keys);
     const c = Object.assign(
       { companion: 'default', patches: [], suit: 'classic', hat: 'none', unlocked: FREE_IDS.slice() },
       obj(input.cosmetics));
@@ -37,5 +57,5 @@
       achievements: Object.assign({}, obj(input.achievements)),
     };
   }
-  window.SpaceManSave = { VERSION, migrate };
+  window.SpaceManSave = { VERSION, migrate, DEFAULT_KEYS, bindableKey, sanitizeKeys };
 })();
