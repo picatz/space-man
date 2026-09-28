@@ -236,19 +236,81 @@ test('DEBRIS FIELD slabs hold briefly, then drop out from under a standing playe
     const A = newPlatform(0, 270, 400); A.crumble = true; G.platforms = [A];
     Object.assign(p, { x: 100, y: 270 - p.h - 2, py: 270 - p.h - 2, vx: 0, vy: 1, onGround: false, hang: null });
     Object.assign(input, { right: false, left: false, jumpPressed: false, jumpHeld: false });
-    let heldFor = 0;
-    for (let f = 0; f < 120; f++) { updatePlayer(); updateCrumble(); if (p.onGround) heldFor++; else if (heldFor) break; }
+    let heldFor = 0, atDrop = null;
+    for (let f = 0; f < 120; f++) {
+      updatePlayer(); updateCrumble();
+      // The very step the slab goes, the player must already be off it — never floating.
+      if (A.fallen && !atDrop) atDrop = { onGround: p.onGround, groundPlat: p.groundPlat === null };
+      if (p.onGround) heldFor++; else if (heldFor) break;
+    }
+    // Coyote frames survive the drop: a jump just after it still launches.
+    resetRun(23); G.mode = 'play'; p = G.player;
+    const C = newPlatform(0, 270, 400); C.crumble = true; G.platforms = [C];
+    Object.assign(p, { x: 100, y: 270 - p.h - 2, py: 270 - p.h - 2, vx: 0, vy: 1, onGround: false, hang: null });
+    for (let f = 0; f < 120 && !C.fallen; f++) { updatePlayer(); updateCrumble(); }
+    updatePlayer(); updateCrumble();
+    input.jumpPressed = true; input.jumpHeld = true; updatePlayer();
+    const coyoteJump = p.vy < 0;
+    Object.assign(input, { jumpPressed: false, jumpHeld: false });
     // Jumping off during the countdown is always possible.
     resetRun(22); G.mode = 'play'; p = G.player;
     const B = newPlatform(0, 270, 400); B.crumble = true; G.platforms = [B];
     Object.assign(p, { x: 100, y: 270 - p.h - 2, py: 270 - p.h - 2, vx: 0, vy: 1, onGround: false, hang: null });
     for (let f = 0; f < CFG.crumbleDelay - 4; f++) { updatePlayer(); updateCrumble(); }
     input.jumpPressed = true; input.jumpHeld = true; updatePlayer();
-    return { heldFor, fallen: A.fallen, y: A.y, delay: CFG.crumbleDelay, escaped: p.vy < 0, bFallen: !!B.fallen };`);
+    return { heldFor, atDrop, coyoteJump, fallen: A.fallen, y: A.y, delay: CFG.crumbleDelay, escaped: p.vy < 0, bFallen: !!B.fallen };`);
   assert.equal(r.fallen, true);
+  assert.deepEqual(r.atDrop, { onGround: false, groundPlat: true });
+  assert.equal(r.coyoteJump, true);
   assert.equal(r.y, 270, 'sim geometry never moves (the drop is render-only)');
   assert.ok(r.heldFor >= r.delay - 1 && r.heldFor <= r.delay + 1, `held ${r.heldFor} frames`);
   assert.ok(r.escaped && !r.bFallen);
+});
+
+test('ledge catches and pull-ups arm DEBRIS FIELD slabs and end the one-leap mission', (t) => {
+  const c = solo(t);
+  const r = json(c, `
+    resetRun(31); G.mode = 'play'; const p = G.player;
+    Object.assign(input, { right: false, left: false, down: false, jumpPressed: false, jumpHeld: false, usingTouch: false, usingGamepad: false });
+    G.mission = { kind: 'airchain', target: 3, label: '', progress: 0, done: false };
+    // Two airborne kills bank progress on the mission...
+    G.enemies = []; G.chain = 0;
+    for (let i = 0; i < 2; i++) {
+      const e = patrolAt(newPlatform(-400, 270, 200), -300, 1, 0); e.golden = false; G.enemies = [e];
+      Object.assign(p, { x: e.x - p.w / 2, onGround: false, vy: 4, hang: null }); p.y = e.y - e.h / 2 - p.h + 8; collisions();
+    }
+    const beforeGrab = G.mission.progress;
+    // ...then the player falls just short of an UNTOUCHED cracked slab and catches its lip.
+    const A = newPlatform(0, 270, 400); A.crumble = true; G.platforms = [A];
+    Object.assign(p, { x: -30, y: 278, py: 278, vx: 0.5, vy: 1, onGround: false, hang: null, hangCooldown: 0, dead: false });
+    G.vigHold = false;
+    updatePlayer();
+    const grabbed = !!p.hang, armedAtGrab = A.crumbleT;
+    updateCrumble();
+    let pulledUpAt = -1, progressAfterPull = null;
+    for (let f = 1; f < 200; f++) {
+      updatePlayer(); updateCrumble();
+      if (pulledUpAt < 0 && p.onGround) { pulledUpAt = f; progressAfterPull = G.mission.progress; }
+    }
+    // After a pull-up the next leap needs all three kills again (G.chain may carry over).
+    const e3 = () => { const e = patrolAt(newPlatform(900, 270, 200), 1000, 1, 0); e.golden = false; G.enemies = [e];
+      Object.assign(p, { x: e.x - p.w / 2, onGround: false, vy: 4, hang: null }); p.y = e.y - e.h / 2 - p.h + 8; collisions(); };
+    e3(); e3(); const afterTwoMore = G.mission.done; e3();
+    // Pull-up straight onto an untouched slab also arms it (no landing needed).
+    const B = newPlatform(0, 270, 400); B.crumble = true; G.platforms = [B];
+    p.hang = { plat: B, side: 1, t: 0 }; pullUpFromHang(p); const armedByPull = B.crumbleT;
+    return { beforeGrab, grabbed, armedAtGrab, pulledUpAt, progressAfterPull, fallen: !!A.fallen, onSlabAtEnd: p.onGround && p.groundPlat === A,
+      afterTwoMore, done: G.mission.done, armedByPull };`);
+  assert.equal(r.beforeGrab, 2);
+  assert.equal(r.grabbed, true, 'the scripted fall catches the lip');
+  assert.equal(r.armedAtGrab, 0, 'the clock starts on the catch, not on a later landing');
+  assert.ok(r.pulledUpAt > 0);
+  assert.equal(r.progressAfterPull, 0, 'a pull-up is a touchdown for the one-leap mission');
+  assert.equal(r.fallen, true);
+  assert.equal(r.onSlabAtEnd, false, 'no standing on a cracked slab indefinitely');
+  assert.equal(r.afterTwoMore, false);
+  assert.equal(r.done, true);
+  assert.equal(r.armedByPull, 0);
 });
 
 test('deep runs announce each ramp notch and render DEBRIS FIELD slabs without error', (t) => {

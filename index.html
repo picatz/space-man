@@ -2050,11 +2050,13 @@ const MISSIONS = [
 const MISSION_BASE = 5, MISSION_VETERAN = 3;
 function missionPool() { return !SHOT && (stats.missionsDone | 0) >= MISSION_VETERAN ? MISSIONS.length : MISSION_BASE; }
 
-// One-leap mission: progress mirrors the live air chain (kills since leaving the
-// ground, stomp or shot); landing resets it in updatePlayer.
-function airChainProgress() {
+// One-leap mission: counts airborne kills (stomp or shot) since the feet last
+// touched a slab — its own count, so it can't inherit a chain that a pull-up
+// (which doesn't bank G.chain) carried over. endLeap() starts it over.
+function airChainProgress() { missionProgress('airchain', 1); }
+function endLeap() {
   const m = G.mission;
-  if (m && m.kind === 'airchain' && !m.done && G.chain > m.progress) missionProgress('airchain', G.chain - m.progress);
+  if (m && m.kind === 'airchain' && !m.done) m.progress = 0;
 }
 function missionProgress(kind, amount) {
   const m = G.mission;
@@ -2513,10 +2515,9 @@ function updatePlayer() {
     if (landed) {
       const impact = p.vy;
       p.y = landed.y - p.h; p.vy = 0; p.onGround = true; p.jumping = false; p.groundPlat = landed;
-      if (landed.crumble && landed.crumbleT === undefined) { landed.crumbleT = 0; if (G.mode === 'play') Audio.sfx.telegraph(); }
+      touchCrumble(landed);
       if (!wasGround) {
-        // A leap's air chain ends on touchdown — the one-leap mission starts over.
-        if (G.mission && G.mission.kind === 'airchain' && !G.mission.done) G.mission.progress = 0;
+        endLeap();   // touchdown ends the leap — the one-leap mission starts over
         p.sqX = 1.2; p.sqY = 0.8; p.landDip = clamp(impact / 14, 0, 1) * 3;   // feet-anchored squash owns the contact read now
         if (impact > 11) G.trauma = Math.max(G.trauma, 0.12);   // heavy landing = smooth thud, not jitter
         burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, frostDust(palNow().trailHot), 0.08, 0);
@@ -2592,9 +2593,15 @@ function updatePlayer() {
   if (Math.abs(p.vx) > 1) flags.taughtRun = true;
 }
 
-// DEBRIS FIELD: a touched crumble slab shakes for CFG.crumbleDelay frames, then
-// falls out of the sim (landing, ledge grab and platformUnder skip `fallen`).
-// crumbleT keeps counting a little past the drop to drive the render-only fall.
+// DEBRIS FIELD: any contact — landing, a ledge catch or a pull-up — arms a
+// crumble slab; it shakes for CFG.crumbleDelay frames, then falls out of the sim
+// (landing, ledge grab and platformUnder skip `fallen`). crumbleT keeps counting
+// a little past the drop to drive the render-only fall.
+function touchCrumble(pl) {
+  if (!pl || !pl.crumble || pl.crumbleT !== undefined) return;
+  pl.crumbleT = 0;
+  if (G.mode === 'play') Audio.sfx.telegraph();
+}
 function updateCrumble() {
   for (const pl of G.platforms) {
     if (!(pl.crumbleT >= 0) || pl.crumbleT > CFG.crumbleDelay + 60) continue;
@@ -2602,6 +2609,9 @@ function updateCrumble() {
       pl.fallen = true;
       const p = G.player;
       if (p.hang && p.hang.plat === pl) releaseHang(p);   // the lip left with the slab
+      // Standing on it: drop now, never float a frame on nothing. Coyote frames
+      // still count down from here, so a late jump off the slab stays fair.
+      if (p.groundPlat === pl) { p.onGround = false; p.groundPlat = null; }
       burst(pl.x + pl.w / 2, pl.y + 20, 14, 2.2, 30, 3, 'rgba(159,241,255,.55)', 0.15, 0);
       G.trauma = Math.max(G.trauma, 0.08);
     }
@@ -2638,6 +2648,7 @@ function grabLedge(p, pl, side) {
   p.vx = 0; p.vy = 0; p.onGround = false; p.jumping = false; p.coyote = 0; p.airFrames = 0;
   p.facing = side;                                  // face the wall he's clinging to
   p.hang = { plat: pl, side, t: 0 };
+  touchCrumble(pl);                                 // clinging to a cracked slab still starts its clock
   p.sqX = 1.18; p.sqY = 0.82;                       // catch squash, eases out over the hang
   // CATCH FEEL: dust at the hands, a 1-frame downward camera nudge, a soft catch sfx.
   const handX = side > 0 ? pl.x : pl.x + pl.w;
@@ -2673,6 +2684,7 @@ function pullUpFromHang(p) {
   p.y = pl.y - p.h;                                 // px/py left at the hang → a 1-frame pull-up slide
   p.vx = 0; p.vy = 0; p.buffer = 0;
   p.onGround = true; p.jumping = false; p.groundPlat = pl; p.coyote = CFG.coyote;
+  touchCrumble(pl); endLeap();                      // a pull-up is a touchdown for crumble slabs + one-leap mission
   p.sqX = 1.2; p.sqY = 0.8; p.landDip = 3;          // brief squash-land
   // Reset the flight-discovery anchors so BIG AIR / ORBITAL LEAP can't misfire off the hang.
   p.airFrames = 0; p.jumpStartX = p.x; p.jumpPlat = pl;
