@@ -574,10 +574,14 @@ Direction: **guest → host** — a role-change request. Total **4 bytes**.
 | 3 | 1 | newRole | `0` player / `1` spectator (any other → player) |
 
 The host validates capability and rate (≤ 1 change / 1.5 s per key), applies it, and
-**acknowledges via the next ROSTER broadcast** — there is no dedicated ack frame. A guest
-switching *to* spectator MAY stop sending PRES immediately (always safe); a guest switching
-*to* player MUST wait for the roster ack before sending PRES, or it will be struck for
-`spectator-pres`.
+**acknowledges via the next ROSTER broadcast** — there is no dedicated ack frame. A
+rejected request (rate or cap) is answered with a ROSTER `op 0` carrying only the
+requester's own entry, sent to the requester alone. Because an unrelated full roster (a
+join, a callsign change) can cross the ROLE frame in flight, a guest treats a roster as the
+ack only when its own entry shows the requested role, or when it is that single-entry
+rejection. A guest switching *to* spectator MAY stop sending PRES immediately (always safe)
+and MUST NOT resume before the ack; a guest switching *to* player MUST wait for the roster
+ack before sending PRES, or it will be struck for `spectator-pres`.
 
 ### 10.7 Control-frame envelope (hostEpoch/seq gate)
 

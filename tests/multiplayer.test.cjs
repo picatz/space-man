@@ -127,6 +127,24 @@ test('spectate from death card enters watching immediately and rejected role cha
   assert.equal(guest.net.info().role, 1);
 });
 
+test('an unrelated full roster crossing a role request is not taken as its ack', async (t) => {
+  const r = await room(t), { host, guest, hub } = r;
+  await start(r);
+  const gs = guest.net._n1.session();
+  gs.requestedRole = 1; // as if our ROLE frame is still in flight to the host
+  let rosters = 0;
+  const off = gs.ev.on((e) => { if (e === 'roster') rosters++; });
+  host.net._n1.session().setCallsign(2, 2); // host fans out a full roster first
+  await until(() => rosters > 0, 'unrelated full roster');
+  off();
+  assert.equal(gs.requestedRole, 1, 'stale roster must not clear the pending request');
+  assert.equal(guest.net.info().role, 0);
+  gs.requestedRole = null;
+  hub.advance(1600);
+  assert.equal(await guest.net.setRole(1), true);
+  assert.equal(guest.net.info().role, 1);
+});
+
 test('room terrain is invariant across effects, mercy history, viewports and generation batches', async (t) => {
   const { host, guest } = await room(t);
   const generate = (c, noisy) => JSON.parse(c.run(`JSON.stringify((() => {

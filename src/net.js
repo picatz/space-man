@@ -1805,9 +1805,16 @@
         // streaming PRES while the host still holds it as spectator would eat
         // spectator-pres strikes → ban an honest client on a rejected request.
         const me = S.p ? S.rosterMap.get(S.p) : null;
+        // A full roster sent for an unrelated reason (a join, a callsign) can
+        // cross our ROLE frame in flight, so it only acks a pending request
+        // once it shows the requested role. Rejections arrive as a targeted
+        // single-entry roster (a real full roster always carries the host too).
         const selfUpdated = r.entries.some((entry) => entry.p === S.p);
-        if (me && selfUpdated) { S.role = me.role; S.requestedRole = null; }
-        S.ev.emit('roster', { op: r.op, n: S.rosterMap.size, selfUpdated });
+        if (me && selfUpdated) S.role = me.role;
+        const selfAck = !!me && selfUpdated && S.requestedRole != null &&
+          (me.role === S.requestedRole || (r.op === 0 && r.entries.length === 1));
+        if (selfAck) S.requestedRole = null;
+        S.ev.emit('roster', { op: r.op, n: S.rosterMap.size, selfUpdated, selfAck });
         return;
       }
       if (pt[0] === A_SNAP) {
@@ -2130,7 +2137,7 @@
         let done = false;
         const finish = (ok) => { if (done) return; done = true; current.requestedRole = null; clearTimeout(timer); unsubscribe(); resolve(ok); };
         const timer = setTimeout(() => finish(false), 5000);
-        const unsubscribe = current.ev.on((e, d) => { if (e === 'roster' && d.selfUpdated) finish(session === current && current.role === wanted); });
+        const unsubscribe = current.ev.on((e, d) => { if (e === 'roster' && d.selfAck) finish(session === current && current.role === wanted); });
         current.requestRole(wanted).catch(() => finish(false));
       });
     },
