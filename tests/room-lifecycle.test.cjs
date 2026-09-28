@@ -139,3 +139,78 @@ test('a reused P# does not inherit the previous player board', async (t) => {
   assert.equal(next.net.info().myP, 3);
   assert.equal(host.net._n1.session()._board.has(3), false);
 });
+
+test('a full P# range reclaims the longest-absent slot instead of admitting an invisible P33', async (t) => {
+  const { hub, host, link } = await room(t);
+  const hs = host.net._n1.session();
+  // Occupy P3..P32 with members who dropped moments ago (still inside the grace).
+  const hex = host.net._n1.bytes.hex, keyOf = (p) => hex(new Uint8Array(32).fill(p));
+  for (let p = 3; p <= 32; p++) {
+    hs.roster.set(keyOf(p), { p, pub: new Uint8Array(32).fill(p), tag: 'AAA', role: 0, absent: true, absentAt: hub.now() - (40 - p), strikes: 0 });
+  }
+  const g = client(hub, { game: false });
+  t.after(() => g.close());
+  await g.net.acceptJoin(link, { adjIdx: 2, nounIdx: 2 });
+  assert.equal(g.net.info().myP, 3, 'the longest-absent slot (P3) is reused');
+  assert.equal(hs.roster.has(keyOf(3)), false);
+  assert.equal(hs.roster.has(keyOf(4)), true, 'only one slot is reclaimed');
+  await until(() => g.net.roster().some((e) => e.you), 'the newcomer sees itself');
+});
+
+test('the hello loop keeps retrying past five attempts until a WELCOME arrives', async (t) => {
+  const { host, guest } = await room(t);
+  const gs = guest.net._n1.session();
+  let hellos = 0;
+  const send = gs.relay.send.bind(gs.relay);
+  hostRows(host)[0].lastHello = Infinity; // the host drops every re-hello for now
+  drop(guest);
+  await until(() => gs.relay.state === 'established' && gs.helloTimer, 'reconnected and re-helloing');
+  gs.relay.send = (pub, w) => { hellos++; send(pub, w); };
+  // Fire the interval body directly instead of waiting 5.5 s per attempt.
+  for (let i = 0; i < 7; i++) { assert.ok(gs.helloTimer, 'still retrying after ' + (i + 1) + ' attempts'); gs.helloTimer._onTimeout?.(); }
+  await until(() => hellos >= 7, 'seven more HELLOs actually sent');
+  hostRows(host)[0].lastHello = 0;
+  gs.helloTimer._onTimeout?.();
+  await until(() => hostRows(host)[0].absent === false, 'finally welcomed');
+  await until(() => !gs.helloTimer || gs.welcomeGen > 0, 'loop ends on WELCOME');
+});
+
+test('a mid-round seat never lands a late joiner on an enemy', async (t) => {
+  const { host } = await room(t);
+  host.run('startRun({sync:true})');
+  const hits = JSON.parse(host.run(`JSON.stringify((() => {
+    const bad = [];
+    for (let ms = 4000; ms <= 90000; ms += 1500) {
+      resetRun(NET.info().seed); seatMidRound(ms);
+      const pl = G.player.groundPlat;
+      if (G.enemies.some((e) => !e.dead && e.x + e.w >= pl.x - 40 && e.x <= pl.x + pl.w + 40)) bad.push(ms);
+    }
+    return bad;
+  })())`));
+  assert.equal(hits.length, 0, 'enemies on the seat platform at ' + hits.join(', ') + ' ms');
+});
+
+test('a full roster snapshot drops members the guest missed leaving', async (t) => {
+  const { host, guest } = await room(t);
+  const gs = guest.net._n1.session();
+  gs.rosterMap.set(9, { tag: 'AAA', role: 0, callsign: 'GONE', you: false }); // left while our link was down
+  gs.peers.set(9, { p: 9, x: 100, y: 100 });
+  host.net._n1.session().setCallsign(3, 3); // any full roster
+  await until(() => !gs.rosterMap.has(9), 'stale member dropped');
+  assert.equal(gs.peers.has(9), false);
+  assert.equal(guest.net.roster().length, 2);
+});
+
+test('a rejoin gets the full snapshot; others only see an upsert', async (t) => {
+  const { hub, host, guest, link } = await room(t);
+  const other = client(hub, { game: false });
+  t.after(() => other.close());
+  await other.net.acceptJoin(link, { adjIdx: 4, nounIdx: 4 });
+  await until(() => guest.net.roster().length === 3, 'three members');
+  const ops = [];
+  other.net._n1.session().ev.on((e, d) => { if (e === 'roster') ops.push(d.op); });
+  drop(guest);
+  await until(() => hostRows(host).find((r) => r.p === 2)?.absent === false, 'guest back');
+  await until(() => ops.includes(1), 'others told of the return');
+  assert.equal(ops.includes(0), false, 'the rest of the room is not re-sent a snapshot');
+});

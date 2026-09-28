@@ -1211,7 +1211,7 @@
       nounIdx: opts.nounIdx == null ? CALLSIGN_NONE : opts.nounIdx & 0xff,
       self: { seq: 0, x: 0, y: 0, vx: 0, state: 0, chain: 0, score: 0, dist: 0, runId: 1 },
       ev: emitter(), tick: 0, snapTimer: null, rr: 0, slots: makeSlots(),
-      out: makeScratch(), outSnap: makeScratch(), outRoster: makeScratch(),
+      out: makeScratch(), outSnap: makeScratch(), outRoster: makeScratch(), rosterQueue: Promise.resolve(),
       started: 0,
       invite: '', link: '', region: opts.region || '', relayHostName: '',
       codeReplies: 0, codeRepliesMin: 0, codeMinMark: 0,
@@ -1361,10 +1361,10 @@
         const rc = decRole(pt);
         if (!rc) return;
         const t3 = performance.now();
-        if (row.lastRole && t3 - row.lastRole < ROLE_MIN_INTERVAL) { sendRoster(0, [row], row).catch(() => {}); return; }
+        if (row.lastRole && t3 - row.lastRole < ROLE_MIN_INTERVAL) { sendRoster(1, [row], row).catch(() => {}); return; }
         const c = counts();
-        if (rc.newRole === ROLE_SPECTATOR && row.role !== ROLE_SPECTATOR && c.spectators >= SPECTATOR_CAP) { sendRoster(0, [row], row).catch(() => {}); return; }
-        if (rc.newRole === ROLE_PLAYER && row.role !== ROLE_PLAYER && c.players >= PLAYER_CAP) { sendRoster(0, [row], row).catch(() => {}); return; }
+        if (rc.newRole === ROLE_SPECTATOR && row.role !== ROLE_SPECTATOR && c.spectators >= SPECTATOR_CAP) { sendRoster(1, [row], row).catch(() => {}); return; }
+        if (rc.newRole === ROLE_PLAYER && row.role !== ROLE_PLAYER && c.players >= PLAYER_CAP) { sendRoster(1, [row], row).catch(() => {}); return; }
         row.lastRole = t3;
         if (row.role !== rc.newRole) {
           row.role = rc.newRole;
@@ -1391,7 +1391,11 @@
         S.relay.send(row.pub, await sealApp(row.pair, w));
         // A reconnect after a transport drop: un-hide + re-announce the SAME P#,
         // and re-anchor the reconnecting peer to the live shared round at once.
-        if (row.absent) { row.absent = false; S.ev.emit('rejoin', { p: row.p, tag: row.tag }); sendRoster(1, [row]).catch(() => {}); }
+        if (row.absent) {
+          row.absent = false; S.ev.emit('rejoin', { p: row.p, tag: row.tag });
+          sendRoster(0, null, row).catch(() => {});             // the rejoiner missed changes while away: full snapshot
+          sendRoster(1, [row], null, row).catch(() => {});      // everyone else just sees them return
+        }
         if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});
         return;
       }
@@ -1449,6 +1453,16 @@
       const used = new Set([1]);
       for (const r of S.roster.values()) used.add(r.p);
       while (used.has(p)) p++;
+      // P# is capped at ROOM_CAP on the wire. Absent rows hold theirs through a
+      // reconnect grace, so when that leaves no slot, the longest-absent row
+      // gives its P# up now; with none absent the room is simply full.
+      if (p > ROOM_CAP) {
+        let oldest = null;
+        for (const r of S.roster.values()) if (r.absent && (!oldest || r.absentAt < oldest.absentAt)) oldest = r;
+        if (!oldest) return false;
+        removeRow(oldest);
+        p = oldest.p;
+      }
       const row = {
         p, pub: srcPub.slice(), tag: h.tag, suit: h.suit, hat: h.hat,
         role: h.role, adjIdx: h.adjIdx, nounIdx: h.nounIdx, caps: h.caps, pair,
@@ -1483,6 +1497,9 @@
     function selfEntry() {
       return { p: 1, pub: S.keys.pub, tag: S.tag, suit: S.suit, hat: S.hat, role: S.role, adjIdx: S.adjIdx, nounIdx: S.nounIdx };
     }
+    // Rows reachable right now. Absent rows (transport dropped) cost a seal per
+    // frame for nothing; a rejoin re-WELCOMEs them and resends the full roster.
+    function members() { return Array.from(S.roster.values()).filter((r) => !r.absent); }
     function allEntries() {
       const out = [selfEntry()];
       for (const r of S.roster.values()) if (!r.absent) out.push({ p: r.p, pub: r.pub, tag: r.tag, suit: r.suit, hat: r.hat, role: r.role, adjIdx: r.adjIdx, nounIdx: r.nounIdx });
@@ -1490,15 +1507,25 @@
     }
     // ROSTER fan-out (op 0 full / 1 join / 2 leave / 3 kick), chunked ≤ 5/entry,
     // sealed per peer. Roster carries roles + callsigns.
-    async function sendRoster(op, entriesOpt, target) {
+    // op 0 is an authoritative snapshot (guests drop P#s it omits), so its
+    // chunks must never interleave with another fan-out's at a peer: sends
+    // are queued, and the entries are read when each send's turn comes.
+    // target = one row only; except = every member but that row.
+    function sendRoster(op, entriesOpt, target, except) {
+      const run = S.rosterQueue.then(() => sendRosterNow(op, entriesOpt, target, except));
+      S.rosterQueue = run.catch(() => {});
+      return run;
+    }
+    async function sendRosterNow(op, entriesOpt, target, except) {
       if (!S.relay || S.relay.state !== 'established') return;
       const entries = entriesOpt || (op === 0 ? allEntries() : []);
       const chunks = [];
       for (let i = 0; i < entries.length; i += ROSTER_MAX) chunks.push(entries.slice(i, i + ROSTER_MAX));
       if (!chunks.length) chunks.push([]);
+      const to = target ? [target] : members().filter((r) => r !== except);
       for (let ci = 0; ci < chunks.length; ci++) {
         const pt = encRoster(S.outRoster, op, ci, chunks.length, chunks[ci]).slice();
-        for (const r of target ? [target] : S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
+        for (const r of to) S.relay.send(r.pub, await sealApp(r.pair, pt));
       }
     }
 
@@ -1508,7 +1535,7 @@
     async function broadcastEmoteB(p, emoteId, seq) {
       if (!S.relay || S.relay.state !== 'established') return;
       const pt = encEmoteB(S.out, p, emoteId, seq).slice();
-      for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
+      for (const r of members()) S.relay.send(r.pub, await sealApp(r.pair, pt));
     }
     // ROUND (new-world) broadcast — rides the host-epoch/seq control envelope so
     // a guest CANNOT forge or replay it: encCtrl binds {roomId, hostEpoch, seq}
@@ -1521,7 +1548,7 @@
       const body = encRoundBody(S.seed, S.runId, countdown, 0, startDelayMs, elapsedMs);
       const pt = encCtrl(S.out, A_ROUND, S.roomId, S.hostEpoch, ++S.ctrlSeq, body).slice();
       if (target) { S.relay.send(target.pub, await sealApp(target.pair, pt)); return; }   // targeted anchor for a fresh joiner
-      for (const r of S.roster.values()) S.relay.send(r.pub, await sealApp(r.pair, pt));
+      for (const r of members()) S.relay.send(r.pub, await sealApp(r.pair, pt));
     }
 
     async function snapTick() {
@@ -1544,7 +1571,7 @@
       }
       S.rr = live.length ? (S.rr + (SNAP_MAX - 1)) % live.length : 0;
       const pt = encSnap(S.outSnap, (S.tick >> 4) & 0xffff, rows).slice();
-      for (const r of S.roster.values()) {
+      for (const r of members()) {
         S.relay.send(r.pub, await sealApp(r.pair, pt));          // one encode, n seals
       }
       if (S.roster.size) S.ev.emit('snap-out', { n: rows.length, peers: S.roster.size });
@@ -1806,7 +1833,7 @@
       localRoundT0: null, roundRunId: 0,   // shared-round clock, anchored from ROUND (host time − rtt/2)
       pair: null, peers: new Map(),    // p → latest snap row
       ev: emitter(), out: makeScratch(), seq: 0, roleSeq: 0, emoteSeq: 0, hostHex: hex(inv.hostPub),
-      helloTimer: null, slots: makeSlots(), byed: null, welcomeGen: 0, hostGoneTimer: null, boardPub: new Map(),
+      helloTimer: null, slots: makeSlots(), byed: null, welcomeGen: 0, hostGoneTimer: null, boardPub: new Map(), snapshotPs: null,
     };
     // Relay says the host key left. A host transport blip reconnects within
     // seconds (and its SNAP resumes); only a lasting absence ends the room.
@@ -1835,11 +1862,9 @@
     function helloLoop() {
       if (S.helloTimer) clearInterval(S.helloTimer);
       const gen = S.welcomeGen;
-      let tries = 1;
       sendHello().catch(() => {});
       S.helloTimer = setInterval(() => {
-        if (S.welcomeGen !== gen || S.byed != null || tries >= 5) { clearInterval(S.helloTimer); S.helloTimer = null; return; }
-        tries++;
+        if (S.welcomeGen !== gen || S.byed != null) { clearInterval(S.helloTimer); S.helloTimer = null; return; }
         sendHello().catch(() => {});
       }, 5500);                                        // outside the host's 1-per-5s hello limiter
     }
@@ -1878,6 +1903,16 @@
             callsign: callsignText(e.adjIdx, e.nounIdx), you: e.p === S.p,
           });
         }
+        // op 0 is the whole room: once its last chunk lands, anyone it left out
+        // is gone (e.g. they left while our own link was down and we missed op 2).
+        if (r.op === 0) {
+          if (r.chunkIdx === 0) S.snapshotPs = new Set();
+          if (S.snapshotPs) for (const e of r.entries) S.snapshotPs.add(e.p);
+          if (S.snapshotPs && r.chunkIdx >= r.chunkTot - 1) {
+            for (const p of Array.from(S.rosterMap.keys())) if (p !== S.p && !S.snapshotPs.has(p)) { S.rosterMap.delete(p); S.peers.delete(p); }
+            S.snapshotPs = null;
+          }
+        }
         // Adopt OUR host-confirmed role (the roster IS the role-change ack,
         // Addendum A). Never assume player locally before this ack: a guest
         // streaming PRES while the host still holds it as spectator would eat
@@ -1886,11 +1921,11 @@
         // A full roster sent for an unrelated reason (a join, a callsign) can
         // cross our ROLE frame in flight, so it only acks a pending request
         // once it shows the requested role. Rejections arrive as a targeted
-        // single-entry roster (a real full roster always carries the host too).
+        // op 1 carrying only our own entry.
         const selfUpdated = r.entries.some((entry) => entry.p === S.p);
         if (me && selfUpdated) S.role = me.role;
         const selfAck = !!me && selfUpdated && S.requestedRole != null &&
-          (me.role === S.requestedRole || (r.op === 0 && r.entries.length === 1));
+          (me.role === S.requestedRole || (r.op === 1 && r.entries.length === 1));
         if (selfAck) S.requestedRole = null;
         S.ev.emit('roster', { op: r.op, n: S.rosterMap.size, selfUpdated, selfAck });
         return;
