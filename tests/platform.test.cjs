@@ -71,7 +71,7 @@ test('service worker: scripts are network-first with offline fallback; cross-ori
   sw.setOnline(false);
   assert.equal((await sw.request('/src/net.js')).body, 'network /src/net.js', 'offline serves the refreshed copy');
   assert.equal((await sw.request('/src/qr.js')).body, 'precache /src/qr.js', 'offline serves the precache');
-  assert.match((await sw.request('/', { mode: 'navigate', destination: 'document' })).body, /precache/);
+  assert.equal((await sw.request('/', { mode: 'navigate', destination: 'document' })).body, 'network /', 'offline launch serves the refreshed page');
   assert.equal(await sw.request('https://relay.example/x.js'), null, 'cross-origin is not intercepted');
   assert.equal(await sw.request('/src/net.js', { method: 'POST' }), null, 'non-GET is not intercepted');
 });
