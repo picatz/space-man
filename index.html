@@ -2325,6 +2325,11 @@ function seatMidRound(elapsedMs) {
   p.y = plat.y - CFG.ph; p.px = p.x; p.py = p.y; p.vx = 0; p.vy = 0;
   p.onGround = true; p.jumping = false; p.airFrames = 0; p.coyote = 0; p.buffer = 0;
   p.groundPlat = plat; p.jumpPlat = plat; p.jumpStartX = p.x;
+  // Land on a safe slab: enemies are local simulation, so clear the seat
+  // platform (and any shots in flight near it) rather than dropping a late
+  // joiner onto a patrol that kills them on frame 1.
+  G.enemies = G.enemies.filter((e) => e.x + e.w < plat.x - 40 || e.x > plat.x + plat.w + 40);
+  G.ebullets = G.ebullets.filter((b) => Math.abs(b.x - p.x) > 500);
   // Reseat the camera on the grounded target (matches updateCamera's grounded aim
   // exactly, off the platform's own height) so frame 1 never eases a phantom jump.
   G.camX = p.x - view.w * 0.42; G.camXprev = G.camX;
