@@ -6,7 +6,7 @@ const ROOT = path.resolve(__dirname, '..');
 
 // No game/network behavior is mocked. Only browser APIs and the opaque relay
 // transport are replaced; clients exchange the real encrypted wire protocol.
-function client(hub, { game = true, width = 1280, height = 720 } = {}) {
+function client(hub, { game = true, width = 1280, height = 720, hash = '', dpr = 1 } = {}) {
   const timers = new Set();
   const drawing = new Proxy({}, { get(target, key) {
     if (key in target) return target[key];
@@ -29,9 +29,9 @@ function client(hub, { game = true, width = 1280, height = 720 } = {}) {
   const storage = new Map();
   const sandbox = { console, TextEncoder, TextDecoder, URL, Uint8Array, Uint32Array, Int32Array, Float32Array, ArrayBuffer, DataView,
     crypto: webcrypto, performance: { now: () => hub.now() }, document,
-    Image: class {}, navigator: {}, location: { hash: '', origin: 'https://space.test', href: 'https://space.test/' },
+    Image: class {}, navigator: {}, location: { hash, origin: 'https://space.test', href: 'https://space.test/' },
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
-    innerWidth: width, innerHeight: height, devicePixelRatio: 1, addEventListener() {},
+    innerWidth: width, innerHeight: height, devicePixelRatio: dpr, addEventListener() {},
     matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ getPropertyValue: () => '0' }),
     requestAnimationFrame: () => 0, cancelAnimationFrame() {},
     setTimeout(fn, ms) { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; },
