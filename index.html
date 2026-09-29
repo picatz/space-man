@@ -127,6 +127,13 @@
   .panel.scroll-cap { max-height: calc(100dvh - 24px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   /* Death card sits low so the ragdoll/helmet stay in frame above it (E9.2). */
   .dead-anchor { justify-content: flex-end; }
+  /* Wide landscape windows (desktop) frame the ragdoll left of the card
+     (camera at 42% of view width), so the card needn't hug the bottom edge:
+     center it instead of stranding it low under empty sky. ≥1100px keeps the
+     980×620 #shot goldens and phones/tablets on the low anchor. */
+  @media (min-width: 1100px) and (min-aspect-ratio: 4/3) {
+    #ovDead.dead-anchor { justify-content: center; }
+  }
 
   .title-lg {
     font-weight: 900;
