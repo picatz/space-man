@@ -925,7 +925,7 @@ const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.s
 // OS answer at load: only the DEFAULT for the in-game Reduce Motion switch.
 const osReducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, musicVol: 1, sfxVol: 1, muted: false,
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
 // G: default AUTO-RUN (touch) to OFF — touch movement is free left/right, no
@@ -940,6 +940,7 @@ if (loadJSON(LS.autorunReset, null) !== 1) { settings.autorun = false; saveJSON(
 settings.netGhosts = Math.min(1, Math.max(0.25, (typeof settings.netGhosts === 'number' && isFinite(settings.netGhosts)) ? settings.netGhosts : 0.85));
 settings.netEmotes = settings.netEmotes !== false;
 settings.netApprove = settings.netApprove === true;
+settings.sharp = settings.sharp === true;   // SHARP RENDERING: opt-in lock on full DPR (adaptive resolution off)
 if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
 if (typeof settings.netRelay !== 'string') settings.netRelay = '';
 if (typeof settings.netRelayUrl !== 'string') settings.netRelayUrl = '';
@@ -997,9 +998,28 @@ const view = { w: 640, h: 360, scale: 1, dpr: 1, isTablet: false };
 // HUD chrome and the popup layer so the two never drift apart.
 const uiScale = () => clamp(view.w / 560, 0.72, 1);
 
+// Adaptive resolution: a phone that can't hold ~45fps steps its backing-store
+// DPR down (2 → 1.5 → 1) at a calm moment. Render-only — logical view size,
+// the sim and #shot goldens (fixed DPR) are untouched. Per launch only: a new
+// session starts sharp again. SHARP RENDERING (settings.sharp) opts out.
+const perf = { cap: CFG.dprCap, ema: STEP, slowT: 0, warm: 0 };
+function adaptResolution(dt) {
+  if (SHOT || settings.sharp || view.dpr <= 1) return;
+  if (dt > 0.1) return;   // tab switch / GC hitch: not steady-state cost
+  if ((perf.warm += dt) < 1) { perf.ema = STEP; return; }   // let a fresh canvas settle
+  perf.ema += (dt - perf.ema) * 0.05;
+  perf.slowT = perf.ema > 0.022 ? perf.slowT + dt : 0;
+  if (perf.slowT < 2) return;
+  // Mid-run a DPR switch pops mid-jump; wait for attract/pause/dead unless the
+  // device is badly behind (<25fps), where the pop beats a stuttering run.
+  if (G.mode === 'play' && !(G.player && G.player.dead) && perf.ema < 0.04) return;
+  perf.cap = view.dpr > 1.5 ? 1.5 : 1;
+  resize();
+}
 function resize() {
   const cssW = window.innerWidth, cssH = window.innerHeight;
-  const dpr = Math.min(window.devicePixelRatio || 1, CFG.dprCap);
+  const dpr = Math.min(window.devicePixelRatio || 1, SHOT || settings.sharp ? CFG.dprCap : perf.cap);
+  perf.slowT = 0; perf.warm = 0;
   view.dpr = dpr;
   view.isTablet = Math.min(cssW, cssH) >= 700;
   const logicalH = view.isTablet ? CFG.tabletH : CFG.logicalH;
@@ -2410,6 +2430,11 @@ function seatMidRound(elapsedMs) {
   p.y = plat.y - CFG.ph; p.px = p.x; p.py = p.y; p.vx = 0; p.vy = 0;
   p.onGround = true; p.jumping = false; p.airFrames = 0; p.coyote = 0; p.buffer = 0;
   p.groundPlat = plat; p.jumpPlat = plat; p.jumpStartX = p.x;
+  // Land on a safe slab: enemies are local simulation, so clear the seat
+  // platform (and any shots in flight near it) rather than dropping a late
+  // joiner onto a patrol that kills them on frame 1.
+  G.enemies = G.enemies.filter((e) => e.x + e.w < plat.x - 40 || e.x > plat.x + plat.w + 40);
+  G.ebullets = G.ebullets.filter((b) => Math.abs(b.x - p.x) > 500);
   // Reseat the camera on the grounded target (matches updateCamera's grounded aim
   // exactly, off the platform's own height) so frame 1 never eases a phantom jump.
   G.camX = p.x - view.w * 0.42; G.camXprev = G.camX;
@@ -3452,6 +3477,8 @@ function frame(now) {
   let dt = (now - lastT) / 1000; lastT = now;
   if (dt > 0.25) dt = 0.25;
   G.time += dt;
+  adaptResolution(dt);
+  tickUpdate();
 
   if (G.mode === 'resume') { G.resumeT -= dt; if (G.resumeT <= 0) G.mode = 'play'; }
   if (G.toastT > 0) G.toastT = Math.max(0, G.toastT - dt);
@@ -4491,7 +4518,7 @@ function drawParticles(alpha) {
       ctx.beginPath(); ctx.ellipse(0, 0, p.size, p.size * 0.55, 0, 0, TAU); ctx.fill(); ctx.restore();
     } else if (p.kind === 5) {   // E13: the nap's drifting Zs
       ctx.globalAlpha = a * 0.9; ctx.fillStyle = p.color;
-      ctx.font = '700 ' + p.size + 'px ' + FONT; ctx.textAlign = 'center';
+      ctx.font = fontStr(700, p.size, FONT); ctx.textAlign = 'center';
       ctx.fillText('z', px, py);
     } else { ctx.globalAlpha = a; ctx.fillStyle = p.color; ctx.fillRect(px - p.size / 2, py - p.size / 2, p.size, p.size); }
   }
@@ -4557,7 +4584,7 @@ function drawPopups(camX, camY) {
     const t = 1 - p.life / p.max, sc = t < 0.3 ? easeOutBack(t / 0.3) * 1.2 : 1.2;
     const py = Math.max(p.y, ceilY);
     ctx.globalAlpha = clamp(p.life / 20, 0, 1);
-    ctx.font = '900 ' + (11 * sc) + 'px ' + FONT; ctx.textAlign = 'center';
+    ctx.font = fontStr(900, 11 * sc, FONT); ctx.textAlign = 'center';
     ctx.strokeStyle = 'rgba(6,8,24,0.9)'; ctx.lineWidth = 3 * us; ctx.strokeText(p.text, p.x, py);
     ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, py);
   }
@@ -4571,6 +4598,21 @@ const FONT = "'Orbitron', ui-rounded, -apple-system, 'Segoe UI', system-ui, sans
 // Numerals only, never Orbitron — its slashed zero reads as Ø at HUD sizes.
 // Mirrors the DOM's --font-num split (E4's gap-chevron number).
 const FONT_NUM = "ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif";
+// Memoized ctx.font strings for the per-frame HUD: sizes only change on resize
+// or a brief chain fade, so this skips a few string builds (and the GC churn
+// they cause on low-end phones) every frame. Bounded: a lerping size can't grow it.
+const _fontMemo = new Map();
+function fontStr(weight, size, family) {
+  const key = family === FONT_NUM ? -weight : weight;
+  let bySize = _fontMemo.get(key);
+  if (!bySize) _fontMemo.set(key, bySize = new Map());
+  let f = bySize.get(size);
+  if (f === undefined) {
+    if (bySize.size > 48) bySize.clear();
+    bySize.set(size, f = weight + ' ' + size + 'px ' + family);
+  }
+  return f;
+}
 // Portrait mission captions (view.w < 480): the full label doesn't fit the
 // pill at the type floor, so E10 swaps in these shortened forms by kind.
 const MISSION_SHORT = { stomp: 'STOMP 3', shoot: 'BLAST 3', shard: '5 SHARDS', graze: 'DODGE 2', distance: 'REACH 350m' };
@@ -4625,10 +4667,10 @@ function drawHUD() {
     const gapM = Math.max(0, Math.round((G.player.x - G.flare.x) / 10));
     const pulse = G.threat > 0.6 ? 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(G.time * TAU * 2)) : 0.6;
     ctx.save(); ctx.globalAlpha *= pulse;
-    ctx.fillStyle = '#FF8A6B'; ctx.font = '700 ' + (10 * us) + 'px ' + FONT;
+    ctx.fillStyle = '#FF8A6B'; ctx.font = fontStr(700, 10 * us, FONT);
     ctx.fillText('‹‹ ', ox, top + 27 * us);
     const cw = ctx.measureText('‹‹ ').width;
-    ctx.font = '700 ' + (10 * us) + 'px ' + FONT_NUM;
+    ctx.font = fontStr(700, 10 * us, FONT_NUM);
     ctx.fillText(gapM + 'm', ox + cw, top + 27 * us);
     ctx.restore();
   }
@@ -4638,7 +4680,7 @@ function drawHUD() {
   if (G.mission) {
     const m = G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
     ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 22 * us, 6 * us); ctx.fill();
-    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = '700 ' + Math.max(9.5, 7.5 * us) + 'px ' + FONT; ctx.textAlign = 'left';
+    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = fontStr(700, Math.max(9.5, 7.5 * us), FONT); ctx.textAlign = 'left';
     const label = m.done ? 'MISSION COMPLETE' : (view.w < 480 ? (MISSION_SHORT[m.kind] || m.label) : m.label);
     ctx.fillText(label, ox + 6 * us, my + 9 * us);
     ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(ox + 6 * us, my + 13 * us, mw - 12 * us, 3 * us, 2); ctx.fill();
@@ -4664,11 +4706,11 @@ function drawHUD() {
       ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.15)';
       ctx.fillRect(rx - i * sp - pw2, top + 2, pw2 - 1, 11 * us);
     }
-    ctx.fillStyle = '#CFE3FF'; ctx.font = '600 ' + Math.max(9.5, 9 * us) + 'px ' + FONT; ctx.textAlign = 'right';
+    ctx.fillStyle = '#CFE3FF'; ctx.font = fontStr(600, Math.max(9.5, 9 * us), FONT); ctx.textAlign = 'right';
     ctx.fillText('AMMO', rx, top + 24 * us);
   }
   if (G.shards > 0) {
-    ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'right';
+    ctx.fillStyle = '#9FF1FF'; ctx.font = fontStr(700, 9 * us, FONT); ctx.textAlign = 'right';
     ctx.fillText('✦ ' + G.shards, view.w - left, top + 42 * us);
   }
 }
@@ -4701,7 +4743,7 @@ function drawMuteButton(x, y, s, us) {
   }
 }
 function drawGlowText(text, x, y, size, glow, fill) {
-  ctx.font = '900 ' + size + 'px ' + FONT;
+  ctx.font = fontStr(900, size, FONT);
   const a = ctx.globalAlpha;   // ambient alpha multiplies both layers (HUD duck, stinger/celebrate fades)
   ctx.save(); ctx.transform(1, 0, -0.08, 1, 0, 0);
   ctx.fillStyle = glow; ctx.globalAlpha = 0.5 * a; ctx.fillText(text, x + 1.5, y + 1.5);
@@ -5156,6 +5198,9 @@ const SETTINGS_DEF = [
   { key: 'reduceMotion', type: 'switch', label: 'Reduce motion', noShot: true },
   { key: 'lefty', type: 'switch', label: 'Left-handed' },
   { key: 'autorun', type: 'switch', label: 'Auto-run (touch)' },
+  // Device-dependent (adaptive resolution never runs under #shot): noShot keeps
+  // the row out of the pause/settings goldens like the net rows below.
+  { key: 'sharp', type: 'switch', label: 'Sharp rendering', noShot: true },
   { key: 'key:left', bind: 'left', type: 'key', label: 'Move left', section: 'Keyboard', noShot: true },
   { key: 'key:right', bind: 'right', type: 'key', label: 'Move right', noShot: true },
   { key: 'key:jump', bind: 'jump', type: 'key', label: 'Jump', noShot: true },
@@ -5241,6 +5286,7 @@ function toggleSetting(key) {
   settings[key] = !settings[key];
   if (key === 'music' || key === 'sfx') Audio.syncChannels();
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
+  if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
   syncSettingsUI(); persistAll();
 }
 // Mirrors the live switch onto the CSS motion rules; render/sim read lessMotion() per frame.
@@ -6506,8 +6552,61 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); defe
 /* ---------------------------------------------------------------------------
    27. SERVICE WORKER
    ------------------------------------------------------------------------- */
+// A new build installs in the background and waits; the page shows UPDATE READY
+// and swaps only at a safe moment — title or death card, never mid-run and never
+// in a Run Together room (a reload drops the session). The worker is network-
+// first, so until then this page and its scripts stay one coherent build.
+const swu = { ready: false, readyAt: 0, reg: null, reloading: false };
+function swUpdateReady() {
+  if (swu.ready) return;
+  swu.ready = true; swu.readyAt = G.time;
+  queueToast('UPDATE READY', 'sys');
+}
+function swSafeMoment() {
+  if (netLive()) return false;
+  if (G.mode === 'attract') return $('ovAttract').classList.contains('show');
+  return G.mode === 'dead' && $('ovDead').classList.contains('show');
+}
+function tickUpdate() {   // once per rAF; cheap until an update is actually waiting
+  if (!swu.ready || swu.reloading || G.time - swu.readyAt < 2 || !swSafeMoment()) return;
+  // Loop guard: one update reload per 30s per tab, even if a worker keeps
+  // reporting itself waiting (a stuck install must not strobe the title). A
+  // guarded attempt is deferred, not dropped — and only a real attempt stamps
+  // the clock, or the 4s fallback reload could keep the update waiting forever.
+  let last = 0;
+  try { last = +sessionStorage.getItem('sm2.swReload') || 0; } catch (e) {}
+  const wait = 30000 - (Date.now() - last);
+  if (wait > 0) { swu.readyAt = G.time + wait / 1000; return; }
+  try { sessionStorage.setItem('sm2.swReload', String(Date.now())); } catch (e) {}
+  swu.reloading = true;
+  const waiting = swu.reg && swu.reg.waiting;
+  if (waiting) {
+    waiting.postMessage('skipWaiting');   // controllerchange below does the reload
+    setTimeout(() => location.reload(), 4000);   // fallback if activation never reports
+  } else location.reload();
+}
 if ('serviceWorker' in navigator && !SHOT) {
-  window.addEventListener('load', () => { navigator.serviceWorker.register('./service-worker.js').catch(() => {}); });
+  const sw = navigator.serviceWorker;
+  let hadController = !!sw.controller;
+  sw.addEventListener('controllerchange', () => {
+    if (swu.reloading) { location.reload(); return; }
+    // First install claiming this page is not an update. Otherwise another tab
+    // activated a new build: finish this session, reload at the next safe moment.
+    if (hadController) swUpdateReady();
+    hadController = true;
+  });
+  window.addEventListener('load', () => {
+    sw.register('./service-worker.js').then((reg) => {
+      swu.reg = reg;
+      if (reg.waiting && sw.controller) swUpdateReady();
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && sw.controller) swUpdateReady(); });
+      });
+      // Installed PWAs live for days; look for a new build whenever we come back.
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
+  });
 }
 
 /* ---------------------------------------------------------------------------
