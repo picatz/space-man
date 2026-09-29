@@ -169,6 +169,15 @@
     transition: transform 0.08s ease;
   }
   .btn:active { transform: scale(0.97); }
+  /* Keyboard + controller focus ring — same cyan ring as the switches/sliders.
+     A gamepad has no :focus-visible heuristic, so .gamepad-active forces it. */
+  .overlay button:focus-visible, .overlay summary:focus-visible,
+  body.gamepad-active .overlay button:focus, body.gamepad-active .overlay summary:focus,
+  body.gamepad-active .overlay input:focus { outline: 2px solid var(--cyan-lt); outline-offset: 3px; }
+  /* Key-rebind rows hide only on touch-ONLY devices: a touch-first hybrid with
+     a trackpad/mouse (any-pointer: fine) likely has a keyboard too. Browsers
+     without level-4 `not` just keep the rows visible (the safe side). */
+  @media (pointer: coarse) and (not (any-pointer: fine)) { .key-row { display: none; } }
   .btn.ghost {
     background: transparent;
     color: var(--ui);
@@ -192,16 +201,16 @@
     50% { box-shadow: 0 6px 26px rgba(56, 225, 255, 0.7); transform: scale(1.02); }
   }
   .btn.pulse { animation: pulseGlow 1.6s ease-in-out infinite; }
-  @media (prefers-reduced-motion: reduce) {
-    .btn.pulse { animation: none; }
-    .btn { transition: none; }
-    /* E9.1: panels appear, they don't slide/scale in; still dim the backdrop. */
-    .overlay, .panel { transition: none; }
-    .panel { opacity: 1; transform: none; }
-    #deadMedal.stamp { animation: none; }
-    #deadDelta { transition: none; opacity: 1; transform: none; }
-    #deadTapHint { transition: none; }
-  }
+  /* Reduce Motion: body.reduce-motion follows the in-game switch, which
+     defaults to prefers-reduced-motion (and is the OS answer under #shot), so
+     turning the switch OFF really restores motion. */
+  body.reduce-motion .btn.pulse { animation: none; }
+  /* E9.1: panels appear, they don't slide/scale in; still dim the backdrop. */
+  body.reduce-motion .btn, body.reduce-motion .overlay, body.reduce-motion .panel { transition: none; }
+  body.reduce-motion .panel { opacity: 1; transform: none; }
+  body.reduce-motion #deadMedal.stamp { animation: none; }
+  body.reduce-motion #deadDelta { transition: none; opacity: 1; transform: none; }
+  body.reduce-motion #deadTapHint { transition: none; }
 
   .toggle-row {
     display: flex;
@@ -563,7 +572,7 @@
 </head>
 <body>
 
-<canvas id="game"></canvas>
+<canvas id="game" role="img" aria-label="Space Man: an endless space runner. Scores, sectors and run results are announced."></canvas>
 
 <!-- Attract / landing -->
 <div class="overlay attract-anchor" id="ovAttract">
@@ -940,9 +949,10 @@ function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val
 
 const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
-const prefersLessMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !prefersLessMotion, lefty: false, autorun: false, sharp: false, musicVol: 1, sfxVol: 1, muted: false,
+// OS answer at load: only the DEFAULT for the in-game Reduce Motion switch.
+const osReducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
 // G: default AUTO-RUN (touch) to OFF — touch movement is free left/right, no
@@ -964,6 +974,11 @@ if (typeof settings.netRelayUrl !== 'string') settings.netRelayUrl = '';
 if (typeof settings.netRelayList !== 'string') settings.netRelayList = '';
 // Raw overlay wins for switches (legacy precedence) but the mixer trio must stay sane.
 settings.musicVol = migratedSave.settings.musicVol; settings.sfxVol = migratedSave.settings.sfxVol; settings.muted = migratedSave.settings.muted;
+settings.reduceMotion = migratedSave.settings.reduceMotion; settings.keys = migratedSave.settings.keys;
+// Live check (the switch applies the moment it flips). SHOT keeps the OS answer
+// so a stale profile can never perturb a golden.
+function lessMotion() { return SHOT ? osReducedMotion : settings.reduceMotion; }
+let rebinding = null;   // settings.keys action awaiting its new key (settings UI)
 // Passthrough achievement dates (firstRunDate etc.) — additive v4 field, no schema bump.
 let ach = migratedSave.achievements;
 saveJSON(LS.schema, window.SpaceManSave.VERSION);
@@ -1751,11 +1766,85 @@ const input = {
   jumpZone: { active: false, id: -1 },
   shootBtn: { cx: 0, cy: 0, r: 34, pressed: false, id: -1 },
   muteHold: null,   // { id, t, fired } — pending mute tap / settings long-press
-  pad: { index: -1, prev: [], connected: false },
+  pad: { index: -1, prev: [], connected: false, navDir: '0,0', navAt: Infinity },
   downIds: new Set(),   // every pointerId currently touching the canvas — death-card mash-guard reads this
   deadIgnore: new Set(),   // snapshot of downIds taken when the death card appears (E9.6)
 };
 function inMuteHit(p) { const h = G._muteHit; return !!h && p.x >= h.x0 && p.x <= h.x1 && p.y >= h.y0 && p.y <= h.y1; }
+
+/* ---- menu focus: keyboard Tab/Enter is native; a gamepad drives the same DOM
+   focus (D-pad/stick moves, A activates, B backs out). Never active in a run. ---- */
+// Stacking order: later ids sit on top when two overlays are ever shown at once.
+const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'];
+const PRIMARY_OVERLAY = { attract: 'ovAttract', pause: 'ovPause', dead: 'ovDead' };
+const MENU_BACK = { ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
+function topOverlayId() {
+  for (let i = OVERLAY_IDS.length - 1; i >= 0; i--) if (document.getElementById(OVERLAY_IDS[i]).classList.contains('show')) return OVERLAY_IDS[i];
+  return null;
+}
+const visibleEl = (el) => !el.disabled && el.getClientRects().length > 0;
+function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input[type="range"], summary')).filter(visibleEl) : []; }
+function menuFocusFirst(id) { const it = menuItems(id); if (it.length) it[0].focus(); return it.length > 0; }
+// Spatial move: nearest control whose centre lies in the pressed direction
+// (cross-axis distance weighted 2x); vertical presses wrap in DOM order.
+function menuMove(dx, dy) {
+  const id = topOverlayId(), items = menuItems(id);
+  if (!items.length) return false;
+  const cur = document.activeElement, i = items.indexOf(cur);
+  if (i < 0) { items[0].focus(); return true; }
+  if (dx && cur.type === 'range') {   // left/right adjusts a slider in place
+    const lo = Number(cur.min) || 0, hi = Number(cur.max) || 100;
+    cur.value = String(Math.min(hi, Math.max(lo, Number(cur.value) + dx * 5)));
+    if (cur.oninput) cur.oninput(); if (cur.onchange) cur.onchange();
+    return true;
+  }
+  const a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  let best = null, bestD = Infinity;
+  for (const el of items) {
+    if (el === cur) continue;
+    const r = el.getBoundingClientRect(), ex = r.left + r.width / 2 - ax, ey = r.top + r.height / 2 - ay;
+    const along = ex * dx + ey * dy;
+    if (along <= 1) continue;
+    const d = along + 2 * Math.abs(dx ? ey : ex);
+    if (d < bestD) { bestD = d; best = el; }
+  }
+  if (!best && dy) best = items[(i + dy + items.length) % items.length];
+  if (best) { best.focus(); if (best.scrollIntoView) best.scrollIntoView({ block: 'nearest' }); }
+  return true;
+}
+// A sub-menu (Settings, Records, …) is open over the mode's own card — start /
+// restart / pause keys must not fire from under it.
+function menuSubOpen() { const t = topOverlayId(); return !!t && t !== PRIMARY_OVERLAY[G.mode]; }
+function menuActivate() {
+  const id = topOverlayId(), a = document.activeElement;
+  if (!id || !a || !a.click || !document.getElementById(id).contains(a)) return false;
+  a.click(); return true;
+}
+// Back/close for sub-menus (Escape, gamepad B). Primary cards return false so
+// their own semantics (pause toggles, title/death stay put) are untouched.
+function menuBack() {
+  const id = topOverlayId(), b = id && MENU_BACK[id] && document.getElementById(MENU_BACK[id]);
+  if (!b || !visibleEl(b)) return false;
+  b.click(); return true;
+}
+function pollMenuNav(gp, just) {
+  const now = performance.now(), ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+  const dy = gamepadButton(gp, 12) ? -1 : gamepadButton(gp, 13) ? 1 : Math.abs(ay) > 0.5 && Math.abs(ay) >= Math.abs(ax) ? Math.sign(ay) : 0;
+  const dx = dy ? 0 : gamepadButton(gp, 14) ? -1 : gamepadButton(gp, 15) ? 1 : Math.abs(ax) > 0.5 ? Math.sign(ax) : 0;
+  const dir = dx + ',' + dy, pad = input.pad, top = topOverlayId();
+  const inMenu = !!top && G.mode !== 'play' && G.mode !== 'resume';
+  // A direction already held when a menu appears waits for release — a stick
+  // pinned through death must not scroll the card.
+  if (!inMenu) { pad.navDir = dir; pad.navAt = Infinity; return false; }
+  if (dir !== pad.navDir) { pad.navDir = dir; pad.navAt = now + 380; if (dx || dy) menuMove(dx, dy); }
+  else if ((dx || dy) && now >= pad.navAt) { pad.navAt = now + 140; menuMove(dx, dy); }
+  if (just(1)) { if (!menuBack() && top === 'ovPause') togglePause(); return true; }
+  if (just(0)) {
+    if (menuActivate()) return true;
+    if (top !== PRIMARY_OVERLAY[G.mode]) { menuFocusFirst(top); return true; }   // sub-menu: A never falls through to start/restart
+  }
+  return false;
+}
 
 function gamepadButton(gp, index) { return !!(gp && gp.buttons[index] && gp.buttons[index].pressed); }
 function pollGamepad() {
@@ -1784,11 +1873,13 @@ function pollGamepad() {
   if (jump || input.pad.prev[0]) input.jumpHeld = jump;
   input.down = pressed(13) || (gp.axes[1] || 0) > 0.5;   // dpad-down / left-stick-down → let go of a ledge
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
+  const menuTook = pollMenuNav(gp, just);
   if (padState.pause && just(9)) {
-    if (G.mode === 'attract') startRun();
+    if (menuSubOpen()) menuBack();   // Start closes a sub-menu like B (no-op for the initials picker)
+    else if (G.mode === 'attract') startRun();
     else if (G.mode === 'dead') tryRestart();
     else togglePause();
-  } else if (just(0)) {
+  } else if (!menuTook && just(0)) {
     if (G.mode === 'attract') startRun();
     else if (G.mode === 'dead') tryRestart();
     else if (G.mode === 'pause') togglePause();
@@ -1799,32 +1890,45 @@ function pollGamepad() {
 
 window.addEventListener('gamepadconnected', (e) => { input.pad.index = e.gamepad.index; pollGamepad(); });
 window.addEventListener('gamepaddisconnected', (e) => { if (input.pad.index === e.gamepad.index) { input.pad.index = -1; pollGamepad(); } });
+// Rebindable primaries live in settings.keys (left/right/jump/fire); arrows,
+// space, S and J/X stay as fixed alternates. A bound key always wins, so
+// rebinding onto an alternate simply takes it over.
+const KEY_ALTS = { arrowleft: 'left', arrowright: 'right', arrowup: 'jump', ' ': 'jump', arrowdown: 'down', s: 'down', j: 'fire', x: 'fire' };
+function keyAction(k) {
+  const b = settings.keys;
+  for (const a in b) if (b[a] === k) return a;
+  return KEY_ALTS[k] || null;
+}
+// Is keyboard focus on a live overlay control? Then Enter/Space belong to it.
+function focusInOverlay() { const a = document.activeElement; return !!(a && a !== document.body && a.closest && a.closest('.overlay.show')); }
 function onKey(e, down) {
-  const k = e.key.toLowerCase();
-  const map = { a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', s: 'down', arrowdown: 'down' };
-  if (map[k]) input[map[k]] = down;
-  if (k === ' ' || k === 'w' || k === 'arrowup') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
-  if ((k === 'j' || k === 'f' || k === 'x') && down) { input.shoot = true; flags.taughtShoot = true; }
+  const k = (e.key || '').toLowerCase();
+  if (down && (k === 'enter' || k === ' ') && G.mode !== 'play' && focusInOverlay()) return;   // native button activation — never a second startRun/restart
+  if (down && k === 'escape' && menuBack()) { e.preventDefault(); return; }   // Escape closes a sub-menu before it pauses
+  const act = keyAction(k);
+  if (act === 'left' || act === 'right' || act === 'down') input[act] = down;
+  if (act === 'jump') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
+  if (act === 'fire' && down) { input.shoot = true; flags.taughtShoot = true; }
   if (down) {
     input.usingKeys = true; input.usingTouch = false;
     // Run Together emotes (§4.6): digits 1-6 in play/dead, only while netLive and
     // never while the initials overlay is swallowing keys. Solo: no NET, no-op.
     if (k >= '1' && k <= '6' && netInRun() && !$('ovInitials').classList.contains('show')) { sendEmote(+k - 1); return; }
     if (netSpectating() && netInRun()) {
-      if (k === 'arrowleft' || k === 'a') { cycleWatch(-1); return; }
-      if (k === 'arrowright' || k === 'd') { cycleWatch(1); return; }
+      if (act === 'left') { cycleWatch(-1); return; }
+      if (act === 'right') { cycleWatch(1); return; }
       if (k === 'enter') { startRun(); return; }
     }
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
-    if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
+    if (G.mode === 'attract' && (k === ' ' || k === 'enter')) { if (!menuSubOpen()) startRun(); }
     else if (G.mode === 'dead') {
       if ($('ovInitials').classList.contains('show')) {
         // Enter confirms initials; a restart key skips the picker but the entry
         // is already committed, so nothing is ever lost.
         if (k === 'enter') commitInitials();
         else if (k === ' ' || k === 'r') { commitInitials(); tryRestart(); }
-      } else if (k === ' ' || k === 'enter' || k === 'r') tryRestart();
+      } else if ((k === ' ' || k === 'enter' || k === 'r') && !menuSubOpen()) tryRestart();
     }
   }
 }
@@ -2104,6 +2208,7 @@ function missionProgress(kind, amount) {
   popup(G.player.x, G.player.y - 34, '+' + CFG.missionReward + ' MISSION', '#FFE59A');
   burst(G.player.x + G.player.w / 2, G.player.y, 30, 4, 46, 3, 'rgba(159,241,255,.95)', 0.04, 2);
   celebrate('MISSION COMPLETE!');
+  announceMoment('Mission complete: ' + m.label.toLowerCase() + '. Plus ' + CFG.missionReward + ' points.');
 }
 
 /* ---------------------------------------------------------------------------
@@ -2577,7 +2682,7 @@ function updatePlayer() {
             const mult = 1 << G.chain;
             popup(p.x, p.y - 22, 'CHAIN ×' + mult + ' BANKED', '#FFE59A');
             Audio.sfx.chainBank(); buzz('select');
-            if (!prefersLessMotion) G.holsterT = 0.3;   // E12: holster-spin flourish on the bank
+            if (!lessMotion()) G.holsterT = 0.3;   // E12: holster-spin flourish on the bank
             G.chainFadeMult = mult; G.chainFade = 1;   // HUD readout fades over 0.25s, never blinks out
             if (G.chain >= 4) {
               burst(p.x + p.w / 2, p.y + p.h / 2, 14, 2.6, 26, 2.6, 'rgba(255,201,60,.95)', 0, 3);
@@ -2690,7 +2795,7 @@ function grabLedge(p, pl, side) {
   // CATCH FEEL: dust at the hands, a 1-frame downward camera nudge, a soft catch sfx.
   const handX = side > 0 ? pl.x : pl.x + pl.w;
   burst(handX, pl.y, 7, 1.6, 16, 2.2, frostDust(palNow().trailHot), 0.06, 0);
-  if (settings.shake) { G.trauma = Math.max(G.trauma, 0.10); G.kickX = 0; G.kickY = 6; G.kickAt = G.time; }
+  if (settings.shake && !lessMotion()) { G.trauma = Math.max(G.trauma, 0.10); G.kickX = 0; G.kickY = 6; G.kickAt = G.time; }
   if (G.mode === 'play') { Audio.sfx.land(5); buzz('light'); }
 }
 
@@ -2816,7 +2921,7 @@ function updateBullets() {
         if (G.player && !G.player.onGround && !G.player.dead) {
           G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
           G.chain = Math.min(G.chain + 1, CFG.chainCap);
-          if (G.chain >= 3 && !prefersLessMotion) G.twirlT = 0.22;   // third airborne kill: pistol twirl (E12)
+          if (G.chain >= 3 && !lessMotion()) G.twirlT = 0.22;   // third airborne kill: pistol twirl (E12)
           airChainProgress();
         }
         G.bullets.splice(i, 1); break;
@@ -2886,7 +2991,7 @@ function collisions() {
       killEnemy(e, 'stomp', false);
       G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
       G.chain = Math.min(G.chain + 1, CFG.chainCap);
-      if (G.chain >= 3 && !prefersLessMotion) G.twirlT = 0.22;   // third airborne kill: pistol twirl (E12)
+      if (G.chain >= 3 && !lessMotion()) G.twirlT = 0.22;   // third airborne kill: pistol twirl (E12)
       airChainProgress();
       p.vy = input.jumpHeld ? CFG.stompBounceHeld : CFG.stompBounce;
       p.jumping = input.jumpHeld;
@@ -3331,6 +3436,7 @@ function update() {
     if (nextBand > G.band) {
       const names = ['ORBITAL DAWN', 'ION DRIFT', 'VIOLET REACH', 'NIGHT BLOOM', 'RED SHIFT', 'EVENT HORIZON', 'THE FAR SIDE', 'LAST LIGHT'];
       G.stinger = 2.4; G.stingerText = names[nextBand] || 'DEEP SPACE';
+      announceMoment('Sector ' + (nextBand + 1) + ': ' + G.stingerText.toLowerCase() + '.');
       Audio.musicEvent('sector', nextBand);   // stinger in the new key; band re-keys at the bar line
       // Sector ceremony (E6): snapshot the outgoing sky/nebula for the 1.5s
       // crossfade and arm the eased theme-color sweep; the actual hue-tinted
@@ -3405,7 +3511,7 @@ function update() {
       }
       // E12: idle inspect-twirl every 6–10 s (decor stream), never mid-wave —
       // DELIGHT-gated so #shot=attract goldens stay stable.
-      if (G.wave <= 0 && G.twirlT <= 0 && !prefersLessMotion && (G.inspectIn -= STEP) <= 0) {
+      if (G.wave <= 0 && G.twirlT <= 0 && !lessMotion() && (G.inspectIn -= STEP) <= 0) {
         G.twirlT = 0.22; G.inspectIn = 6 + G.decorRng() * 4;
       }
     }
@@ -3493,7 +3599,7 @@ function frame(now) {
     G.deathSeq += dt;
     // Ease-out cubic, 1 → 1.25 over 0.5s, deterministic from deathSeq.
     const zt = clamp(G.deathSeq / 0.5, 0, 1);
-    G.deathZoom = 1 + (prefersLessMotion ? 0.06 : 0.25) * (1 - Math.pow(1 - zt, 3));
+    G.deathZoom = 1 + (lessMotion() ? 0.06 : 0.25) * (1 - Math.pow(1 - zt, 3));
     if (G.deathSeq > 1.6 && G.mode === 'play' && !G.deathCardShown) showDeathCard();   // hold the ragdoll/helmet on screen before the card takes over (E9.2)
     if (G.deathCardShown && G.hudFade > 0) G.hudFade = Math.max(0, G.hudFade - dt / 0.1);   // HUD fades over 100ms, doesn't hard-cut (E9.1)
   }
@@ -3535,7 +3641,7 @@ function tickAudio() {
 // (G.time advances every rAF, including through freeze and pause).
 function computeShake() {
   const dead = G.player && G.player.dead;
-  if (!settings.shake || G.mode === 'attract' || G.deathCardShown) { G.shake.x = G.shake.y = G.shake.rot = 0; return; }
+  if (!settings.shake || lessMotion() || G.mode === 'attract' || G.deathCardShown) { G.shake.x = G.shake.y = G.shake.rot = 0; return; }
   const tr = G.trauma * G.trauma;
   const amp = tr * (dead ? 6 : 10);
   const t = G.time, k = Math.exp(-(t - G.kickAt) * 16);   // directional impulse, ~0.15s ease-out
@@ -3556,7 +3662,8 @@ function render(alpha) {
 
   drawBackground(iCamX);
 
-  const zoom = (G.player && G.player.dead ? G.deathZoom : G.punchZoom);
+  // Reduce Motion drops the hit-punch zoom outright (death zoom is already softened).
+  const zoom = (G.player && G.player.dead ? G.deathZoom : (lessMotion() ? 1 : G.punchZoom));
   ctx.save();
   // Death zoom pivots on the (clamped) death point, not screen center — the
   // body drifts into frame instead of sliding out of it.
@@ -3751,7 +3858,8 @@ function drawBackground(camX) {
   // sky + platform art keep the sector hue so the world still reads its band).
   const nhue = SEASON.dusk ? 28 : hue;
   if (!nebulaCanvas || Math.abs(nebulaHue - nhue) > 1) { nebulaCanvas = buildNebula(nhue); nebulaHue = nhue; }
-  const nx = -(((camX * 0.05) % view.w) + view.w) % view.w;
+  const px = lessMotion() ? 0.5 : 1;   // Reduce Motion: far layers drift at half parallax
+  const nx = -(((camX * 0.05 * px) % view.w) + view.w) % view.w;
   ctx.globalAlpha = 0.85;
   ctx.drawImage(nebulaCanvas, 1, 0, view.w / 4, view.h / 4, nx, 0, view.w, view.h);
   ctx.drawImage(nebulaCanvas, 1, 0, view.w / 4, view.h / 4, nx + view.w, 0, view.w, view.h);
@@ -3777,13 +3885,13 @@ function drawBackground(camX) {
   const W = 1600;
   ctx.fillStyle = '#E8F4FF';
   for (const s of starfield.far) {
-    const x = ((s.x - camX * 0.15) % W + W) % W;
+    const x = ((s.x - camX * 0.15 * px) % W + W) % W;
     ctx.globalAlpha = 0.5 * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(G.time * 2 + s.ph)));
     ctx.fillRect(x, s.y, 1, 1);
   }
   ctx.fillStyle = `hsl(${hue} 60% 88%)`;   // E6: mid layer tints toward the sector hue
   for (const s of starfield.mid) {
-    const x = ((s.x - camX * 0.3) % W + W) % W;
+    const x = ((s.x - camX * 0.3 * px) % W + W) % W;
     ctx.globalAlpha = 0.7 * (0.6 + 0.4 * Math.sin(G.time * 1.5 + s.ph));
     ctx.fillRect(x, s.y, 2, 2);
   }
@@ -3827,13 +3935,14 @@ function drawBackground(camX) {
    difficulty math (G.flare.x itself) is never read here for anything but
    direction, so the rubber-band trace can't be perturbed. ---- */
 function drawFlareTongues() {
-  const surge = sectorSurgeAmt();
+  const calm = lessMotion();   // Reduce Motion: a narrower surge and no tip sway
+  const surge = sectorSurgeAmt() * (calm ? 0.4 : 1);
   const w = Math.max(lerp(10, 90, G.threat), surge * view.w * 0.33);
   if (w < 1.5) return;
   ctx.save(); ctx.fillStyle = flareGrad;
   const seg = view.h / 4;
   for (let i = 0; i < 4; i++) {
-    const cy = seg * i + seg / 2, wob = Math.sin(G.time * 3 + i * 1.7) * 14;
+    const cy = seg * i + seg / 2, wob = calm ? 0 : Math.sin(G.time * 3 + i * 1.7) * 14;
     ctx.save();
     // flareGrad is authored over a fixed 128px span (-120..8 local); scale
     // that span to the live column width so the glow always reaches the true
@@ -4851,10 +4960,11 @@ function drawTouchControls() {
    24. OVERLAYS / SCREENS
    ------------------------------------------------------------------------- */
 const $ = (id) => document.getElementById(id);
-function hideAllOverlays() { ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'].forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; }
+function hideAllOverlays() { OVERLAY_IDS.forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; cancelRebind(); }
 function showOverlay(id) {
   const el = $(id);
   el.classList.add('show');
+  if (input.pad.connected && !SHOT) menuFocusFirst(topOverlayId());   // controller players land on the first control
   // Double-rAF (E9.1): the 0-state must paint one frame before .in flips the
   // transition, or the browser collapses show+in into a single no-op frame.
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
@@ -4913,7 +5023,7 @@ function cancelDeathAnim() {
 function animateDeathScore(target) {
   const el = $('deadScore');
   if (deathScoreRaf) { cancelAnimationFrame(deathScoreRaf); deathScoreRaf = 0; }
-  if (prefersLessMotion || SHOT) { el.textContent = target.toLocaleString(); return; }   // SHOT goldens stay deterministic
+  if (lessMotion() || SHOT) { el.textContent = target.toLocaleString(); return; }   // SHOT goldens stay deterministic
   const t0 = performance.now(), dur = 400;
   const step = (now) => {
     const t = clamp((now - t0) / dur, 0, 1);
@@ -4926,7 +5036,7 @@ function animateDeathScore(target) {
 function stampMedal() {
   const dm = $('deadMedal');
   dm.innerHTML = G.runMedal ? `<span style="color:${G.runMedal.c}">${G.runMedal.name} MEDAL</span>` : '';
-  if (G.runMedal && !prefersLessMotion && !SHOT) { dm.classList.remove('stamp'); void dm.offsetWidth; dm.classList.add('stamp'); }
+  if (G.runMedal && !lessMotion() && !SHOT) { dm.classList.remove('stamp'); void dm.offsetWidth; dm.classList.add('stamp'); }
 }
 function revealDeathDelta() { $('deadDelta').classList.add('reveal'); }
 function revealTapHint() { $('deadTapHint').classList.add('show'); }
@@ -4968,8 +5078,17 @@ function showDeathCard() {
   }, 300));
   deathTimers.push(setTimeout(revealDeathDelta, 550));
   deathTimers.push(setTimeout(revealTapHint, 900));   // matches the tap-anywhere arm time (E9.6)
+  announceRunOver();   // before the picker branch: a qualifying run is narrated immediately too
   if (G.showPicker) { showInitials(); return; }   // only a full-table crack blocks; else auto-committed
   renderDeathCard();
+}
+function announceRunOver() {
+  if (netSpectating()) return;
+  const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score), m = G.runMedal;
+  announceMoment('Run over: ' + fs.toLocaleString() + ' points, ' + G.dist.toLocaleString() + ' meters.'
+    + (fs > G.prevBest && G.prevBest > 0 ? ' New personal best!' : '')
+    + (m ? ' ' + m.name.charAt(0) + m.name.slice(1).toLowerCase() + ' medal.' : '')
+    + (G.showPicker ? ' New high score: enter your initials.' : ''), true);
 }
 function renderDeathCard() {
   const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
@@ -5189,11 +5308,18 @@ const SETTINGS_DEF = [
   { key: 'sfxVol', type: 'slider', label: 'SFX volume', dependsOn: 'sfx' },
   { key: 'haptics', type: 'switch', label: 'Haptics' },
   { key: 'shake', type: 'switch', label: 'Screen shake' },
+  // noShot rows (like net rows) never appear under #shot, so goldens hold.
+  { key: 'reduceMotion', type: 'switch', label: 'Reduce motion', noShot: true },
   { key: 'lefty', type: 'switch', label: 'Left-handed' },
   { key: 'autorun', type: 'switch', label: 'Auto-run (touch)' },
   // Device-dependent (adaptive resolution never runs under #shot): noShot keeps
   // the row out of the pause/settings goldens like the net rows below.
   { key: 'sharp', type: 'switch', label: 'Sharp rendering', noShot: true },
+  { key: 'key:left', bind: 'left', type: 'key', label: 'Move left', section: 'Keyboard', noShot: true },
+  { key: 'key:right', bind: 'right', type: 'key', label: 'Move right', noShot: true },
+  { key: 'key:jump', bind: 'jump', type: 'key', label: 'Jump', noShot: true },
+  { key: 'key:fire', bind: 'fire', type: 'key', label: 'Fire', noShot: true },
+  { key: 'key:reset', type: 'keyreset', label: 'Default keys', noShot: true },
   // Run Together — network (net-spec §4.8 / blueprint §9). Music-independent.
   // net:true rows are suppressed under #shot so the pause/settings goldens stay
   // pixel-identical (same doctrine as the wardrobe callsign row); real sessions
@@ -5204,10 +5330,11 @@ const SETTINGS_DEF = [
 ];
 function buildSettings(host) {
   for (const def of SETTINGS_DEF) {
-    if ((def.net || def.noShot) && SHOT) continue;   // net/device rows never bloat a #shot golden
+    if ((def.net || def.noShot) && SHOT) continue;   // net/a11y rows never bloat a #shot golden
+    const keyRow = def.type === 'key' || def.type === 'keyreset';
     if (def.section) {   // a lightweight header before the first row of a group
       const h = document.createElement('div');
-      h.className = 'net-sub'; h.style.margin = '12px 0 2px'; h.textContent = def.section;
+      h.className = 'net-sub' + (keyRow ? ' key-row' : ''); h.style.margin = '12px 0 2px'; h.textContent = def.section;
       host.appendChild(h);
     }
     const row = document.createElement('div');
@@ -5219,6 +5346,13 @@ function buildSettings(host) {
       b.className = 'switch'; b.dataset.setting = def.key;
       b.setAttribute('role', 'switch'); b.setAttribute('aria-label', def.label);
       b.onclick = () => toggleSetting(def.key);
+      row.appendChild(b);
+    } else if (keyRow) {
+      row.classList.add('key-row');
+      const b = document.createElement('button');
+      b.className = 'mini-chip';
+      if (def.type === 'key') { b.dataset.keyBind = def.bind; b.onclick = () => beginRebind(def.bind, def.label); }
+      else { b.textContent = 'Reset'; b.setAttribute('aria-label', 'Reset keys to defaults'); b.onclick = resetKeys; }
       row.appendChild(b);
     } else {
       row.classList.add('slider-row');
@@ -5251,6 +5385,11 @@ function syncSettingsUI() {
       el.nextElementSibling.textContent = v + '%';
     }
   });
+  document.querySelectorAll('[data-key-bind]').forEach((el) => {
+    const a = el.dataset.keyBind, def = SETTINGS_DEF.find((d) => d.bind === a);
+    el.textContent = rebinding === a ? 'Press a key' : keyLabel(settings.keys[a]);
+    el.setAttribute('aria-label', def.label + ': ' + keyLabel(settings.keys[a]) + '. Activate, then press a new key.');
+  });
   syncNetworkSettings();
   document.querySelectorAll('[data-setting-row]').forEach((row) => {
     const def = SETTINGS_DEF.find((d) => d.key === row.dataset.settingRow);
@@ -5260,8 +5399,44 @@ function syncSettingsUI() {
 function toggleSetting(key) {
   settings[key] = !settings[key];
   if (key === 'music' || key === 'sfx') Audio.syncChannels();
+  if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
   if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
   syncSettingsUI(); persistAll();
+}
+// Mirrors the live switch onto the CSS motion rules; render/sim read lessMotion() per frame.
+function applyMotionPref() { document.body.classList.toggle('reduce-motion', lessMotion()); refreshFaviconSkin(); }
+
+/* ---- keyboard rebinding: activate a row, press a key (Escape cancels) ---- */
+const KEY_NAMES = { ' ': 'Space', arrowleft: '←', arrowright: '→', arrowup: '↑', arrowdown: '↓' };
+function keyLabel(k) { return KEY_NAMES[k] || (k.length === 1 ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1)); }
+function beginRebind(action, label) { rebinding = action; syncSettingsUI(); announce('Press a key for ' + label + '. Escape cancels.'); }
+function cancelRebind() { if (rebinding) { rebinding = null; syncSettingsUI(); } }
+function resetKeys() { settings.keys = Object.assign({}, window.SpaceManSave.DEFAULT_KEYS); rebinding = null; persistAll(); syncSettingsUI(); syncKeyGuide(); announce('Keys reset to defaults.'); }
+function rebindKey(k) {
+  const a = rebinding;
+  if (!window.SpaceManSave.bindableKey(k)) { announce(keyLabel(k) + ' is reserved. Try another key.'); return false; }
+  const other = Object.keys(settings.keys).find((x) => x !== a && settings.keys[x] === k);
+  if (other) settings.keys[other] = settings.keys[a];   // swap — two actions never share a key
+  settings.keys[a] = k; rebinding = null;
+  persistAll(); syncSettingsUI(); syncKeyGuide();
+  announce(SETTINGS_DEF.find((d) => d.bind === a).label + ' set to ' + keyLabel(k) + '.');
+  return true;
+}
+// Capture phase: the rebind swallows its key before onKey ever sees it.
+window.addEventListener('keydown', (e) => {
+  if (!rebinding) return;
+  const k = (e.key || '').toLowerCase();
+  if (k === 'tab') { cancelRebind(); return; }   // focus keeps moving normally
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (k === 'escape') { cancelRebind(); announce('Rebind cancelled.'); return; }
+  rebindKey(k);
+}, true);
+// The printed keyboard guides follow the map (defaults render the original text).
+function syncKeyGuide() {
+  if (SHOT) return;
+  const b = settings.keys, d = window.SpaceManSave.DEFAULT_KEYS;
+  const text = [keyLabel(b.left) + ' ' + keyLabel(b.right) + ' / ← →', b.jump === d.jump ? 'SPACE' : 'SPACE / ' + keyLabel(b.jump), keyLabel(b.fire) + ' / CLICK'];
+  document.querySelectorAll('.desktop-guide').forEach((g) => g.querySelectorAll('b').forEach((el, i) => { if (text[i]) el.textContent = text[i].toUpperCase(); }));
 }
 // Master quick-mute: non-destructive flag over the music/sfx mix (icon + M key).
 // Deliberately NOT a panel switch — the panel shows the underlying mix instead.
@@ -5271,6 +5446,16 @@ function toggleMute() {
   announce(settings.muted ? 'Audio muted' : 'Audio on');
 }
 function announce(msg) { const el = $('srAnnounce'); if (el) el.textContent = msg; }
+// In-run moments (sector, mission) share one polite channel at most every 4s so
+// a screen reader narrates the run instead of chattering over it. Run-over
+// summaries pass force — they are the one line that must always land.
+let lastMomentAt = -Infinity;
+function announceMoment(msg, force) {
+  if (SHOT || G.mode === 'attract') return;   // bots and the idle hero never narrate
+  const t = performance.now();
+  if (!force && t - lastMomentAt < 4000) return;
+  lastMomentAt = t; announce(msg);
+}
 // Settings opens only over attract or pause (sim never ticks under it) and
 // closes back to where it came from — never auto-resuming a run.
 let settingsFrom = 'attract';
@@ -6720,8 +6905,9 @@ function faviconHatGlyph(g) {
 }
 function setupAnimatedFavicon() {
   const link = document.getElementById('faviconLink');
-  // SHOT never touches the tab icon; reduced motion keeps the static file.
-  if (!link || prefersLessMotion || SHOT) return;
+  // SHOT never touches the tab icon; reduced motion keeps (or restores) the
+  // static file — checked per paint so the in-game switch applies live.
+  if (!link || SHOT) return;
   const icon = new Image(); icon.src = 'favicon.png';
   icon.onload = () => {
     const c = document.createElement('canvas'); c.width = c.height = 32;
@@ -6745,6 +6931,7 @@ function setupAnimatedFavicon() {
     };
     const paint = () => {
       if (broken || document.hidden) return;
+      if (lessMotion()) { if (String(link.href).indexOf('data:') === 0) link.href = 'favicon.png'; return; }
       if (G.mode === 'play' || G.mode === 'resume') return;   // toDataURL hitches the run; identity motion belongs to attract/pause/dead
       try {
         tint();
@@ -6850,7 +7037,7 @@ function beginArrival() {
   if (!(runsThisSession === 1 || (lastRunEnd >= 0 && performance.now() / 1000 - lastRunEnd > 60))) return;
   if (G.vigRoll >= 0.45) return;           // 55% plain starts keep arrivals special
   const p = G.player, ax = p.x + p.w / 2, ay = p.y + p.h;
-  if (prefersLessMotion) { G.vig = { id: 'fade', t: 0, dur: 0.3, out: false, fade: 1, said: true, ax, ay, acc: 0 }; return; }
+  if (lessMotion()) { G.vig = { id: 'fade', t: 0, dur: 0.3, out: false, fade: 1, said: true, ax, ay, acc: 0 }; return; }
   const id = VIG_ORDER[Math.min(4, (G.vigRoll / 0.45 * 5) | 0)];
   const def = VIGS[id];
   G.vig = { id, t: 0, dur: def.dur, deg: def.deg, helloAt: def.helloAt, out: false, fade: 1, said: false, fired: false, zip: false, ax, ay, acc: 0 };
@@ -7141,7 +7328,7 @@ function boot() {
   resize();
   booted = true;
   document.querySelectorAll('[data-settings-host]').forEach(buildSettings);
-  syncSettingsUI();
+  syncSettingsUI(); applyMotionPref(); syncKeyGuide();
   Audio.syncChannels();
   setupAnimatedFavicon();
   if (SHOT) { runShot(); return; }
