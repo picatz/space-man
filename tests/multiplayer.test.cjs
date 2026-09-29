@@ -209,7 +209,7 @@ test('solo still starts immediately and simulates movement', (t) => {
   const c = client(relay()); t.after(() => c.close());
   c.run('startRun(); input.right=true'); tick(c, 20);
   assert.equal(c.run('G.mode'), 'play'); assert.ok(c.run('G.player.x') > 30);
-  assert.equal(c.run('G.worldRng'), null);
+  assert.equal(c.run('G.course'), null);                        // random, never a fixed Daily/challenge course
 });
 
 test('invite Play and Watch lead directly into a live round and late players spawn near the crew', async (t) => {

@@ -42,7 +42,7 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
   sandbox.window = sandbox;
   const context = vm.createContext(sandbox);
   const run = (code) => vm.runInContext(code, context);
-  for (const name of ['contracts', 'save-schema', 'input-snapshot', 'callsigns', 'relay-directory', 'qr', 'net']) run(fs.readFileSync(path.join(ROOT, 'src', name + '.js'), 'utf8'));
+  for (const name of ['contracts', 'save-schema', 'input-snapshot', 'course', 'callsigns', 'relay-directory', 'qr', 'net']) run(fs.readFileSync(path.join(ROOT, 'src', name + '.js'), 'utf8'));
   if (game) {
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     run(html.match(/<script>\s*([\s\S]*?)<\/script>/)[1]);

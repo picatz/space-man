@@ -1,4 +1,4 @@
-name: Multiplayer regression tests
+name: Regression tests
 on:
   push:
     branches: [main]

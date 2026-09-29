@@ -1,6 +1,6 @@
 // Space Man 2.0 service worker.
 // Bump VERSION in the same commit as any asset change or clients keep the old build.
-const VERSION = 'v3.4.3';
+const VERSION = 'v3.5.0';
 // 'sm2-app-' marks the network-first generation. Workers before it used
 // 'sm2-shell-' and served ./src/ cache-first, which paired a fresh index.html
 // with stale scripts after a deploy (split builds break Run Together).
@@ -13,6 +13,7 @@ const SHELL = [
   './src/contracts.js',
   './src/save-schema.js',
   './src/input-snapshot.js',
+  './src/course.js',
   './src/callsigns.js',
   './src/relay-directory.js',
   './src/qr.js',
