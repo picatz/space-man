@@ -170,7 +170,9 @@ test('Space and Enter on a focused Daily / Share button activate only that butto
   const press = (key, keys, shown) => c.run(`(() => {
     const b = { dataset: { keys: ${JSON.stringify(keys)} } };
     b.closest = (s) => s === '[data-keys]' ? b : s === '.overlay.show' && ${shown} ? {} : null;
-    onKey({ key: ${JSON.stringify(key)}, target: b, preventDefault() {} }, true);
+    document.activeElement = b;                  // a key event's target is the focused element
+    try { onKey({ key: ${JSON.stringify(key)}, target: b, preventDefault() {} }, true); }
+    finally { document.activeElement = null; }
     return G.mode;
   })()`);
   c.run('showAttract()');
