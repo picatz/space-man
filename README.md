@@ -52,7 +52,8 @@ missions and scores are still simulated locally; watching is a live positional
 view, not a frame-perfect broadcast of the runner's combat. Shared combat and
 cooperative objectives require an authoritative world-event protocol.
 
-Version 3.3 uses room protocol 2 because room terrain generation changed.
+Version 3.4 uses room protocol 3 because deep-run terrain (the endgame ramp
+and DEBRIS FIELD past 2500m) changed; version 3.3 introduced protocol 2.
 Refresh both devices and create a fresh room/link after upgrading. Old invites
 show an update prompt instead of connecting incompatible courses.
 
@@ -64,7 +65,10 @@ contexts, with real encryption and wire packets through an in-memory relay.
 Only browser APIs and relay transport are substituted. It covers admission,
 retry, complete/chunked rosters, countdowns, shared restart, presence expiry,
 watching, role acknowledgements, late joining, terrain determinism, visibility
-culling, version mismatch and solo behavior.
+culling, version mismatch and solo behavior. `tests/gameplay.test.cjs` guards
+solo play: jump reach for every band and endgame ramp step, seed determinism
+across viewports, fingerprints of pre-2500m courses, mercy, missions, DEBRIS
+FIELD slabs and save-migration fuzzing.
 
 These tests do not verify browser rendering or public relay connectivity. Before
 release, exercise a desktop host + phone player + spectator on separate networks:
