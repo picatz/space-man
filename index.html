@@ -888,6 +888,10 @@ const CFG = {
   scoreStomp: 30, scoreShoot: 20, scoreInterrupt: 10, scoreGraze: 5, scoreAmmo: 2,
   scoreShard: 12, missionReward: 250,
   chainCap: 4,                                  // index cap → x1/x2/x4/x8/x16
+  // DEBRIS FIELD (past 2500m): a cracked slab holds for crumbleDelay frames after
+  // the first touch (0.6s — shaking the whole time), then drops out. Coyote time
+  // still applies after it goes, so a late jump off the falling slab is fair.
+  crumbleDelay: 36,
 };
 
 // Distance-banded difficulty (dist in meters; 10px = 1m).
@@ -901,6 +905,22 @@ const BANDS = [
   { m: 2000, wMin: 204, wMax: 260, gMin: 206, gMax: 266, dy: 94,  flare: 4.5, shooter: true,  shootIvl: 1.6,  ebSpeed: 3.4, narrow: 0.22 },
   { m: 2500, wMin: 200, wMax: 255, gMin: 210, gMax: 272, dy: 98,  flare: 5.4, shooter: true,  shootIvl: 1.5,  ebSpeed: 3.5, narrow: 0.24 },
 ];
+// Endgame ramp: past the last band every 500m nudges the chase one notch, capped
+// at RAMP_CAP (4500m+). Parameters only — never an rng draw — and keyed on
+// distance, so solo, the shared flare and room worldgen all read the same step.
+// gMax grows slowly: tests/gameplay.test.cjs proves every step stays inside a
+// full-speed held jump (with climb) by a safety margin. Step 0 IS the last band.
+const RAMP_STEP_M = 500, RAMP_CAP = 4;
+const RAMP = [BANDS[BANDS.length - 1]];
+for (let i = 1; i <= RAMP_CAP; i++) {
+  const L = RAMP[0];
+  RAMP.push(Object.assign({}, L, { ramp: i, flare: L.flare + 0.15 * i, gMin: L.gMin + 4 * i, gMax: L.gMax + 2 * i,
+    narrow: L.narrow + 0.02 * i, shootIvl: L.shootIvl - 0.05 * i, ebSpeed: L.ebSpeed + 0.1 * i }));
+}
+function rampStep(distM) { return clamp(Math.floor((distM - BANDS[BANDS.length - 1].m) / RAMP_STEP_M), 0, RAMP_CAP); }
+// Tuning for band index `band` at distance distM — the ONLY way sim code should
+// read BANDS, so the ramp can never drift between the solo and shared paths.
+function bandParams(band, distM) { return band < BANDS.length - 1 ? BANDS[band] : RAMP[rampStep(distM)]; }
 const SECTORS = window.SpaceManContracts.sectors;
 const ENCOUNTER_CONTRACTS = window.SpaceManContracts.encounters;
 const BAND_HUE = [218, 232, 250, 268, 286, 312, 340, 356];
@@ -2161,7 +2181,7 @@ const G = {
   vignette: 0, edgePulse: 0, stinger: 0, deep1000: false,
   hints: [], shootingStar: null, starTimer: 0,
   runStart: 0, frameCount: 0, helmet: null, mercy: false, mercyLvl: 0,
-  platIdx: 0, lastGenBand: 0, easeUntilM: -1, genStartM: 0,
+  platIdx: 0, lastGenBand: 0, easeUntilM: -1, genStartM: 0, crumbleRun: 0, rampStep: 0, trailGot: 0, trailId: -1,
   body: null, kickX: 0, kickY: 0, kickAt: -9, deathFocus: null,
   crackle: 0, deadShownAt: 0, runMedal: null, qualifies: false,
   mission: null, shards: 0, shardStreak: 0, bigAir: 0, companion: null,
@@ -2198,8 +2218,24 @@ const MISSIONS = [
   { kind: 'shard', target: 5, label: 'CATCH 5 STAR SHARDS' },
   { kind: 'graze', target: 2, label: 'SURVIVE 2 CLOSE CALLS' },
   { kind: 'distance', target: 350, label: 'REACH 350m' },
+  // Veteran missions: offered once a profile has cleared MISSION_VETERAN
+  // missions. Rookie profiles (and every #shot golden) keep rolling only the
+  // first MISSION_BASE, so the one seeded draw picks exactly what it always did.
+  { kind: 'airchain', target: 3, label: 'CHAIN 3 KILLS IN ONE LEAP' },
+  { kind: 'trail', target: 2, label: 'SWEEP 2 FULL STAR TRAILS' },
+  { kind: 'bigair', target: 3, label: 'LAND 3 BIG AIR JUMPS' },
 ];
+const MISSION_BASE = 5, MISSION_VETERAN = 3;
+function missionPool() { return !SHOT && (stats.missionsDone | 0) >= MISSION_VETERAN ? MISSIONS.length : MISSION_BASE; }
 
+// One-leap mission: counts airborne kills (stomp or shot) since the feet last
+// touched a slab — its own count, so it can't inherit a chain that a pull-up
+// (which doesn't bank G.chain) carried over. endLeap() starts it over.
+function airChainProgress() { missionProgress('airchain', 1); }
+function endLeap() {
+  const m = G.mission;
+  if (m && m.kind === 'airchain' && !m.done) m.progress = 0;
+}
 function missionProgress(kind, amount) {
   const m = G.mission;
   if (!m || m.done || m.kind !== kind) return;
@@ -2228,13 +2264,13 @@ function patrolAt(plat, x, dir, speed) {
     dead: false, golden: rng() < 0.035, squash: 0, walkPhase: rng() * TAU, minX: plat.x + 14, maxX: plat.x + plat.w - 14, lookX: 0, lookY: 0 };
 }
 function addEnemyOn(plat, distHere, mercyOn) {
-  const B = BANDS[G.band];
+  const B = bandParams(G.band, distHere);
   // Budget keys off the PLATFORM's distance (not the player's transient G.dist) so worldgen
   // is fully seed-deterministic regardless of how far ahead the current viewport generates.
   const budget = lerp(0.85, 2.4, clamp(distHere / 1800, 0, 1));
   if (rng() > (budget / 2.4) * (mercyOn ? (0.85 - 0.1 * G.mercyLvl) : 1)) return;
   let type = 'patrol';
-  if (B.shooter && rng() < 0.4) {
+  if (B.shooter && rng() < 0.4 + 0.04 * (B.ramp || 0)) {
     let ok = true;
     if (G.worldRng) ok = Math.abs(G.worldLastShooterX - (plat.x + plat.w / 2)) >= 400;
     else for (const e of G.enemies) if (e.type === 'shoot' && Math.abs(e.x - (plat.x + plat.w / 2)) < 400) ok = false;
@@ -2279,10 +2315,10 @@ function generateWorldAhead() {
   // seeded run diverges. 1400px comfortably covers the widest view without visible pop-in.
   const target = G.player.x + 1400;
   while (G.genX < target) {
-    G.band = bandFor((G.genX - G.startX) / 10);
-    const B = BANDS[G.band];
-    const last = G.platforms[G.platforms.length - 1];
     const distNext = (G.genX - G.startX) / 10;
+    G.band = bandFor(distNext);
+    const B = bandParams(G.band, distNext);
+    const last = G.platforms[G.platforms.length - 1];
     // Sector-transition pulse: crossing a band boundary grants 60m of tighter
     // gaps and thinner enemies so the sector stinger lands on flow, not a wall.
     if (G.band > G.lastGenBand) { G.lastGenBand = G.band; G.easeUntilM = distNext + 60; }
@@ -2312,11 +2348,20 @@ function generateWorldAhead() {
     if (distNext > 240 && w > 210 && rng() < 0.1) {
       plat.boost = true; plat.boostX = plat.x + rnd(55, plat.w - 55);
     }
+    // DEBRIS FIELD set piece — past 2500m only, so every earlier course stays
+    // byte-identical: one roll opens a 2–3 slab run of cracked, crumbling
+    // platforms (drawn cracked, so it reads before you land). Never a breather,
+    // narrow ledge or boost pad, and never an enemy on one; the run counter
+    // itself spends no rng.
+    if (distNext > 2500 && !breather && !narrow && !plat.boost) {
+      if (G.crumbleRun > 0) { G.crumbleRun--; plat.crumble = true; }
+      else if (rng() < 0.07 + 0.01 * (B.ramp || 0)) { plat.crumble = true; G.crumbleRun = rng() < 0.5 ? 1 : 2; }
+    }
     G.platforms.push(plat);
     G.genX = x + w;
     const distHere = (x - G.startX) / 10;
     const wasMaxGap = gap > B.gMax * 0.92;
-    if (distHere > 15 && !wasMaxGap && !plat.boost) {
+    if (distHere > 15 && !wasMaxGap && !plat.boost && !plat.crumble) {
       if (narrow) G.pickups.push({ type: 'ammo', x: plat.x + plat.w / 2, y: plat.y - 26, vy: 0, amt: CFG.killDropAmt, parachute: false, bob: rng() * TAU, grabbed: false });
       // Breathers stay empty; the pulse halves enemies (exactly one gated rng
       // call — easing is seed-deterministic, so the stream never forks).
@@ -2330,7 +2375,7 @@ function generateWorldAhead() {
       for (let i = 0; i < n; i++) {
         const t = i / (n - 1);
         G.pickups.push({ type: 'shard', x: plat.x + 34 + t * Math.max(10, plat.w - 68),
-          y: plat.y - 54 - Math.sin(t * Math.PI) * 38, vy: 0, bob: rng() * TAU, grabbed: false });
+          y: plat.y - 54 - Math.sin(t * Math.PI) * 38, vy: 0, bob: rng() * TAU, grabbed: false, trail: G.platIdx, of: n });
       }
     }
   }
@@ -2388,7 +2433,7 @@ function resetRun(seed, replayable) {
   G.chain = 0; G.bestChainRun = 1; G.killsRun = 0; G.chainFade = 0; G.chainFadeMult = 0;
   G.ammo = CFG.ammoStart; G.ammoPulse = 0; G.cooldown = 0;
   G.band = 0; G.timescale = 1; G.freeze = 0; G.slowTimer = 0; G.trauma = 0; G.punchZoom = 1; G.punchTimer = 0;
-  G.platIdx = 0; G.lastGenBand = 0; G.easeUntilM = -1;
+  G.platIdx = 0; G.lastGenBand = 0; G.easeUntilM = -1; G.crumbleRun = 0; G.rampStep = 0; G.trailGot = 0; G.trailId = -1;
   G.newBest = false; G.celebrate = 0; G.deathSeq = 0; G.deathZoom = 1; G.deathCardShown = false;
   G.vignette = 0; G.edgePulse = 0; G.stinger = 0; G.deep1000 = false;
   G.pbPassed = false; G.helmet = null; G.starTimer = 0; G.shootingStar = null;
@@ -2410,7 +2455,7 @@ function resetRun(seed, replayable) {
   G.satPending = !G.whalePending && G.decorRng() < 0.18;               // the beeper covers whale-less skies
   G.wave = 0; G.waveIn = 14 + G.decorRng() * 8;
   toastQ.length = 0; G.toastT = 0;
-  const missionSeed = MISSIONS[(rng() * MISSIONS.length) | 0];
+  const missionSeed = MISSIONS[(rng() * missionPool()) | 0];
   G.mission = { kind: missionSeed.kind, target: missionSeed.target, label: missionSeed.label, progress: 0, done: false };
   G.attractBase = undefined; G.attractAlienPlat = G.platforms[0];
   G.threat = 0; G.glanceT = 0; G.glanceActive = false; G.glanceTimer = 0; G.glanceCooldown = 0;
@@ -2595,7 +2640,7 @@ function clearInput() {
    15. PLAYER PHYSICS
    ------------------------------------------------------------------------- */
 function platformUnder(px, feetY, tol) {
-  for (const pl of G.platforms) if (px >= pl.x - 2 && px <= pl.x + pl.w + 2 && feetY >= pl.y - tol && feetY <= pl.y + 24) return pl;
+  for (const pl of G.platforms) if (!pl.fallen && px >= pl.x - 2 && px <= pl.x + pl.w + 2 && feetY >= pl.y - tol && feetY <= pl.y + 24) return pl;
   return null;
 }
 function updatePlayer() {
@@ -2658,13 +2703,15 @@ function updatePlayer() {
     let landed = null;
     for (const pl of G.platforms) {
       const cx = p.x + p.w * 0.5;
-      if (cx <= pl.x - CFG.ledgeForgive || cx >= pl.x + pl.w + CFG.ledgeForgive) continue;
+      if (pl.fallen || cx <= pl.x - CFG.ledgeForgive || cx >= pl.x + pl.w + CFG.ledgeForgive) continue;
       if (prevFeet <= pl.y + 2 && feet >= pl.y) { landed = pl; break; }
     }
     if (landed) {
       const impact = p.vy;
       p.y = landed.y - p.h; p.vy = 0; p.onGround = true; p.jumping = false; p.groundPlat = landed;
+      touchCrumble(landed);
       if (!wasGround) {
+        endLeap();   // touchdown ends the leap — the one-leap mission starts over
         p.sqX = 1.2; p.sqY = 0.8; p.landDip = clamp(impact / 14, 0, 1) * 3;   // feet-anchored squash owns the contact read now
         if (impact > 11) G.trauma = Math.max(G.trauma, 0.12);   // heavy landing = smooth thud, not jitter
         burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, frostDust(palNow().trailHot), 0.08, 0);
@@ -2700,7 +2747,7 @@ function updatePlayer() {
         const gapCleared = p.jumpPlat ? Math.max(0, landed.x - (p.jumpPlat.x + p.jumpPlat.w), p.jumpPlat.x - (landed.x + landed.w)) : 0;
         if (p.airFrames > 34 && flight > 190 && gapCleared > 100) {
           const pts = gapCleared > 190 ? 50 : 25;
-          G.score += pts; G.bigAir++;
+          G.score += pts; G.bigAir++; missionProgress('bigair', 1);
           popup(p.x, p.y - 18, (gapCleared > 190 ? 'ORBITAL LEAP +' : 'BIG AIR +') + pts, '#FFE59A');
           burst(p.x + p.w / 2, p.y + p.h, 12, 2.2, 22, 2, 'rgba(159,241,255,.85)', .08, 0);
         }
@@ -2740,6 +2787,31 @@ function updatePlayer() {
   if (Math.abs(p.vx) > 1) flags.taughtRun = true;
 }
 
+// DEBRIS FIELD: any contact — landing, a ledge catch or a pull-up — arms a
+// crumble slab; it shakes for CFG.crumbleDelay frames, then falls out of the sim
+// (landing, ledge grab and platformUnder skip `fallen`). crumbleT keeps counting
+// a little past the drop to drive the render-only fall.
+function touchCrumble(pl) {
+  if (!pl || !pl.crumble || pl.crumbleT !== undefined) return;
+  pl.crumbleT = 0;
+  if (G.mode === 'play') Audio.sfx.telegraph();
+}
+function updateCrumble() {
+  for (const pl of G.platforms) {
+    if (!(pl.crumbleT >= 0) || pl.crumbleT > CFG.crumbleDelay + 60) continue;
+    if (++pl.crumbleT === CFG.crumbleDelay) {
+      pl.fallen = true;
+      const p = G.player;
+      if (p.hang && p.hang.plat === pl) releaseHang(p);   // the lip left with the slab
+      // Standing on it: drop now, never float a frame on nothing. Coyote frames
+      // still count down from here, so a late jump off the slab stays fair.
+      if (p.groundPlat === pl) { p.onGround = false; p.groundPlat = null; }
+      burst(pl.x + pl.w / 2, pl.y + 20, 14, 2.2, 30, 3, 'rgba(159,241,255,.55)', 0.15, 0);
+      G.trauma = Math.max(G.trauma, 0.08);
+    }
+  }
+}
+
 /* ---- LEDGE GRAB ---------------------------------------------------------------
    A near-miss catch. tryLedgeGrab is a pure read of sim state (no rng): it scans
    for a platform whose TOP the sprite has just fallen past, with the leading edge a
@@ -2749,7 +2821,7 @@ function tryLedgeGrab(p) {
   const top = p.y, rightEdge = p.x + p.w, leftEdge = p.x;
   for (const pl of G.platforms) {
     const below = top - pl.y;                       // hands (sprite top) vs the lip
-    if (below < CFG.grabBandTop || below > CFG.grabBandBot) continue;
+    if (pl.fallen || below < CFG.grabBandTop || below > CFG.grabBandBot) continue;
     // LEFT face (wall to the right): approached from the left, moving toward / flush.
     const dL = pl.x - rightEdge;                     // >0 short of the lip, <0 past it
     if (dL <= CFG.grabReach && dL >= -CFG.grabGrip && p.vx > -0.5) { grabLedge(p, pl, 1); return; }
@@ -2770,6 +2842,7 @@ function grabLedge(p, pl, side) {
   p.vx = 0; p.vy = 0; p.onGround = false; p.jumping = false; p.coyote = 0; p.airFrames = 0;
   p.facing = side;                                  // face the wall he's clinging to
   p.hang = { plat: pl, side, t: 0 };
+  touchCrumble(pl);                                 // clinging to a cracked slab still starts its clock
   p.sqX = 1.18; p.sqY = 0.82;                       // catch squash, eases out over the hang
   // CATCH FEEL: dust at the hands, a 1-frame downward camera nudge, a soft catch sfx.
   const handX = side > 0 ? pl.x : pl.x + pl.w;
@@ -2805,6 +2878,7 @@ function pullUpFromHang(p) {
   p.y = pl.y - p.h;                                 // px/py left at the hang → a 1-frame pull-up slide
   p.vx = 0; p.vy = 0; p.buffer = 0;
   p.onGround = true; p.jumping = false; p.groundPlat = pl; p.coyote = CFG.coyote;
+  touchCrumble(pl); endLeap();                      // a pull-up is a touchdown for crumble slabs + one-leap mission
   p.sqX = 1.2; p.sqY = 0.8; p.landDip = 3;          // brief squash-land
   // Reset the flight-discovery anchors so BIG AIR / ORBITAL LEAP can't misfire off the hang.
   p.airFrames = 0; p.jumpStartX = p.x; p.jumpPlat = pl;
@@ -2845,7 +2919,7 @@ function tryShoot() {
    16. ENEMIES + BULLETS
    ------------------------------------------------------------------------- */
 function updateEnemies() {
-  const p = G.player, B = BANDS[G.band];
+  const p = G.player, B = bandParams(G.band, G.dist);
   for (const e of G.enemies) {
     e.px = e.x; e.py = e.y;
     if (e.dead) { e.squash += 0.25; continue; }
@@ -2900,6 +2974,7 @@ function updateBullets() {
           G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
           G.chain = Math.min(G.chain + 1, CFG.chainCap);
           if (G.chain >= 3 && !lessMotion()) G.twirlT = 0.22;   // third airborne kill: pistol twirl (E12)
+          airChainProgress();
         }
         G.bullets.splice(i, 1); break;
       }
@@ -2969,6 +3044,7 @@ function collisions() {
       G.bestChainRun = Math.max(G.bestChainRun, 1 << G.chain);
       G.chain = Math.min(G.chain + 1, CFG.chainCap);
       if (G.chain >= 3 && !lessMotion()) G.twirlT = 0.22;   // third airborne kill: pistol twirl (E12)
+      airChainProgress();
       p.vy = input.jumpHeld ? CFG.stompBounceHeld : CFG.stompBounce;
       p.jumping = input.jumpHeld;
       p.y = e.y - e.h / 2 - p.h;
@@ -2995,6 +3071,12 @@ function collisions() {
         G.score += bonus; popup(k.x, k.y, '+' + bonus + ' STAR', '#FFE59A');
         burst(k.x, k.y, 12, 2.6, 24, 2.4, 'rgba(159,241,255,.95)', 0, 3);
         Audio.sfx.ammo(false); buzz('select'); missionProgress('shard', 1);
+        // Full-trail sweep: every shard of one trail, in one pass. A new trail
+        // (or a miss that lets a later trail start) resets the count.
+        if (k.trail !== undefined) {
+          if (k.trail !== G.trailId) { G.trailId = k.trail; G.trailGot = 0; }
+          if (++G.trailGot === k.of) { missionProgress('trail', 1); popup(k.x, k.y - 16, 'FULL TRAIL', '#9FF1FF'); }
+        }
         G.pickups.splice(i, 1); continue;
       }
       const wasZero = G.ammo <= 0;
@@ -3011,7 +3093,7 @@ function collisions() {
    18. FLARE + CAMERA + DISTANCE
    ------------------------------------------------------------------------- */
 function updateFlare() {
-  const B = BANDS[G.band];
+  const B = bandParams(G.band, G.dist);
   G.flare.prevX = G.flare.x;
   let target = B.flare;
   if (G.mercyLvl > 0 && (G.time - G.runStart) < 30) target *= (0.94 - 0.02 * G.mercyLvl);
@@ -3043,7 +3125,7 @@ function updateFlare() {
 // screen (and the mid-round spawn seat) steps identically. Factored so the per-frame
 // integrator below and the join seat in seatMidRound() can never fork the math.
 function stepFlareShared(fs, x0) {
-  const B = BANDS[bandFor(Math.max(0, (fs.x - x0) / 10))];
+  const d = Math.max(0, (fs.x - x0) / 10), B = bandParams(bandFor(d), d);
   fs.speed += (B.flare - fs.speed) * 0.01;
   fs.x += fs.speed;
   fs.steps++;
@@ -3378,6 +3460,7 @@ function update() {
     if (input.shoot || input.shootBtn.pressed) { tryShoot(); input.shoot = false; }
     if (G.cooldown > 0) G.cooldown--;
     updatePlayer();
+    updateCrumble();
     updateHints();
     if (G.companion) {
       const c = G.companion, p = G.player;
@@ -3425,6 +3508,11 @@ function update() {
       G.sectorFadeT = 0; G.themeHueFrom = BAND_HUE[G.band] || 218; G.themeHueTo = BAND_HUE[nextBand] || 218;
     }
     G.band = nextBand;
+    // Endgame ramp beat: each 500m notch past LAST LIGHT gets a quiet stinger so
+    // the rising pressure reads as progress, not as the game getting unfair.
+    const rs = G.band === BANDS.length - 1 ? rampStep(G.dist) : 0;
+    if (rs > G.rampStep) { G.stinger = 2.4; G.stingerText = 'LAST LIGHT +' + rs; }
+    G.rampStep = rs;
     if (G.slowTimer > 0) { G.slowTimer -= STEP; if (G.slowTimer <= 0) G.timescale = 1; }
     if (G.celebrate > 0) G.celebrate -= STEP;
     if (G.stinger > 0) G.stinger -= STEP;
@@ -4068,9 +4156,15 @@ function drawPlatforms(camX) {
   const underGlow = platGlow(hue);
   for (const pl of G.platforms) {
     if (pl.x + pl.w < camX - 40 || pl.x > camX + view.w + 40) continue;
-    const y = pl.y, w = pl.w;
+    const w = pl.w;
+    let y = pl.y, ox = 0, fade = 1;
+    if (pl.crumbleT >= 0) {   // DEBRIS FIELD: shake while it holds, then drop + fade (render-only)
+      const t = pl.crumbleT - CFG.crumbleDelay;
+      if (t < 0) ox = Math.sin(pl.crumbleT * 1.9) * 1.6 * (0.3 + pl.crumbleT / CFG.crumbleDelay);
+      else { y += t * t * 0.18; fade = 1 - t / 40; if (fade <= 0) continue; }
+    }
     // Slab in plate-local space so the boot-built 0→44 gradient fits every platform.
-    ctx.save(); ctx.translate(pl.x, y);
+    ctx.save(); if (fade < 1) ctx.globalAlpha *= fade; ctx.translate(pl.x + ox, y);
     ctx.drawImage(underGlow, w / 2 - 60, -44, 120, 120);
     ctx.fillStyle = platGrad; roundRect(0, 0, w, 40, 8); ctx.fill();
     // Continuous bright top edge with flush end-caps — the surface line must
@@ -4078,6 +4172,20 @@ function drawPlatforms(camX) {
     ctx.strokeStyle = '#E9FDFF'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(4, 2); ctx.lineTo(w - 4, 2); ctx.stroke();
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect(2, 1, 10, 3.5); ctx.fillRect(w - 12, 1, 10, 3.5);
+    if (pl.crumble) {
+      // Cracked slab — readable before you commit to the jump; the fractures
+      // heat to amber once it's been touched and the countdown is live.
+      const hot = pl.crumbleT >= 0 ? clamp(pl.crumbleT / CFG.crumbleDelay, 0, 1) : 0;
+      ctx.strokeStyle = hot > 0 ? 'rgba(255,179,107,' + (0.55 + 0.45 * hot) + ')' : '#123A6B';
+      ctx.lineWidth = 2; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const cx = w * (0.24 + 0.26 * i), s = i % 2 ? -1 : 1;
+        ctx.moveTo(cx, 0); ctx.lineTo(cx + 5 * s, 10); ctx.lineTo(cx - 3 * s, 19); ctx.lineTo(cx + 4 * s, 31);
+        ctx.moveTo(cx - 3 * s, 19); ctx.lineTo(cx - 11 * s, 25);
+      }
+      ctx.stroke();
+    }
     // Crystal stalactites hang flush from the slab underside in its dark tone.
     ctx.fillStyle = '#123A6B';
     const n = w > 200 ? 3 : 2;
@@ -4086,9 +4194,8 @@ function drawPlatforms(camX) {
       ctx.beginPath(); ctx.moveTo(sx - 8, 36); ctx.lineTo(sx + 8, 36); ctx.lineTo(sx, 38 + 16 + (i % 2) * 6); ctx.closePath(); ctx.fill();
     }
     // Feathered under-glow (stretched radial sprite, no hard-edged bar).
-    ctx.globalAlpha = 0.4;
+    ctx.globalAlpha = 0.4 * fade;
     ctx.drawImage(underGlow, -14, 26, w + 28, 52);
-    ctx.globalAlpha = 1;
     ctx.restore();
     if (G.mode === 'attract' && pl === G.attractAlienPlat) drawAttractAlien(pl);
     if (pl.boost) {   // world space — anchored to pl.boostX
@@ -4687,7 +4794,7 @@ function fontStr(weight, size, family) {
 }
 // Portrait mission captions (view.w < 480): the full label doesn't fit the
 // pill at the type floor, so E10 swaps in these shortened forms by kind.
-const MISSION_SHORT = { stomp: 'STOMP 3', shoot: 'BLAST 3', shard: '5 SHARDS', graze: 'DODGE 2', distance: 'REACH 350m' };
+const MISSION_SHORT = { stomp: 'STOMP 3', shoot: 'BLAST 3', shard: '5 SHARDS', graze: 'DODGE 2', distance: 'REACH 350m', airchain: '3 IN 1 LEAP', trail: '2 FULL TRAILS', bigair: '3 BIG AIRS' };
 function drawHUD() {
   const us = uiScale();
   // Run Together: the race strip owns the topmost band, so the run HUD shifts
