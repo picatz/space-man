@@ -574,7 +574,7 @@
     <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
     <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
     <button class="btn pulse" id="btnPlay">Tap to Start</button>
-    <button class="btn ghost" id="btnDaily" data-keys style="display:none;"><span>Daily Course</span><span class="daily-info" id="dailyInfo"></span></button>
+    <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course</span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="control-guide desktop-guide" aria-label="Keyboard controls">
       <div><b>A D / ← →</b><span>MOVE</span></div>
       <div><b>SPACE</b><span>JUMP</span></div>
@@ -636,7 +636,7 @@
     <div class="room-caption" id="deadRoomCaption" style="display:none;">ROOM</div>
     <table class="scores" id="deadRoomScores" style="display:none;"></table>
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
-    <button class="btn ghost" id="btnShare" data-keys style="display:none;">Share Run</button>
+    <button class="btn ghost" id="btnShare" data-keys="dead" style="display:none;">Share Run</button>
     <button class="btn ghost" id="btnSpectateRound" style="display:none;">Spectate This Round</button>
     <div class="sub" id="deadTapHint">TAP TO RETRY</div>
     <div class="install-chip" id="installChip">Add Space Man to your home screen</div>
@@ -996,6 +996,7 @@ function loadDaily() {
   const n = (v) => Math.max(0, Math.min(1e9, v | 0));
   return { day: today, best: n(d.best), bestDist: n(d.bestDist), runs: n(d.runs) };
 }
+let dailyCardDay = null;   // the UTC day the title's Daily card last rendered
 // A validated #daily= / #seed=&beat= link waits here for the next START.
 let challenge = SHOT ? null : COURSE.parse(location.hash, Date.now());
 function takeChallenge() { const c = challenge; challenge = null; return c ? refreshCourse(c) : null; }
@@ -1795,6 +1796,10 @@ window.addEventListener('gamepadconnected', (e) => { input.pad.index = e.gamepad
 window.addEventListener('gamepaddisconnected', (e) => { if (input.pad.index === e.gamepad.index) { input.pad.index = -1; pollGamepad(); } });
 function onKey(e, down) {
   const k = e.key.toLowerCase();
+  // A focused Daily / Share button on its live card activates itself (native
+  // Enter/Space click) — the key must not also jump, start or restart a run.
+  const own = (k === ' ' || k === 'enter') && e.target && e.target.closest ? e.target.closest('[data-keys]') : null;
+  if (own && own.dataset.keys === G.mode && own.closest('.overlay.show')) return;
   const map = { a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right', s: 'down', arrowdown: 'down' };
   if (map[k]) input[map[k]] = down;
   if (k === ' ' || k === 'w' || k === 'arrowup') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
@@ -1811,8 +1816,6 @@ function onKey(e, down) {
     }
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
-    // A focused Daily / Share button activates itself — don't also start a run.
-    if (e.target && e.target.closest && e.target.closest('[data-keys]') && k === 'enter') return;
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) startRun();
     else if (G.mode === 'dead') {
       if ($('ovInitials').classList.contains('show')) {
@@ -3309,6 +3312,8 @@ function update() {
     if (DELIGHT) updateDelight();
     G.dispScore += (G.score - G.dispScore) * 0.2;
   } else if (G.mode === 'attract') {
+    // A title screen left up across 00:00 UTC rolls the Daily card to the new day.
+    if (G.frameCount % 60 === 0 && dailyCardDay !== COURSE.dayKey(Date.now())) renderDailyCard();
     // Live hero scene: idle astronaut breathing on its platform, gentle parallax sway.
     const p = G.player;
     if (p) { p.idle += STEP; p.glint += STEP; p.facing = 1; p.onGround = true; p.vx = 0; p.vy = 0; }
@@ -4813,12 +4818,14 @@ function showAttract() {
 // (goldens untouched) or in a room (the host owns the course there). textContent only.
 function renderDailyCard() {
   const solo = !SHOT && SHOT_SEED === null && !netLive(), d = loadDaily(), b = $('btnDaily');
+  dailyCardDay = d.day;
   b.style.display = solo ? '' : 'none';
   $('dailyInfo').textContent = d.runs ? 'BEST ' + d.best.toLocaleString() + ' · ' + d.runs + (d.runs === 1 ? ' RUN' : ' RUNS') : 'NEW TODAY';
   b.setAttribute('aria-label', 'Daily Course for ' + d.day + (d.runs ? ', today’s best ' + d.best : '') + '. Same course for everyone today.');
   const cb = $('challengeBanner'), c = solo ? challenge : null;
+  // A link without a real score (beat=0) names the course but never a target of 0.
   if (c) cb.textContent = c.beat > 0 ? 'Beat ' + c.beat.toLocaleString() + (c.kind === 'daily' ? ' on the ' + c.day + ' Daily Course' : ' on this course')
-    : 'Daily Course ' + c.day + ' — start to play it';
+    : (c.kind === 'daily' ? 'Daily Course ' + c.day : 'A friend’s course') + ' — start to play it';
   cb.style.display = c ? '' : 'none';
 }
 function startDaily() { Audio.ensure(); Audio.resume(); startRun({ course: dailyCourse() }); }
@@ -4971,11 +4978,18 @@ function shareRun() {
     deathTimers.push(setTimeout(() => { b.textContent = 'Share Run'; }, 1800));
   };
   const manual = () => { try { window.prompt('Copy your result', text + ' ' + url); } catch (e) {} };
-  if (navigator.share) { try { navigator.share({ title: 'Space Man', text, url }).catch(() => {}); } catch (e) { manual(); } return; }
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + '\n' + url).then(copied, manual);
-    else manual();
-  } catch (e) { manual(); }
+  const copy = () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text + '\n' + url).then(copied, manual);
+      else manual();
+    } catch (e) { manual(); }
+  };
+  // The share sheet wins when it can take this data. Closing it (AbortError) is
+  // a choice, not a failure; anything else (NotAllowedError, TypeError…) copies.
+  const data = { title: 'Space Man', text, url };
+  if (!navigator.share || (navigator.canShare && !navigator.canShare(data))) { copy(); return; }
+  const failed = (err) => { if (!err || err.name !== 'AbortError') copy(); };
+  try { Promise.resolve(navigator.share(data)).then(null, failed); } catch (e) { failed(e); }
 }
 function renderScoreTable(id, highlight) {
   // First-run dignity (E9.4): only filled rows render; an empty board never
@@ -6312,8 +6326,10 @@ $('btnRosterCancel').onclick = () => { hideAllOverlays(); if (G.mode === 'attrac
    25. UI WIRING
    ------------------------------------------------------------------------- */
 $('btnPlay').onclick = () => { Audio.ensure(); Audio.resume(); startRun(); };
-$('btnDaily').onclick = () => startDaily();
-$('btnShare').onclick = () => shareRun();
+// Pointer clicks drop focus so a later Space still means start/retry; keyboard
+// activation (detail 0) keeps it where the player put it.
+$('btnDaily').onclick = (e) => { e.currentTarget.blur(); startDaily(); };
+$('btnShare').onclick = (e) => { if (e.detail) e.currentTarget.blur(); shareRun(); };
 $('btnTrophy').onclick = () => { Audio.ensure(); hideAllOverlays(); showTrophy(); };
 $('btnSettings').onclick = () => openSettings('attract');
 $('btnWardrobe').onclick = () => { Audio.ensure(); showWardrobe(); };
@@ -6431,6 +6447,7 @@ document.addEventListener('visibilitychange', () => {
   } else {
     Audio.resume();
     SEASON = computeSeason();   // E13: the date can roll over mid-session
+    if (G.mode === 'attract') renderDailyCard();   // …and so can the Daily Course
   }
 });
 

@@ -116,3 +116,72 @@ test('the death card shares a spoiler-free result with a challenge link', async 
   await new Promise((r) => setImmediate(r));
   assert.equal(copied, 'SPACE MAN · 50 pts · 12 m 🚀\nhttps://picatz.github.io/space-man/#seed=' + c.run('G.runSeed') + '&beat=50');
 });
+
+test('a title screen left up across 00:00 UTC rolls the Daily card to the new day', (t) => {
+  const c = solo(t), t0 = Date.UTC(2026, 8, 28, 23, 59, 30);
+  c.run(`Date.now = () => ${t0}; saveJSON(LS.daily, {day:'2026-09-28', best:777, bestDist:10, runs:2}); showAttract();`);
+  assert.equal(c.elements.get('dailyInfo').textContent, 'BEST 777 · 2 RUNS');
+  c.run(`Date.now = () => ${t0 + 60000}; for (let i=0;i<60;i++) update();`);
+  assert.equal(c.run('G.mode'), 'attract');
+  assert.equal(c.elements.get('dailyInfo').textContent, 'NEW TODAY');
+  assert.equal(c.run('dailyCardDay'), '2026-09-29');
+  assert.equal(c.run('dailyCourse().day'), '2026-09-29');
+});
+
+test('share falls back to copying on real failures, never after a cancelled share sheet', async (t) => {
+  const c = solo(t);
+  let copies = 0;
+  c.context.navigator.clipboard = { writeText: async () => { copies++; } };
+  c.run("startRun({course: dailyCourse()}); G.score=10; G.dist=5; die('void'); showDeathCard();");
+  const share = async (impl, canShare) => {
+    c.context.navigator.share = impl; c.context.navigator.canShare = canShare;
+    const before = copies; c.run('shareRun()');
+    for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+    return copies - before;
+  };
+  const reject = (name) => async () => { throw Object.assign(new Error(name), { name }); };
+  assert.equal(await share(async () => {}), 0);                          // shared
+  assert.equal(await share(reject('AbortError')), 0);                    // user closed the sheet
+  assert.equal(await share(reject('NotAllowedError')), 1);
+  assert.equal(await share(reject('DataError')), 1);
+  assert.equal(await share(() => { throw new TypeError('bad data'); }), 1);
+  assert.equal(await share(async () => { throw new Error('never called'); }, () => false), 1);   // canShare says no
+  assert.equal(await share(undefined), 1);                               // no share sheet at all
+});
+
+test('links without a real score show no zero target anywhere', (t) => {
+  const c = solo(t);
+  c.run("challenge = COURSE.parse('#seed=77&beat=0', Date.now()); renderDailyCard();");
+  assert.equal(c.elements.get('challengeBanner').textContent, 'A friend’s course — start to play it');
+  c.run("startRun(); G.score=5; die('void'); showDeathCard();");
+  assert.equal(c.run('G.runSeed'), 77); assert.equal(c.run('G.course.target'), 0);
+  assert.doesNotMatch(c.elements.get('deadCourse').textContent, /\b0\b/);
+  c.run("challenge = COURSE.parse('#daily=' + COURSE.dayKey(Date.now()) + '&beat=0', Date.now()); renderDailyCard();");
+  assert.match(c.elements.get('challengeBanner').textContent, /^Daily Course \d{4}-\d{2}-\d{2} — start to play it$/);
+  c.run('startRun()');                                                    // first daily of the day: best is 0
+  assert.equal(c.run('G.course.target'), 0);
+  c.run('G.score=1; for (let i=0;i<5;i++) update();');
+  assert.equal(c.run('G.targetBeaten'), false);
+});
+
+test('Space and Enter on a focused Daily / Share button activate only that button', (t) => {
+  const c = solo(t);
+  // A focused button as the browser would dispatch it: inside a showing overlay or not.
+  const press = (key, keys, shown) => c.run(`(() => {
+    const b = { dataset: { keys: ${JSON.stringify(keys)} } };
+    b.closest = (s) => s === '[data-keys]' ? b : s === '.overlay.show' && ${shown} ? {} : null;
+    onKey({ key: ${JSON.stringify(key)}, target: b, preventDefault() {} }, true);
+    return G.mode;
+  })()`);
+  c.run('showAttract()');
+  assert.equal(press(' ', 'attract', true), 'attract');
+  assert.equal(press('Enter', 'attract', true), 'attract');
+  assert.equal(press(' ', 'attract', false), 'play');                    // hidden card: Space starts as always
+  c.run('input.jumpPressed = false');
+  assert.equal(press(' ', 'attract', false), 'play');                    // …and jumps mid-run, even if focus lingers
+  assert.equal(c.run('input.jumpPressed'), true);
+  c.run("die('void'); showDeathCard(); G.deadShownAt = -9;");
+  assert.equal(press(' ', 'dead', true), 'dead');
+  assert.equal(press('Enter', 'dead', true), 'dead');
+  assert.equal(press('r', 'dead', true), 'play');                        // other keys still retry
+});
