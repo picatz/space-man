@@ -85,5 +85,17 @@ test('death card: eyebrow, hero score, stat tiles in the shared scale; Records a
   assert.match(css, /#deadScore\s*\{[^}]*font-size:\s*var\(--fs-hero\)/);
   assert.match(css, /\.stat-grid\s*\{[^}]*grid-template-columns/);
   assert.match(html, /<div class="dock"><button class="btn ghost" id="btnCloseTrophy">/);
-  assert.match(html, /<div class="dock"><button class="btn" id="btnRoomPlay">/);
+  // A bottom-sticky dock must be the LAST row of its card, or later rows slide under it as they scroll into place.
+  const room = html.slice(html.indexOf('id="ovRoom"'), html.indexOf('<!-- Run Together: join invite prompt -->'));
+  assert.match(room, /<div class="dock">\s*<button class="btn" id="btnRoomPlay">Start Together<\/button>\s*<button class="btn ghost" id="btnRoomBack">Back<\/button>\s*<\/div>\s*<\/div>\s*<\/div>/);
+});
+
+test('rows rise in and are then released, and hover never overrides the pressed or disabled look', () => {
+  const rise = css.match(/\.overlay\.in \.panel > :not\(\.dock\):not\(\.pulse\)\s*\{([^}]*)\}/);
+  assert.ok(rise, 'the row animation skips the dock and any pulsing button');
+  assert.match(rise[1], /rowRise[^;]*\bbackwards\b/);
+  assert.doesNotMatch(rise[1], /\bboth\b/, 'a forwards fill would pin transform and defeat :active');
+  for (const sel of ['.btn:hover', '.btn.ghost:hover', '.btn.coral:hover']) {
+    assert.ok(css.includes(sel + ':not(:disabled):not(:active)'), sel + ' is limited to enabled, un-pressed buttons');
+  }
 });

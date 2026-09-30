@@ -129,7 +129,9 @@
   .overlay.in .panel { opacity: 1; transform: translateY(0) scale(1); }
   /* Screen transition: the card settles, then its rows rise in a quick 25ms cascade. */
   @keyframes rowRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-  .overlay.in .panel > :not(.dock) { animation: rowRise var(--dur-3) var(--ease-out) both; }
+  /* `backwards`, not `both`: the row is released the moment it has risen, so it keeps its own :active sink and any infinite
+     animation of its own (the pulsing Create Room / Start button is left out entirely). */
+  .overlay.in .panel > :not(.dock):not(.pulse) { animation: rowRise var(--dur-3) var(--ease-out) backwards; }
   .overlay.in .panel > :nth-child(2) { animation-delay: 25ms; } .overlay.in .panel > :nth-child(3) { animation-delay: 50ms; }
   .overlay.in .panel > :nth-child(4) { animation-delay: 75ms; } .overlay.in .panel > :nth-child(5) { animation-delay: 100ms; }
   .overlay.in .panel > :nth-child(6) { animation-delay: 125ms; } .overlay.in .panel > :nth-child(n+7) { animation-delay: 150ms; }
@@ -213,9 +215,9 @@
   .btn:active { transform: translateY(1px) scale(0.97); filter: brightness(0.94); transition-duration: 40ms; }
   .btn:disabled { opacity: 0.45; filter: saturate(0.4); cursor: default; box-shadow: none; transform: none; }
   @media (hover: hover) and (pointer: fine) {
-    .btn:hover { filter: brightness(1.08); box-shadow: 0 6px 22px rgba(56, 225, 255, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
-    .btn.ghost:hover { background: rgba(56, 225, 255, 0.08); border-color: rgba(56, 225, 255, 0.55); box-shadow: none; }
-    .btn.coral:hover { box-shadow: 0 6px 22px rgba(255, 79, 102, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.45); }
+    .btn:hover:not(:disabled):not(:active) { filter: brightness(1.08); box-shadow: 0 6px 22px rgba(56, 225, 255, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+    .btn.ghost:hover:not(:disabled):not(:active) { background: rgba(56, 225, 255, 0.08); border-color: rgba(56, 225, 255, 0.55); box-shadow: none; }
+    .btn.coral:hover:not(:disabled):not(:active) { box-shadow: 0 6px 22px rgba(255, 79, 102, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.45); }
     .mini-chip:hover, .arrow-btn:hover { background: rgba(56, 225, 255, 0.2); }
   }
   /* Keyboard + controller focus ring — same cyan ring as the switches/sliders.
@@ -904,7 +906,6 @@
     </details>
     <div class="roster" id="roomRoster"></div>
     <p class="room-relay" id="roomStatus" role="status"></p>
-    <div class="dock"><button class="btn" id="btnRoomPlay">Start Together</button></div>
     <div class="toggle-row" id="roomApproveRow">
       <span>Approve Joins</span>
       <button class="switch" id="roomApprove" role="switch" aria-label="Approve joins"></button>
@@ -914,7 +915,10 @@
       <button class="btn ghost" id="btnRoomNewWorld">New Round</button>
     </div>
     <button class="btn ghost coral" id="btnRoomLeave">Leave Room</button>
-    <button class="btn ghost" id="btnRoomBack">Back</button>
+    <div class="dock">
+      <button class="btn" id="btnRoomPlay">Start Together</button>
+      <button class="btn ghost" id="btnRoomBack">Back</button>
+    </div>
   </div>
 </div>
 
