@@ -244,6 +244,8 @@ test('old course versions are rejected before opening a socket', async (t) => {
   await assert.rejects(guest.net.acceptJoin(bytes.b64uEnc(invite)), /update/);
   invite[0] = 3;                       // v3.4 clients: same terrain, but aliens still moved per-frame and kills weren't shared
   await assert.rejects(guest.net.acceptJoin(bytes.b64uEnc(invite)), /update/);
+  invite[0] = 4;                       // v4 clients: shared aliens, but the original scatter terrain (world gen 1)
+  await assert.rejects(guest.net.acceptJoin(bytes.b64uEnc(invite)), /update/);
   assert.equal(hub.packetCount, before); assert.equal(guest.net.active, false);
 });
 

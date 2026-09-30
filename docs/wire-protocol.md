@@ -1,7 +1,7 @@
 # Space Man — Run Together Wire Protocol
 
 **Status:** public, versioned interoperability specification.
-**Protocol version:** `4` (the app-envelope version byte; see [§13](#13-protocol-version--compatibility)).
+**Protocol version:** `5` (the app-envelope version byte; see [§13](#13-protocol-version--compatibility)).
 **Audience:** an engineer building a third-party client (TUI, native mobile, bot, test
 harness) that must interoperate with Space Man rooms without access to the reference
 implementation.
@@ -273,7 +273,7 @@ envelope, which is the opaque packet inside `SendPacket` / `RecvPacket`:
 ```
 offset  size  field
 0       1     0x53                 ('S')
-1       1     0x03                 envelope version = PROTO = 4
+1       1     0x03                 envelope version = PROTO = 5
 2       1     dir                  0x01 guest→host, 0x02 host→guest
 3       8     counter u64 LE       per (pairKey, dir), starts at 0, +1 per frame
 11      ...   AES-GCM ciphertext   (plaintext frame + 16-byte tag appended)
@@ -317,7 +317,7 @@ the code channel are **random 24-byte** values (no counter state exists pre-join
 ```
 offset  size  field
 0       1     0x43                 ('C')
-1       1     0x04                 version = 4
+1       1     0x05                 version = 5
 2       24    nonce                random
 26      ...   NaCl box(payload)    crypto_box(payload, nonce, theirPub, myPriv) = tag(16)||ct
 ```
@@ -436,7 +436,7 @@ sealed under the pair key. Total **43 bytes** (36-byte historical core + 7 appen
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x01` |
 | 1 | 1 | protoMin | u8 | **S** if `protoMin > protoMax` |
-| 2 | 1 | protoMax | u8 | join rejected if no overlap with host `[4,4]` |
+| 2 | 1 | protoMax | u8 | join rejected if no overlap with host `[5,5]` |
 | 3 | 3 | tag | ASCII | **W**: `[A-Z0-9]{3}`, else `"AAA"` |
 | 6 | 1 | suit | u8 | **W**: cosmetic index, else 0 |
 | 7 | 1 | hat | u8 | **W**: cosmetic index, else 0 |
@@ -459,7 +459,7 @@ Direction: **host → guest**. Total **23 bytes**.
 | offset | size | field | type | notes |
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x02` |
-| 1 | 1 | proto | u8 | = 4 (PROTO); guest drops WELCOME whose `proto ≠ 4` |
+| 1 | 1 | proto | u8 | = 5 (PROTO); guest drops WELCOME whose `proto ≠ 5` |
 | 2 | 1 | yourP | u8 | your P-number, 1..32 (1 is always the host) |
 | 3 | 4 | seed | u32 LE | shared world seed |
 | 7 | 1 | runId | u8 | current round id |
@@ -679,6 +679,33 @@ then derive everything from the **round clock** (§8, the same clock as the shar
 - Shots are aimed at, and only ever hit, their own player. Spectators run the same schedule
   without firing.
 
+World gen 2 adds five types (`src/enemies.js`). Each carries its spawn x in `x0` from birth
+(its wire id is `round(x0 · 8)`, unique among the generator's recent spawns), a phase `ph`
+drawn at spawn, and is driven by `c = T + ph` in steps. Timings are constants in
+`SpaceManEnemies` (`DIVER`, `BRUTE`, `BOMBER`, `TURRET`):
+
+- **Diver** (hover point `hx, hy`, sideways `span`, dip `depth`, half-cycle `per`): with
+  `k = ⌊c / per⌋`, `u = c − k·per`, it flies from `A` to `B` on even `k` (`A = hx`,
+  `B = hx + span`) and back on odd `k`. For `u < per − 104` it hovers at `A` (bob
+  `4·sin(0.07c)`), then telegraphs for 40 steps, then swoops for 64 steps along
+  `x = A + (B − A)·smoothstep(s)`, `y = hy + bob + depth·sin(πs)`, `s = (u − per + 64) / 64`.
+- **Shielder** walks its lane like a patrol (`q₀` from `x0`/`dir0`, speed `v`): position is
+  the patrol formula with distance `v·c`. Its shield faces its walking direction.
+- **Brute** cycles every `per` steps: walks `per − 72` steps (patrol formula over the
+  accumulated walking distance, speed 0.45), raises its fists for 42 (telegraph), slams, then
+  recovers for 30. A slam's wave fronts leave the brute's slam-time x at 4.2 px/step in both
+  directions and exist only while inside the brute's slab `[platX0, platX1]`.
+- **Bomber** paces its lane (patrol formula, `v·c`) at `baseY + 3·sin(0.05c)` and drops a bomb at
+  `f₀ + k·per` (telegraph: the 30 steps before each). Bombs fall with gravity and burst on the
+  first slab below.
+- **Sentinel** (turret) is fixed; it fires at `f₀ + k·per` (telegraph: the 40 steps before
+  each) along its aim. Its aim turns toward **its own screen's** player at ≤ 0.03 rad/step and
+  is the one piece of per-screen state: it only steers that screen's own shots.
+
+Kills use `KILL`/`KILLB`/`KILLS` with those ids exactly like the originals. Armor (a brute's
+three hits, a sentinel's two) is per-screen; only the kill is shared. Like shooters, bombers
+and sentinels adopt the current event count on first sight without firing.
+
 Everything is captured the first time an alien is seen, before anything has moved it, so
 nothing consumes the world stream. Two clients' clocks agree to about half an RTT; that is
 the whole tolerance (a few px of patrol, a shot that lands a few ms apart).
@@ -807,6 +834,13 @@ invite. A custom relay in settings skips probing and sets `flags` bit1 + the hos
 
 ## 13. Protocol version & compatibility
 
+Version 5 builds room courses with **world gen 2** (`src/worldgen.js`): designed set pieces
+chosen by a seeded pacing director instead of the original per-platform scatter, and five
+new alien types whose motion and schedules are pure functions of the round clock
+([§10.8.1](#1081-shared-aliens)). Every room course is gen 2; the seed still comes from ROUND and the
+world stream is unchanged, but a version 4 client would build different terrain from the same
+seed, so mixed rooms are refused like any other version gap. Solo links name their own
+generator (`&v=2`; none means gen 1) and are not a protocol matter.
 Version 4 shares the aliens. In a room an alien's position, walk cycle, hover and
 shot schedule are a pure function of the round clock ([§10.8.1](#1081-shared-aliens)), and an alien one
 player kills disappears for everyone (`KILL`/`KILLB`, [§10.8](#108-frames-now-implemented-emote--host-control-stage)).
@@ -820,11 +854,11 @@ are refused before connecting, with an update prompt: mixing terrain
 algorithms would put peers on different courses.
 Refresh both clients and create a fresh room after upgrading.
 
-- **The protocol version is the app-envelope version byte = `4`** ([§7.1](#71-app-envelope-s--0x53)).
-  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 4` is
+- **The protocol version is the app-envelope version byte = `5`** ([§7.1](#71-app-envelope-s--0x53)).
+  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 5` is
   dropped + struck.
 - **HELLO version negotiation.** HELLO carries `protoMin`/`protoMax`. The host requires
-  overlap with its own supported range (`[4,4]` today). No overlap → the join is refused
+  overlap with its own supported range (`[5,5]` today). No overlap → the join is refused
   (silent drop in this snapshot; a `BYE(reason=3)` "update to play together" in a later
   stage). `protoMin > protoMax` is itself a strike.
 - **Forward-compatibility contract (both directions MUST honor):**
@@ -980,7 +1014,7 @@ A conforming client MUST uphold these (condensed from the reference security rev
 | envelope `dir` | matches sender role (0x01 G→H / 0x02 H→G) | strike |
 | envelope `counter` | `> highSeen(pair, dir)` | drop + strike |
 | wire size | ≤ 256 B | drop + strike (pre-decrypt) |
-| HELLO `protoMin/Max` | overlap [4,4], `min ≤ max` | refuse join / strike |
+| HELLO `protoMin/Max` | overlap [5,5], `min ≤ max` | refuse join / strike |
 | tag (HELLO/ROSTER) | `[A-Z0-9]{3}` | force `"AAA"` (**W**) |
 | suit/hat | index in local cosmetic tables | force 0 (**W**) |
 | HELLO `proof` | HMAC match | silent drop + strike |
@@ -1034,8 +1068,8 @@ joining fresh (no rejoin token), producing a HELLO **plaintext** (43 bytes):
 offset  bytes                                            field
 ------  -----------------------------------------------  ----------------------------------
 0x00    01                                               type = HELLO (0x01)
-0x01    04                                               protoMin = 4
-0x02    04                                               protoMax = 4
+0x01    05                                               protoMin = 5
+0x02    05                                               protoMax = 5
 0x03    4B 41 47                                          tag = "KAG"  (ASCII K,A,G)
 0x06    03                                               suit = 3
 0x07    01                                               hat = 1
@@ -1054,7 +1088,7 @@ offset  bytes                                            field
 Full 43-byte plaintext, contiguous:
 
 ```
-01 04 04 4B 41 47 03 01 00 00 00 00 00 00 00 00
+01 05 05 4B 41 47 03 01 00 00 00 00 00 00 00 00
 00 00 00 00 9F 12 4C A8 03 E1 55 7B BD 2A 66 90
 DF 04 C8 31 00 1F 00 00 00 05 11
 ```
@@ -1063,21 +1097,21 @@ DF 04 C8 31 00 1F 00 00 00 05 11
 envelope. The 11-byte cleartext header is:
 
 ```
-53 04 01 00 00 00 00 00 00 00 00
+53 05 01 00 00 00 00 00 00 00 00
 │  │  │  └──────────────────────┘ counter = 0  (u64 LE)
 │  │  └ dir = 0x01 (guest→host)
-│  └ envelope version = 4
+│  └ envelope version = 5
 └ 'S' (0x53)
 ```
 
 followed by the AES-GCM ciphertext of the 43-byte plaintext plus a 16-byte tag (opaque,
 non-deterministic — depends on the pair key and the random-free counter nonce
-`01 00 00 00 00 00 00 00 00 00 00 00`, AAD `04 <roomId·8> <epoch> 01`). Total sealed wire:
+`01 00 00 00 00 00 00 00 00 00 00 00`, AAD `05 <roomId·8> <epoch> 01`). Total sealed wire:
 11 + 43 + 16 = **70 bytes**. This whole envelope becomes the `SendPacket` payload prefixed
 by the 32-byte host public key, itself wrapped in the 5-byte relay frame header:
 
 ```
-04 00 00 00 66  <hostPub·32>  53 04 01 00 00 00 00 00 00 00 00  <ct+tag·59>
+04 00 00 00 66  <hostPub·32>  53 05 01 00 00 00 00 00 00 00 00  <ct+tag·59>
 │  └─────────┘  └──────────┘  └───── 'S' envelope (70 B) ───────────────────┘
 │  len=0x66=102 relay dst key
 └ relay frameType = SendPacket (0x04)
@@ -1092,7 +1126,7 @@ envelope is little-endian.
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `PROTO` | 4 | app-envelope / protocol version |
+| `PROTO` | 5 | app-envelope / protocol version |
 | `ROOM_CAP` / `PLAYER_CAP` | 32 | player slots |
 | `SPECTATOR_CAP` | 16 | spectator slots |
 | `WIRE_MAX` | 256 | max app packet wire size (pre-decrypt gate) |
