@@ -161,3 +161,43 @@ test('in an unstable room the tray sits below the LEAVE banner, so an emote neve
   assert.deepEqual(sent, [0], 'the emote went out');
   assert.equal(guest.net.active, before, 'and the room was not left');
 });
+
+test('a room turning unstable with the tray already open lays the tray out around the new banner in that same frame', async (t) => {
+  const { guest, sent } = await playing(t, { width: 667, height: 375 });     // the landscape phone where they collide
+  guest.run('resize(); G.mode = "play"');
+  down(guest, ...centre(guest, guest.run('emoteLayout()').button), 1);           // tray open in a stable room
+  assert.equal(guest.run('emTray.open'), true);
+  const drawn = [];
+  guest.run('globalThis.__rr = []; const rr = roundRect; roundRect = (x, y, w, h, r) => { __rr.push([x, y, w, h]); return rr(x, y, w, h, r); }');
+  guest.net._n1.session().unstable = true;                                       // the room just went unstable
+  guest.run('drawNetHUD()');
+  const rects = guest.run('__rr'), hit = guest.run('_unstableHit'), k = guest.run('emoteLayout().k');
+  assert.ok(hit, 'the banner published its hit area');
+  const L = guest.run('emoteLayout()');
+  const tray = rects.find((r) => Math.abs(r[2] - L.tray.w) < 1e-6 && Math.abs(r[3] - L.tray.h) < 1e-6);
+  assert.ok(tray, 'the tray was drawn');
+  assert.ok(tray[1] * k >= hit.y1, 'and drawn below the banner target on the very frame the banner appeared');
+  down(guest, ...centre(guest, L.items[0]), 2);
+  assert.deepEqual(sent, [0], 'tapping the emote nearest the banner sends it and does not leave the room');
+});
+
+test('the emote button never covers the ammo and shard readouts, or the off-screen teammate cue', async (t) => {
+  const { guest } = await playing(t);
+  guest.run('input.usingTouch = false; G.shards = 5; G.mode = "play"');
+  const ys = [];
+  const ctx = guest.run('ctx');
+  ctx.fillText = (txt, x, y) => { ys.push([String(txt), y]); };
+  guest.run('drawHUD()');
+  const L = guest.run('emoteLayout()');
+  const below = (label) => { const row = ys.find(([txt]) => txt.startsWith(label)); assert.ok(row, label + ' was drawn'); return row[1]; };
+  const bottom = L.button.y + L.button.h;
+  assert.ok(below('AMMO') > bottom, 'AMMO sits under the button');
+  assert.ok(below('✦') > bottom, 'the shard count sits under the button');
+  delete ctx.fillText;
+  // A teammate ahead, off screen to the right: the cue steps below the button, and below the tray while it is open.
+  guest.run('G.camX = 0; ghosts.length = 0; ghosts.push({ active: true, alpha: 1, p: 2, callsign: "COMET FOX", rx: 99999, ry: 100, role: 0 }); globalThis.watchable = () => true');
+  const cue = () => { const seen = []; ctx.fillText = (txt, x, y) => { if (/COMET/.test(String(txt))) seen.push(y); }; guest.run('drawCrewDirections()'); delete ctx.fillText; return seen[0]; };
+  assert.ok(cue() > bottom, 'the cue clears the button');
+  down(guest, ...centre(guest, L.button), 1);
+  assert.ok(cue() > guest.run('emoteLayout().tray.y + emoteLayout().tray.h'), 'and the open tray');
+});

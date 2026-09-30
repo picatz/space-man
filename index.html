@@ -5113,18 +5113,21 @@ function drawHUD() {
   }
 
   const touch = FORCE_TOUCH || input.usingTouch;
+  // In a room the emote button owns the top-right corner; the right-hand column (ammo, shards) starts under it.
+  let rTop = top;
+  if (emoteAvailable()) { const eb = emoteLayout().button; rTop = Math.max(top, eb.y + eb.h + 6); }
   if (!touch) {
     const rx = view.w - left, pw2 = 6 * us, sp = 9 * us;
     for (let i = 0; i < CFG.ammoCap; i++) {
       ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.15)';
-      ctx.fillRect(rx - i * sp - pw2, top + 2, pw2 - 1, 11 * us);
+      ctx.fillRect(rx - i * sp - pw2, rTop + 2, pw2 - 1, 11 * us);
     }
     ctx.fillStyle = '#CFE3FF'; ctx.font = fontStr(600, Math.max(9.5, 9 * us), FONT); ctx.textAlign = 'right';
-    ctx.fillText('AMMO', rx, top + 24 * us);
+    ctx.fillText('AMMO', rx, rTop + 24 * us);
   }
   if (G.shards > 0) {
     ctx.fillStyle = '#9FF1FF'; ctx.font = fontStr(700, 9 * us, FONT); ctx.textAlign = 'right';
-    ctx.fillText('✦ ' + G.shards, view.w - left, top + 42 * us);
+    ctx.fillText('✦ ' + G.shards, view.w - left, rTop + 42 * us);
   }
 }
 function drawMuteButton(x, y, s, us) {
@@ -6743,8 +6746,10 @@ function drawNetHUD() {
   if (netSpectating()) drawSpectatorHUD(); else { _specHits = null; }
   drawRoundStatus();
   if (!netSpectating()) drawCrewDirections();
-  if (emoteAvailable()) drawEmoteUI(); else emTray.open = false;
+  // The banner goes first: it publishes the LEAVE hit area the emote tray lays itself out around, so the tray is never drawn
+  // (or hit) against last frame's banner.
   if (netLive() && NET.info().unstable) drawUnstableBanner(); else _unstableHit = null;
+  if (emoteAvailable()) drawEmoteUI(); else emTray.open = false;
 }
 function raceRunners() {
   const out = [];
@@ -6835,7 +6840,10 @@ function drawCrewDirections() {
     ctx.textAlign = dir < 0 ? 'left' : 'right';
     ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + 11 * us + 'px ' + FONT_NUM;
     const distance = Math.round(Math.abs(g.rx - G.player.x) / 10);
-    ctx.fillText((dir < 0 ? '‹ ' : '') + (g.callsign || 'P' + g.p) + ' · ' + distance + 'm' + (dir > 0 ? ' ›' : ''), x, y, view.w * 0.42);
+    // The right-hand cue steps down out of the way of the emote button (and its tray while open).
+    let ly = y;
+    if (dir > 0 && emoteAvailable()) { const L = emoteLayout(), b = emTray.open ? L.tray : L.button; ly = Math.max(y, b.y + b.h + 16 * us); }
+    ctx.fillText((dir < 0 ? '‹ ' : '') + (g.callsign || 'P' + g.p) + ' · ' + distance + 'm' + (dir > 0 ? ' ›' : ''), x, ly, view.w * 0.42);
   }
 }
 function drawSpectatorHUD() {
