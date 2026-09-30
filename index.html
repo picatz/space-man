@@ -2030,6 +2030,7 @@ function pollGamepad() {
   }
   noteRumble(gp);
   if (!gp) {
+    input.firePad = false;   // a controller pulled out with FIRE held must not leave the saber swinging
     if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
     return;
   }

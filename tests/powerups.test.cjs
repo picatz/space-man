@@ -429,9 +429,12 @@ test('held FIRE state follows the real inputs: key up/down, mouse, and the contr
     navigator.getGamepads = () => [pad]; pollGamepad();
     pad.buttons[7].pressed = true; pollGamepad(); out.padDown = input.firePad;
     pad.buttons[7].pressed = false; pollGamepad(); out.padUp = input.firePad;
+    pad.buttons[7].pressed = true; pollGamepad(); out.heldBeforeUnplug = input.firePad;
+    navigator.getGamepads = () => [null]; input.pad.index = -1; pollGamepad(); out.afterUnplug = input.firePad;
+    S.saber = 600; S.swingT = -1; S.player = G.player; let swung = 0; for (let i = 0; i < 90; i++) { POW.combat(); if (S.swingT >= 0) swung++; } out.swingsAfterUnplug = swung; S.saber = 0;
     input.fireKey = input.fireMouse = input.firePad = true; clearInput(); out.cleared = [input.fireKey, input.fireMouse, input.firePad];
     return out;`);
-  assert.deepEqual(r, { keyDown: true, keyUp: false, padDown: true, padUp: false, cleared: [false, false, false] });
+  assert.deepEqual(r, { keyDown: true, keyUp: false, padDown: true, padUp: false, heldBeforeUnplug: true, afterUnplug: false, swingsAfterUnplug: 0, cleared: [false, false, false] });
 });
 
 test('a real graze slows time in solo play, but never in a room or with Reduce Motion', (t) => {
