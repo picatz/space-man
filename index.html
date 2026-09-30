@@ -5388,10 +5388,15 @@ const MISSION_SHORT = { stomp: 'STOMP 3', shoot: 'BLAST 3', shard: '5 SHARDS', g
 let hudScrim = null;
 function drawHudScrim(h, w) {
   if (!hudScrim) {
+    // A 64-radius radial squashed to 64×32 by the transform, so it reaches alpha 0
+    // at both the right and the bottom source edge (no hard seam when stretched).
+    // Transform set first for clarity; canvas resolves a gradient in the transform
+    // active at fill time either way (measured: bottom-edge alpha 2/255 both orders).
     hudScrim = makeCanvas(64, 32); const g = hudScrim.getContext('2d');
+    g.setTransform(1, 0, 0, 0.5, 0, 0);
     const grd = g.createRadialGradient(0, 0, 0, 0, 0, 64);
     grd.addColorStop(0, 'rgba(4,5,16,0.55)'); grd.addColorStop(0.5, 'rgba(4,5,16,0.28)'); grd.addColorStop(1, 'rgba(4,5,16,0)');
-    g.setTransform(1, 0, 0, 0.5, 0, 0); g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
   }
   ctx.drawImage(hudScrim, 0, 0, w, h);
 }
