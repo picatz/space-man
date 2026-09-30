@@ -2923,6 +2923,17 @@ function clearInput() {
 /* ---------------------------------------------------------------------------
    15. PLAYER PHYSICS
    ------------------------------------------------------------------------- */
+// Shadow receiver: the nearest standing slab whose top is AT or BELOW the feet
+// (within range). Unlike platformUnder's collision tolerance, a slab overhead —
+// e.g. rising up through a one-way platform — never catches the shadow.
+function shadowPlatform(px, feetY, range) {
+  let best = null;
+  for (const pl of G.platforms) {
+    if (pl.fallen || px < pl.x - 6 || px > pl.x + pl.w + 6 || pl.y < feetY || pl.y - feetY > range) continue;
+    if (!best || pl.y < best.y) best = pl;
+  }
+  return best;
+}
 function platformUnder(px, feetY, tol) {
   for (const pl of G.platforms) if (!pl.fallen && px >= pl.x - 2 && px <= pl.x + pl.w + 2 && feetY >= pl.y - tol && feetY <= pl.y + 24) return pl;
   return null;
@@ -4106,8 +4117,9 @@ function render(alpha) {
       const top = card ? card.getBoundingClientRect().top * (view.h / window.innerHeight) : 0;
       if (top > 0) want = Math.min(want, top - 40);
     }
-    if (G.deathPanY === undefined || !G.deathCardShown) G.deathPanY = want;
-    G.deathPanY += (want - G.deathPanY) * 0.12;
+    // Reduce Motion takes the framed shot as a cut: the aim snaps, never glides.
+    if (G.deathPanY === undefined || !G.deathCardShown || lessMotion()) G.deathPanY = want;
+    else G.deathPanY += (want - G.deathPanY) * 0.12;
     ctx.translate((view.w * 0.5 - fx) * k * 0.6, (Math.max(40, G.deathPanY) - fy) * k);
   }
   ctx.translate(pvx + G.shake.x, pvy + G.shake.y); ctx.rotate(G.shake.rot);
@@ -5090,7 +5102,7 @@ function drawPlayer(alpha) {
   // Contact shadow on the slab below: grounds the jump arc (height reads at a
   // glance) and fades with altitude. A pure read of the platform list.
   if (!V || V.a > 0.5) {
-    const gp = p.onGround ? p.groundPlat : (p.hang ? null : platformUnder(x, y + hh, 190));
+    const gp = p.onGround ? p.groundPlat : (p.hang ? null : shadowPlatform(x, y + hh, 190));
     if (gp && x > gp.x - 6 && x < gp.x + gp.w + 6) {
       const alt = clamp((gp.y - (y + hh)) / 190, 0, 1);
       ART.contactShadow(ctx, x, gp.y + 1, 30 - alt * 12, (1 - alt) * 0.9);

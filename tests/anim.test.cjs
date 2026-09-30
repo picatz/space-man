@@ -170,6 +170,41 @@ test('a peer ghost never wears the local rig: no local stomp ring, crouch, blink
   assert.ok(!ghostLive.includes(ring), 'no second stomp ring painted at the local stomp spot');
 });
 
+test('Reduce Motion: the portrait death framing snaps to the card edge instead of gliding', (t) => {
+  const hub = relay(), c = client(hub, { width: 390, height: 844 });
+  t.after(() => c.close());
+  const frame = (reduce) => c.run(`(() => {
+    settings.reduceMotion = ${reduce}; startRun(); G.mode = 'play';
+    $('ovDead').firstElementChild = { getBoundingClientRect: () => ({ top: 300 }) };
+    G.player.dead = true; G.deathFocus = { x: G.player.x, y: G.player.y }; G.deathSeq = 2; G.deathCardShown = true;
+    G.deathPanY = 500; render(1);
+    return { pan: G.deathPanY, want: Math.min(view.h * 0.3, 300 * (view.h / innerHeight) - 40) };
+  })()`);
+  const calm = frame(true);
+  assert.ok(Math.abs(calm.pan - calm.want) < 1e-9, 'reduced motion: aim assigned directly (' + calm.pan + ' vs ' + calm.want + ')');
+  const moving = frame(false);
+  assert.ok(moving.pan > moving.want + 1 && moving.pan < 500, 'full motion still eases toward the card edge');
+});
+
+test('the contact shadow never lands on a slab above the feet (rising through a one-way platform)', (t) => {
+  const hub = relay(), c = client(hub);
+  t.after(() => c.close());
+  const shadows = (setup) => c.run(`(() => {
+    startRun(); G.mode = 'play';
+    const p = G.player, pl = G.platforms[0]; ${setup}
+    p.px = p.x; p.py = p.y; p.onGround = false; p.hang = null;
+    const ys = [], orig = ART.contactShadow; ART.contactShadow = (g, x, y) => ys.push(y);
+    try { drawPlayer(1); } finally { ART.contactShadow = orig; }
+    return { ys, slab: pl.y + 1 };
+  })()`);
+  // rising: feet 10px inside the slab (platformUnder's 24px collision tolerance would pick it)
+  const up = shadows('p.x = pl.x + pl.w / 2 - p.w / 2; p.y = pl.y + 10 - p.h; p.vy = -8;');
+  assert.ok(!up.ys.includes(up.slab), 'no shadow painted on the overhead slab');
+  // falling toward it from 60px above: the slab below takes the shadow
+  const down = shadows('p.x = pl.x + pl.w / 2 - p.w / 2; p.y = pl.y - 60 - p.h; p.vy = 4;');
+  assert.deepEqual([...down.ys], [down.slab], 'the slab below receives it');
+});
+
 function liveGame(t) {
   const hub = relay(), c = client(hub);
   t.after(() => c.close());
