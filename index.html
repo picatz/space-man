@@ -1874,7 +1874,7 @@ const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: 
 let batteryLow = false, batteryReady = false;   // batteryReady: the browser actually handed us battery data (it can refuse)
 try {
   if (navigator.getBattery) navigator.getBattery().then((b) => {
-    const sync = () => { batteryLow = !b.charging && b.level <= 0.2; };
+    const sync = () => { batteryLow = !b.charging && b.level < 0.2; };
     sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
     batteryReady = true; syncHapticRows();
   }).catch(() => {});
@@ -1890,6 +1890,13 @@ function padRumbles() {
     const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
     return !!(act && act.playEffect);
   } catch (e) { return false; }
+}
+// pollGamepad tells us whenever the connected pad could change (plugged in, swapped for another, unplugged): re-sync the
+// rows only when whether it can rumble has actually changed, so a hand-off between controllers never leaves the slider stale.
+let padCanRumble = false;
+function noteRumble(gp) {
+  const now = !!(gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0])));
+  if (now !== padCanRumble) { padCanRumble = now; syncHapticRows(); }
 }
 function syncHapticRows() {
   const phoneMotor = !!navigator.vibrate && matchMedia('(any-pointer: coarse)').matches;   // desktop Chrome has vibrate() but no motor
@@ -2016,13 +2023,14 @@ function pollGamepad() {
   if (!gp) {
     for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
   }
+  noteRumble(gp);
   if (!gp) {
-    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); syncHapticRows(); }
+    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
     return;
   }
   if (!input.pad.connected) {
     input.pad.connected = true; input.pad.prev = []; document.body.classList.add('gamepad-active');
-    queueToast('CONTROLLER READY', 'sys'); syncHapticRows();
+    queueToast('CONTROLLER READY', 'sys');
   }
   const pressed = (i) => gamepadButton(gp, i);
   const just = (i) => pressed(i) && !input.pad.prev[i];

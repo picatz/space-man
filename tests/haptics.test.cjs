@@ -50,7 +50,9 @@ test('the battery watcher flips the saver as the level and charger change', asyn
   t.after(() => c.close());
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(c.run('batteryLow'), false);
-  battery.level = 0.15; listeners.levelchange();
+  battery.level = 0.2; listeners.levelchange();
+  assert.equal(c.run('batteryLow'), false, 'exactly 20% is not below 20%');
+  battery.level = 0.19; listeners.levelchange();
   assert.equal(c.run('batteryLow'), true, 'low and unplugged');
   battery.charging = true; listeners.chargingchange();
   assert.equal(c.run('batteryLow'), false, 'plugged in again');
@@ -147,4 +149,44 @@ test('saved haptic settings are kept, and corrupt ones fall back to sane values'
   t.after(() => d.close());
   assert.equal(d.run('settings.hapticsStrength'), 0.3, 'clamped to the floor');
   assert.equal(d.run('settings.hapticsSaver'), false);
+});
+
+test('letting go of the strength slider feels the new strength, once, at that strength', (t) => {
+  const { c, buzzes } = solo(t);
+  c.run('settings.haptics = true; settings.hapticsSaver = false');
+  const host = c.context.document.createElement('div');
+  c.context.__host = host;
+  c.run('hapticRows.length = 0; buildSettings(__host)');
+  const row = host.children.find((r) => r.dataset.settingRow === 'hapticsStrength');
+  const range = row.children.find((x) => x.type === 'range');
+  assert.equal(range.min, 30);
+  assert.equal(range.max, 100);
+  range.valueAsNumber = 50; range.oninput();                   // dragging: the value moves, nothing buzzes
+  assert.equal(c.run('settings.hapticsStrength'), 0.5);
+  assert.deepEqual(buzzes, []);
+  range.onchange();                                            // letting go: one confirming buzz at the new strength
+  assert.deepEqual(buzzes, [[5, 28, 5]]);
+});
+
+test('swapping or unplugging controllers keeps the strength row honest, without waiting for a connect event', (t) => {
+  let pads = [];
+  const c = client(relay(), { navigator: { getGamepads: () => pads } });
+  t.after(() => c.close());
+  const host = c.context.document.createElement('div');
+  c.context.__host = host;
+  c.run('hapticRows.length = 0; buildSettings(__host)');
+  const row = host.children.find((r) => r.dataset.settingRow === 'hapticsStrength');
+  const shown = () => row.style.display !== 'none';
+  const rumble = { vibrationActuator: { playEffect: () => Promise.resolve() } };
+  const plain = {};
+  const pad = (extra) => ({ connected: true, mapping: 'standard', index: 0, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), ...extra });
+  assert.equal(shown(), false);
+  pads = [pad(rumble)]; c.run('input.pad.index = 0; pollGamepad()');
+  assert.equal(shown(), true, 'a rumbling controller');
+  pads = [pad(plain)]; c.run('pollGamepad()');
+  assert.equal(shown(), false, 'swapped for one that cannot rumble, with no disconnect in between');
+  pads = [pad(rumble)]; c.run('pollGamepad()');
+  assert.equal(shown(), true, 'and back');
+  pads = []; c.run('input.pad.index = -1; pollGamepad()');
+  assert.equal(shown(), false, 'unplugged');
 });
