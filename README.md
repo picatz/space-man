@@ -21,7 +21,11 @@ chain mid-air combos, and chase your personal best.
   pull nearby star shards into reach.
 - Music, sound effects, haptics, screen shake, and handedness are independently
   configurable from both the title and pause menus. Legacy SOUND preferences
-  migrate automatically to the more precise controls.
+  migrate automatically to the more precise controls. Haptics have their own
+  strength slider (phones and controllers), a confirming buzz when switched on,
+  and, where the browser can read the battery, an "Off on low battery" saver.
+  On-screen touch controls recede to a quiet outline once you know them and
+  wake when a thumb lands.
 - Standard gamepads are supported, including PS5 and Xbox-style layouts:
   left stick or D-pad to move, Cross/A to jump, Square/X or R1/R2 to fire, and
   Options/Menu to pause. Supported controllers use the optional haptics setting.
