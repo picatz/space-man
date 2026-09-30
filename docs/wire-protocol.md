@@ -624,11 +624,15 @@ Entry (repeated, starting at offset 4):
 | 17 | 2 | dist | u16 LE | **C** ≤ 60 000 |
 | 19 | 1 | runId | u8 | |
 
-The host round-robins live players so that, in a full room, every live player appears in a
-SNAP at ≥ 4 Hz. **Thrift (v5):** a tick carries only rows with a *new* sample since the last
-fan-out; every row is re-sent at least once per second (heartbeat) so receivers keep it
-fresh, and a tick with nothing new sends **no packet at all** (an idle room costs one SNAP
-per second per member instead of ten — fewer radio wake-ups on every phone). When the
+**Fan-out and thrift (v5).** The host tracks, **per row**, when it last fanned that row
+out. A row is *due* when it has a new sample since its last fan-out, or when its last
+fan-out is a heartbeat (1 s) old; each tick carries up to 11 due rows, the longest-waiting
+first, so in a full room (31 remote rows) an overdue row carries straight into the next
+ticks and every live row is re-sent at least once per second — well inside the receivers'
+2.5 s freshness timeout — and changing rows cycle about every 300 ms. A tick with nothing
+due sends **no packet at all**; the room-wide heartbeat only sends an empty SNAP as a
+keepalive when nothing else went out for a second (an idle room costs one SNAP per second
+per member instead of ten — fewer radio wake-ups on every phone). When the
 host's own socket backs up past 4 KiB it fans out every other tick. A newly admitted or
 re-welcomed member is sent every live row right away (as many SNAPs as it takes). A receiver keeps, per
 P, the newest sample by `t` (an older one is ignored unless it is a live sample after a dead one — a restart resets the clock; an identical heartbeat copy only

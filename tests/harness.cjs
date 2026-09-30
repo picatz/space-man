@@ -23,7 +23,7 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
     const classes = new Set();
     return { style: { setProperty() {} }, dataset: {}, children: [], width: 1280, height: 720,
       classList: { add: (...v) => v.forEach((x) => classes.add(x)), remove: (...v) => v.forEach((x) => classes.delete(x)), contains: (v) => classes.has(v), toggle(v, on) { if (on ?? !classes.has(v)) classes.add(v); else classes.delete(v); } },
-      getContext: () => drawing, listeners: {}, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, setAttribute() {}, removeAttribute() {},
+      getContext: () => drawing, listeners: {}, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, setAttribute(k, v) { (this.attrs ||= {})[k] = String(v); }, removeAttribute(k) { if (this.attrs) delete this.attrs[k]; },
       appendChild(e) { this.children.push(e); return e; }, querySelectorAll() { return []; }, querySelector() { return null; },
       getBoundingClientRect: () => ({ top: 0, left: 0, width, height }), getClientRects: () => [{ top: 0, left: 0, width, height }], closest() { return null; }, toDataURL() { return ''; }, focus() {}, click() { if (this.onclick) this.onclick({}); } };
   }

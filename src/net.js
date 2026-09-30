@@ -1421,7 +1421,7 @@
       nounIdx: opts.nounIdx == null ? CALLSIGN_NONE : opts.nounIdx & 0xff,
       self: { t: 0, x: 0, y: 0, vx: 0, vy: 0, state: 0, chain: 0, score: 0, dist: 0, runId: 1 },
       rxTicks: 0, lastSnapAt: 0, selfDirty: false, snapSkip: false,
-      ev: emitter(), tick: 0, snapTimer: null, rr: 0, slots: makeSlots(),
+      ev: emitter(), tick: 0, snapTimer: null, slots: makeSlots(),
       out: makeScratch(), outSnap: makeScratch(), outRoster: makeScratch(), rosterQueue: Promise.resolve(), killed: new Set(),
       started: 0,
       invite: '', link: '', region: opts.region || '', relayHostName: '',
@@ -1510,7 +1510,13 @@
         if (row.pingBucket < 1) return;
         row.pingBucket -= 1;
         // Always answer; but PING may be reordered, so only a newer id (wrap-aware) updates the report.
-        if (row.linkId == null || tDiff(pg.id, row.linkId) > 0) { row.linkId = pg.id; row.link = { n: pg.rtt ? 1 : 0, rtt: pg.rtt, loss: pg.loss, jit: pg.jit }; }
+        if (row.linkId == null || tDiff(pg.id, row.linkId) > 0) {
+          const was = row.link;
+          row.linkId = pg.id; row.link = { n: pg.rtt ? 1 : 0, rtt: pg.rtt, loss: pg.loss, jit: pg.jit };
+          // Tell the room UI when this member's link becomes known or visibly changes (level, or
+          // the round trip by ≥ 25 ms); the card is drawn at join, before any report exists.
+          if (row.link.n && (!was || !was.n || linkLevel(was) !== linkLevel(row.link) || Math.abs(was.rtt - row.link.rtt) >= 25)) S.ev.emit('quality', S.quality());
+        }
         S.relay.send(row.pub, await sealApp(row.pair, encPong(S.out, pg.id)));
         return;
       }
@@ -1882,20 +1888,22 @@
       // Skip absent rows AND rows whose last PRES has gone stale (paused / backgrounded
       // peer that stopped streaming): don't rebroadcast a frozen position — peers age
       // it out and hide the ghost promptly even without a transport F_PEER_GONE.
-      // Thrift (v5): only rows with a NEW sample since the last fan-out ride along; a row
-      // that has not changed is re-sent once per heartbeat so receivers keep it fresh.
-      const hb = nowTick - (S.lastSnapAt || 0) >= TUNE.heartbeatMs;
-      const live = liveRows(nowTick).filter((r) => hb || r.pres !== r.snapPres);
+      // Thrift (v5): a row rides along when it has a NEW sample since its last fan-out, or
+      // when its own last fan-out is a heartbeat old — tracked PER ROW, so in a full room
+      // (31 remote rows, 11 per frame) an overdue row carries into the next ticks instead of
+      // waiting for a global heartbeat. Oldest fan-out first; the room-wide heartbeat only
+      // sends an empty keepalive when there is nothing to carry.
+      const due = (sentAt, fresh) => fresh || nowTick - (sentAt || 0) >= TUNE.heartbeatMs;
       const rows = [];
       const selfLive = S.role !== ROLE_SPECTATOR && nowTick - (S.selfSeen || 0) <= PRES_STALE;
-      if (selfLive && (hb || S.selfDirty)) rows.push({ p: 1, pres: S.self });
-      for (let i = 0; i < live.length && rows.length < SNAP_MAX; i++) {
-        const r = live[(S.rr + i) % live.length];
-        rows.push({ p: r.p, pres: r.pres }); r.snapPres = r.pres;
+      if (selfLive && due(S.selfSnapAt, S.selfDirty)) { rows.push({ p: 1, pres: S.self }); S.selfSnapAt = nowTick; S.selfDirty = false; }
+      const cand = liveRows(nowTick).filter((r) => due(r.snapAt, r.pres !== r.snapPres)).sort((a, b) => (a.snapAt || 0) - (b.snapAt || 0));
+      for (let i = 0; i < cand.length && rows.length < SNAP_MAX; i++) {
+        const r = cand[i];
+        rows.push({ p: r.p, pres: r.pres }); r.snapPres = r.pres; r.snapAt = nowTick;
       }
-      S.rr = live.length ? (S.rr + (SNAP_MAX - 1)) % live.length : 0;
-      if (!rows.length && !hb) return;                           // nothing new: no packet, no radio wake-up on anyone's phone
-      S.selfDirty = false; S.lastSnapAt = nowTick;
+      if (!rows.length && nowTick - (S.lastSnapAt || 0) < TUNE.heartbeatMs) return;   // nothing due: no packet, no radio wake-up on anyone's phone
+      S.lastSnapAt = nowTick;
       const pt = encSnap(S.outSnap, (S.tick >> 4) & 0xffff, rows).slice();
       for (const r of members()) {
         S.relay.send(r.pub, await sealApp(r.pair, pt));          // one encode, n seals

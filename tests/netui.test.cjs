@@ -77,7 +77,7 @@ test('the room card shows an honest link line for guests and a per-member dot fo
   host.run('renderRoomCard()');
   assert.match(el(host, 'roomRelay').innerHTML, /q-poor">Poor/);
   const rows = el(host, 'roomRoster').children;
-  assert.ok(rows.some((r) => r.children.some((s) => s.className === 'q q-poor' && s.textContent === '420ms')), 'the member row carries its dot');
+  assert.ok(rows.some((r) => r.children.some((s) => s.className === 'q q-poor' && s.textContent === 'Poor 420ms')), 'the member row carries its dot');
 });
 
 test('in a run, the link only speaks up when reconnecting or poor', async (t) => {

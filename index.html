@@ -6105,7 +6105,8 @@ function renderRoster(roster, isHost) {
     row.appendChild(who);
     // Host view: each member's own measured link (reported in its PING), as a small dot.
     const pq = isHost && !r.you && NET.quality ? (NET.quality().peers || []).find((q) => q.p === r.p) : null;
-    if (pq) { const d = document.createElement('span'); d.className = 'q q-' + pq.level; d.textContent = pq.rttMs + 'ms'; d.title = LINK_WORD[pq.level] + ' link · ' + pq.rttMs + ' ms'; row.appendChild(d); }
+    // The level is visible text (never colour alone) and the element has an accessible name.
+    if (pq) { const d = document.createElement('span'); d.className = 'q q-' + pq.level; d.textContent = LINK_WORD[pq.level] + ' ' + pq.rttMs + 'ms'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', LINK_WORD[pq.level] + ' link, ' + pq.rttMs + ' milliseconds'); d.title = LINK_WORD[pq.level] + ' link · ' + pq.rttMs + ' ms'; row.appendChild(d); }
     if (isHost && !r.you) {
       const k = document.createElement('button'); k.className = 'mini-chip coral'; k.textContent = 'Kick';
       k.onclick = () => kickPlayer(r);
