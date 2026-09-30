@@ -4818,7 +4818,10 @@ function drawEnemies(camX, alpha) {
   for (const e of G.enemies) {
     if (e.x < camX - 80 || e.x > camX + view.w + 80) continue;
     const ex = lerp(e.px, e.x, alpha), ey = lerp(e.py, e.y, alpha);
-    if (e.type === 'patrol' && !e.dead) ART.contactShadow(ctx, ex, ey + e.h / 2 + 1, 26, 0.75);
+    if (e.type === 'patrol' && !e.dead) {   // shadow on the slab it walks, as the hero's is (never mid-air above it)
+      const gp = shadowPlatform(ex, ey + e.h / 2, 60);
+      if (gp) ART.contactShadow(ctx, ex, gp.y + 1, 26, 0.75);
+    }
     ctx.save();
     ctx.translate(ex, ey);
     if (e.dead) { const s = clamp(1 - e.squash, 0, 1); ctx.scale(1 + e.squash, s); }

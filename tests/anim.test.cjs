@@ -205,6 +205,25 @@ test('the contact shadow never lands on a slab above the feet (rising through a 
   assert.deepEqual([...down.ys], [down.slab], 'the slab below receives it');
 });
 
+test('a patrol alien\'s contact shadow sits on the slab it walks, not above it', (t) => {
+  const hub = relay(), c = client(hub);
+  t.after(() => c.close());
+  const r = c.run(`(() => {
+    startRun(); G.mode = 'play';
+    for (let i = 0; i < 3000 && !G.enemies.some((e) => e.type === 'patrol' && !e.dead); i++) { botInput(); G.freeze = 0; G.timescale = 1; update(); if (G.player.dead) break; }
+    const e = G.enemies.find((x) => x.type === 'patrol' && !x.dead);
+    if (!e) return null;
+    const plat = G.platforms.find((pl) => Math.abs(pl.x + 14 - e.minX) < 1e-6);
+    G.enemies = [e]; e.px = e.x; e.py = e.y;
+    const ys = [], orig = ART.contactShadow; ART.contactShadow = (g, x, y) => ys.push(y);
+    try { drawEnemies(e.x - 100, 1); } finally { ART.contactShadow = orig; }
+    return { ys: [...ys], top: plat ? plat.y : null };
+  })()`);
+  assert.ok(r && r.top !== null, 'a patrol alien and its platform');
+  assert.equal(r.ys.length, 1);
+  assert.equal(r.ys[0], r.top + 1, 'shadow centred on the platform top');
+});
+
 function liveGame(t) {
   const hub = relay(), c = client(hub);
   t.after(() => c.close());
