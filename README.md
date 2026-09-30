@@ -51,6 +51,8 @@ where the mercy assist has eased the course share the game link without a seed.
 
 ## Run Together
 
+Emotes live on a dedicated button (top right, under the race strip) that opens a small tray of six; on a keyboard the keys 1-6 send them. Holding jump never opens anything.
+
 Choose **Run Together**, then **Create a room** or **Join a room**. Joining takes
 a typed room code (for example `ORD-…`, or just the words on any device) or a
 pasted link; hosting shows the code, a copy button, a share link and a QR.
