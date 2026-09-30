@@ -37,4 +37,14 @@ test('Settings keeps Back docked and Pause keeps Resume docked', () => {
 test('sliders get their own line on a narrow phone, and switches keep a full-size touch target', () => {
   assert.match(css, /max-width:\s*400px\)\s*\{\s*\.slider-row\s*\{[^}]*display:\s*grid/);
   assert.match(css, /pointer:\s*coarse\)\s*\{\s*\.toggle-row\s*\{\s*min-height:\s*48px/);
+  // The switch itself (the thing with the click handler) reaches 48px: 28px track + 10px above and below.
+  const sw = rule('.switch::before');
+  assert.match(sw, /inset:\s*-10px\s+-6px/);
+  assert.match(rule('.switch'), /height:\s*28px/);
+});
+
+test('the stylesheet is balanced, with no orphaned fragments', () => {
+  assert.equal((css.match(/\{/g) || []).length, (css.match(/\}/g) || []).length, 'every { has its }');
+  const slider = css.slice(css.indexOf('/* On a narrow phone the slider'), css.indexOf(".slider-row input[type='range'] {\n    -webkit"));
+  assert.doesNotMatch(slider, /order:/, 'no flex ordering left behind from the grid layout');
 });

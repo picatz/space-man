@@ -250,9 +250,6 @@
     .slider-row .pct { grid-column: 2; grid-row: 1; }
     .slider-row input[type='range'] { grid-column: 1 / -1; grid-row: 2; margin: -2px 0 2px; }
   }
-  .slider-row .pct { order: 2; }
-    .slider-row input[type='range'] { order: 3; flex: 1 1 100%; margin: -4px 0 4px; }
-  }
   .slider-row .pct { flex: 0 0 42px; text-align: right; font-family: var(--font-num); color: var(--cyan); }
   .slider-row input[type='range'] {
     -webkit-appearance: none;
@@ -309,6 +306,8 @@
     transition: transform 0.15s;
   }
   .switch.on::after { transform: translateX(22px); }
+  /* The track stays 50×28, but the tappable area is a full 48px tall (and a little wider) so a thumb never misses. */
+  .switch::before { content: ''; position: absolute; inset: -10px -6px; }
 
   /* wardrobe: swatch circles are pure CSS (suit hex); hat tiles hold a canvas
      painted by drawHat itself so thumbnails can never drift from the sprite. */
