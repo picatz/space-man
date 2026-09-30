@@ -13,7 +13,8 @@
      results   [{ p, dist, score, dead }]                       this round's last-seen figures
      self      { p, inRun, dead, dist, score, chain }           the local player, from local truth
      runId     the round being played; presence from another round counts as "not in it"
-     roundActive  true once the host has started a round that has not ended */
+     roundActive  true once the host has started a round that has not ended
+     wins      { [p]: rounds won this session } — kept by the caller, see winnerOf() */
 (function () {
   'use strict';
   const GROUPS = [
@@ -30,7 +31,7 @@
   function build(input) {
     const o = input || {};
     const roster = o.roster || [], presence = o.presence || [], board = o.board || [], results = o.results || [];
-    const self = o.self || null, runId = o.runId | 0, roundActive = !!o.roundActive;
+    const wins = o.wins || {}, self = o.self || null, runId = o.runId | 0, roundActive = !!o.roundActive;
     const pres = new Map(presence.map((s) => [s.p, s]));
     const best = new Map(board.map((b) => [b.p, b]));
     const res = new Map(results.map((r) => [r.p, r]));
@@ -41,7 +42,7 @@
       const row = {
         p: m.p, name: m.callsign || ('PLAYER ' + m.p), you: isSelf, host: !!m.host, status: 'waiting',
         dist: 0, score: 0, chain: 0, place: 0,
-        bestScore: b.bestScore | 0, bestDist: b.bestDist | 0, bestChain: b.bestChain | 0, unverified: !!m.unverified,
+        bestScore: b.bestScore | 0, bestDist: b.bestDist | 0, bestChain: b.bestChain | 0, unverified: !!m.unverified, wins: wins[m.p] | 0,
       };
       if (m.spectator) { row.status = 'watching'; rows.push(row); continue; }
       let inRound = false, dead = false, fig = null;
@@ -69,7 +70,9 @@
     const counts = { running: at.running.rows.length, out: at.out.rows.length, waiting: at.waiting.rows.length, watching: at.watching.rows.length };
     const players = counts.running + counts.out + counts.waiting;
     const phase = !roundActive ? 'lobby' : (counts.running ? 'running' : 'over');
-    return { phase, counts, players, total: rows.length, groups, leader: ran[0] || null, rows };
+    // A round is only won against someone: a lone runner's round is practice, not a win.
+    const winner = phase === 'over' && ran.length >= 2 ? ran[0] : null;
+    return { phase, counts, players, total: rows.length, groups, leader: ran[0] || null, winner, rows };
   }
 
   // "2 running · 1 out · 1 waiting · 3 watching", zero groups left out; the lobby says who is here instead.
@@ -82,7 +85,13 @@
     return parts.join(' · ') || 'empty room';
   }
 
-  const api = { build, summary, GROUPS };
+  // The one place a round is scored. Returns the record to keep, or null when the round has no winner yet.
+  function winnerOf(standings) {
+    const w = standings && standings.winner;
+    return w ? { p: w.p, name: w.name, dist: Math.floor(w.dist), score: Math.floor(w.score), ran: standings.rows.filter((r) => r.place).length } : null;
+  }
+
+  const api = { build, summary, winnerOf, GROUPS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else window.SpaceManCrew = api;
 })();

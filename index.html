@@ -727,6 +727,8 @@
   .crew-row.you { background: rgba(56,225,255,0.10); border-radius: 6px; }
   .crew-row.out { opacity: 0.6; }
   .crew-row.unverified { opacity: 0.45; }
+  .crew-win { font-size: 12px; letter-spacing: 1.5px; font-weight: 800; color: var(--gold); margin: 2px 0 6px; }
+  .crew-row .nm .wins { color: var(--gold); font-weight: 800; }
   .crew-empty { font-size: 11px; opacity: 0.6; padding: 4px; }
   #crewPanel { position: fixed; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 84px); width: min(330px, calc(100vw - 24px)); max-height: calc(100vh - 150px);
     overflow-y: auto; padding: 10px 12px 12px; border-radius: 14px; background: rgba(6,12,30,0.88); border: 1px solid rgba(56,225,255,0.22);
@@ -6933,6 +6935,7 @@ async function submitJoin() {
 function leaveRoom() {
   raceReset();
   emTray.open = false; toggleCrew(false);
+  crewLog.wins = {}; crewLog.history.length = 0; crewLog.settled = 0;
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
   pendingJoins.clear();                                     // held joins belong to the room we just left
@@ -7338,6 +7341,7 @@ function netTick(dt) {
   // A co-runner going down (or dropping out) while our card is up can end the
   // round — refresh the card's result + Again/Spectate actions when it changes.
   if (G.mode === 'dead' && G.deathCardShown && roundResultKeyNow() !== roundResultKey) renderRoomBoard();
+  crewSettle(crewGlance());
   if (crew.open) { if (netInRun() && G.mode !== 'pause') crewRefresh(); else toggleCrew(false); }   // the death and pause cards carry their own standings
   for (const g of ghosts) if (g.emoteT > 0) g.emoteT = Math.max(0, g.emoteT - dt);
   if (selfEmote.t > 0) selfEmote.t = Math.max(0, selfEmote.t - dt);
@@ -7665,14 +7669,28 @@ function crewStandings() {
   return window.SpaceManCrew.build({
     roster: NET.roster(), presence: NET.presence(), board: NET.board(), self, runId: info.runId,
     results: info.runId === roundResultsRunId ? [...roundResults.values()] : [],
-    roundActive: netRoundActive(),
+    roundActive: netRoundActive(), wins: crewLog.wins,
   });
+}
+// Session tally of rounds won, and the last few results. Local bookkeeping, like roundResults: every client sees the same
+// presence, so every client settles the same round the same way. Each runId is settled once; leaving the room clears it.
+const crewLog = { wins: {}, history: [], settled: 0 };
+function crewSettle(st) {
+  const runId = NET.info().runId | 0;
+  if (!runId || runId === crewLog.settled || st.phase !== 'over') return;
+  crewLog.settled = runId;
+  const w = window.SpaceManCrew.winnerOf(st);
+  if (!w) return;
+  crewLog.wins[w.p] = (crewLog.wins[w.p] | 0) + 1;
+  crewLog.history.unshift(Object.assign({ runId }, w)); crewLog.history.length = Math.min(crewLog.history.length, 5);
+  crew.key = '';
 }
 // Build the standings into `host`. textContent only: callsigns are remote input.
 function renderCrewInto(host, st) {
   host.textContent = '';
   const add = (parent, tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; parent.appendChild(el); return el; };
   add(host, 'div', 'crew-sum', window.SpaceManCrew.summary(st));
+  if (st.winner) add(host, 'div', 'crew-win', '★ ' + (st.winner.you ? 'YOU WIN' : st.winner.name + ' WINS') + ' · ' + Math.floor(st.winner.dist).toLocaleString() + ' m');
   for (const g of st.groups) {
     if (!g.rows.length) continue;
     const head = add(host, 'div', 'crew-head', g.label + ' '); add(head, 'span', 'n', String(g.rows.length));
@@ -7680,6 +7698,7 @@ function renderCrewInto(host, st) {
       const row = add(host, 'div', 'crew-row ' + r.status + (r.you ? ' you' : '') + (r.unverified ? ' unverified' : ''));
       add(row, 'span', 'pl', r.place ? ordinal(r.place) : 'P' + r.p);
       const nm = add(row, 'span', 'nm', r.name); if (r.you || r.host) add(nm, 'span', 'tag', ' ' + (r.you && r.host ? '(you, host)' : r.you ? '(you)' : '(host)'));
+      if (r.wins) add(nm, 'span', 'wins', ' ★' + r.wins);
       if (r.status === 'running' || r.status === 'out') {
         const f = add(row, 'span', 'fig', Math.floor(r.dist).toLocaleString() + ' m');
         add(f, 'small', '', Math.floor(r.score).toLocaleString() + ' pts' + (r.chain > 1 ? ' · ×' + (1 << Math.min(3, r.chain)) : ''));
@@ -7705,7 +7724,7 @@ function crewGlance() {
 function crewRefresh() {
   const panel = $('crewPanel');
   if (!netLive()) { toggleCrew(false); return; }
-  const st = crewStandings(), key = JSON.stringify(st.rows.map((r) => [r.p, r.status, r.place, r.dist | 0, r.score | 0, r.chain, r.name]));
+  const st = crewStandings(), key = JSON.stringify([st.winner && st.winner.p, st.rows.map((r) => [r.p, r.status, r.place, r.dist | 0, r.score | 0, r.chain, r.name, r.wins])]);
   if (key === crew.key) return;   // nothing moved: leave the DOM alone
   crew.key = key;
   panel.textContent = '';

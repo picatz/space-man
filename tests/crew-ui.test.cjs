@@ -59,3 +59,16 @@ test('the master mute is a visible switch in settings that drives the same mute 
     assert.equal(c.run('settings.muted'), false);
   } finally { c.close(); }
 });
+
+test('a finished round is settled once: the winner gets a star, and leaving the room wipes the tally', async (t) => {
+  const { hub, host, guest } = await room(t);
+  guest.run('startRun({watch:false,sync:true})'); host.run('startRun()');
+  await until(() => guest.net.roundClock()?.active, 'shared round');
+  hub.advance(3100); tick(host); tick(guest);
+  host.run("crewSettle({ phase: 'over', winner: { p: 2, name: 'COMET FOX', dist: 500, score: 9, you: false }, rows: [{ place: 1 }, { place: 2 }] })");
+  assert.deepEqual(JSON.parse(host.run('JSON.stringify(crewLog.wins)')), { 2: 1 });
+  host.run("crewSettle({ phase: 'over', winner: { p: 2, name: 'COMET FOX', dist: 500, score: 9, you: false }, rows: [{ place: 1 }, { place: 2 }] })");
+  assert.deepEqual(JSON.parse(host.run('JSON.stringify(crewLog.wins)')), { 2: 1 }, 'same runId never counts twice');
+  host.run('leaveRoom()');
+  assert.deepEqual(JSON.parse(host.run('JSON.stringify(crewLog.wins)')), {});
+});

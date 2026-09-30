@@ -83,3 +83,16 @@ test('summary reads naturally, omits empty groups, and says ready in the lobby',
   assert.equal(mk({ roster: [R(1, { you: true }), R(2), R(3)], runId: 7, roundActive: true, presence: [S(3, DEAD, 5, 5)], self: { p: 1, inRun: true, dist: 9 } }),
     '1 running · 1 out · 1 waiting');
 });
+
+test('a round is won against someone: winners need a rival, losers of past rounds keep their tally', () => {
+  const over = (presence, self) => Crew.build({ roster: [R(1, { you: true }), R(2)], runId: 7, roundActive: true, presence, self, wins: { 2: 3 } });
+  const duel = over([S(2, DEAD, 700, 50)], { p: 1, dead: true, dist: 400, score: 10 });
+  assert.equal(duel.phase, 'over');
+  assert.deepEqual(Crew.winnerOf(duel), { p: 2, name: 'PLAYER 2', dist: 700, score: 50, ran: 2 });
+  assert.equal(duel.rows.find((r) => r.p === 2).wins, 3);
+  const solo = Crew.build({ roster: [R(1, { you: true })], runId: 7, roundActive: true, presence: [], self: { p: 1, dead: true, dist: 400, score: 10 } });
+  assert.equal(solo.winner, null, 'a lone runner’s round is practice');
+  assert.equal(Crew.winnerOf(solo), null);
+  const live = over([S(2, RUN, 700, 50)], { p: 1, dead: true, dist: 400, score: 10 });
+  assert.equal(live.winner, null, 'nobody wins while someone is still running');
+});
