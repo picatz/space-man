@@ -62,10 +62,16 @@ the death screen starts immediately; spectators remain spectators across
 rounds until they choose to join.
 
 Run Together is currently a **shared-course race**. Positions, round starts,
-flare timing, identities and emotes are shared. Combat, enemy motion, pickups,
-missions and scores are still simulated locally; watching is a live positional
-view, not a frame-perfect broadcast of the runner's combat. Shared combat and
-cooperative objectives require an authoritative world-event protocol.
+flare timing, identities and emotes are shared, and so are the aliens: every
+patrol's position and every shooter's telegraph and firing schedule are a pure
+function of the round clock, so everyone sees the same alien in the same place
+however long their own screen has been running (a slow phone, a backgrounded tab
+and a late joiner all line up). Spectators see them move too. Combat results
+(who stomped or shot which alien), pickups, missions and scores are still
+simulated locally, shots are aimed at and only ever hit their own player, and
+watching is a live positional view, not a frame-perfect broadcast of the
+runner's combat. Shared kills and cooperative objectives require an
+authoritative world-event protocol.
 
 Version 3.4 uses room protocol 3 because deep-run terrain (the endgame ramp
 and DEBRIS FIELD past 2500m) changed; version 3.3 introduced protocol 2.
