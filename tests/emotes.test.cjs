@@ -242,3 +242,13 @@ test('on the frame a room turns unstable, the ammo pips clear the tray that is a
   assert.ok(drawnTrayBottom, 'the tray was drawn');
   for (const y of pips) assert.ok(y >= drawnTrayBottom, `every ammo pip clears the tray as drawn (${y} vs ${drawnTrayBottom})`);
 });
+
+test('an open tray never survives leaving a room or starting a run', async (t) => {
+  const { guest } = await playing(t);
+  down(guest, ...centre(guest, guest.run('emoteLayout().button')), 1);
+  assert.equal(guest.run('emTray.open'), true, 'the tray is open');
+  guest.run('leaveRoom()');
+  assert.equal(guest.run('emTray.open'), false, 'leaving the room tidies it away, even with no frame run in between');
+  guest.run('emTray.open = true; emTray.at = performance.now(); resetRun(1234)');
+  assert.equal(guest.run('emTray.open'), false, 'a new run starts with the tray closed');
+});

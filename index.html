@@ -2527,8 +2527,10 @@ function seedRng(seed) { rng = (seed === null || seed === undefined) ? Math.rand
 const RACE_MIN_SPAN = 1200, RACE_PAD = 0.06;
 const raceView = { anchor: 0, span: RACE_MIN_SPAN, lowPrev: 0, at: -1 };
 function raceReset() { raceView.at = -1; raceView.span = RACE_MIN_SPAN; }
+const emTray = { open: false, at: 0 };            // the emote tray (declared up here so a run reset and leaving a room can close it)
 function resetRun(seed, replayable) {
   raceReset();
+  emTray.open = false;                              // a new run never inherits the last one's open tray
   seedRng(seed);
   // A real room (not the #shot mock) shares the course AND its clock: aliens move on the round clock.
   G.sharedWorld = netLive() && !NET.mockActive;
@@ -6168,6 +6170,7 @@ async function submitJoin() {
 }
 function leaveRoom() {
   raceReset();
+  emTray.open = false;
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
   pendingJoins.clear();                                     // held joins belong to the room we just left
@@ -6892,7 +6895,6 @@ function drawUnstableBanner() {
 }
 
 /* ---- emotes: desktop keys 1-6; touch and mouse get a dedicated button that opens a small tray of the six ---- */
-const emTray = { open: false, at: 0 };
 const EMOTE_TRAY_MS = 4000, EMOTE_BTN = 40, EMOTE_ITEM = 44, EMOTE_GAP = 6;   // times in ms, sizes in CSS px (a comfortable touch target)
 function inRect(p, r) { return r && p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1; }
 function netPointerDown(e) {
