@@ -52,8 +52,8 @@
       // The debris lesson (two wide cracked slabs over short gaps) opens the run, inside sector one.
       unlock: { debris: 180 }, weights: { debrisRun: 2.4, stairsDown: 1.4 }, opener: ['introDebris'] },
     { id: 'metal', title: 'HEAVY METAL', blurb: 'Shielded, armored and turreted aliens arrive early. Stomp what shots can’t stop.',
-      // Opens on the shielder lesson: ammo to try (the shots bounce), then the stomp that works.
-      unlock: { shield: 200, bomber: 750, brute: 1000, turret: 1250 }, weights: { shieldWall: 2, bruteArena: 2, turretPerch: 2, crossfire: 1.6 }, opener: ['introShield'] },
+      // Armor first (ledges and split paths wait). Opens on the shielder lesson: ammo to try (the shots bounce), then the stomp that works.
+      unlock: { shield: 200, bomber: 650, brute: 900, turret: 1150, narrow: 1350, split: 1550 }, weights: { shieldWall: 2, bruteArena: 2, turretPerch: 2, crossfire: 1.6 }, opener: ['introShield'] },
     { id: 'burn', title: 'AFTERBURNER', blurb: 'The flare runs hot, and boost pads are everywhere. Ride them.',
       flare: 1.06, weights: { boostLaunch: 3, luckyCache: 2, longLeap: 1.4 }, opener: ['boostLaunch'] },
   ];

@@ -230,7 +230,9 @@ test('invite Play and Watch lead directly into a live round and late players spa
   await host.net._n1.session()._snapTick();
   await until(() => late.net.presence().some((p) => p.x === 6000));
   late.run('startRun()');
-  assert.ok(Math.abs(late.run('G.player.x') - 6000) < 500);
+  // Near the crew: the nearest safe ground. World gen 2's opening slabs are wide (a patrol bridge
+  // is 440-520px of walkers), so that can be one slab over; 300 room seeds all seat within 600px.
+  assert.ok(Math.abs(late.run('G.player.x') - 6000) < 700, 'seated at ' + late.run('G.player.x'));
   tick(late); assert.equal(late.run('G.player.dead'), false);
   assert.equal(watcher.run('netSpectating()'), true);
 });

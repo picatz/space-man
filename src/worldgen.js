@@ -576,12 +576,18 @@
   function nextSeg(W, d) {
     const S = W.S;
     const band = W.api.bandFor(d);
-    if (band > S.lastBand) {                     // a sector crossing lands on a breather
+    // A sector crossing always lands on a breather. It is already covered only
+    // when the segment just before was one; otherwise a rest comes now. That
+    // pauses the opening script too, unless the next queued beat (script or
+    // cycle) is itself a rest, which then simply runs here.
+    if (band > S.lastBand) {
       S.lastBand = band;
-      if (!S.script.length && d > 400 && S.sinceRest >= 2 && S.beats[S.beatIdx] !== 'rest') {
-        // This breather stands in for the cycle's own, so rests never double up.
-        const r = S.beats.lastIndexOf('rest');
-        if (r >= S.beatIdx) S.beats.splice(r, 1);
+      const nextIsRest = S.script.length ? S.script[0][1] === 'rest' : S.beats[S.beatIdx] === 'rest';
+      if (S.sinceRest > 0 && !nextIsRest) {
+        if (!S.script.length) {   // this breather stands in for the cycle's own, so rests never double up
+          const r = S.beats.lastIndexOf('rest');
+          if (r >= S.beatIdx) S.beats.splice(r, 1);
+        }
         return { id: pickRest(W, d), beat: 'rest', lvl: 0.1, focus: S.focus };
       }
     }

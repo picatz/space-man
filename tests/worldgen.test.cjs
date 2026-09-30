@@ -274,7 +274,8 @@ test('pacing: the opening teaches, new elements arrive on schedule, and there ar
       const first = {}; for (const e of foes) { const d = (e.x0 ?? e.x) - G.startX; if (!(e.type in first) || d / 10 < first[e.type]) first[e.type] = d / 10; }
       return { log: G.wg.S.log, first, unlock: WORLD.UNLOCK, script: WORLD.SCRIPT.map((s) => s[0]) };`);
     const ids = r.log.map((s) => s.id);
-    assert.deepEqual(ids.slice(0, 3), r.script.slice(0, 3), 'every run opens with the same lesson');
+    // (Sector breathers may slot in between, so compare the lesson beats themselves.)
+    assert.deepEqual(r.log.filter((q) => q.beat !== 'rest').map((q) => q.id).slice(0, 3), r.script.slice(0, 3), 'every run opens with the same lesson');
     // Each new alien: never before its unlock, and introduced within ~500m of it by its own intro set piece.
     const map = { shoot: 'shooter', diver: 'diver', shield: 'shield', bomber: 'bomber', brute: 'brute', turret: 'turret' };
     for (const [type, el] of Object.entries(map)) {
@@ -439,8 +440,11 @@ test('Run Together: new aliens are in the same place and act on the same beat on
   for (const c of [host, guest]) c.run('G.player.x = 60000; generateAhead(); G.player.x = 30;');
   const snap = (c) => JSON.parse(c.run(`JSON.stringify(G.enemies.filter((e) => e.v2 && !e.dead).map((e) => [enemyId(e), e.type, e.x, e.y, e.telegraph, e.ev, e.type === 'brute' ? [e.waveL, e.waveR] : 0]))`));
   host.run('updateEnemies()'); guest.run('updateEnemies()');
-  host.run('for (let i = 0; i < 600; i++) updateEnemies()');            // the host simulates 10 s of frames, the guest none
-  hub.advance(7000);
+  // The host simulates 10 s of real round time frame by frame (the shared clock
+  // advances one 60 Hz step per update); the guest misses all of it, then catches up in one call.
+  const T0 = host.run('roundStep()');
+  for (let i = 0; i < 600; i++) { hub.advance(1000 / 60); host.run('updateEnemies()'); }
+  assert.ok(host.run('roundStep()') - T0 >= 599.5, 'the round clock really moved (at least) 10 s');
   host.run('updateEnemies()'); guest.run('updateEnemies()');
   const a = snap(host), b = new Map(snap(guest).map((e) => [e[0], e]));
   const shared = a.filter((e) => b.has(e[0]));
@@ -473,6 +477,21 @@ test('the new aliens and their effects draw without error', (t) => {
 
 /* ---------------------------------------------------------------------------
    Review follow-ups (PR #19) */
+test('every sector crossing lands on a breather: opening script, cycles and themes alike', (t) => {
+  const c = solo(t), C = course();
+  const starts = [3, 17, 99, 4040, 424242, 777777].map((s) => `resetRun(${s}, true)`)
+    .concat(C.THEMES.map((th) => `startRun({ course: dailyCourse('${dayWithTheme(C, th.id)}') })`));
+  for (const start of starts) {
+    const bad = json(c, `${STREAM(start, 5200)}
+      const log = G.wg.S.log, band = (x) => bandFor((x - G.startX) / 10), out = [];
+      for (let i = 1; i < log.length; i++)
+        if (band(log[i].x0) > band(log[i - 1].x0) && log[i].beat !== 'rest' && log[i - 1].beat !== 'rest')
+          out.push(Math.round((log[i].x0 - G.startX) / 10) + 'm ' + log[i - 1].id + '/' + log[i - 1].beat + ' -> ' + log[i].id + '/' + log[i].beat);
+      return out;`);
+    assert.deepEqual(bad, [], start);
+  }
+});
+
 const dayWithTheme = (C, id) => { for (let d = Date.UTC(2026, 9, 1); ; d += 86400000) { const k = new Date(d).toISOString().slice(0, 10); if (C.theme(k).id === id) return k; } };
 
 test('a same-day Daily record from the gen-1 Daily never becomes the gen-2 course’s best or target', (t) => {

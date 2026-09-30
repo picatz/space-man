@@ -183,7 +183,11 @@ test('a mid-round seat never lands a late joiner on an enemy', async (t) => {
     for (let ms = 4000; ms <= 90000; ms += 1500) {
       resetRun(NET.info().seed); seatMidRound(ms);
       const pl = G.player.groundPlat;
-      if (G.enemies.some((e) => !e.dead && e.x + e.w >= pl.x - 40 && e.x <= pl.x + pl.w + 40)) bad.push(ms);
+      // Never on a walker's slab, never within 220px of a shooter or sentinel. Divers (which never
+      // reach a grounded player) and high bombers don't make a slab unsafe.
+      const x = G.player.x;
+      if (G.enemies.some((e) => !e.dead && e.type !== 'diver' && e.type !== 'bomber' && e.x + e.w >= pl.x - 40 && e.x <= pl.x + pl.w + 40
+        && (e.type === 'shoot' || e.type === 'turret' ? Math.abs(e.x - x) < 220 : true))) bad.push(ms);
     }
     return bad;
   })())`));

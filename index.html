@@ -2685,6 +2685,17 @@ function platAtX(px) {
 // the shared flare, on the SAME seeded ground the team already runs. Gated by the
 // caller to real rooms past pre-roll (netRoundActive + elapsed>0) — solo/#shot/mock
 // never reach it, so seeded goldens are untouched.
+// Is x on slab pl a fair place to drop a late joiner? A walker (patrol, shielder,
+// brute) will reach anyone on its slab, so it rules out the whole slab; a shooter
+// or sentinel only rules out spots within 220px of it. Divers never dip to a
+// grounded player and bombers pace long lanes high above, so neither blocks a seat.
+function seatSafe(pl, x) {
+  for (const e of G.enemies) {
+    if (e.dead || e.type === 'diver' || e.type === 'bomber' || e.x + e.w < pl.x - 40 || e.x > pl.x + pl.w + 40) continue;
+    if (e.type === 'shoot' || e.type === 'turret' ? Math.abs(e.x - x) < 220 : true) return false;
+  }
+  return true;
+}
 function seatMidRound(elapsedMs) {
   const p = G.player, fs = G.flareShared;
   // 1. Shared flare world-x from the round clock — the SAME integration
@@ -2709,19 +2720,21 @@ function seatMidRound(elapsedMs) {
   // Seat on a platform with nothing on it. Aliens are shared world state now (every
   // screen sees the same ones in the same places), so we never delete one to make
   // room: we walk to the nearest clear slab near the crew instead.
-  const clear = (pl) => !G.enemies.some((e) => !e.dead && e.x + e.w >= pl.x - 40 && e.x <= pl.x + pl.w + 40);
+  // Each slab offers the spot nearest the crew and both of its ends; the safe spot
+  // closest to the crew wins (wide slabs make "the slab's centre" land far away).
   const home = platAtX(targetX) || G.platforms[G.platforms.length - 1];
-  let plat = home;
-  if (!clear(home)) {
+  let plat = home, seatX = clamp(targetX, home.x + 4, home.x + home.w - 4);
+  if (!seatSafe(home, seatX)) {
     let best = null, bestD = Infinity;
     for (const pl of G.platforms) {
-      if (pl.w < 120 || pl.crumble || pl.x + pl.w < flare.x + 250 || !clear(pl)) continue;
-      const d = Math.abs(pl.x + pl.w / 2 - targetX);
-      if (d < bestD) { bestD = d; best = pl; }
+      if ((pl !== home && (pl.w < 120 || pl.crumble)) || pl.x + pl.w < flare.x + 250) continue;
+      for (const x of [clamp(targetX, pl.x + 24, pl.x + pl.w - 24), pl.x + 24, pl.x + pl.w - 24]) {
+        const d = Math.abs(x - targetX);
+        if (d < bestD && seatSafe(pl, x)) { bestD = d; best = pl; seatX = x; }
+      }
     }
-    if (best) plat = best;
+    if (best) plat = best; else seatX = clamp(targetX, home.x + 4, home.x + home.w - 4);
   }
-  const seatX = plat === home ? targetX : plat.x + plat.w / 2;
   p.x = clamp(seatX, plat.x + 4, plat.x + plat.w - 4);   // keep feet on the slab
   p.y = plat.y - CFG.ph; p.px = p.x; p.py = p.y; p.vx = 0; p.vy = 0;
   p.onGround = true; p.jumping = false; p.airFrames = 0; p.coyote = 0; p.buffer = 0;
