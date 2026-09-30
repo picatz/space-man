@@ -58,7 +58,7 @@ async function hostWithCode(t, opts = {}) {
   const hub = relay(), host = client(hub, { game: false }), guest = client(hub, { game: false });
   t.after(() => { host.close(); guest.close(); });
   const live = new Promise((resolve) => host.net.onEvent((e) => { if (e === 'code-live') resolve(); }));
-  await host.net.openRoom({ relayHost: 'relay.test', region: 'nyc', ...opts });
+  await host.net.openRoom({ relayHost: 'derp1f.tailscale.com', region: 'nyc', ...opts });
   await live;
   return { hub, host, guest };
 }
@@ -125,9 +125,30 @@ test('invite links point at the site the app is served from, and only ever at a 
   };
   assert.match(await pick('https://spacemangame.online/'), /^https:\/\/spacemangame\.online\/#j=/);
   assert.match(await pick('http://192.168.1.20:8080/space-man/'), /^http:\/\/192\.168\.1\.20:8080\/space-man\/#j=/);
-  for (const bad of [undefined, '', 'javascript:alert(1)', 'file:///home/x/index.html', 'https://x.test/#already', 'https://x.test/?q=1', 'https://x .test/', 'x'.repeat(300), 42]) {
+  for (const bad of [undefined, '', 'javascript:alert(1)', 'file:///home/x/index.html', 'https://x.test/#already', 'https://x.test/?q=1', 'https:///', 'https://user:pw@x.test/', 'http://', 'https://x .test/', 'x'.repeat(300), 42]) {
     assert.match(await pick(bad), /^https:\/\/picatz\.github\.io\/space-man\/#j=/, String(bad).slice(0, 30));
   }
+});
+
+test('a code is only offered when a guest could look it up on the host\'s own relay', async (t) => {
+  const offer = async (o) => {
+    const hub = relay(), host = client(hub, { game: false });
+    t.after(() => host.close());
+    await host.net.openRoom({ ...o });
+    return host.net.info().joinCode;
+  };
+  assert.match(await offer({ relayHost: 'derp1f.tailscale.com', region: 'nyc' }), /^NYC-/, "the region's own relay");
+  assert.equal(await offer({ relayHost: 'relay.test', region: 'nyc' }), '', 'a different relay than the region maps to');
+  assert.equal(await offer({ relayHost: 'relay.test' }), '', 'a custom relay with no region');
+});
+
+test('enterCode sends a bare code to the region it is given, however far away', async (t) => {
+  const near = probe.net._n1.map.nearRegions(5).map((r) => r.code);
+  const far = probe.net.relayDirectory().regions.map((r) => r.code).find((c) => !near.includes(c));
+  const { host, guest } = await hostWithCode(t, { region: far, relayHost: undefined });
+  await assert.rejects(guest.net.lookupCode(host.net.info().code, { timeoutMs: 400 }), /no answer/);
+  const ok = await guest.net.lookupCode(host.net.info().code, { region: far });
+  assert.equal(ok.region, far);
 });
 
 test('a room on a custom relay is joined by link or QR, not by a code nobody else could look up', async (t) => {
@@ -242,4 +263,42 @@ test('the host card leads with the room code, and copying it copies the whole th
   guest.run("$('roomCode').onclick()");
   assert.deepEqual(copied, [code]);
   assert.match(guest.net.info().link, /^https:\/\/picatz\.github\.io\/space-man\/#j=/, 'no served address in a test harness: the published site is the fallback');
+});
+
+test('a slow lookup can not open the join prompt after the person went Back', async (t) => {
+  const { host, guest } = await screen(t);
+  guest.run("$('btnTogether').onclick()");
+  let release;
+  guest.run('NET.lookupCode = () => new Promise((res) => { globalThis.__release = () => res({ invite: joinPayload || 1 }); })');
+  type(guest, host.net.info().joinCode);
+  const pending = guest.run('submitJoin()');
+  guest.run("$('btnTogetherBack').onclick()");
+  guest.run('__release()');
+  await pending;
+  assert.equal(shown(guest, 'ovJoin'), false, 'no prompt appears for a lookup nobody is waiting on');
+  assert.equal(el(guest, 'joinInput').disabled, false);
+});
+
+test('a long pasted message reaches the parser whole, and the box has no length cap of its own', async (t) => {
+  const { host, guest } = await screen(t);
+  assert.equal(el(guest, 'joinInput').maxLength === undefined || el(guest, 'joinInput').maxLength === -1 || el(guest, 'joinInput').maxLength === 0, true);
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+  assert.doesNotMatch(src.match(/<input[^>]*id="joinInput"[^>]*>/s)[0], /maxlength/i);
+});
+
+test('copying the code says so only when it worked, and otherwise offers a selectable prompt', async (t) => {
+  const hub = relay(), guest = client(hub);
+  t.after(() => guest.close());
+  guest.run("$('btnTogether').onclick()");
+  guest.run("G.cosmetics.callsign = [0, 0]");
+  await guest.run("openRoomFlow()");
+  const prompts = [];
+  guest.context.window.prompt = (a, b) => { prompts.push([a, b]); };
+  guest.context.navigator.clipboard = { writeText: () => Promise.reject(new Error('denied')) };
+  guest.run("$('roomCode').onclick()");
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(prompts, [['Copy the room code', guest.net.info().joinCode]]);
+  guest.context.navigator.clipboard = undefined;
+  guest.run("$('roomCode').onclick()");
+  assert.equal(prompts.length, 2, 'no clipboard at all: the prompt again');
 });

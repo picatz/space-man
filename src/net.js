@@ -552,7 +552,15 @@
   // Where an invite link points: wherever this app is actually being served (so the link and its QR open
   // the same site the host is on), never an arbitrary string; the published site is the fallback.
   const DEFAULT_LINK_BASE = 'https://picatz.github.io/space-man/';
-  const linkBase = (u) => (typeof u === 'string' && /^https?:\/\/[^\s#?]{1,200}$/.test(u)) ? u : DEFAULT_LINK_BASE;
+  // Only a plain http(s) URL with a real host, no credentials, query or fragment, is used as the link base.
+  function linkBase(u) {
+    if (typeof u !== 'string' || u.length > 200 || /\s/.test(u)) return DEFAULT_LINK_BASE;
+    try {
+      const x = new URL(u);
+      if ((x.protocol !== 'https:' && x.protocol !== 'http:') || !x.hostname || x.username || x.password || x.search || x.hash || u.indexOf('#') >= 0 || u.indexOf('?') >= 0) return DEFAULT_LINK_BASE;
+      return u;
+    } catch (e) { return DEFAULT_LINK_BASE; }
+  }
   const joinCodeText = (region, code) => (region && code ? String(region).toUpperCase() + '-' + code : code || '');
   // Turn whatever was typed or pasted into a join target: a link/fragment/raw invite, or a room code.
   // Tolerant on purpose (case, spaces, dashes, dots, "comet 42", "COMET42", a link buried in a message),
@@ -1267,9 +1275,10 @@
       out: makeScratch(), outSnap: makeScratch(), outRoster: makeScratch(), rosterQueue: Promise.resolve(), killed: new Set(),
       started: 0,
       invite: '', link: '', region: opts.region || '', relayHostName: '',
-      // A typed code is looked up on the region's public relays, so it is only offered when the room lives on one
-      // (a custom relay host with no region can be joined by link/QR, which carry the relay, but not by code).
-      codeOk: !opts.relayHost || !!opts.region,
+      // A typed code is looked up on the region's public relays, so it is only offered when the room lives on one:
+      // the relay is that region's own (an override is carried by links and QR, a code cannot say so) and the region
+      // code is one the parser and invite format support.
+      codeOk: (!opts.relayHost || ((regionOf(opts.region) || { hosts: [] }).hosts.indexOf(opts.relayHost) >= 0)) && (!opts.region || /^[a-z]{3}$/.test(opts.region)),
       codeReplies: 0, codeRepliesMin: 0, codeMinMark: 0,
     };
     // Separate caps (Addendum A): count players vs spectators across the roster.
@@ -2346,7 +2355,9 @@
       const p = parseJoin(str, RELAY_MAP.regions.map((r) => r.code));
       if (p.kind === 'invite') return { invite: p.payload, region: null };
       if (p.kind !== 'code') throw new Error(p.kind === 'empty' ? 'bad code' : 'bad code (' + (p.reason || 'shape') + ')');
-      const regions = p.region ? [regionOf(p.region)].filter(Boolean) : nearRegions(5);
+      // The typed prefix wins, then an explicit opts.region, and only then the relays nearest this device.
+      const pick = p.region || o.region;
+      const regions = pick ? [regionOf(pick)].filter(Boolean) : nearRegions(5);
       return lookupInvite(regions, p.code, o);
     },
     parseJoin(str) { return parseJoin(str, RELAY_MAP.regions.map((r) => r.code)); },

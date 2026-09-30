@@ -505,7 +505,7 @@
   /* The room card holds a QR, a roster and the host controls: never taller than the window, so Leave/Back stay reachable. */
   #ovRoom .panel { max-height: calc(100dvh - 24px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   .room-codebar { text-align: center; margin: 2px 0 12px; }
-  .room-codebar .code { font-size: 30px; letter-spacing: 4px; margin-top: 4px; }
+  .room-codebar .code { font-size: 30px; letter-spacing: 4px; margin-top: 4px; white-space: normal; overflow-wrap: anywhere; }
   @media (max-width: 430px) { .room-codebar .code { font-size: 26px; letter-spacing: 3px; } }
   .invite-block .code { cursor: pointer; }
   .invite-block .code:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
@@ -734,7 +734,7 @@
     <div class="together-or" aria-hidden="true">or join a friend</div>
     <label class="join-label" for="joinInput">Room code or link</label>
     <input class="join-input" id="joinInput" type="text" inputmode="text" enterkeyhint="go" autocomplete="off"
-      autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="600" placeholder="NYC-COMET-42"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NYC-COMET-42"
       aria-describedby="joinHint" />
     <div class="join-hint" id="joinHint" role="status" aria-live="polite">Type the code your friend sees, or paste their invite link.</div>
     <button class="btn" id="btnJoinGo">Join</button>
@@ -5934,23 +5934,24 @@ function renderRoomCard() {
   $('roomStatus').textContent = netRoundActive() ? 'A round is in progress. Jump in with the crew.' : (isHost ? 'Invite your crew, then start a shared countdown.' : 'You’re connected. Ready up and wait for the host to start.');
   if (isHost) renderPendingJoins();
 }
+// Copy text and say so only when it worked; without a clipboard (plain-HTTP LAN origins) offer a selectable prompt.
+function copyText(text, what, promptTitle) {
+  const copied = () => { queueToast(what + ' copied', 'sys'); announce(what + ' copied.'); };
+  const manual = () => { try { window.prompt(promptTitle, text); } catch (e) {} };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(copied, manual);
+    else manual();
+  } catch (e) { manual(); }
+}
 function copyRoomLink() {
   const link = netLive() ? NET.info().link : '';
   if (!link) return;
-  const done = () => { queueToast('Invite link copied', 'sys'); announce('Invite link copied.'); };
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, done);
-    else done();
-  } catch (e) { done(); }
+  copyText(link, 'Invite link', 'Copy the invite link');
 }
 function copyRoomCode() {
   const code = netLive() ? NET.info().joinCode : '';
   if (!code) return;
-  const done = () => { queueToast('Room code copied', 'sys'); announce('Room code ' + code.split('-').join(' ') + ' copied.'); };
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, done);
-    else done();
-  } catch (e) { done(); }
+  copyText(code, 'Room code', 'Copy the room code');
 }
 function shareRoomLink() {
   const info = netLive() ? NET.info() : null;
@@ -6000,6 +6001,7 @@ async function openRoomFlow() {
    whole chat message with a link in it. A code is looked up on its relay, then the usual Play/Watch
    prompt follows, exactly as if they had opened the link. */
 let joinLookup = false;
+let joinReq = 0;   // bumped whenever the screen is left or reopened, so a slow lookup can't act on a screen the player has left
 function setTogetherHint(msg, isError) { const h = $('joinHint'); h.textContent = msg || ''; h.classList.toggle('err', !!isError); }
 function setTogetherBusy(on) {
   joinLookup = on;
@@ -6007,6 +6009,7 @@ function setTogetherBusy(on) {
 }
 function openTogether() {
   if (!netEnabled()) return;
+  joinReq++;
   Audio.ensure();
   if (netLive() && !NET.mockActive) { renderRoomCard(); hideAllOverlays(); showOverlay('ovRoom'); return; }   // already in a room: back to it
   hideAllOverlays();
@@ -6030,6 +6033,7 @@ function lookupFailMessage(e, p) {
   return 'Couldn\'t reach the relay. Check your connection, or ask for the link instead.';
 }
 function beginJoin(payload) {
+  joinReq++;
   joinPayload = payload;
   resetJoinPrompt();
   hideAllOverlays(); showOverlay('ovJoin');
@@ -6040,13 +6044,16 @@ async function submitJoin() {
   if (p.kind === 'empty') { setTogetherHint('Type the room code, or paste the invite link.', true); return; }
   if (p.kind === 'bad') { setTogetherHint(badJoinMessage(p), true); return; }
   if (p.kind === 'invite') { beginJoin(p.payload); return; }
+  const req = ++joinReq;
   setTogetherBusy(true);
   setTogetherHint('Looking for ' + p.display + '…');
   try {
     const found = await NET.lookupCode($('joinInput').value);
+    if (req !== joinReq) return;
     setTogetherBusy(false);
     beginJoin(found.invite);
   } catch (e) {
+    if (req !== joinReq) return;
     setTogetherBusy(false);
     setTogetherHint(lookupFailMessage(e, p), true);
     try { $('joinInput').focus(); $('joinInput').select(); } catch (x) {}
@@ -6892,7 +6899,7 @@ $('btnInitialsOk').onclick = () => commitInitials();
 $('btnTogether').onclick = () => openTogether();
 $('btnCreateRoom').onclick = () => openRoomFlow();
 $('btnJoinGo').onclick = () => submitJoin();
-$('btnTogetherBack').onclick = () => showAttract();
+$('btnTogetherBack').onclick = () => { joinReq++; setTogetherBusy(false); showAttract(); };
 $('joinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitJoin(); } });
 $('joinInput').addEventListener('input', () => { if ($('joinHint').classList.contains('err')) setTogetherHint(''); });
 // Pasting a link is the whole request: go straight to the join prompt, no extra tap.
