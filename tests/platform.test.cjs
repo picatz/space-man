@@ -23,15 +23,33 @@ test('everything index.html and manifest.json reference is precached for offline
   for (const u of SHELL) if (u !== './') assert.ok(fs.existsSync(path.join(ROOT, u)), `SHELL entry ${u} does not exist`);
 });
 
+test('every src/ module is loaded by the page, precached, and run by the test harness in page order', () => {
+  const html = read('index.html');
+  const pageSrc = [...html.matchAll(/<script\s+src="src\/([^"]+)\.js"/g)].map((m) => m[1]);
+  const onDisk = fs.readdirSync(path.join(ROOT, 'src')).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3));
+  assert.deepEqual([...onDisk].sort(), [...pageSrc].sort(), 'a module on disk that the page never loads (or the reverse)');
+  for (const m of onDisk) assert.ok(SHELL.includes('./src/' + m + '.js'), m + '.js missing from the precache');
+  assert.deepEqual(require('./harness.cjs').MODULES, pageSrc, 'tests/harness.cjs MODULES must follow index.html order');
+});
+
 // Minimal service-worker runtime: real service-worker.js, fake caches + network.
-function worker({ online = true } = {}) {
-  const listeners = {}, stores = new Map(), net = [];
+// `stores` can be shared between two workers to play a deploy (old build active,
+// new build installing beside it); `version` rewrites VERSION for the second one.
+function worker({ online = true, stores = new Map(), version = null, failInstall = null } = {}) {
+  const listeners = {}, net = [];
+  const src = version ? SW_SRC.replace(/const VERSION = '[^']+'/, `const VERSION = '${version}'`) : SW_SRC;
+  const build = src.match(/VERSION = '([^']+)'/)[1];
   const key = (r) => new URL(typeof r === 'string' ? r : r.url, 'https://space.test/').pathname;
   const caches = {
     async open(name) {
       if (!stores.has(name)) stores.set(name, new Map());
       const m = stores.get(name);
-      return { put: async (r, res) => { m.set(key(r), res); }, match: async (r) => m.get(key(r)), addAll: async (rs) => rs.forEach((r) => m.set(key(r), { ok: true, body: 'precache ' + key(r) })) };
+      return { put: async (r, res) => { m.set(key(r), res); }, match: async (r) => m.get(key(r)),
+        // addAll is atomic in the platform: one failure and nothing is stored.
+        addAll: async (rs) => {
+          if (failInstall && rs.some((r) => key(r) === failInstall)) throw new TypeError('network error');
+          rs.forEach((r) => m.set(key(r), { ok: true, body: build + ' ' + key(r) }));
+        } };
     },
     async match(r) { for (const m of stores.values()) if (m.has(key(r))) return m.get(key(r)); },
     async keys() { return [...stores.keys()]; },
@@ -46,7 +64,7 @@ function worker({ online = true } = {}) {
     res.clone = () => res;
     return res;
   };
-  vm.runInNewContext(SW_SRC, { self, caches, fetch, URL, Request: class { constructor(u) { this.url = u; } } });
+  vm.runInNewContext(src, { self, caches, fetch, URL, Request: class { constructor(u) { this.url = u; } } });
   async function lifecycle(type) { let p; listeners[type]({ waitUntil: (x) => { p = x; } }); await p; }
   async function request(url, { method = 'GET', mode = 'cors', destination = 'script' } = {}) {
     let responded = null; const waits = [];
@@ -55,25 +73,59 @@ function worker({ online = true } = {}) {
     const res = responded && await responded; await Promise.all(waits);
     return res;
   }
-  return { self, stores, net, lifecycle, request, setOnline(v) { online = v; } };
+  return { self, stores, net, build, lifecycle, request, setOnline(v) { online = v; } };
+}
+const nav = (sw, url = '/') => sw.request(url, { mode: 'navigate', destination: 'document' });
+// Everything a launch loads, as the page would request it.
+async function launch(sw, url = '/') {
+  const out = [(await nav(sw, url)).body];
+  for (const u of SHELL) if (u.startsWith('./src/')) out.push((await sw.request(u.slice(1))).body);
+  return out;
 }
 
-test('service worker: scripts are network-first with offline fallback; cross-origin and non-GET pass through', async () => {
+test('service worker: a launch is one build, straight from its cache — online, offline or mid-deploy', async () => {
   const sw = worker();
   await sw.lifecycle('install');
   assert.equal(sw.self.skipped, 0, 'a fresh install of this generation waits for the page');
   await sw.lifecycle('activate');
-  // A deploy: the network copy wins over the install-time one and refreshes the cache.
-  assert.equal((await sw.request('/src/net.js')).body, 'network /src/net.js');
-  assert.equal(sw.net.at(-1).init.cache, 'no-cache', 'revalidates past the HTTP cache');
-  assert.equal((await sw.request('/', { mode: 'navigate', destination: 'document' })).body, 'network /');
-  assert.equal(sw.net.at(-1).init?.cache, 'no-cache', 'the page revalidates too, never a stale HTTP-cached copy');
+  const v = sw.build;
+  const same = (bodies) => bodies.every((b) => b.startsWith(v + ' '));
+  // Online: no network on the critical path of a launch (a plane's Wi-Fi can hang for a minute).
+  const before = sw.net.length;
+  assert.ok(same(await launch(sw, '/?daily=1')), 'page + every script from the same build');
+  assert.equal(sw.net.length, before, 'no network requests at all');
+  // Offline: the same.
   sw.setOnline(false);
-  assert.equal((await sw.request('/src/net.js')).body, 'network /src/net.js', 'offline serves the refreshed copy');
-  assert.equal((await sw.request('/src/qr.js')).body, 'precache /src/qr.js', 'offline serves the precache');
-  assert.equal((await sw.request('/', { mode: 'navigate', destination: 'document' })).body, 'network /', 'offline launch serves the refreshed page');
+  assert.ok(same(await launch(sw, '/#j=abc')), 'offline launch is whole');
+  sw.setOnline(true);
+  // A deploy lands on the server (network now serves new files) while this build is active:
+  // this page and its scripts still come from one build.
+  assert.ok(same(await launch(sw)), 'a deploy never splits the running build');
+  // A file outside the shell comes from the network once, then works offline.
+  assert.equal((await sw.request('/screenshots/extra.png', { destination: 'image' })).body, 'network /screenshots/extra.png');
+  sw.setOnline(false);
+  assert.equal((await sw.request('/screenshots/extra.png', { destination: 'image' })).body, 'network /screenshots/extra.png');
   assert.equal(await sw.request('https://relay.example/x.js'), null, 'cross-origin is not intercepted');
   assert.equal(await sw.request('/src/net.js', { method: 'POST' }), null, 'non-GET is not intercepted');
+});
+
+test('service worker: an update installs beside the running build and only takes over whole', async () => {
+  const stores = new Map();
+  const old = worker({ stores, version: 'v1.0.0' });
+  await old.lifecycle('install'); await old.lifecycle('activate');
+  // The new build's download fails halfway (flaky link): nothing half-installed, old build intact.
+  const broken = worker({ stores, version: 'v2.0.0', failInstall: '/src/net.js' });
+  await assert.rejects(broken.lifecycle('install'));
+  assert.equal(stores.get('sm2-app-v2.0.0').size, 0, 'an interrupted install stores nothing');
+  assert.ok((await launch(old)).every((b) => b.startsWith('v1.0.0 ')));
+  // A clean install: both builds sit side by side; the running page keeps v1 until the swap.
+  const next = worker({ stores, version: 'v2.0.0' });
+  await next.lifecycle('install');
+  assert.equal(next.self.skipped, 0, 'waits for the page to pick a safe moment');
+  assert.ok((await launch(old)).every((b) => b.startsWith('v1.0.0 ')), 'no mixing while the new build waits');
+  await next.lifecycle('activate');
+  assert.deepEqual([...stores.keys()], ['sm2-app-v2.0.0'], 'the old build is dropped only after the new one is whole');
+  assert.ok((await launch(next)).every((b) => b.startsWith('v2.0.0 ')), 'the reload is entirely the new build');
 });
 
 test('service worker: replaces a legacy cache-first worker at once and drops old caches', async () => {
