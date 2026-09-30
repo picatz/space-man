@@ -713,6 +713,27 @@
   #blockedList .log-row .mini-chip { margin-left: auto; }
 
   /* Run Together — in-run surfaces (N3) */
+  /* Crew standings: one renderer, three homes (floating panel in a run, pause card, death card). */
+  .crew { text-align: left; font-family: var(--font-num); }
+  .crew-sum { font-size: 11px; letter-spacing: 1.5px; color: var(--cyan-lt); font-weight: 700; margin: 2px 0 6px; text-transform: uppercase; }
+  .crew-head { display: flex; align-items: baseline; gap: 6px; font-size: 10px; letter-spacing: 2.5px; color: var(--ui); opacity: 0.8; margin: 10px 0 2px; text-transform: uppercase; }
+  .crew-head .n { color: var(--cyan); font-weight: 800; }
+  .crew-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 12px; border-bottom: 1px solid rgba(207,227,255,0.08); }
+  .crew-row .pl { flex: 0 0 26px; color: var(--cyan); font-weight: 800; }
+  .crew-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suit); font-weight: 700; text-transform: uppercase; }
+  .crew-row .nm .tag { color: var(--ui); opacity: 0.7; font-weight: 500; text-transform: none; }
+  .crew-row .fig { flex: 0 0 auto; font-weight: 700; text-align: right; }
+  .crew-row .fig small { display: block; font-size: 9px; opacity: 0.6; font-weight: 500; letter-spacing: 0.5px; }
+  .crew-row.you { background: rgba(56,225,255,0.10); border-radius: 6px; }
+  .crew-row.out { opacity: 0.6; }
+  .crew-row.unverified { opacity: 0.45; }
+  .crew-empty { font-size: 11px; opacity: 0.6; padding: 4px; }
+  #crewPanel { position: fixed; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 84px); width: min(330px, calc(100vw - 24px)); max-height: calc(100vh - 150px);
+    overflow-y: auto; padding: 10px 12px 12px; border-radius: 14px; background: rgba(6,12,30,0.88); border: 1px solid rgba(56,225,255,0.22);
+    box-shadow: 0 10px 40px rgba(0,0,0,.45); pointer-events: none; z-index: 7; display: none; }
+  #crewPanel.show { display: block; }
+  #crewPanel .crew-title { font-size: 11px; letter-spacing: 3px; font-weight: 800; color: var(--cyan); }
+  #crewPanel .crew-hint { font-size: 9px; letter-spacing: 1px; opacity: 0.55; margin-top: 8px; }
   .room-caption { font-size: 10px; letter-spacing: 3px; color: var(--ui); opacity: 0.7; margin: 12px 0 2px; }
   table.scores tr.unverified { opacity: 0.5; }
   .round-head { font-size: 12px; letter-spacing: 3px; font-weight: 700; color: var(--cyan); margin: 12px 0 2px; }
@@ -782,6 +803,7 @@
     <div class="control-guide gamepad-guide">
       <div><b>LEFT STICK</b><span>MOVE</span></div><div><b>A / ✕</b><span>JUMP</span></div><div><b>X / □ / R2</b><span>FIRE</span></div>
     </div>
+    <div class="crew" id="pauseCrew" style="display:none;"></div>
     <div class="settings-list" data-settings-host></div>
     <button class="btn ghost" id="btnPauseSpectate" style="display:none;">Spectate This Round</button>
     <button class="btn ghost" id="btnQuit">Quit to Title</button>
@@ -810,6 +832,7 @@
     <div class="sub" id="deadRoundNext" style="font-size:11px;opacity:0.7;display:none;"></div>
     <div class="room-caption" id="deadRoomCaption" style="display:none;">ROOM</div>
     <table class="scores" id="deadRoomScores" style="display:none;"></table>
+    <div class="crew" id="deadCrew" style="display:none;"></div>
     <div class="dock">
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
     <button class="btn ghost" id="btnShare" data-keys="dead" style="display:none;">Share Run</button>
@@ -911,6 +934,7 @@
         </div>
       </div>
     </div>
+    <div class="crew-sum" id="roomCrew" role="status"></div>
     <div class="room-relay" id="roomRelay"></div>
     <details class="room-log" id="roomLog" style="display:none;">
       <summary id="roomLogSummary"></summary>
@@ -982,6 +1006,7 @@
 
 <pre id="errlog"></pre>
 <label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
+<div id="crewPanel" class="crew" role="region" aria-label="Crew standings"></div>
 <div id="srAnnounce" aria-live="polite"></div>
 
 <script src="src/contracts.js"></script>
@@ -998,6 +1023,7 @@
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
      #j= invite is accepted (net-spec §4.1 lazy gate). -->
 <script src="src/callsigns.js"></script>
+<script src="src/crew.js"></script>
 <script src="src/relay-directory.js"></script>
 <script src="src/qr.js"></script>
 <script src="src/netsmooth.js"></script>
@@ -2256,6 +2282,9 @@ function onKey(e, down) {
   if (down && (k === 'enter' || k === ' ') && G.mode !== 'play' && focusInOverlay()) return;   // native button activation — never a second startRun/restart
   if (down && k === 'escape' && menuBack()) { e.preventDefault(); return; }   // Escape closes a sub-menu before it pauses
   const act = keyAction(k);
+  // Crew standings: hold Tab to peek (the scoreboard convention), or tap C to pin it open. In a room only.
+  if (k === 'tab' && netInRun()) { e.preventDefault(); if (down) { if (!e.repeat) { crew.peek = !crew.open; toggleCrew(true); } } else if (crew.peek) { crew.peek = false; toggleCrew(false); } return; }
+  if (down && k === 'c' && !act && !e.repeat && netInRun() && !e.metaKey && !e.ctrlKey) { crew.peek = false; toggleCrew(); return; }
   if (act === 'left' || act === 'right' || act === 'down') input[act] = down;
   if (act === 'jump') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
   if (act === 'fire') input.fireKey = down;
@@ -2270,6 +2299,7 @@ function onKey(e, down) {
       if (act === 'right') { cycleWatch(1); return; }
       if (k === 'enter') { startRun(); return; }
     }
+    if (k === 'escape' && crew.open) { toggleCrew(false); return; }
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) { if (!menuSubOpen()) startRun(); }
@@ -5993,6 +6023,7 @@ function togglePause() {
     clearInput();
     G.mode = 'pause'; syncSettingsUI(); showOverlay('ovPause');
     $('btnPauseSpectate').style.display = (netLive() && NET.info().role !== 1 && anyLiveRunner()) ? '' : 'none';
+    renderCrewEmbed($('pauseCrew'));
     Audio.musicEvent('pause');
   } else if (G.mode === 'pause') {
     hideAllOverlays(); Audio.resume(); clearInput();
@@ -6340,6 +6371,7 @@ function ensureWardrobeCallsign() {
 /* ---- settings ---- */
 // One definition, two hosts (ovPause + ovSettings): rows can never drift apart.
 const SETTINGS_DEF = [
+  { key: 'muted', type: 'switch', label: 'Mute all audio' },
   { key: 'music', type: 'switch', label: 'Music' },
   { key: 'musicVol', type: 'slider', label: 'Music volume', dependsOn: 'music' },
   { key: 'sfx', type: 'switch', label: 'Sound FX' },
@@ -6414,6 +6446,7 @@ function buildSettings(host) {
   if (!SHOT) buildNetworkSettings(host);   // bespoke net rows off under #shot (golden identity)
   syncHapticRows();
 }
+const AUDIO_ROWS = new Set(['music', 'musicVol', 'sfx', 'sfxVol']);
 function syncSettingsUI() {
   document.querySelectorAll('[data-setting]').forEach((el) => {
     const key = el.dataset.setting;
@@ -6438,9 +6471,11 @@ function syncSettingsUI() {
   document.querySelectorAll('[data-setting-row]').forEach((row) => {
     const def = SETTINGS_DEF.find((d) => d.key === row.dataset.settingRow);
     if (def && def.dependsOn) row.classList.toggle('dim', !settings[def.dependsOn]);
+    if (def && AUDIO_ROWS.has(def.key)) row.classList.toggle('dim', row.classList.contains('dim') || settings.muted);   // muted: the mix below is not being heard
   });
 }
 function toggleSetting(key) {
+  if (key === 'muted') { toggleMute(); syncSettingsUI(); return; }   // one code path for the icon, the M key and this switch
   settings[key] = !settings[key];
   if (key === 'music' || key === 'sfx') { Audio.syncChannels(); if (settings[key] && !settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); } }
   if (key === 'haptics') { if (settings.haptics) buzz('success'); else stopBuzz(); }   // feel it the moment it is switched on; off cuts any pulse in flight
@@ -6493,7 +6528,7 @@ function syncKeyGuide() {
 // Deliberately NOT a panel switch — the panel shows the underlying mix instead.
 function toggleMute() {
   settings.muted = !settings.muted;
-  Audio.syncChannels(); persistAll();
+  Audio.syncChannels(); persistAll(); syncSettingsUI();
   if (!settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); }   // an idle-suspended context wakes with the sound
   announce(settings.muted ? 'Audio muted' : 'Audio on');
 }
@@ -6723,6 +6758,7 @@ function renderRoomCard() {
     $('roomApprove').classList.toggle('on', !!settings.netApprove);
     $('roomApprove').setAttribute('aria-checked', String(!!settings.netApprove));
   }
+  $('roomCrew').textContent = window.SpaceManCrew.summary(crewStandings());
   $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(NET.quality ? NET.quality() : null, isHost);
   renderMobilityLog();
   renderRoster(roster, isHost);
@@ -6896,7 +6932,7 @@ async function submitJoin() {
 }
 function leaveRoom() {
   raceReset();
-  emTray.open = false;
+  emTray.open = false; toggleCrew(false);
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
   pendingJoins.clear();                                     // held joins belong to the room we just left
@@ -7302,6 +7338,7 @@ function netTick(dt) {
   // A co-runner going down (or dropping out) while our card is up can end the
   // round — refresh the card's result + Again/Spectate actions when it changes.
   if (G.mode === 'dead' && G.deathCardShown && roundResultKeyNow() !== roundResultKey) renderRoomBoard();
+  if (crew.open) { if (netInRun() && G.mode !== 'pause') crewRefresh(); else toggleCrew(false); }   // the death and pause cards carry their own standings
   for (const g of ghosts) if (g.emoteT > 0) g.emoteT = Math.max(0, g.emoteT - dt);
   if (selfEmote.t > 0) selfEmote.t = Math.max(0, selfEmote.t - dt);
   if (emTray.open && (performance.now() - emTray.at > EMOTE_TRAY_MS || !emoteAvailable())) emTray.open = false;   // the tray never lingers
@@ -7508,9 +7545,10 @@ function drawEmoteBubble(wx, wy, id, t) {
 
 /* ---- screen-space net HUD: race strip (always on), spectator chrome, emote
        wheel, unstable banner. Called every frame netInRun(); view-px coords. */
-let _specHits = null, _unstableHit = null;
+let _specHits = null, _unstableHit = null, _crewHit = null;
 function drawNetHUD() {
-  if (!netInRun()) return;
+  if (!netInRun()) { _crewHit = null; return; }
+  drawCrewChip();
   if (netSpectating()) drawSpectatorHUD(); else { _specHits = null; }
   drawRoundStatus();
   // The banner goes first: it publishes the LEAVE hit area the emote tray (and the teammate cue that steps around the tray)
@@ -7531,6 +7569,7 @@ function drawLinkPill() {
   const w = ctx.measureText(text).width + 22 * us, h = 18 * us;
   let x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
   if (emoteAvailable()) { const b = emoteLayout().button; x = b.x - 8 - w; y = b.y + (b.h - h) / 2; }   // beside the emote button, never on it
+  if (_crewHit) { const k = view.w ? window.innerWidth / view.w : 1; x = Math.min(x, _crewHit.x0 / k - 8 - w); y = _crewHit.y0 / k + (_crewHit.y1 - _crewHit.y0) / k / 2 - h / 2; }   // and never on the crew chip
   ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
   ctx.fillStyle = '#FF8A6B'; ctx.beginPath(); ctx.arc(x + 9 * us, y + h / 2, 3 * us, 0, TAU); ctx.fill();
   ctx.fillStyle = '#F4F7FF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + 16 * us, y + h / 2 + 0.5);
@@ -7615,6 +7654,86 @@ function drawRoundStatus() {
   ctx.fillText(waiting ? 'Waiting for the host to start together' : 'GET READY · SAME COURSE, SAME START', x, y + 25 * us);
   ctx.fillText(NET.info().players + ' runners · ' + NET.info().spectators + ' watching', x, y + 43 * us);
 }
+/* ---- crew standings: who is running / out / waiting / watching, in a run, paused, or after ---- */
+const crew = { open: false, peek: false, timer: 0, key: '' };
+// Everything the pure projection needs, read from what the game already tracks. Local figures come from local truth.
+function crewStandings() {
+  const info = NET.info(), myP = info.myP;
+  const playing = G.player && G.netParticipating && G.mode !== 'attract';
+  const self = { p: myP, inRun: !!(playing && !G.player.dead), dead: !!(playing && G.player.dead),
+    dist: playing ? G.dist : 0, score: playing ? (G.player.dead ? (G.finalScore | 0) : Math.floor(G.score)) : 0, chain: playing ? (G.chain | 0) : 0 };
+  return window.SpaceManCrew.build({
+    roster: NET.roster(), presence: NET.presence(), board: NET.board(), self, runId: info.runId,
+    results: info.runId === roundResultsRunId ? [...roundResults.values()] : [],
+    roundActive: netRoundActive(),
+  });
+}
+// Build the standings into `host`. textContent only: callsigns are remote input.
+function renderCrewInto(host, st) {
+  host.textContent = '';
+  const add = (parent, tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; parent.appendChild(el); return el; };
+  add(host, 'div', 'crew-sum', window.SpaceManCrew.summary(st));
+  for (const g of st.groups) {
+    if (!g.rows.length) continue;
+    const head = add(host, 'div', 'crew-head', g.label + ' '); add(head, 'span', 'n', String(g.rows.length));
+    for (const r of g.rows) {
+      const row = add(host, 'div', 'crew-row ' + r.status + (r.you ? ' you' : '') + (r.unverified ? ' unverified' : ''));
+      add(row, 'span', 'pl', r.place ? ordinal(r.place) : 'P' + r.p);
+      const nm = add(row, 'span', 'nm', r.name); if (r.you || r.host) add(nm, 'span', 'tag', ' ' + (r.you && r.host ? '(you, host)' : r.you ? '(you)' : '(host)'));
+      if (r.status === 'running' || r.status === 'out') {
+        const f = add(row, 'span', 'fig', Math.floor(r.dist).toLocaleString() + ' m');
+        add(f, 'small', '', Math.floor(r.score).toLocaleString() + ' pts' + (r.chain > 1 ? ' · ×' + (1 << Math.min(3, r.chain)) : ''));
+      } else if (r.bestScore) {
+        const f = add(row, 'span', 'fig', r.bestScore.toLocaleString()); add(f, 'small', '', 'BEST');
+      } else add(row, 'span', 'fig', g.key === 'waiting' ? (st.phase === 'lobby' ? 'READY' : 'NEXT ROUND') : '◎');
+    }
+  }
+}
+// Death / pause cards: standings under the room column. Hidden outside a room.
+function renderCrewEmbed(host) {
+  if (!host) return;
+  if (!netLive() || NET.mockActive) { host.style.display = 'none'; return; }
+  host.style.display = ''; renderCrewInto(host, crewStandings());
+}
+// The chip redraws every frame; the standings behind it only need to be fresh a few times a second.
+let _crewGlance = null, _crewGlanceAt = -1e9;
+function crewGlance() {
+  const t = performance.now();
+  if (!_crewGlance || t - _crewGlanceAt > 250) { _crewGlance = crewStandings(); _crewGlanceAt = t; }
+  return _crewGlance;
+}
+function crewRefresh() {
+  const panel = $('crewPanel');
+  if (!netLive()) { toggleCrew(false); return; }
+  const st = crewStandings(), key = JSON.stringify(st.rows.map((r) => [r.p, r.status, r.place, r.dist | 0, r.score | 0, r.chain, r.name]));
+  if (key === crew.key) return;   // nothing moved: leave the DOM alone
+  crew.key = key;
+  panel.textContent = '';
+  const t = document.createElement('div'); t.className = 'crew-title'; t.textContent = 'CREW'; panel.appendChild(t);
+  const body = document.createElement('div'); panel.appendChild(body); renderCrewInto(body, st);
+  const h = document.createElement('div'); h.className = 'crew-hint'; h.textContent = 'HOLD TAB TO PEEK · C TO PIN'; panel.appendChild(h);
+}
+function toggleCrew(force) {
+  const want = force === undefined ? !crew.open : !!force;
+  if (want && !netLive()) return;
+  crew.open = want; crew.key = '';
+  $('crewPanel').classList.toggle('show', want);
+  if (want) crewRefresh();
+  else crew.peek = false;
+}
+function drawCrewChip() {
+  const us = uiScale(), L = emoteLayout(), k = L.k, st = crewGlance();
+  const text = 'CREW ' + st.counts.running + '/' + st.players + (st.counts.watching ? ' · ◎' + st.counts.watching : '');
+  ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
+  const h = L.button.h, w = Math.max(64 / k, ctx.measureText(text).width + 20 * us);
+  const withEmote = settings.netEmotes && !netSpectating();
+  const x = withEmote ? L.button.x - 8 / k - w : L.button.x + L.button.w - w, y = L.button.y;
+  ctx.fillStyle = crew.open ? '#38E1FF' : 'rgba(10,14,32,0.78)'; roundRect(x, y, w, h, 8); ctx.fill();
+  ctx.strokeStyle = 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = crew.open ? '#06122A' : '#CFE3FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + w / 2, y + h / 2 + 0.5, w - 6); ctx.textBaseline = 'alphabetic';
+  _crewHit = { x0: x * k, x1: (x + w) * k, y0: y * k, y1: (y + h) * k };
+}
 function drawCrewDirections() {
   const us = uiScale(), y = view.h * 0.38;
   for (const dir of [-1, 1]) {
@@ -7681,6 +7800,7 @@ const EMOTE_TRAY_MS = 4000, EMOTE_BTN = 40, EMOTE_ITEM = 44, EMOTE_GAP = 6;   //
 function inRect(p, r) { return r && p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1; }
 function netPointerDown(e) {
   const p = pointerPos(e);
+  if (_crewHit && inRect(p, _crewHit)) { crew.peek = false; toggleCrew(); return true; }
   const leaveHit = unstableHitRect();
   if (leaveHit && inRect(p, leaveHit)) { leaveRoom(); return true; }
   if (netSpectating()) {
@@ -7811,7 +7931,7 @@ function renderRoomBoard() {
   netLabelAgainButton();
   const cap = $('deadRoomCaption'), tbl = $('deadRoomScores'), sp = $('btnSpectateRound'), em = $('deadEmotes');
   renderRoundResult();
-  if (!netLive()) { cap.style.display = tbl.style.display = 'none'; sp.style.display = em.style.display = 'none'; return; }
+  if (!netLive()) { cap.style.display = tbl.style.display = 'none'; sp.style.display = em.style.display = 'none'; renderCrewEmbed($('deadCrew')); return; }
   const info = NET.info(), board = NET.board(), myP = info.myP;
   // top 5 by bestScore + self always shown
   const sorted = board.slice().sort((a, b) => b.bestScore - a.bestScore);
@@ -7824,6 +7944,7 @@ function renderRoomBoard() {
   }
   tbl.innerHTML = html || '<tr><td colspan="3" class="empty">NO ROOM SCORES YET</td></tr>';
   cap.style.display = ''; tbl.style.display = '';
+  renderCrewEmbed($('deadCrew'));
   // Spectate this round — only for a player, and only when a co-runner is still
   // alive to watch. Everyone dead → round over → hide it (no stalled watch view, D4c).
   sp.style.display = (info.role !== 1 && anyLiveRunner()) ? '' : 'none';
