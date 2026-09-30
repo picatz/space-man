@@ -47,8 +47,10 @@ where the mercy assist has eased the course share the game link without a seed.
 
 ## Run Together
 
-Choose **Run Together**, share the QR/link, and press **Start Together** once
-friends join. Accepting an invite enters the course directly; if the host has
+Choose **Run Together**, then **Create a room** or **Join a room**. Joining takes
+a typed room code (for example `ORD-…`, or just the words on any device) or a
+pasted link; hosting shows the code, a copy button, a share link and a QR.
+Press **Start Together** once friends join. Accepting an invite enters the course directly; if the host has
 not started yet, everyone waits at the start line. The host's three-second
 countdown starts a shared course and flare clock. **New Round** resets the
 participating crew together. Late arrivals and rejoins land on a platform near
