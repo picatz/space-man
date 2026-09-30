@@ -293,7 +293,7 @@ test('touch: holding the jump side flies, and FIRE becomes SABER', (t) => {
   const c = solo(t);
   const r = json(c, `${STAGE}
     POW.grant('jet', true); POW.grant('saber', true);
-    const cv = document.getElementById('game'), down = cv.listeners.pointerdown;
+    const cv = document.getElementById('game'), down = cv.listeners.pointerdown[0];
     const ev = (id, x, y) => ({ pointerId: id, pointerType: 'touch', clientX: x, clientY: y, preventDefault() {} });
     layoutTouch();
     down(ev(1, window.innerWidth * 0.7, window.innerHeight * 0.4));   // jump side

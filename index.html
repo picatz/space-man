@@ -1056,7 +1056,7 @@ const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.s
 // OS answer at load: only the DEFAULT for the in-game Reduce Motion switch.
 const osReducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, musicVol: 1, sfxVol: 1, muted: false,
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, hapticsStrength: 1, hapticsSaver: true, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
 // G: default AUTO-RUN (touch) to OFF — touch movement is free left/right, no
@@ -1071,6 +1071,8 @@ if (loadJSON(LS.autorunReset, null) !== 1) { settings.autorun = false; saveJSON(
 settings.netGhosts = Math.min(1, Math.max(0.25, (typeof settings.netGhosts === 'number' && isFinite(settings.netGhosts)) ? settings.netGhosts : 0.85));
 settings.netEmotes = settings.netEmotes !== false;
 settings.netApprove = settings.netApprove === true;
+settings.hapticsStrength = Math.min(1, Math.max(0.3, (typeof settings.hapticsStrength === 'number' && isFinite(settings.hapticsStrength)) ? settings.hapticsStrength : 1));
+settings.hapticsSaver = settings.hapticsSaver !== false;   // on by default: a low, unplugged battery quiets the buzz
 settings.sharp = settings.sharp === true;   // SHARP RENDERING: opt-in lock on full DPR (adaptive resolution off)
 if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
 if (typeof settings.netRelay !== 'string') settings.netRelay = '';
@@ -1871,21 +1873,61 @@ const Audio = (() => {
    8. HAPTICS
    ------------------------------------------------------------------------- */
 const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: [12, 36, 12], celebrate: [14, 40, 14, 40, 22] };
+// Low-battery saver. No browser exposes iOS/Android Low Power Mode itself, but Chromium's Battery Status API tells us
+// when the device is low and unplugged, which is when the motor is worth sparing. Browsers without it never save.
+let batteryLow = false, batteryReady = false;   // batteryReady: the browser actually handed us battery data (it can refuse)
+try {
+  if (navigator.getBattery) navigator.getBattery().then((b) => {
+    const sync = () => { batteryLow = !b.charging && b.level < 0.2; };
+    sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
+    batteryReady = true; syncHapticRows();
+  }).catch(() => {});
+} catch (e) {}
+// Which haptic settings mean something on this device right now? The strength slider only does anything where the motor's
+// length can be set: Android/desktop vibration, or a controller with rumble (iOS's tick is one fixed size). The saver only
+// does anything once the browser has really shown us the battery. Rows are built once and shown or hidden as this changes
+// (a controller plugged in, a battery reading arriving).
+const hapticRows = [];
+// The actuator we can actually rumble, if this pad has one: both the row and the buzz use the same test.
+function rumbleActuator(gp) {
+  const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
+  return act && act.playEffect ? act : null;
+}
+function padRumbles() {
+  try { return !!rumbleActuator(input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null); } catch (e) { return false; }
+}
+// pollGamepad tells us whenever the connected pad could change (plugged in, swapped for another, unplugged): re-sync the
+// rows only when whether it can rumble has actually changed, so a hand-off between controllers never leaves the slider stale.
+let padCanRumble = false;
+function noteRumble(gp) {
+  const now = !!rumbleActuator(gp);
+  if (now !== padCanRumble) { padCanRumble = now; syncHapticRows(); }
+}
+function syncHapticRows() {
+  const phoneMotor = !!navigator.vibrate && matchMedia('(any-pointer: coarse)').matches;   // desktop Chrome has vibrate() but no motor
+  const show = { hapticsStrength: phoneMotor || padRumbles(), hapticsSaver: batteryReady };
+  for (const row of hapticRows) row.style.display = show[row.dataset.settingRow] ? '' : 'none';
+}
+// Is the buzz allowed right now? (switch on, and not saving a nearly flat battery)
+function hapticsOn() { return !!settings.haptics && !SHOT && !(settings.hapticsSaver && batteryLow); }
+// Strength scales how long the motor runs (phones) and how hard it spins (controllers); the rhythm never changes.
+function scaleBuzz(pat, k) { return Array.isArray(pat) ? pat.map((v, i) => (i % 2 === 0 ? Math.max(4, Math.round(v * k)) : v)) : Math.max(4, Math.round(pat * k)); }
 function buzz(kind) {
-  if (!settings.haptics || SHOT) return;
+  if (!hapticsOn()) return;
+  const k = settings.hapticsStrength;
   const pat = HAPTICS[kind] || 10;
-  if (navigator.vibrate) navigator.vibrate(pat);
+  if (navigator.vibrate) navigator.vibrate(scaleBuzz(pat, k));
   try {
     const gp = input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null;
-    const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
-    if (act && act.playEffect) {
+    const act = rumbleActuator(gp);
+    if (act) {
       const heavy = kind === 'heavy' || kind === 'warn' || kind === 'celebrate';
       const duration = Array.isArray(pat) ? pat.reduce((a, b) => a + b, 0) : Math.max(20, pat * 2);
-      act.playEffect('dual-rumble', { duration, strongMagnitude: heavy ? .65 : .24, weakMagnitude: heavy ? .38 : .18 }).catch(() => {});
+      act.playEffect('dual-rumble', { duration, strongMagnitude: (heavy ? .65 : .24) * k, weakMagnitude: (heavy ? .38 : .18) * k }).catch(() => {});
       return;
     }
   } catch (e) {}
-  try { const l = document.getElementById('hapLbl'); if (l) l.click(); } catch (e) {}
+  try { const l = document.getElementById('hapLbl'); if (l) l.click(); } catch (e) {}   // iOS 17.4+: a switch input's tick is the only web haptic
 }
 
 /* ---------------------------------------------------------------------------
@@ -1986,6 +2028,7 @@ function pollGamepad() {
   if (!gp) {
     for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
   }
+  noteRumble(gp);
   if (!gp) {
     if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
     return;
@@ -2488,7 +2531,13 @@ function seedRng(seed) { rng = (seed === null || seed === undefined) ? Math.rand
 // replayable: a solo course that must be reproducible from its seed alone (Daily
 // Course, challenge links, and any shareable normal run) — so, like a live room,
 // worldgen draws from its own stream and gameplay randomness can't fork it.
+// Race strip frame (see raceLayout). World px (10 px = 1 m); PAD is a fraction of the span. Lives up here so resetRun and
+// leaveRoom can put it back to 'not drawn yet' — a new run's coordinates must never ease in from the last one's.
+const RACE_MIN_SPAN = 1200, RACE_PAD = 0.06;
+const raceView = { anchor: 0, span: RACE_MIN_SPAN, lowPrev: 0, at: -1 };
+function raceReset() { raceView.at = -1; raceView.span = RACE_MIN_SPAN; }
 function resetRun(seed, replayable) {
+  raceReset();
   seedRng(seed);
   // A real room (not the #shot mock) shares the course AND its clock: aliens move on the round clock.
   G.sharedWorld = netLive() && !NET.mockActive;
@@ -5188,6 +5237,10 @@ function drawTouchControls() {
   // logical units mixed coordinate systems and pushed the pip ring off-screen.
   ctx.save();
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  // Once the player knows the controls they recede to a quiet outline, and wake up the moment a thumb lands.
+  const learned = flags.taughtRun && flags.taughtJump && flags.taughtShoot;
+  const dim = learned && !input.shootBtn.pressed && !input.stick.active && !input.jumpZone.active ? 0.6 : 1;
+  ctx.globalAlpha = dim;
   const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r;
   if (!POW.drawFireButton(sx, sy, r)) {   // a lit saber repaints FIRE as SABER
   ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU);
@@ -5206,20 +5259,20 @@ function drawTouchControls() {
     const cssW = window.innerWidth, cssH = window.innerHeight;
     const gx = input.stick.active ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
     const gy = input.stick.active ? input.stick.cy : cssH - safeInset('bottom') - (view.isTablet ? 92 : 76);
-    ctx.globalAlpha = 0.3; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
+    ctx.globalAlpha = dim * (0.3); ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(gx, gy, 34, 0, TAU); ctx.stroke();
     // Inner knob always renders — direction/magnitude feedback is the whole
     // point of a floating stick (rests centered when idle).
     const kx = input.stick.active ? clamp(input.stick.x, gx - 34, gx + 34) : gx;
-    ctx.globalAlpha = input.stick.active ? 0.55 : 0.22;
+    ctx.globalAlpha = dim * (input.stick.active ? 0.55 : 0.22);
     ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(kx, gy, 12, 0, TAU); ctx.fill();
-    ctx.globalAlpha = input.stick.active ? .7 : .38; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.6;
+    ctx.globalAlpha = dim * (input.stick.active ? .7 : .38); ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.6;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     drawChevron(gx - 44, gy + 50, -1); drawChevron(gx + 44, gy + 50, 1);
     // The jump region is intentionally large; this quiet affordance explains
     // the invisible hit area without covering the action.
     const jx = cssW * (settings.lefty ? .26 : .74), jy = cssH - safeInset('bottom') - 44;
-    ctx.globalAlpha = input.jumpZone.active ? .82 : .32; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
+    ctx.globalAlpha = dim * (input.jumpZone.active ? .82 : .32); ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(jx, jy, 25, 0, TAU); ctx.stroke();
     ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1.6; drawChevron(jx, jy + 2, 0);
     POW.drawJumpRing(jx, jy);   // jetpack fuel, under the thumb that spends it
@@ -5635,6 +5688,8 @@ const SETTINGS_DEF = [
   { key: 'sfx', type: 'switch', label: 'Sound FX' },
   { key: 'sfxVol', type: 'slider', label: 'SFX volume', dependsOn: 'sfx' },
   { key: 'haptics', type: 'switch', label: 'Haptics' },
+  { key: 'hapticsStrength', type: 'slider', label: 'Haptic strength', dependsOn: 'haptics', min: 0.3, max: 1, noShot: true },
+  { key: 'hapticsSaver', type: 'switch', label: 'Off on low battery', dependsOn: 'haptics', noShot: true },
   { key: 'shake', type: 'switch', label: 'Screen shake' },
   // noShot rows (like net rows) never appear under #shot, so goldens hold.
   { key: 'reduceMotion', type: 'switch', label: 'Reduce motion', noShot: true },
@@ -5667,6 +5722,7 @@ function buildSettings(host) {
     }
     const row = document.createElement('div');
     row.className = 'toggle-row'; row.dataset.settingRow = def.key;
+    if (def.key === 'hapticsStrength' || def.key === 'hapticsSaver') hapticRows.push(row);
     const lbl = document.createElement('span'); lbl.textContent = def.label;
     row.appendChild(lbl);
     if (def.type === 'switch') {
@@ -5691,12 +5747,13 @@ function buildSettings(host) {
       const pct = document.createElement('span'); pct.className = 'pct';
       // input = live (heard while dragging); change = the single LS write per drag
       r.oninput = () => { settings[def.key] = r.valueAsNumber / 100; if (def.key === 'musicVol' || def.key === 'sfxVol') Audio.syncChannels(); syncSettingsUI(); };
-      r.onchange = () => persistAll();
+      r.onchange = () => { persistAll(); if (def.key === 'hapticsStrength') buzz('success'); };   // let go of the slider and feel the new strength
       row.appendChild(r); row.appendChild(pct);
     }
     host.appendChild(row);
   }
   if (!SHOT) buildNetworkSettings(host);   // bespoke net rows off under #shot (golden identity)
+  syncHapticRows();
 }
 function syncSettingsUI() {
   document.querySelectorAll('[data-setting]').forEach((el) => {
@@ -5727,6 +5784,7 @@ function syncSettingsUI() {
 function toggleSetting(key) {
   settings[key] = !settings[key];
   if (key === 'music' || key === 'sfx') Audio.syncChannels();
+  if (key === 'haptics' && settings.haptics) buzz('success');   // feel it the moment it is switched on
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
   if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
   syncSettingsUI(); persistAll();
@@ -6128,6 +6186,7 @@ async function submitJoin() {
   }
 }
 function leaveRoom() {
+  raceReset();
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
   pendingJoins.clear();                                     // held joins belong to the room we just left
@@ -6655,10 +6714,22 @@ function drawGhostActor(g) {
   // badge + emote (world space, upright, no shadowBlur)
   ctx.save(); ctx.globalAlpha *= clamp(g.alpha, 0, 1);
   const b = ghostBadge(g);
-  ctx.drawImage(b.canvas, g.rx - b.w / 2, g.ry - CFG.ph / 2 - 22, b.w, b.h);
+  // Plates and emotes of runners far above you stop at the race strip instead of sliding under it.
+  const floorY = raceFloorWorldY(g.rx);
+  const under = g.ry < floorY + CFG.ph / 2;   // the runner itself is up behind the strip: no plate floating over nothing
+  if (!under) ctx.drawImage(b.canvas, g.rx - b.w / 2, Math.max(g.ry - CFG.ph / 2 - 22, floorY), b.w, b.h);
   if (spec.watchP === g.p && netSpectating()) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(g.rx, g.ry, CFG.ph / 2 + 6, 0, TAU); ctx.stroke(); }
   ctx.restore();
-  if (g.emoteT > 0) drawEmoteBubble(g.rx, g.ry - CFG.ph / 2 - 34, g.emoteId, g.emoteT);
+  if (g.emoteT > 0 && !under) drawEmoteBubble(g.rx, Math.max(g.ry - CFG.ph / 2 - 34, floorY + b.h + 12), g.emoteId, g.emoteT);
+}
+// World y that lands just under the race strip on screen, at world x, through whatever transform is live (interpolated
+// camera, punch/death zoom, shake, rotation), so plates can never end up beneath the strip. -Infinity when the strip isn't up.
+function raceFloorWorldY(wx) {
+  const stripBottom = 12 + safeInset('top') + 26 + 6;                          // view px
+  const m = ctx.getTransform && ctx.getTransform();
+  if (!m || !m.d) return G.camY + stripBottom;                                  // no matrix available: plain camera offset
+  const target = stripBottom * (canvas.height / view.h);                        // device px
+  return (target - m.f - m.b * wx) / m.d;
 }
 // Pre-rendered P#/callsign plate (§4.2): built once per identity change, no
 // per-frame measureText/fillText on the hot path.
@@ -6708,30 +6779,61 @@ function raceRunners() {
   for (const g of ghosts) if (g.active && g.alpha > 0.15) out.push({ x: g.rx, suit: g.suit, p: g.p, you: false });
   return out;
 }
+// The strip answers one question: where is everyone relative to the flare and to each other? So it is drawn in a frame
+// that moves WITH the pack, not with the world: a runner and the flare hold still on the strip while they keep the same
+// gap, and only gaps opening or closing move anything. (Anchoring to the leader made the flare and every tick whip across
+// the strip at running speed.) The window's left edge sits just behind the rearmost of {flare, runners}; its width is at
+// least 120 m so a small gap reads as small, and grows to fit a big one. Both ease, so a runner respawning or a new
+// player joining glides the scale instead of snapping it.
+const RACE_EASE_S = 0.5;   // seconds; the rest of the strip's constants live with raceView above resetRun
+function raceLayout(xs, flareX, now) {
+  let low = flareX, lead = flareX;
+  for (const x of xs) { if (x < low) low = x; if (x > lead) lead = x; }
+  const wantSpan = Math.max(RACE_MIN_SPAN, (lead - low) * 1.3);
+  const fresh = raceView.at < 0;
+  const dt = fresh ? 0 : Math.max(0, Math.min(0.25, now - raceView.at));
+  const k = fresh ? 1 : 1 - Math.exp(-dt / RACE_EASE_S);
+  // The frame rides rigidly on the rearmost runner (or the flare), so steady running moves nothing on the strip. Only a
+  // discontinuity (that rearmost runner died, left, or someone slower joined) is eased out, instead of snapping.
+  if (!fresh && Math.abs(low - raceView.lowPrev) <= 400 + 4000 * dt) raceView.anchor += low - raceView.lowPrev;
+  raceView.anchor += (low - raceView.anchor) * k;
+  raceView.span += (wantSpan - raceView.span) * k;
+  raceView.lowPrev = low; raceView.at = now;
+  return { left: raceView.anchor - raceView.span * RACE_PAD, span: raceView.span };
+}
+// A tick every 10/20/50/100/… m so there are never more than ~10 of them.
+function raceTickStep(span) {
+  for (const m of [10, 20, 50, 100, 200, 500, 1000, 2000, 5000]) if (span / (m * 10) <= 10) return m * 10;
+  return 50000;
+}
 function drawRaceStrip() {
   // Live placement ("2nd / 4") rides the strip's right end once ≥2 ran this round.
   const place = roundPlace(), tag = place ? ordinal(place) + ' / ' + roundResults.size : '', tagW = tag ? 60 : 0;
-  const us = uiScale(), x = 12, y = 12 + safeInset('top'), w = view.w - 24 - tagW, h = 26;
+  const x = 12, y = 12 + safeInset('top'), w = view.w - 24 - tagW, h = 26;
   const runners = raceRunners(); if (!runners.length) return;
-  let maxX = -Infinity; for (const r of runners) if (r.x > maxX) maxX = r.x;
-  const right = Math.max(maxX + 200, G.flare.x + 400);
-  const left = Math.min(right - 1000, G.flare.x - 100, ...runners.map((r) => r.x - 100));
-  const sx = (wx) => x + clamp((wx - left) / (right - left), 0, 1) * w;
+  const { left, span } = raceLayout(runners.map((r) => r.x), G.flare.x, performance.now() / 1000);
+  const sx = (wx) => x + clamp((wx - left) / span, 0, 1) * w;
   ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w + tagW, h, 6); ctx.fill();
   ctx.strokeStyle = 'rgba(56,225,255,0.18)'; ctx.lineWidth = 1; ctx.stroke();
+  // distance ticks: they scroll as the pack moves, so the strip has a sense of speed without anything zipping
+  const step = raceTickStep(span);
+  ctx.strokeStyle = 'rgba(207,227,255,0.16)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let t = Math.ceil(left / step) * step; t < left + span; t += step) { const tx = Math.round(sx(t)) + 0.5; ctx.moveTo(tx, y + h - 7); ctx.lineTo(tx, y + h - 2); }
+  ctx.stroke();
   // flare edge (danger) with a short trailing fade
   const fx = sx(G.flare.x);
   const grad = ctx.createLinearGradient(fx - 40, 0, fx, 0);
   grad.addColorStop(0, 'rgba(255,138,107,0)'); grad.addColorStop(1, 'rgba(255,138,107,0.35)');
-  ctx.fillStyle = grad; ctx.fillRect(fx - 40, y + 1, 40, h - 2);
+  ctx.fillStyle = grad; ctx.fillRect(Math.max(x + 1, fx - 40), y + 1, Math.min(40, fx - x - 1), h - 2);
   ctx.strokeStyle = '#FF8A6B'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(fx, y + 1); ctx.lineTo(fx, y + h - 1); ctx.stroke();
-  // runner dots
+  // runner dots: you are larger and ringed so you never have to hunt for yourself
   const showLabels = w > 260;
-  for (const r of runners) {
-    const dx = sx(r.x), dy = y + h / 2, pal = PALETTES[r.suit] || PALETTES.classic;
-    if (netSpectating() && r.p === spec.watchP) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(dx, dy, 6, 0, TAU); ctx.stroke(); }
-    ctx.fillStyle = pal.fill || pal.suit || '#F4F7FF'; ctx.beginPath(); ctx.arc(dx, dy, 4, 0, TAU); ctx.fill();
-    if (showLabels) { ctx.fillStyle = '#0A0E20'; ctx.font = '700 6px ' + FONT_NUM; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(r.p), dx, dy + 0.5); }
+  for (const r of runners.slice().sort((a, b) => (a.you ? 1 : 0) - (b.you ? 1 : 0))) {
+    const dx = sx(r.x), dy = y + h / 2, pal = PALETTES[r.suit] || PALETTES.classic, rad = r.you ? 7 : 6;
+    if (netSpectating() && r.p === spec.watchP) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(dx, dy, rad + 2.5, 0, TAU); ctx.stroke(); }
+    ctx.fillStyle = pal.fill || pal.suit || '#F4F7FF'; ctx.beginPath(); ctx.arc(dx, dy, rad, 0, TAU); ctx.fill();
+    if (r.you) { ctx.strokeStyle = '#F4F7FF'; ctx.lineWidth = 1.5; ctx.stroke(); }
+    if (showLabels) { ctx.fillStyle = '#0A0E20'; ctx.font = '800 8px ' + FONT_NUM; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(r.p), dx, dy + 0.5); }
   }
   if (tag) { ctx.fillStyle = place === 1 ? '#FFC93C' : '#F4F7FF'; ctx.font = '700 11px ' + FONT_NUM; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(tag, x + w + tagW - 8, y + h / 2 + 0.5); }
   ctx.textBaseline = 'alphabetic';
