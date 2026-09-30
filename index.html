@@ -2736,7 +2736,7 @@ function startRun(options) {
   clearInput();
   resetRun(seed, !!course || (solo && !stats.mercy), courseWorld(course));
   G.course = course; G.runSeed = seed; G.targetBeaten = false;
-  if (G.theme && !SHOT) queueToast('DAILY · ' + G.theme.title + ' — ' + G.theme.blurb, 'sys');
+  if (G.theme && !SHOT) queueToast('DAILY · ' + G.theme.title, 'sys');   // the rules are on the Daily card
   Audio.musicReset(seed);
   // Explicit Watch preserves spectator role across rounds. Join Run waits for
   // the host-confirmed player role before starting a local simulation.
@@ -3138,7 +3138,7 @@ function stepFoe(e, T, fire) {
   }
   const p = G.player, ev = FOES.step(e, G.sharedWorld ? T : e.age++, p.x + p.w / 2, p.y + p.h / 2);
   const play = G.mode === 'play' && fire, near = Math.abs(e.x - p.x) < FOE_NEAR;
-  if (play && near && !e.met && Math.abs(e.x - p.x) < 520) {   // first sighting on this profile: a one-line counter tip
+  if (play && !e.met && e.x - p.x < 300 && e.x - p.x > -60) {   // first sighting on this profile (on screen, just ahead): a one-line counter tip
     e.met = true;
     const bit = 1 << FOES.TYPES.indexOf(e.type);
     if (!SHOT && !((flags.foesMet | 0) & bit)) { flags.foesMet = (flags.foesMet | 0) | bit; queueToast(FOES.TIPS[e.type], 'sys'); }

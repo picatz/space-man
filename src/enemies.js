@@ -313,12 +313,13 @@
     ctx.fillStyle = blink(t) ? '#FF4F66' : '#FFC93C'; ctx.beginPath(); ctx.arc(x, y - 6, 1.8, 0, TAU); ctx.fill();
   }
   const NAMES = { diver: 'DIVER', shield: 'SHIELDER', brute: 'BRUTE', bomber: 'BOMBER', turret: 'SENTINEL' };
+  // First-sighting tips: short enough for the HUD's system toast (~28 chars).
   const TIPS = {
-    diver: 'DIVER — it flashes, then swoops the dotted path. Time your leap.',
-    shield: 'SHIELDER — shots bounce off the shield. Stomp it, or hit its back.',
-    brute: 'BRUTE — three shots or one stomp. Jump its shockwave.',
-    bomber: 'BOMBER — a red ring marks each bomb. Keep moving.',
-    turret: 'SENTINEL — it paints a laser, then fires. Change your pace.',
+    diver: 'DIVER \u00b7 TIME YOUR LEAP',
+    shield: 'SHIELDER \u00b7 STOMP IT OR FLANK IT',
+    brute: 'BRUTE \u00b7 JUMP THE SHOCKWAVE',
+    bomber: 'BOMBER \u00b7 MIND THE RED RING',
+    turret: 'SENTINEL \u00b7 CHANGE YOUR PACE',
   };
   window.SpaceManEnemies = { EV, TYPES, DIVER, BRUTE, BOMBER, TURRET, HP, NAMES, TIPS, laneTo, step, shotResult, waveHits, draw, drawFx, drawBomb };
 })();

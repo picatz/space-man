@@ -14,7 +14,8 @@ async function room(t) {
 // A comparable identity for an enemy that doesn't depend on how it has moved: its
 // lane + speed + spawn point (patrols in a chain train share a lane), or for a
 // shooter its fixed hover point. `rs` holds the spawn state once the round clock drives it.
-const snapshot = (c) => JSON.parse(c.run(`JSON.stringify(G.enemies.filter((e) => !e.dead).map((e) => e.type === 'patrol'
+// Gen-2 aliens (e.v2) move faster than a shooter's bob; tests/worldgen.test.cjs checks them with fitting tolerances.
+const snapshot = (c) => JSON.parse(c.run(`JSON.stringify(G.enemies.filter((e) => !e.dead && !e.v2).map((e) => e.type === 'patrol'
   ? { k: 'p:' + Math.round(e.minX) + ':' + Math.round(e.maxX) + ':' + e.speed.toFixed(3) + ':' + Math.round(e.rs ? e.rs.x0 : 0) + ':' + (e.rs ? e.rs.dir0 : 0), x: e.x, dir: e.dir }
   : { k: 's:' + Math.round(e.x) + ':' + Math.round(e.baseY), x: e.x, y: e.y, fireT: e.fireT, ivl: e.rs ? e.rs.ivl : 0 }))`));
 
