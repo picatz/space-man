@@ -727,6 +727,12 @@
   .crew-row.you { background: rgba(56,225,255,0.10); border-radius: 6px; }
   .crew-row.out { opacity: 0.6; }
   .crew-row.unverified { opacity: 0.45; }
+  /* The pause card stays a pause card: settings fold away until asked for. */
+  .pause-settings { margin: 10px 0 4px; }
+  .pause-settings > summary { list-style: none; cursor: pointer; text-align: center; padding: 11px 14px; min-height: 44px; box-sizing: border-box;
+    border: 1px solid rgba(207,227,255,0.18); border-radius: 12px; font-size: 12px; letter-spacing: 3px; font-weight: 700; color: var(--ui); text-transform: uppercase; }
+  .pause-settings > summary::-webkit-details-marker { display: none; }
+  .pause-settings[open] > summary { border-color: rgba(56,225,255,0.4); color: var(--cyan); margin-bottom: 6px; }
   .crew-win { font-size: 12px; letter-spacing: 1.5px; font-weight: 800; color: var(--gold); margin: 2px 0 6px; }
   .crew-row .nm .wins { color: var(--gold); font-weight: 800; }
   .crew-empty { font-size: 11px; opacity: 0.6; padding: 4px; }
@@ -806,7 +812,10 @@
       <div><b>LEFT STICK</b><span>MOVE</span></div><div><b>A / ✕</b><span>JUMP</span></div><div><b>X / □ / R2</b><span>FIRE</span></div>
     </div>
     <div class="crew" id="pauseCrew" style="display:none;"></div>
-    <div class="settings-list" data-settings-host></div>
+    <details class="pause-settings" id="pauseSettings">
+      <summary>Settings</summary>
+      <div class="settings-list" data-settings-host></div>
+    </details>
     <button class="btn ghost" id="btnPauseSpectate" style="display:none;">Spectate This Round</button>
     <button class="btn ghost" id="btnQuit">Quit to Title</button>
   </div>
@@ -2410,7 +2419,8 @@ function endPointer(e) {
 window.addEventListener('pointerup', endPointer);
 window.addEventListener('pointercancel', endPointer);
 // Held keys latch across focus loss (keyup is delivered elsewhere) — clear and pause.
-window.addEventListener('blur', () => { clearInput(); if (G.mode === 'play' && !(G.player && G.player.dead)) togglePause(); });
+// A spectator has no run to protect, so losing focus never throws a pause card over the view they are watching.
+window.addEventListener('blur', () => { clearInput(); if (G.mode === 'play' && !(G.player && G.player.dead) && !(netLive() && netSpectating())) togglePause(); });
 
 /* ---------------------------------------------------------------------------
    10. PARTICLE POOL (~160 cap, no allocation in the hot loop)
@@ -6054,7 +6064,7 @@ function togglePause() {
     clearInput();
     G.mode = 'pause'; syncSettingsUI(); showOverlay('ovPause');
     $('btnPauseSpectate').style.display = (netLive() && NET.info().role !== 1 && anyLiveRunner()) ? '' : 'none';
-    renderCrewEmbed($('pauseCrew'));
+    renderCrewEmbed($('pauseCrew')); $('pauseSettings').open = false;
     Audio.musicEvent('pause');
   } else if (G.mode === 'pause') {
     hideAllOverlays(); Audio.resume(); clearInput();
@@ -8149,7 +8159,7 @@ $('ovAttract').addEventListener('pointerdown', (e) => {
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); }
+    if ((G.mode === 'play' || G.mode === 'resume') && !(netLive() && netSpectating())) { G.mode = 'play'; togglePause(); }
     Audio.suspend();   // kills the background drone on Android after an app switch
     if (!SHOT) { power.looping = !!rafId; stopLoop(); }
   } else {
