@@ -5115,7 +5115,7 @@ function drawHUD() {
   const touch = FORCE_TOUCH || input.usingTouch;
   // In a room the emote button owns the top-right corner; the right-hand column (ammo, shards) starts under it.
   let rTop = top;
-  if (emoteAvailable()) { const eb = emoteLayout().button; rTop = Math.max(top, eb.y + eb.h + 6); }
+  if (emoteAvailable()) { const L = emoteLayout(), eb = emTray.open ? L.tray : L.button; rTop = Math.max(top, eb.y + eb.h + 6); }   // under the tray while it is open
   if (!touch) {
     const rx = view.w - left, pw2 = 6 * us, sp = 9 * us;
     for (let i = 0; i < CFG.ammoCap; i++) {
@@ -6745,10 +6745,10 @@ function drawNetHUD() {
   if (!netInRun()) return;
   if (netSpectating()) drawSpectatorHUD(); else { _specHits = null; }
   drawRoundStatus();
-  if (!netSpectating()) drawCrewDirections();
-  // The banner goes first: it publishes the LEAVE hit area the emote tray lays itself out around, so the tray is never drawn
-  // (or hit) against last frame's banner.
+  // The banner goes first: it publishes the LEAVE hit area the emote tray (and the teammate cue that steps around the tray)
+  // lay themselves out around, so nothing is drawn or hit against last frame's banner.
   if (netLive() && NET.info().unstable) drawUnstableBanner(); else _unstableHit = null;
+  if (!netSpectating()) drawCrewDirections();
   if (emoteAvailable()) drawEmoteUI(); else emTray.open = false;
 }
 function raceRunners() {

@@ -193,6 +193,15 @@ test('the emote button never covers the ammo and shard readouts, or the off-scre
   const bottom = L.button.y + L.button.h;
   assert.ok(below('AMMO') > bottom, 'AMMO sits under the button');
   assert.ok(below('✦') > bottom, 'the shard count sits under the button');
+  // ...and with the tray open they sit under the tray instead
+  down(guest, ...centre(guest, L.button), 1);
+  guest.run('input.usingTouch = false');                                         // the tap put the HUD in touch mode; keep the ammo readout on
+  ys.length = 0; guest.run('drawHUD()');
+  const trayBottom = guest.run('emoteLayout().tray.y + emoteLayout().tray.h');
+  assert.ok(below('AMMO') > trayBottom, 'AMMO sits under the open tray');
+  assert.ok(below('✦') > trayBottom, 'the shard count sits under the open tray');
+  down(guest, ...centre(guest, L.button), 3);                                    // close it again
+  assert.equal(guest.run('emTray.open'), false);
   delete ctx.fillText;
   // A teammate ahead, off screen to the right: the cue steps below the button, and below the tray while it is open.
   guest.run('G.camX = 0; ghosts.length = 0; ghosts.push({ active: true, alpha: 1, p: 2, callsign: "COMET FOX", rx: 99999, ry: 100, role: 0 }); globalThis.watchable = () => true');
@@ -200,4 +209,18 @@ test('the emote button never covers the ammo and shard readouts, or the off-scre
   assert.ok(cue() > bottom, 'the cue clears the button');
   down(guest, ...centre(guest, L.button), 1);
   assert.ok(cue() > guest.run('emoteLayout().tray.y + emoteLayout().tray.h'), 'and the open tray');
+});
+
+test('a room turning unstable with the tray open moves the teammate cue below the new tray on that same frame', async (t) => {
+  const { guest } = await playing(t, { width: 667, height: 375 });
+  guest.run('resize(); G.mode = "play"; G.camX = 0; ghosts.length = 0; ghosts.push({ active: true, alpha: 1, p: 2, callsign: "COMET FOX", rx: 99999, ry: 100, role: 0 }); globalThis.watchable = () => true');
+  down(guest, ...centre(guest, guest.run('emoteLayout()').button), 1);
+  const ctx = guest.run('ctx'), seen = [];
+  ctx.fillText = (txt, x, y) => { if (/COMET/.test(String(txt))) seen.push(y); };
+  guest.net._n1.session().unstable = true;
+  guest.run('drawNetHUD()');
+  delete ctx.fillText;
+  const L = guest.run('emoteLayout()');
+  assert.ok(seen.length, 'the cue was drawn');
+  assert.ok(seen[0] > L.tray.y + L.tray.h, 'below the tray as laid out around the new banner: ' + seen[0] + ' vs ' + (L.tray.y + L.tray.h));
 });
