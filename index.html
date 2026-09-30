@@ -6914,8 +6914,8 @@ function emoteAvailable() { return netInRun() && settings.netEmotes && !netSpect
 function emoteLayout() {
   const k = window.innerWidth / view.w;
   const btn = EMOTE_BTN / k, gap = EMOTE_GAP / k, pad = 6 / k;
-  const right = view.w - 12 - safeInset('right'), top = 12 + safeInset('top') + 26 + 8;
-  const room = view.w - 24 - safeInset('right') - safeInset('left');
+  const right = view.w - 12 - safeInset('right') / k, top = 12 + safeInset('top') + 26 + 8;   // top matches the race strip; side insets are CSS px
+  const room = view.w - 24 - (safeInset('right') + safeInset('left')) / k;
   const item = Math.max(36 / k, Math.min(EMOTE_ITEM / k, (room - 2 * pad - 5 * gap) / 6));
   const trayW = 6 * item + 5 * gap + 2 * pad, trayH = item + 2 * pad;
   const button = { x: right - btn, y: top, w: btn, h: btn };
