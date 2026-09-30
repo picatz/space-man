@@ -891,6 +891,7 @@
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
 <script src="src/course.js"></script>
+<script src="src/powerups.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
      #j= invite is accepted (net-spec §4.1 lazy gate). -->
@@ -1121,6 +1122,7 @@ function persistAll() {
 // sm2.daily = { day, best, bestDist, runs } for the current UTC day only — a new
 // day quietly starts fresh (no streaks, nothing to lose by skipping one).
 const COURSE = window.SpaceManCourse;
+const POW = window.SpaceManPowerups;   // power-ups, verbs + joy moments (src/powerups.js)
 function loadDaily() {
   const today = COURSE.dayKey(Date.now()), d = loadJSON(LS.daily, null);
   if (!d || typeof d !== 'object' || d.day !== today) return { day: today, best: 0, bestDist: 0, runs: 0 };
@@ -1849,6 +1851,8 @@ const Audio = (() => {
     // A hidden tab's drone is a trust breach on mobile — mirror of resume() above.
     suspend() { if (ac && ac.state === 'running') { try { ac.suspend(); } catch (e) {} } },
     sfx: SFX, tickMusic, musicReset, musicEvent, chordTones, killSting,
+    // Raw voices for src/powerups.js (same sfx bus, same mute/volume gating).
+    synth: { tone, noise, bell, degF, chordTones, get ctx() { return ac; }, get out() { return sfxGain; }, get noiseBuf() { return noiseBuf; } },
     degFreq(deg, oct) { return degF(deg, oct); },
     syncChannels() {
       if (sfxGain) sfxGain.gain.setTargetAtTime(sfxLvl(), now(), .025);
@@ -2803,6 +2807,7 @@ function updatePlayer() {
   p.vy += grav;
   if (p.vy > CFG.maxFall) p.vy = CFG.maxFall;
   if (p.vy >= 0) p.jumping = false;
+  POW.jet(p);   // jetpack thrust (no-op without one)
 
   p.x += p.vx;
   const prevFeet = p.py + p.h;
@@ -3017,6 +3022,7 @@ function updateHints() {
 
 function tryShoot() {
   const p = G.player;
+  if (POW.fire()) return;   // a lit saber owns FIRE
   if (G.cooldown > 0) return;
   if (G.ammo <= 0) { Audio.sfx.shoot(true); return; }
   G.ammo--; G.cooldown = CFG.pBulletCooldown;
@@ -3164,7 +3170,7 @@ function updateBullets() {
     const b = G.ebullets[i]; b.px = b.x; b.py = b.y; b.x += b.vx; b.y += b.vy; b.life--;
     if (b.life <= 0 || Math.abs(b.x - p.x) > 1400) { G.ebullets.splice(i, 1); continue; }
     const dx = b.x - (p.x + p.w / 2), dy = b.y - (p.y + p.h / 2), dist = Math.hypot(dx, dy);
-    if (!p.dead && dist < 9) { die('bullet'); return; }
+    if (!p.dead && dist < 9) { if (POW.guard(null)) { G.ebullets.splice(i, 1); continue; } die('bullet'); return; }
     if (!b.grazed && dist < 16) {
       b.grazed = true; G.score += CFG.scoreGraze; popup(b.x, b.y, '+5 CLOSE', '#FFE59A');
       missionProgress('graze', 1);
@@ -3189,7 +3195,7 @@ function killEnemy(e, method, interrupted) {
   const mult = 1 << G.chain;
   const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult;
   G.score += pts;
-  missionProgress(method, 1);
+  missionProgress(method === 'slash' ? 'shoot' : method, 1);
   if (e.golden) {
     G.score += 100; G.ammo = CFG.ammoCap; G.ammoPulse = 1;
     popup(e.x, e.y - 30, 'LUCKY ALIEN +100', '#FFE59A');
@@ -3203,6 +3209,7 @@ function killEnemy(e, method, interrupted) {
   if (method === 'stomp' && rng() < CFG.killDropChance)
     G.pickups.push({ type: 'ammo', x: e.x, y: e.y, vy: -2, amt: CFG.killDropAmt, parachute: false, bob: 0, grabbed: false });
   if (method === 'stomp') { Audio.sfx.stomp(G.chain); G.freeze = 0.09; G.trauma = Math.min(1, G.trauma + 0.25); G.kickX = 0; G.kickY = -5; G.kickAt = G.time; buzz('heavy'); flags.taughtStomp = true; }   // kick down — you drove through it
+  else if (method === 'slash') POW.slashKill(e);
   else { Audio.sfx.stomp(Math.min(G.chain, 1)); G.freeze = 0.05; G.trauma = Math.min(1, G.trauma + 0.1); buzz('light'); }
 }
 
@@ -3233,7 +3240,7 @@ function collisions() {
       // The bounce moved the player; iterating on with stale feet would read a
       // second overlapping enemy as side contact and kill the player unfairly.
       break;
-    } else { die('contact'); return; }
+    } else { if (POW.guard(e)) break; die('contact'); return; }
   }
   if (p.y > G.groundY + 340) { die('void'); return; }   // fixed threshold → view-independent
   if (p.x <= G.flare.x + 6) { die('flare'); return; }
@@ -3656,9 +3663,11 @@ function update() {
       if (G.frameCount % (c.loopT > 0 ? 2 : 5) === 0) spawnP(c.x, c.y, -p.facing * .4, .2, 18, 1.6, 'rgba(159,241,255,.7)', 0, false, 0);
     }
     updateEnemies();
+    POW.combat();     // saber arc + reflected shots: aliens moved, shots not yet
     updateBullets();
     updatePickups();
     collisions();
+    POW.update();     // power-up pickups, timers, fuel, joy moments
     // Camera is parked while dead — sync prev so interpolation can't shimmer
     // against a stale frame (magnified by deathZoom).
     if (G.player.dead) { G.camXprev = G.camX; G.camYprev = G.camY; finishTick(); return; }
@@ -3932,6 +3941,7 @@ function render(alpha) {
   ctx.fillRect(iCamX - 40, G.groundY + 60, view.w + 80, 600);
   drawPlatforms(iCamX);
   drawPickups(iCamX);
+  POW.drawWorld(iCamX);
   drawPBFlag();
   drawEnemies(iCamX, alpha);
   drawBullets(iCamX, alpha);
@@ -3939,6 +3949,7 @@ function render(alpha) {
   vigPose = arrivalPose();          // E13: this frame's pose morph + prop anchors
   drawArrivalBack();
   drawGhosts(alpha, iCamX);          // under-player layer (Run Together); no-op solo
+  POW.drawBack(alpha);               // jetpack + flame behind the suit
   if (G.player && !netSpectating()) {
     // D6: in a live room, a default-suit local player also gets their per-slot
     // tint so they're distinct from other defaults. Swap only for the draw and
@@ -3947,6 +3958,7 @@ function render(alpha) {
     if (eff && eff !== G.cosmetics.suit) { const s0 = G.cosmetics.suit; G.cosmetics.suit = eff; drawPlayer(alpha); G.cosmetics.suit = s0; }
     else drawPlayer(alpha);
   }
+  POW.drawFront(alpha);              // saber, shield bubble, magnet tethers
   drawArrivalFront();
   drawParticles(alpha);
   drawHints(iCamX, iCamY);
@@ -4672,6 +4684,7 @@ function armCapsule(sx, sy, ang, len, bend) {   // ang: radians from hanging-dow
   return [hx, hy];
 }
 function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
+  if (POW.hidesPistol()) return;   // the saber takes the glove
   ctx.fillStyle = P.visBot;
   rrPath(ctx, -2, -3.6, 7, 3.4, 1.4); ctx.fill();     // rounded body
   ctx.fillRect(-1.4, -0.8, 2.2, 2.2);                  // grip drops into the glove
@@ -5082,6 +5095,7 @@ function drawHUD() {
     ctx.fillStyle = '#9FF1FF'; ctx.font = fontStr(700, 9 * us, FONT); ctx.textAlign = 'right';
     ctx.fillText('✦ ' + G.shards, view.w - left, top + 42 * us);
   }
+  POW.drawHUD(us, top, left);   // power-up gauges + headline slot
 }
 function drawMuteButton(x, y, s, us) {
   const muted = settings.muted;
@@ -5175,6 +5189,7 @@ function drawTouchControls() {
   ctx.save();
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
   const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r;
+  if (!POW.drawFireButton(sx, sy, r)) {   // a lit saber repaints FIRE as SABER
   ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU);
   ctx.fillStyle = input.shootBtn.pressed ? 'rgba(255,201,60,0.35)' : 'rgba(255,201,60,0.16)'; ctx.fill();
   ctx.strokeStyle = 'rgba(255,201,60,0.7)'; ctx.lineWidth = 2; ctx.stroke();
@@ -5186,6 +5201,7 @@ function drawTouchControls() {
   }
   ctx.fillStyle = G.ammo > 0 ? 'rgba(255,201,60,0.9)' : 'rgba(255,255,255,0.3)';
   ctx.font = '900 13px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('FIRE', sx, sy + 5);
+  }
   {
     const cssW = window.innerWidth, cssH = window.innerHeight;
     const gx = input.stick.active ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
@@ -5206,6 +5222,7 @@ function drawTouchControls() {
     ctx.globalAlpha = input.jumpZone.active ? .82 : .32; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(jx, jy, 25, 0, TAU); ctx.stroke();
     ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1.6; drawChevron(jx, jy + 2, 0);
+    POW.drawJumpRing(jx, jy);   // jetpack fuel, under the thumb that spends it
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -5371,7 +5388,7 @@ function renderDeathCard() {
   if (fs > G.prevBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${(fs - G.prevBest).toLocaleString()}</span>`;
   else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
   const missionMark = G.mission && G.mission.done ? ' · MISSION ✓' : '';
-  $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
+  $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}${POW.deathStats()}`;
   const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
   if (target) { dt.textContent = target; dt.style.display = 'block'; } else dt.style.display = 'none';
   const dc = $('deadCourse'), courseText = deathCourseLine(fs);
