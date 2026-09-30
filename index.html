@@ -2047,6 +2047,7 @@ function pollGamepad() {
   if (jump && !input.pad.prev[0]) { input.jumpPressed = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   if (jump || input.pad.prev[0]) input.jumpHeld = jump;
   input.down = pressed(13) || (gp.axes[1] || 0) > 0.5;   // dpad-down / left-stick-down → let go of a ledge
+  input.firePad = !!padState.fire && (pressed(2) || pressed(5) || pressed(7));
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   const menuTook = pollMenuNav(gp, just);
   if (padState.pause && just(9)) {
@@ -2090,6 +2091,7 @@ function onKey(e, down) {
   const act = keyAction(k);
   if (act === 'left' || act === 'right' || act === 'down') input[act] = down;
   if (act === 'jump') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
+  if (act === 'fire') input.fireKey = down;
   if (act === 'fire' && down) { input.shoot = true; flags.taughtShoot = true; }
   if (down) {
     input.usingKeys = true; input.usingTouch = false;
@@ -2146,7 +2148,7 @@ canvas.addEventListener('pointerdown', (e) => {
     input.usingTouch = false;
     if (G.mode === 'play') {
       if (inMuteHit(pointerPos(e))) { input.muteHold = { id: e.pointerId, t: performance.now(), fired: false }; return; }
-      input.shoot = true; flags.taughtShoot = true;
+      input.shoot = true; input.fireMouse = true; flags.taughtShoot = true;
     }
     return;
   }
@@ -2184,6 +2186,7 @@ canvas.addEventListener('pointermove', (e) => {
 }, { passive: false });
 function endPointer(e) {
   input.downIds.delete(e.pointerId);
+  if (e.pointerType === 'mouse') input.fireMouse = false;
   if (e.pointerId === emWheel.armId) {   // resolve/cancel the emote wheel
     if (emWheel.open) { if (emWheel.sel >= 0) sendEmote(emWheel.sel); emWheel.open = false; }
     emWheel.armed = false; emWheel.armId = -1; emWheel.sel = -1;
@@ -2794,6 +2797,7 @@ function tryRestart() {
 }
 function clearInput() {
   input.left = input.right = input.down = input.jumpHeld = input.jumpPressed = input.shoot = false;
+  input.fireKey = input.fireMouse = input.firePad = false;
   input.stickX = 0;
   input.stick.active = false; input.stick.id = -1;
   input.jumpZone.active = false; input.jumpZone.id = -1;
@@ -3223,7 +3227,7 @@ function updateBullets() {
     if (!b.grazed && dist < 16) {
       b.grazed = true; G.score += CFG.scoreGraze; popup(b.x, b.y, '+5 CLOSE', '#FFE59A');
       missionProgress('graze', 1);
-      if (G.mode === 'play') { G.timescale = 0.35; G.slowTimer = 0.18; }   // readable skill beat, still <0.2s
+      if (G.mode === 'play' && !lessMotion() && !G.sharedWorld) { G.timescale = 0.35; G.slowTimer = 0.18; }   // readable skill beat, still <0.2s; never in a room (one screen's clock can't wait) or with Reduce Motion
       spawnP(b.x, b.y, 0, 0, 20, 3, 'rgba(232,244,255,0.8)', 0, false, 3);
       Audio.sfx.closeCall(clamp(dx / 120, -1, 1)); buzz('select');
     }

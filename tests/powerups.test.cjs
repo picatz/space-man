@@ -375,3 +375,73 @@ test('every power-up draws without error in world, HUD and touch layers', (t) =>
   assert.doesNotMatch(r, /^ERR/, r);
   assert.match(r, /POWER-UPS 4/, 'the run-over card counts them');
 });
+
+// ---- review round: consistent reach, strict front arc, held fire on every input, guarded graze slow-mo ----------
+test('saber: nothing even a hair behind the chest is cut, but straight overhead still is', (t) => {
+  const c = solo(t);
+  const r = json(c, `${STAGE} ${MK}
+    POW.grant('saber', true);
+    G.enemies = [mk(-5, 0), mk(-1, 0), mk(0, -40), mk(5, 0)];
+    tryShoot(); for (let i = 0; i < 20; i++) POW.combat();
+    return G.enemies.map((e) => e.dead);`);
+  assert.deepEqual(r, [false, false, true, true], 'behind (-5, -1) lives; overhead (0) and just ahead (+5) are cut');
+});
+
+test('magnet: capsules are drawn in from the same 190 px as shards and ammo', (t) => {
+  const c = solo(t);
+  const r = json(c, `${STAGE}
+    POW.grant('magnet', true);
+    const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+    S.items = [{ type: 'jet', x: cx + 180, y: cy, bob: 0, taken: false, t: 0 }, { type: 'jet', x: cx + 200, y: cy, bob: 0, taken: false, t: 0 }];
+    const before = S.items.map((i) => i.x); POW.update();
+    return { moved: S.items.map((i, k) => before[k] - i.x), reach: T.magnet.reach, pull: T.magnet.pull };`);
+  assert.equal(r.reach, 190);
+  assert.ok(r.moved[0] > 20, 'a capsule 180 px away is pulled (' + r.moved[0] + ')');
+  assert.equal(r.moved[1], 0, 'one 200 px away is not');
+});
+
+test('saber: holding FIRE keeps swinging on a keyboard key, the mouse button and a controller, until let go', (t) => {
+  const c = solo(t);
+  const r = json(c, `${STAGE}
+    POW.grant('saber', true);
+    const swingsIn = (frames) => { let n = 0, dir = S.swingDir; for (let i = 0; i < frames; i++) { POW.combat(); if (S.swingDir !== dir) { n++; dir = S.swingDir; } } return n; };
+    const out = {};
+    for (const src of ['fireKey', 'fireMouse', 'firePad']) {
+      S.swingT = -1; input[src] = true;
+      out[src] = swingsIn(90);                       // 1.5 s held
+      input[src] = false; S.swingT = -1;
+      out[src + 'Released'] = swingsIn(60);
+    }
+    return out;`);
+  for (const src of ['fireKey', 'fireMouse', 'firePad']) {
+    assert.ok(r[src] >= 3, `${src}: held through re-arm swings repeatedly (${r[src]})`);
+    assert.equal(r[src + 'Released'], 0, `${src}: and stops when let go`);
+  }
+});
+
+test('held FIRE state follows the real inputs: key up/down, mouse, and the controller', (t) => {
+  const c = solo(t);
+  const r = json(c, `${STAGE}
+    const out = {};
+    onKey({ key: 'f', target: {}, preventDefault() {} }, true); out.keyDown = input.fireKey;
+    onKey({ key: 'f', target: {}, preventDefault() {} }, false); out.keyUp = input.fireKey;
+    const pad = { index: 0, connected: true, mapping: 'standard', axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+    navigator.getGamepads = () => [pad]; pollGamepad();
+    pad.buttons[7].pressed = true; pollGamepad(); out.padDown = input.firePad;
+    pad.buttons[7].pressed = false; pollGamepad(); out.padUp = input.firePad;
+    input.fireKey = input.fireMouse = input.firePad = true; clearInput(); out.cleared = [input.fireKey, input.fireMouse, input.firePad];
+    return out;`);
+  assert.deepEqual(r, { keyDown: true, keyUp: false, padDown: true, padUp: false, cleared: [false, false, false] });
+});
+
+test('a real graze slows time in solo play, but never in a room or with Reduce Motion', (t) => {
+  const c = solo(t);
+  const graze = (setup) => json(c, `${STAGE} ${setup}
+    G.timescale = 1; G.slowTimer = 0;
+    G.ebullets = [{ x: p.x + p.w / 2 + 12, y: p.y + p.h / 2, px: 0, py: 0, vx: 0, vy: 0, life: 50, grazed: false }];
+    updateBullets();
+    return { scale: G.timescale, grazed: G.ebullets.length ? G.ebullets[0].grazed : 'gone', dead: G.player.dead };`);
+  assert.equal(graze('settings.reduceMotion = false; G.sharedWorld = false;').scale, 0.35, 'solo: the skill beat');
+  assert.equal(graze('settings.reduceMotion = true; G.sharedWorld = false;').scale, 1, 'Reduce Motion: no slow-mo');
+  assert.equal(graze('settings.reduceMotion = false; G.sharedWorld = true;').scale, 1, 'a room: one screen\'s clock can\'t wait');
+});

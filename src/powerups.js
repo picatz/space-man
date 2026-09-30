@@ -203,8 +203,8 @@
       it.bob += 0.07;
       if (it.taken) { it.t++; continue; }
       if (S.magnet > 0) {
-        const dx = cx - it.x, dy = cy - it.y;
-        if (dx * dx + dy * dy < 140 * 140) { it.x += dx * 0.12; it.y += dy * 0.12; }
+        const dx = cx - it.x, dy = cy - it.y, M = TUNE.magnet;   // the same reach and pull as shards and ammo
+        if (dx * dx + dy * dy < M.reach * M.reach) { it.x += dx * M.pull; it.y += dy * M.pull; }
       }
       const dx = it.x - cx, dy = it.y - cy;
       if (dx * dx + dy * dy < R * R) { it.taken = true; it.t = 0; grant(it.type); }
@@ -256,18 +256,22 @@
     flame(p);
     if (S.fuel <= 0) { sfx.sputter(); S.sputter = 40; stopJetSound(); smoke(p); }
   }
-  function nozzle(p) { return [p.x + p.w / 2 - p.facing * 12.5, p.y + p.h / 2 + 12]; }
+  // Scalars, not an array: this runs every thrust frame on phones.
+  function nozzleX(p) { return p.x + p.w / 2 - p.facing * 12.5; }
+  function nozzleY(p) { return p.y + p.h / 2 + 12; }
   function flame(p) {
-    const n = nozzle(p);
-    spawnP(n[0] + (fxr() - 0.5) * 3, n[1], p.vx * 0.2 + (fxr() - 0.5) * 0.8, 2.4 + fxr() * 1.6, 12 + fxr() * 6, 2.6, fxr() < 0.5 ? 'rgba(255,201,60,.95)' : 'rgba(255,120,60,.9)', 0.02, false, 0);
-    if (S.thrustF % 3 === 0) spawnP(n[0], n[1] + 6, (fxr() - 0.5) * 0.6, 1.2 + fxr(), 26, 3.2, 'rgba(200,210,235,.35)', -0.01, false, 0);
+    const nx = nozzleX(p), ny = nozzleY(p);
+    spawnP(nx + (fxr() - 0.5) * 3, ny, p.vx * 0.2 + (fxr() - 0.5) * 0.8, 2.4 + fxr() * 1.6, 12 + fxr() * 6, 2.6, fxr() < 0.5 ? 'rgba(255,201,60,.95)' : 'rgba(255,120,60,.9)', 0.02, false, 0);
+    if (S.thrustF % 3 === 0) spawnP(nx, ny + 6, (fxr() - 0.5) * 0.6, 1.2 + fxr(), 26, 3.2, 'rgba(200,210,235,.35)', -0.01, false, 0);
   }
   function smoke(p) {
-    const n = nozzle(p);
-    for (let i = 0; i < 4; i++) spawnP(n[0], n[1], (fxr() - 0.5) * 1.2, 0.5 + fxr(), 26, 3, 'rgba(160,170,190,.5)', -0.01, false, 0);
+    const nx = nozzleX(p), ny = nozzleY(p);
+    for (let i = 0; i < 4; i++) spawnP(nx, ny, (fxr() - 0.5) * 1.2, 0.5 + fxr(), 26, 3, 'rgba(160,170,190,.5)', -0.01, false, 0);
   }
 
   /* ---- LIGHTSABER ---- */
+  // Is any FIRE input held right now? key, mouse button, controller trigger/button, or the touch button.
+  function fireHeld() { return !!(input.fireKey || input.fireMouse || input.firePad || input.shootBtn.pressed); }
   // tryShoot() asks first: true means the saber owns FIRE right now.
   function fire() {
     if (S.saber <= 0 || S.player !== G.player) return false;
@@ -284,6 +288,7 @@
   function combat() {
     const p = G.player;
     if (S.player !== p) return;
+    if (S.saber > 0 && !p.dead && fireHeld()) fire();   // holding FIRE on any device keeps swinging (fire() ignores it mid-swing)
     if (!p.dead && S.saber > 0 && S.swingT >= 0) {
       const A = TUNE.saber, f = S.swingT, cx = p.x + p.w / 2, cy = p.y + p.h / 2 - 2;
       if (f <= A.active) {
@@ -303,10 +308,10 @@
     updateRefl();
     for (const c of S.cuts) if (c.t > 0) c.t--;
   }
-  // Front half-disc around the chest (a hair behind counts: the arc starts overhead).
+  // Front half-disc around the chest: straight overhead (dx = 0) is in, anything even a hair behind is out.
   function inArc(cx, cy, facing, x, y, r) {
     const dx = x - cx, dy = y - cy;
-    return dx * facing >= -10 && dx * dx + dy * dy <= r * r;
+    return dx * facing >= 0 && dx * dx + dy * dy <= r * r;
   }
   function slash(e, p) {
     const interrupted = e.type === 'shoot' && e.telegraph > 0;
