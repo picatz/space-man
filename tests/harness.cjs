@@ -18,7 +18,7 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
     const classes = new Set();
     return { style: { setProperty() {} }, dataset: {}, children: [], width: 1280, height: 720,
       classList: { add: (...v) => v.forEach((x) => classes.add(x)), remove: (...v) => v.forEach((x) => classes.delete(x)), contains: (v) => classes.has(v), toggle(v, on) { if (on ?? !classes.has(v)) classes.add(v); else classes.delete(v); } },
-      getContext: () => drawing, addEventListener() {}, setAttribute() {}, removeAttribute() {},
+      getContext: () => drawing, addEventListener(type, fn) { (this.listeners || (this.listeners = {}))[type] = fn; }, setAttribute() {}, removeAttribute() {},
       appendChild(e) { this.children.push(e); return e; }, querySelectorAll() { return []; }, querySelector() { return null; },
       getBoundingClientRect: () => ({ top: 0, left: 0, width, height }), getClientRects: () => [{ top: 0, left: 0, width, height }], closest() { return null; }, toDataURL() { return ''; }, focus() {}, click() { if (this.onclick) this.onclick({}); } };
   }
@@ -42,7 +42,7 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
   sandbox.window = sandbox;
   const context = vm.createContext(sandbox);
   const run = (code) => vm.runInContext(code, context);
-  for (const name of ['contracts', 'save-schema', 'input-snapshot', 'course', 'callsigns', 'relay-directory', 'qr', 'net']) run(fs.readFileSync(path.join(ROOT, 'src', name + '.js'), 'utf8'));
+  for (const name of ['contracts', 'save-schema', 'input-snapshot', 'course', 'powerups', 'callsigns', 'relay-directory', 'qr', 'net']) run(fs.readFileSync(path.join(ROOT, 'src', name + '.js'), 'utf8'));
   if (game) {
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     run(html.match(/<script>\s*([\s\S]*?)<\/script>/)[1]);
