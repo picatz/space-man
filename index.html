@@ -2527,7 +2527,13 @@ function seedRng(seed) { rng = (seed === null || seed === undefined) ? Math.rand
 // replayable: a solo course that must be reproducible from its seed alone (Daily
 // Course, challenge links, and any shareable normal run) — so, like a live room,
 // worldgen draws from its own stream and gameplay randomness can't fork it.
+// Race strip frame (see raceLayout). World px (10 px = 1 m); PAD is a fraction of the span. Lives up here so resetRun and
+// leaveRoom can put it back to 'not drawn yet' — a new run's coordinates must never ease in from the last one's.
+const RACE_MIN_SPAN = 1200, RACE_PAD = 0.06;
+const raceView = { anchor: 0, span: RACE_MIN_SPAN, lowPrev: 0, at: -1 };
+function raceReset() { raceView.at = -1; raceView.span = RACE_MIN_SPAN; }
 function resetRun(seed, replayable) {
+  raceReset();
   seedRng(seed);
   // A real room (not the #shot mock) shares the course AND its clock: aliens move on the round clock.
   G.sharedWorld = netLive() && !NET.mockActive;
@@ -6163,6 +6169,7 @@ async function submitJoin() {
   }
 }
 function leaveRoom() {
+  raceReset();
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
   pendingJoins.clear();                                     // held joins belong to the room we just left
@@ -6691,12 +6698,21 @@ function drawGhostActor(g) {
   ctx.save(); ctx.globalAlpha *= clamp(g.alpha, 0, 1);
   const b = ghostBadge(g);
   // Plates and emotes of runners far above you stop at the race strip instead of sliding under it.
-  const floorY = G.camY + 12 + safeInset('top') + 26 + 6;
+  const floorY = raceFloorWorldY(g.rx);
   const under = g.ry < floorY + CFG.ph / 2;   // the runner itself is up behind the strip: no plate floating over nothing
   if (!under) ctx.drawImage(b.canvas, g.rx - b.w / 2, Math.max(g.ry - CFG.ph / 2 - 22, floorY), b.w, b.h);
   if (spec.watchP === g.p && netSpectating()) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(g.rx, g.ry, CFG.ph / 2 + 6, 0, TAU); ctx.stroke(); }
   ctx.restore();
   if (g.emoteT > 0 && !under) drawEmoteBubble(g.rx, Math.max(g.ry - CFG.ph / 2 - 34, floorY + b.h + 12), g.emoteId, g.emoteT);
+}
+// World y that lands just under the race strip on screen, at world x, through whatever transform is live (interpolated
+// camera, punch/death zoom, shake, rotation), so plates can never end up beneath the strip. -Infinity when the strip isn't up.
+function raceFloorWorldY(wx) {
+  const stripBottom = 12 + safeInset('top') + 26 + 6;                          // view px
+  const m = ctx.getTransform && ctx.getTransform();
+  if (!m || !m.d) return G.camY + stripBottom;                                  // no matrix available: plain camera offset
+  const target = stripBottom * (canvas.height / view.h);                        // device px
+  return (target - m.f - m.b * wx) / m.d;
 }
 // Pre-rendered P#/callsign plate (§4.2): built once per identity change, no
 // per-frame measureText/fillText on the hot path.
@@ -6752,8 +6768,7 @@ function raceRunners() {
 // the strip at running speed.) The window's left edge sits just behind the rearmost of {flare, runners}; its width is at
 // least 120 m so a small gap reads as small, and grows to fit a big one. Both ease, so a runner respawning or a new
 // player joining glides the scale instead of snapping it.
-const RACE_MIN_SPAN = 1200, RACE_PAD = 0.06, RACE_EASE_S = 0.5;   // world px (10 px = 1 m), fraction of span, seconds
-const raceView = { anchor: 0, span: RACE_MIN_SPAN, lowPrev: 0, at: -1 };
+const RACE_EASE_S = 0.5;   // seconds; the rest of the strip's constants live with raceView above resetRun
 function raceLayout(xs, flareX, now) {
   let low = flareX, lead = flareX;
   for (const x of xs) { if (x < low) low = x; if (x > lead) lead = x; }

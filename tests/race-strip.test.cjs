@@ -76,3 +76,35 @@ test('tick spacing keeps the strip readable at every scale', (t) => {
     assert.ok(span / step <= 10);
   }
 });
+
+test('a new run or leaving the room starts the strip fresh, so it never eases in from the last run\'s coordinates', (t) => {
+  const c = game(t);
+  c.run('raceLayout([90000], 88000, 1); raceLayout([90000], 88000, 2)');
+  assert.notEqual(c.run('raceView.at'), -1);
+  c.run('resetRun(7, true)');
+  assert.equal(c.run('raceView.at'), -1, 'a restart resets it');
+  const l = c.run('raceLayout([5000], 4670, 3)');
+  assert.ok(Math.abs(l.left - (4670 - 1200 * 0.06)) < 1e-6, 'and the first frame of the new run is already fitted, not 88000 px away');
+  c.run('leaveRoom()');
+  assert.equal(c.run('raceView.at'), -1, 'leaving the room resets it too');
+});
+
+test('nameplates are kept clear of the strip through the live transform, including zoom, shake and offset', (t) => {
+  const c = game(t);
+  const ctx = c.run('ctx');
+  const matrix = (a, d, e, f) => ({ a, b: 0, c: 0, d, e, f });
+  c.run('view.h = 400; canvas.height = 800');                       // 2 device px per view px
+  const stripBottom = 12 + 26 + 6;                                  // no notch in the harness
+  const at = (m) => { ctx.getTransform = () => m; return c.run('raceFloorWorldY(300)'); };
+  const screenY = (m, wy) => m.d * wy + m.f;
+  for (const m of [matrix(2, 2, 0, 0), matrix(2.5, 2.5, -40, -300), matrix(2, 2, 0, 24), matrix(1.6, 1.6, 0, -90)]) {
+    const wy = at(m);
+    assert.ok(Math.abs(screenY(m, wy) - stripBottom * 2) < 1e-6, 'that world y lands exactly under the strip: ' + JSON.stringify(m));
+  }
+  ctx.getTransform = () => ({ a: 2, b: 0.1, c: -0.1, d: 2, e: 0, f: 0 });   // a little shake rotation
+  const wy = c.run('raceFloorWorldY(300)');
+  assert.ok(Math.abs((0.1 * 300 + 2 * wy) - stripBottom * 2) < 1e-6, 'rotation is accounted for at that x');
+  delete ctx.getTransform;
+  c.run('G.camY = 100');
+  assert.equal(c.run('raceFloorWorldY(300)'), 100 + stripBottom, 'without a matrix it falls back to the camera offset');
+});
