@@ -3972,7 +3972,11 @@ function startLoop() { if (!rafId) { lastT = 0; rafId = requestAnimationFrame(fr
 // or a run resumes it.
 function tickAudioPower() {
   const musicOn = settings.music && !settings.muted;
-  if (G.mode === 'play' || G.mode === 'resume' || musicOn) { power.audioIdleAt = performance.now(); return; }
+  if (G.mode === 'play' || G.mode === 'resume' || musicOn) {
+    power.audioIdleAt = performance.now();
+    if (musicOn) Audio.resume();   // no-op when running; wakes a context the idle path suspended
+    return;
+  }
   if (performance.now() - power.audioIdleAt > 8000) Audio.suspend();
 }
 if (Audio && Audio.sfx) for (const k of Object.keys(Audio.sfx)) {
@@ -5832,7 +5836,7 @@ function syncSettingsUI() {
 }
 function toggleSetting(key) {
   settings[key] = !settings[key];
-  if (key === 'music' || key === 'sfx') Audio.syncChannels();
+  if (key === 'music' || key === 'sfx') { Audio.syncChannels(); if (settings[key] && !settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); } }
   if (key === 'haptics' && settings.haptics) buzz('success');   // feel it the moment it is switched on
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
   if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
@@ -5879,6 +5883,7 @@ function syncKeyGuide() {
 function toggleMute() {
   settings.muted = !settings.muted;
   Audio.syncChannels(); persistAll();
+  if (!settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); }   // an idle-suspended context wakes with the sound
   announce(settings.muted ? 'Audio muted' : 'Audio on');
 }
 function announce(msg) { const el = $('srAnnounce'); if (el) el.textContent = msg; }
@@ -6602,7 +6607,7 @@ function ghostFor(p) {
   for (const c of ghosts) if (!c.active) {
     c.active = true; c.p = p; c.alpha = 0; c.rx = 0; c.x0 = c.x1 = c.t0 = c.t1 = 0;
     c.emoteId = -1; c.emoteSeq = 0; c.emoteT = 0; c.badgeKey = '';
-    c.dead = false; c.aliveSeen = false; c.track = null; c.histAt = 0; c.trackRun = -1; c.trackState = 0;
+    c.dead = false; c.aliveSeen = false; c.track = null; c.histSeq = 0; c.trackRun = -1; c.trackState = 0;
     ghostByP.set(p, c); return c;
   }
   return null;
@@ -6639,8 +6644,8 @@ function netSampleGhosts(now) {
       // Real room: every sample carries the sender's own clock → jitter-buffered playout
       // (src/netsmooth.js). Feed each sample we have not seen, in arrival order.
       if (!g.track) g.track = new window.SpaceManSmooth.Track();
-      for (const h of s.hist) if (h.at > g.histAt && h.runId === s.runId) {
-        g.histAt = h.at;
+      for (const h of s.hist) if (h.seq > g.histSeq && h.runId === s.runId) {
+        g.histSeq = h.seq;                                  // by sequence, never arrival time (a burst shares one timestamp)
         // A new trace (a live sample after a dead one, or a new round) starts its frame clock
         // over and may reuse stamps still buffered from the last run: start the buffer over too.
         if (g.trackRun !== h.runId || ((g.trackState & 4) && (h.state & 8) && !(h.state & 4))) g.track.reset();

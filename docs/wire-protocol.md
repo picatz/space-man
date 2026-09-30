@@ -710,7 +710,11 @@ PONG is forging a host frame (strike `host-frame`).
 
 On a re-HELLO the host always re-sends the full roster (`op 0`) and every live row as SNAP frames (chunked by `SNAP_MAX`, so a full room arrives complete)
 to that member, as well as the ROUND anchor and `KILLS` — whether or not it saw the member's
-transport drop, because frames sent during even a short blip were lost.
+transport drop, because frames sent during even a short blip were lost. The reverse holds
+too: when the **host's** own relay link reconnects, its members never re-HELLO (they stayed
+connected), so the host sends every member the same catch-up unprompted — the ROUND anchor
+(which may carry a runId started during the outage), then that round's `KILLS`, a full
+roster (`op 0`) and every live row — before it reports itself reconnected.
 
 `KILL` is host-validated and never struck for being unbelievable: a spectator sending one is a
 strike (`spectator-kill`, like `spectator-pres`); a `KILL` whose `runId` is not the host's current

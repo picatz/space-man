@@ -1026,9 +1026,12 @@
   // Recent samples per remote runner, in arrival order, for the renderer's jitter buffer
   // (a burst after a stall delivers several at once; the latest-only view would lose them).
   const HIST_N = 12;
+  // seq is the consumer's cursor: arrival times can repeat (a burst lands inside one coarse
+  // performance.now() tick), a sequence number never does.
+  let histSeq = 0;
   function pushHist(row, q, at) {
     const h = row.hist || (row.hist = []);
-    h.push({ t: q.t, x: q.x, y: q.y, vx: q.vx, vy: q.vy, state: q.state, runId: q.runId, at });
+    h.push({ t: q.t, x: q.x, y: q.y, vx: q.vx, vy: q.vy, state: q.state, runId: q.runId, at, seq: ++histSeq });
     if (h.length > HIST_N) h.shift();
   }
   function encSnap(s, tick, rows) {                    // rows: [{p, pres}] <= SNAP_MAX
@@ -1825,6 +1828,17 @@
         S.relay.send(row.pub, await sealApp(row.pair, encSnap(S.outSnap, tick, rows.slice(i, i + SNAP_MAX)).slice()));
       }
     }
+    // Full catch-up to every connected member, in send order per member: the round anchor
+    // first (it can carry a new runId), then that round's kills, the roster, and positions.
+    function resyncMembers() {
+      const round = S.roundRunId === S.runId && S.roundT0;
+      for (const row of members()) {
+        if (round) broadcastRound(0, row).catch(() => {});
+        replayKills(row).catch(() => {});
+        sendRoster(0, null, row).catch(() => {});
+        snapTo(row).catch(() => {});
+      }
+    }
     async function snapTick() {
       if (S.relay.state !== 'established') return;
       // Dead-link detection: members PING every TUNE.pingMs, so a socket that has carried
@@ -1914,7 +1928,10 @@
           onOpen: () => {
             if (!settled) { settled = true; resolve(); }
             S.rxTicks = 0;
-            if (S.everUp) S.ev.emit('reconnected', {});
+            // The host's own link came back. Members stayed connected, so none of them will
+            // re-HELLO — but everything sent while we were down (a New Round, kills, roster
+            // changes) was lost. Give every member the same catch-up a rejoiner gets.
+            if (S.everUp) { resyncMembers(); S.ev.emit('reconnected', {}); }
             S.everUp = true;
             S.ev.emit('state', { state: 'established' });
           },

@@ -33,14 +33,26 @@ function shape(hub) {
     let at = st.free + (L.latency || 0) / 2 + (L.jitter ? (L.rng() * 2 - 1) * L.jitter / 2 : 0);
     if (L.burst && L.rng() < L.burst) at += L.burstMs || 400;     // head-of-line stall
     const reordered = L.reorder && L.rng() < L.reorder;
-    if (!reordered) { at = Math.max(at, st.last); st.last = at; } // TCP keeps order: a late frame holds back everything after it
     st.inflight++;
     if (dir === 'up') socket.queued = (socket.queued || 0) + bytes;
-    setTimeout(() => {
+    const fire = () => {
       st.inflight--;
       if (dir === 'up') socket.queued -= bytes;
       if (!socket.link.down && !(socket.born < socket.link.deadBefore)) deliver();
-    }, Math.max(0, at - now));
+    };
+    if (reordered) { setTimeout(fire, Math.max(0, at - now)); return; }
+    // TCP keeps order: a late frame holds back everything after it. One FIFO per socket leg,
+    // drained by a single timer — independent timers with near-equal deadlines can fire out
+    // of creation order in Node, which would be a reorder the real transport never makes.
+    at = Math.max(at, st.last); st.last = at;
+    const q = st.fifo || (st.fifo = []);
+    q.push({ at, fire });
+    const drain = () => {
+      st.timer = null;
+      while (q.length && q[0].at <= Date.now()) q.shift().fire();
+      if (q.length) st.timer = setTimeout(drain, Math.max(0, q[0].at - Date.now()));
+    };
+    if (!st.timer) st.timer = setTimeout(drain, Math.max(0, q[0].at - now));
   };
   return hub;
 }
