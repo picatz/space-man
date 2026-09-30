@@ -577,6 +577,17 @@ reordered or duplicated frame) and is dropped **without a strike**; a jump of 30
 right after a dead one. A sender that has no sim clock uses wall time in 60 Hz frames, kept
 strictly increasing.
 
+**Across a restart (MUST).** `t` restarts with every run, so it cannot order samples from two
+traces; the envelope counter of the carrying frame can (PRES/SNAP may be reordered,
+[§7.3](#73-replay-rule-must), but their counters still record send order). Per runner the
+receiver keeps the counter of the frame that delivered the held sample (`ctr`) and of the
+frame that began its trace (`traceCtr`), and drops **without a strike**: a sample whose frame
+counter is below `traceCtr` (sent before the current trace began — e.g. a delayed heartbeat
+copy of the pre-restart *dead* sample arriving after the restart), and a sample that changes
+life state (the dead or inRun bit, or `runId`) whose frame counter is below `ctr` (a
+pre-death sample can never pose as a restart). For SNAP the counter is that of the host→guest
+frame carrying the row; for PRES, the guest→host frame. No wire field changes.
+
 **Rate (v5).** 10 Hz on a good link; a guest thins to every 2nd sample (5 Hz) on a *fair*
 link or when its socket's send buffer exceeds 4 KiB, every 3rd on a *poor* link, and sends
 only essential samples above 16 KiB of backlog. A change of life state (dead / inRun bits)
@@ -700,7 +711,9 @@ client SHOULD handle them; all are core-range and are validated (not ignored).
 **PING/PONG (v5).** Every member (spectators too — it is a keepalive) PINGs the host every
 2 s; the host answers with PONG. The guest times the round trip (TCP-style smoothed RTT and
 mean deviation as jitter; a PING unanswered after 4 s counts as lost, loss is an EWMA) and
-reports its current numbers in the next PING, so the host can show each member's link
+reports its current numbers in the next PING (the host always answers, but keeps the report
+only from a PING whose id is newer than the last kept one, wrap-aware — PINGs may be
+reordered), so the host can show each member's link
 without sending probes of its own. Link level, used by the room UI and the presence rate:
 *good* = RTT < 150 ms, jitter < 60 ms, loss < 2 %; *fair* = RTT < 350 ms, jitter < 150 ms,
 loss < 10 %; otherwise *poor*. The first RTT samples also refine the shared round clock

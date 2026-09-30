@@ -510,7 +510,7 @@
         if (ctr <= pair.strictHigh) return { err: 'late' };
         pair.strictHigh = ctr;
       }
-      return { pt };
+      return { pt, ctr };
     } catch (e) { return { err: 'aead' }; }
   }
   function sealCode(pt, theirPub, myPriv) {             // 'C' ver nonce24 box
@@ -1016,6 +1016,27 @@
   // presence is dropped so a ghost never steps back. A clock that jumps back by more than 5 s is
   // a new trace (the sender restarted its run), never "old".
   const presStale = (prev, cur) => !!prev && prev.runId === cur.runId && tDiff(cur.t, prev.t) <= 0 && tDiff(cur.t, prev.t) > -300;
+  // Admit one presence sample given the one held for that runner. Samples ride reorderable
+  // frames and order themselves by the sender clock t — but t restarts with every run, so
+  // across a restart only the envelope counter `ctr` of the carrying frame orders them:
+  //  - a sample from a frame sent before the current trace began (ctr < traceCtr) is dropped:
+  //    a delayed pre-restart copy can never revert the restarted runner;
+  //  - a life-state change (dead/inRun bits, or runId) that a newer frame overtook is dropped:
+  //    a pre-death sample can never pose as a restart;
+  //  - otherwise the usual rule: older t on the same trace (or a heartbeat copy) is stale.
+  // A new trace starts on a restart (live after dead), a new runId, or a clock jump ≥ 5 s.
+  // → { ok, trace } (trace = counter that began the admitted sample's trace) | { ok:false, copy }
+  function sampleAdmit(prev, cur, ctr) {
+    if (!prev || prev.x == null) return { ok: true, trace: ctr };
+    if (ctr < (prev.traceCtr || 0)) return { ok: false };
+    const life = ((prev.state ^ cur.state) & 12) !== 0 || prev.runId !== cur.runId;
+    if (life && ctr < (prev.ctr || 0)) return { ok: false };
+    const d = tDiff(cur.t, prev.t);
+    const restart = (prev.state & 4) && (cur.state & 8) && !(cur.state & 4);
+    const newTrace = restart || prev.runId !== cur.runId || d >= 300 || d <= -300;
+    if (!newTrace && presStale(prev, cur)) return { ok: false, copy: d === 0 };
+    return { ok: true, trace: newTrace ? ctr : (prev.traceCtr || 0) };
+  }
   // Default sender clock when the game doesn't pass its sim frame: wall time in 60 Hz frames.
   // Strictly increasing per session, so two samples taken inside one frame stay distinct.
   function senderClock(S) {
@@ -1488,7 +1509,8 @@
         row.pingBucketT = tp;
         if (row.pingBucket < 1) return;
         row.pingBucket -= 1;
-        row.link = { n: pg.rtt ? 1 : 0, rtt: pg.rtt, loss: pg.loss, jit: pg.jit };
+        // Always answer; but PING may be reordered, so only a newer id (wrap-aware) updates the report.
+        if (row.linkId == null || tDiff(pg.id, row.linkId) > 0) { row.linkId = pg.id; row.link = { n: pg.rtt ? 1 : 0, rtt: pg.rtt, loss: pg.loss, jit: pg.jit }; }
         S.relay.send(row.pub, await sealApp(row.pair, encPong(S.out, pg.id)));
         return;
       }
@@ -1545,9 +1567,11 @@
         const pres = decPres(pt, row.pres);
         if (pres.err === 'nan') return strike(row, 'nan');
         if (pres.err) return;
-        // A sample older than the one we hold (reordered by a lossy path) or a copy of it: drop,
-        // no strike — unless the trace restarted (a dead sample followed by a live one).
-        if (presStale(row.pres, pres) && !((row.pres.state & 4) && (pres.state & 8) && !(pres.state & 4))) return;
+        // A sample older than the one we hold (reordered by a lossy path), a copy of it, or one
+        // sent before the runner's restart: drop, no strike (sampleAdmit).
+        const adm = sampleAdmit(row.pres, pres, res.ctr);
+        if (!adm.ok) return;
+        pres.ctr = res.ctr; pres.traceCtr = adm.trace;
         // Frames still in flight across a New Round carry the old runId; the
         // sender restarts on ROUND, so drop them (no strike) rather than let a
         // stale course position open a fresh trace on the new one.
@@ -2305,10 +2329,11 @@
         const at = performance.now();
         for (const row of snap.rows) {
           const prev = S.peers.get(row.p);                       // carry the transient emote across position updates
-          // Older (reordered) or a heartbeat copy: keep ours, refresh its age — unless the runner
-          // restarted (a dead sample followed by a live in-run one): its frame clock went back.
-          const restart = prev && (prev.state & 4) && (row.state & 8) && !(row.state & 4);
-          if (prev && prev.x != null && !restart && presStale(prev, row)) { if (prev.t === row.t) prev.receivedAt = at; continue; }
+          // Older (reordered), sent before the runner restarted, or a heartbeat copy: keep ours
+          // (a copy refreshes its age). See sampleAdmit.
+          const adm = sampleAdmit(prev, row, res.ctr);
+          if (!adm.ok) { if (adm.copy) prev.receivedAt = at; continue; }
+          row.ctr = res.ctr; row.traceCtr = adm.trace;
           if (prev) { row.emoteId = prev.emoteId; row.emoteSeq = prev.emoteSeq; row.hist = prev.hist; }
           row.receivedAt = at;
           pushHist(row, row, at);
