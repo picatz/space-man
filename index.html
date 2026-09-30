@@ -2322,6 +2322,7 @@ function onKey(e, down) {
     if (netSpectating() && netInRun()) {
       if (act === 'left') { cycleWatch(-1); return; }
       if (act === 'right') { cycleWatch(1); return; }
+      if (k === 'l' && down) { const g = leaderGhost(); if (g) watchByP(g.p); return; }
       if (k === 'enter') { startRun(); return; }
     }
     if (k === 'escape' && crew.open) { toggleCrew(false); return; }
@@ -7189,7 +7190,7 @@ for (let i = 0; i < GHOST_CAP; i++) ghosts.push({
 });
 const ghostByP = new Map();
 const EMOTE_GLYPH = ['👋', '😂', '💀', '❤', 'GG', '😱'];   // 0 wave 1 laugh 2 skull 3 heart 4 GG 5 panic (§4.6)
-const spec = { watchP: 0, tour: false, tourAt: 0 };        // spectator follow/TOUR state
+const spec = { watchP: 0, tour: false, tourAt: 0, cutAt: 0 };        // spectator follow/TOUR state
 let selfEmote = { id: -1, t: 0, seq: 0 };
 let slipT = 0, slipRun = 0;                                // slipstream dwell + per-run bonus cap
 
@@ -7401,30 +7402,56 @@ function netTick(dt) {
   } else { slipT = 0; }
   // TOUR auto-director (§10.4): 6s minimum shot, cut to leader or nearest-flare.
   if (netSpectating() && spec.tour && now - spec.tourAt >= 6000) directorPick(now);
-  if (netSpectating() && !validWatch()) { const g = firstGhost(); if (g) { spec.watchP = g.p; } }
+  if (netSpectating() && !validWatch()) { const g = spectateTarget(); if (g) spec.watchP = g.p; }
 }
 function watchable(g) { return g && g.active && g.inRun && !g.dead && netClock() - g.lastSeen < 1800 && (NET.mockActive || g.runId === NET.info().runId); }
-function firstGhost() { for (const g of ghosts) if (watchable(g)) return g; return null; }
+// Runners worth watching, in race order: furthest first (ties by seat), so NEXT walks down the field and PREV back up it.
+function spectateOrder() { return ghosts.filter(watchable).sort((a, b) => (b.dist - a.dist) || (a.p - b.p)); }
+function leaderGhost() { return spectateOrder()[0] || null; }
+function firstGhost() { return leaderGhost(); }
+// Who the camera follows. The runner you chose while they run; when they go down, their last moments get a beat before the
+// cut to the leader, so a death is seen instead of the view jumping away the instant it happens.
+const SPEC_LINGER_MS = 2200;
+function spectateTarget() {
+  const w = watchedGhost(); if (w) { spec.cutAt = 0; return w; }
+  const old = ghostByP.get(spec.watchP);
+  if (old && old.active && old.dead && old.runId === NET.info().runId) {
+    if (!spec.cutAt) spec.cutAt = netClock() + SPEC_LINGER_MS;
+    if (netClock() < spec.cutAt) return old;
+  }
+  spec.cutAt = 0;
+  return leaderGhost();
+}
+function watchByP(p) {
+  const g = ghostByP.get(p); if (!watchable(g)) return false;
+  spec.watchP = p; spec.tour = false; spec.cutAt = 0; announceWatch(g); return true;
+}
+function announceWatch(g) {
+  const live = spectateOrder(), i = live.indexOf(g);
+  announce('Watching ' + (g.callsign || 'P' + g.p) + (i >= 0 ? ', ' + ordinal(i + 1) + ' of ' + live.length : '') + '.');
+}
 function watchedGhost() { const g = ghostByP.get(spec.watchP); return watchable(g) ? g : null; }
 function validWatch() { return !!watchedGhost(); }
 function directorPick(now) {
   let best = null, bestKey = -1;
   for (const g of ghosts) if (watchable(g)) {
-    const key = g.dist;                                     // leader = furthest; ties settle by P#
+    // The shot worth cutting to: the leader, unless someone is being run down by the flare, which is the better story.
+    const gap = Math.max(0, g.rx - G.flare.x), key = g.dist + (gap < 220 ? 1500 - gap * 4 : 0);
     if (key > bestKey) { bestKey = key; best = g; }
   }
   if (best && best.p !== spec.watchP) { spec.watchP = best.p; spec.tourAt = now; }
   else spec.tourAt = now;
 }
 function cycleWatch(dir) {
-  const live = ghosts.filter(watchable).sort((a, b) => a.p - b.p);
-  if (!live.length) return;
-  let i = live.findIndex((g) => g.p === spec.watchP);
-  i = (i < 0 ? 0 : i + dir + live.length) % live.length;
-  spec.watchP = live[i].p; spec.tour = false;
+  const live = spectateOrder();
+  if (!live.length) { announce('No one is running right now.'); return; }
+  const at = live.findIndex((g) => g.p === spec.watchP);
+  if (live.length === 1 && at === 0) { queueToast('Only one runner left', 'net'); return; }
+  const i = at < 0 ? (dir > 0 ? 0 : live.length - 1) : (at + dir + live.length) % live.length;   // nobody followed yet: NEXT = leader, PREV = last
+  watchByP(live[i].p);
 }
 function netFollowCamera() {
-  const g = watchedGhost() || firstGhost(); if (!g) return;
+  const g = spectateTarget(); if (!g) return;
   const tx = (g.t1 ? g.x1 : g.rx) - view.w * 0.42, ty = (g.t1 ? g.y1 : g.ry) - view.h * (view.h > view.w ? 0.64 : 0.58);
   G.camX += (tx - G.camX) * 0.10;
   G.camY += (ty - G.camY) * 0.08;
@@ -7440,7 +7467,7 @@ function sendLocalPresence() {
 function updateSpectator() {
   // The local actor is only a world-generation cursor. Never simulate its
   // movement, collisions, pickups, score, or death while watching someone else.
-  const g = watchedGhost() || firstGhost();
+  const g = spectateTarget();
   clearInput();
   if (!g) { G.camXprev = G.camX; G.camYprev = G.camY; return; }
   spec.watchP = g.p;
@@ -7589,6 +7616,7 @@ function drawEmoteBubble(wx, wy, id, t) {
 /* ---- screen-space net HUD: race strip (always on), spectator chrome, emote
        wheel, unstable banner. Called every frame netInRun(); view-px coords. */
 let _specHits = null, _unstableHit = null, _crewHit = null;
+const _raceHits = [];   // runner dots on the strip, CSS px: tap one to watch them
 function drawNetHUD() {
   if (!netInRun()) { _crewHit = null; return; }
   drawCrewChip();
@@ -7673,9 +7701,12 @@ function drawRaceStrip() {
   ctx.strokeStyle = '#FF8A6B'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(fx, y + 1); ctx.lineTo(fx, y + h - 1); ctx.stroke();
   // runner dots: you are larger and ringed so you never have to hunt for yourself
   const showLabels = w > 260;
+  _raceHits.length = 0;
+  const hk = view.w ? window.innerWidth / view.w : 1;
   for (const r of runners.slice().sort((a, b) => (a.you ? 1 : 0) - (b.you ? 1 : 0))) {
     const dx = sx(r.x), dy = y + h / 2, pal = PALETTES[r.suit] || PALETTES.classic, rad = r.you ? 7 : 6;
     if (netSpectating() && r.p === spec.watchP) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(dx, dy, rad + 2.5, 0, TAU); ctx.stroke(); }
+    if (!r.you) _raceHits.push({ p: r.p, x: dx * hk, y: dy * hk, r: Math.max(rad + 6, 22 / hk) * hk });   // a finger-sized target per runner
     ctx.fillStyle = pal.fill || pal.suit || '#F4F7FF'; ctx.beginPath(); ctx.arc(dx, dy, rad, 0, TAU); ctx.fill();
     if (r.you) { ctx.strokeStyle = '#F4F7FF'; ctx.lineWidth = 1.5; ctx.stroke(); }
     if (showLabels) { ctx.fillStyle = '#0A0E20'; ctx.font = '800 8px ' + FONT_NUM; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(r.p), dx, dy + 0.5); }
@@ -7809,12 +7840,21 @@ function drawCrewDirections() {
   }
 }
 function drawSpectatorHUD() {
-  const us = uiScale(), g = watchedGhost(), left = 12 + safeInset('left');
+  const us = uiScale(), t = spectateTarget(), down = !!(t && t.dead), g = t && !down ? t : null, left = 12 + safeInset('left');
   const y = 60 + safeInset('top');
-  ctx.textAlign = 'center'; ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + 13 * us + 'px ' + FONT_NUM;
-  ctx.fillText(g ? 'WATCHING ' + (g.callsign || 'P' + g.p) : 'WAITING FOR A RUNNER', view.w / 2, y, view.w - 2 * left);
+  const st = crewGlance(), name = t ? (t.callsign || 'P' + t.p) : '';
+  let head, sub;
+  if (g) {
+    const row = st.rows.find((r) => r.p === g.p);
+    head = 'WATCHING ' + name;
+    sub = Math.round(g.dist) + 'm · ' + Math.floor(g.score) + ' points' + (row && row.place ? ' · ' + ordinal(row.place) + ' of ' + (st.counts.running + st.counts.out) : '') + (g.chain > 1 ? ' · ×' + (1 << Math.min(3, g.chain)) : '');
+  } else if (down) { head = name + ' WENT DOWN'; sub = Math.round(t.dist) + 'm · ' + Math.floor(t.score) + ' points · cutting to the next runner'; }
+  else if (st.winner) { head = 'ROUND OVER · ' + st.winner.name + ' WINS'; sub = Math.floor(st.winner.dist).toLocaleString() + 'm · the host starts the next round, or join the run'; }
+  else { head = 'WAITING FOR A RUNNER'; sub = 'Stay here for the next round, or join the run'; }
+  ctx.textAlign = 'center'; ctx.fillStyle = down ? '#FF8A6B' : '#9FF1FF'; ctx.font = '700 ' + 13 * us + 'px ' + FONT_NUM;
+  ctx.fillText(head, view.w / 2, y, view.w - 2 * left);
   ctx.font = '600 ' + 11 * us + 'px ' + FONT_NUM;
-  ctx.fillText(g ? Math.round(g.dist) + 'm · ' + Math.floor(g.score) + ' points' : 'Stay here for the next round, or join the run', view.w / 2, y + 18 * us, view.w - 2 * left);
+  ctx.fillText(sub, view.w / 2, y + 18 * us, view.w - 2 * left);
   const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
   const labels = [['prev', '‹ PREV'], ['next', 'NEXT ›'], ['tour', spec.tour ? 'TOUR ON' : 'TOUR'], ['play', G.rolePending ? 'JOINING…' : 'JOIN RUN']];
   const w = (view.w - 2 * left - 18) / 4, h = Math.max(32 * us, 44 / ky), by = view.h - safeInset('bottom') - h - 12;
@@ -7862,6 +7902,9 @@ function netPointerDown(e) {
   const leaveHit = unstableHitRect();
   if (leaveHit && inRect(p, leaveHit)) { leaveRoom(); return true; }
   if (netSpectating()) {
+    let dot = null, dd = 1e9;
+    for (const h of _raceHits) { const d = (p.x - h.x) ** 2 + (p.y - h.y) ** 2; if (d <= h.r * h.r && d < dd) { dd = d; dot = h; } }
+    if (dot && watchByP(dot.p)) return true;      // the strip is the map of the field: tap a runner to ride with them
     if (_specHits) {
       if (inRect(p, _specHits.play)) { startRun(); return true; }
       if (inRect(p, _specHits.prev)) { cycleWatch(-1); return true; }
