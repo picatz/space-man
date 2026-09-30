@@ -981,7 +981,7 @@
 </div>
 
 <pre id="errlog"></pre>
-<label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" tabindex="-1" /></label>
+<label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
 <div id="srAnnounce" aria-live="polite"></div>
 
 <script src="src/contracts.js"></script>
@@ -1500,7 +1500,7 @@ const FLARE_GLOW_HUE = 'hsla(12,90%,55%,';
    ------------------------------------------------------------------------- */
 const Audio = (() => {
   let ac = null, master = null, comp = null, musicGain = null, sfxGain = null, started = false;
-  let musicLP = null, padGain = null, stingGain = null, echoSend = null, noiseBuf = null;
+  let musicLP = null, padGain = null, stingGain = null, musicStingGain = null, echoSend = null, noiseBuf = null;
   const padOscs = [], padF = [0, 0, 0];
   const WAVES = {};   // duty12/duty25/duty50 pulse approximations + soft-chip celesta stack
 
@@ -1592,6 +1592,11 @@ const Audio = (() => {
   // volume sliders must win at ALL write sites (pause duck, resume sweep, reset).
   const musLvl = (base) => (settings.music && !settings.muted ? (base || 0.42) * settings.musicVol : 0);
   const sfxLvl = () => (settings.sfx && !settings.muted ? settings.sfxVol * 0.8 : 0);   // static headroom pull, not compressor makeup
+  // Jingle buses. The SFX jingles (sector bells, death, chain bank) are Sound FX: the switch, the slider and the master mute
+  // all win. The song's own bells (relief fill, resume pickup) are Music: the same three rules, with the music slider.
+  const stingLvl = () => (settings.sfx && !settings.muted ? settings.sfxVol : 0);
+  const mstLvl = () => (settings.music && !settings.muted ? settings.musicVol : 0);
+  const sfxOpen = () => !!(settings.sfx && !settings.muted && settings.sfxVol > 0);   // nothing is even scheduled when closed
 
   function ensure() {
     if (started || SHOT) return false;
@@ -1609,11 +1614,11 @@ const Audio = (() => {
       musicGain = ac.createGain(); musicGain.gain.value = musLvl();
       sfxGain.connect(master); musicGain.connect(master); master.connect(comp); comp.connect(ac.destination);
       // Persistent music graph: voices → musicLP (state filter) → musicGain. Jingles skip the
-      // filter AND both sliders via stingGain → master — sfx-off or music-off listeners still
-      // get sector bells and the death jingle, gated only by mute — and can be killed.
+      // state filter via stingGain / musicStingGain → master, gated by their channel and the mute, and can be killed.
       musicLP = ac.createBiquadFilter(); musicLP.type = 'lowpass'; musicLP.frequency.value = 12000;
       musicLP.connect(musicGain);
-      stingGain = ac.createGain(); stingGain.gain.value = 1; stingGain.connect(master);
+      stingGain = ac.createGain(); stingGain.gain.value = stingLvl(); stingGain.connect(master);
+      musicStingGain = ac.createGain(); musicStingGain.gain.value = mstLvl(); musicStingGain.connect(master);
       const dly = ac.createDelay(1); dly.delayTime.value = 0.402;   // dotted-8th at 112
       const fb = ac.createGain(); fb.gain.value = 0.22;
       const elp = ac.createBiquadFilter(); elp.type = 'lowpass'; elp.frequency.value = 2400;
@@ -1651,7 +1656,7 @@ const Audio = (() => {
     return out;
   }
   function tone(type, f0, f1, dur, gain, dest, when) {
-    if (!ac) return;
+    if (!ac || ((!dest || dest === sfxGain) && !sfxOpen())) return;
     const t = when || now(), o = ac.createOscillator(), g = ac.createGain();
     o.type = type; o.frequency.setValueAtTime(f0, t);
     if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
@@ -1660,7 +1665,7 @@ const Audio = (() => {
     o.connect(g); g.connect(dest || sfxGain); o.start(t); o.stop(t + dur + 0.02);
   }
   function noise(dur, gain, filterType, cutoff, dest, pan, when) {
-    if (!ac) return;
+    if (!ac || ((!dest || dest === sfxGain) && !sfxOpen())) return;
     const t = when || now(), src = ac.createBufferSource(); src.buffer = noiseBuf;
     const g = ac.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     let node = src;
@@ -1771,6 +1776,10 @@ const Audio = (() => {
     zip() { tone('sine', 900, 1500, 0.25, 0.08); },              // tickled saucer wheee
     beep(t0) { const t = t0 || now(); tone('square', 1250, 1250, 0.03, 0.06, sfxGain, t); tone('square', 1250, 1250, 0.03, 0.06, sfxGain, t + 0.25); },
   };
+  for (const k of Object.keys(SFX)) {   // a closed Sound FX channel schedules nothing at all
+    const f = SFX[k];
+    SFX[k] = function () { if (!sfxOpen()) return; return f.apply(this, arguments); };
+  }
   function deathJingle(newBest, pitch) {
     if (!ac) return;
     const t = now();
@@ -1942,7 +1951,7 @@ const Audio = (() => {
       if (dngS > 0.6) dngPeak = true;
       else if (dngPeak && dngS < 0.25) {   // relief fill — still major, still in key
         dngPeak = false;
-        bell(degF(5), 0.25, 0.06, tN, stingGain); bell(degF(6), 0.3, 0.06, tN + 0.09, stingGain);
+        bell(degF(5), 0.25, 0.06, tN, musicStingGain); bell(degF(6), 0.3, 0.06, tN + 0.09, musicStingGain);
       }
     }
     if (mode === 'attract') {
@@ -1986,7 +1995,7 @@ const Audio = (() => {
       musicGain.gain.setTargetAtTime(musLvl(), t, secs / 3);
       if (settings.music && !settings.muted && anchored) {   // pickup: two 8ths leading into the next bar line
         let bt = barT; while (bt - BEAT < t + secs) bt += 4 * BEAT;
-        bell(degF(5), 0.2, 0.07, bt - BEAT, stingGain); bell(degF(7), 0.2, 0.07, bt - BEAT * 0.5, stingGain);
+        bell(degF(5), 0.2, 0.07, bt - BEAT, musicStingGain); bell(degF(7), 0.2, 0.07, bt - BEAT * 0.5, musicStingGain);
       }
     } else if (name === 'death') deathJingle(!!arg, 1);
   }
@@ -1996,7 +2005,7 @@ const Audio = (() => {
     stingGain.gain.cancelScheduledValues(t);
     stingGain.gain.setValueAtTime(stingGain.gain.value, t);
     stingGain.gain.linearRampToValueAtTime(0, t + 0.08);
-    stingGain.gain.setValueAtTime(1, t + 0.23);
+    stingGain.gain.setValueAtTime(stingLvl(), t + 0.23);   // back to the player's level — never past a mute
   }
   return {
     // state !== 'running' also covers WebKit's 'interrupted' (call/Siri/background)
@@ -2012,10 +2021,12 @@ const Audio = (() => {
       if (sfxGain) sfxGain.gain.setTargetAtTime(sfxLvl(), now(), .025);
       // Pause keeps the music bus at next-room level even if MUSIC gets re-toggled mid-pause.
       if (musicGain) musicGain.gain.setTargetAtTime(G.mode === 'pause' ? musLvl(0.15) : musLvl(), now(), .04);
-      // Sting bus bypasses both sliders (E5.3) — gated only by mute, audible to sfx-only or music-only players.
-      if (stingGain) stingGain.gain.setTargetAtTime((!settings.muted && (settings.sfx || settings.music)) ? 1 : 0, now(), .03);
+      // Jingle buses follow their own channel's switch, slider and the master mute (no bypass).
+      if (stingGain) stingGain.gain.setTargetAtTime(stingLvl(), now(), .03);
+      if (musicStingGain) musicStingGain.gain.setTargetAtTime(mstLvl(), now(), .03);
     },
     get on() { return started; },
+    get jingleLevels() { return stingGain ? { sfx: stingGain.gain.value, music: musicStingGain.gain.value } : null; },   // read by the mute tests
     get loopsCompleted() { return loopsN; },
     get onLoop() { return onLoopCb; }, set onLoop(fn) { onLoopCb = fn; },
   };
@@ -2064,7 +2075,9 @@ function syncHapticRows() {
 // Is the buzz allowed right now? (switch on, and not saving a nearly flat battery)
 function hapticsOn() { return !!settings.haptics && !SHOT && !(settings.hapticsSaver && batteryLow); }
 // Strength scales how long the motor runs (phones) and how hard it spins (controllers); the rhythm never changes.
-function scaleBuzz(pat, k) { return Array.isArray(pat) ? pat.map((v, i) => (i % 2 === 0 ? Math.max(4, Math.round(v * k)) : v)) : Math.max(4, Math.round(pat * k)); }
+const HAPTIC_FLOOR = 10;   // ms: shorter pulses are below what most phone motors can render
+function scaleBuzz(pat, k) { return Array.isArray(pat) ? pat.map((v, i) => (i % 2 === 0 ? Math.max(HAPTIC_FLOOR, Math.round(v * k)) : v)) : Math.max(HAPTIC_FLOOR, Math.round(pat * k)); }
+function stopBuzz() { try { if (navigator.vibrate) navigator.vibrate(0); } catch (e) {} }
 function buzz(kind) {
   if (!hapticsOn()) return;
   const k = settings.hapticsStrength;
@@ -6430,7 +6443,7 @@ function syncSettingsUI() {
 function toggleSetting(key) {
   settings[key] = !settings[key];
   if (key === 'music' || key === 'sfx') { Audio.syncChannels(); if (settings[key] && !settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); } }
-  if (key === 'haptics' && settings.haptics) buzz('success');   // feel it the moment it is switched on
+  if (key === 'haptics') { if (settings.haptics) buzz('success'); else stopBuzz(); }   // feel it the moment it is switched on; off cuts any pulse in flight
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
   if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
   if (key === 'batterySaver') {

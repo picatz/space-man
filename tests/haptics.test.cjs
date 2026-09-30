@@ -18,11 +18,11 @@ test('haptics follow the switch, and the strength scales how long the motor runs
   buzzes.length = 0;
   c.run('settings.hapticsStrength = 0.5');
   c.run("buzz('heavy'); buzz('success')");
-  assert.deepEqual(buzzes, [9, [5, 28, 5]], 'shorter pulses, same gaps between them');
+  assert.deepEqual(buzzes, [10, [10, 28, 10]], 'shorter pulses (floored at what a phone motor can render), same gaps between them');
   buzzes.length = 0;
   c.run('settings.hapticsStrength = 0.3');
   c.run("buzz('select')");
-  assert.deepEqual(buzzes, [4], 'never shorter than the motor can play');
+  assert.deepEqual(buzzes, [10], 'never shorter than the motor can play');
   buzzes.length = 0;
   c.run('settings.haptics = false');
   c.run("buzz('heavy')");
@@ -64,7 +64,7 @@ test('turning haptics on lets you feel it, and switching off is silent', (t) => 
   c.run("toggleSetting('haptics')");
   assert.deepEqual(buzzes, [[10, 28, 10]], 'a confirming buzz');
   c.run("toggleSetting('haptics')");
-  assert.equal(buzzes.length, 1, 'switching off is silent');
+  assert.deepEqual(buzzes.slice(1), [0], 'switching off makes no buzz and cuts any pulse still running');
 });
 
 // Build the real settings rows into a host and report which haptic rows are on show.
@@ -165,7 +165,7 @@ test('letting go of the strength slider feels the new strength, once, at that st
   assert.equal(c.run('settings.hapticsStrength'), 0.5);
   assert.deepEqual(buzzes, []);
   range.onchange();                                            // letting go: one confirming buzz at the new strength
-  assert.deepEqual(buzzes, [[5, 28, 5]]);
+  assert.deepEqual(buzzes, [[10, 28, 10]]);
 });
 
 test('swapping or unplugging controllers keeps the strength row honest, without waiting for a connect event', (t) => {
@@ -195,4 +195,9 @@ test('swapping or unplugging controllers keeps the strength row honest, without 
   assert.equal(shown(), true, 'and back');
   pads = []; c.run('input.pad.index = -1; pollGamepad()');
   assert.equal(shown(), false, 'unplugged');
+});
+
+test('the iOS tick input is a real switch, or WebKit never plays its haptic', () => {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(html, /<label class="hap" id="hapLbl"[^>]*><input type="checkbox" switch /);
 });
