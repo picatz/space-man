@@ -561,6 +561,7 @@
   .join-input::placeholder { color: rgba(207, 227, 255, 0.32); }
   .join-input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .join-input:disabled { opacity: 0.6; }
+  .btn:disabled { opacity: 0.4; filter: saturate(0.3); box-shadow: none; animation: none; cursor: default; }   /* busy or offline: visibly unavailable */
   .join-hint { min-height: 36px; margin: 8px 2px 6px; font-size: 12px; line-height: 1.45; color: var(--ui); opacity: 0.85; }
   .join-hint.err { color: var(--coral); opacity: 1; }
   .mini-chip {
@@ -572,6 +573,12 @@
   .mini-chip:active { transform: scale(0.96); }
 
   .room-relay { font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; text-align: left; margin: 2px 0; }
+  /* Link quality (Run Together): one dot + a word + the round trip, never louder than the relay line. */
+  .q { font-weight: 700; white-space: nowrap; }
+  .q::before { content: '●'; margin-right: 3px; }
+  .q-good { color: #5CF2A4; } .q-fair { color: #FFC93C; } .q-poor, .q-reconnecting { color: var(--coral); } .q-unknown, .q-connecting { color: var(--ui); opacity: 0.8; }
+  .roster-row .q { font-size: 10px; margin-left: auto; padding-left: 6px; }
+  .offline-note { margin-top: 8px; font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.75; }
   .room-relay .num { font-family: var(--font-num); }
   .room-log { text-align: left; margin: 2px 0 6px; }
   .room-log summary { font-size: 10px; letter-spacing: 1px; color: var(--cyan); cursor: pointer; opacity: 0.8; list-style: none; }
@@ -675,6 +682,7 @@
       <button class="btn ghost" id="btnTogether">Run Together</button>
     </div>
     <div id="attractStats" class="stats-line"></div>
+    <div id="offlineNote" class="offline-note" role="status" style="display:none">Offline · single player ready</div>
   </div>
 </div>
 
@@ -898,6 +906,7 @@
 <script src="src/callsigns.js"></script>
 <script src="src/relay-directory.js"></script>
 <script src="src/qr.js"></script>
+<script src="src/netsmooth.js"></script>
 <script src="src/net.js"></script>
 
 <script>
@@ -1056,7 +1065,7 @@ const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.s
 // OS answer at load: only the DEFAULT for the in-game Reduce Motion switch.
 const osReducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, hapticsStrength: 1, hapticsSaver: true, musicVol: 1, sfxVol: 1, muted: false,
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, batterySaver: false, hapticsStrength: 1, hapticsSaver: true, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
 // G: default AUTO-RUN (touch) to OFF — touch movement is free left/right, no
@@ -1074,6 +1083,7 @@ settings.netApprove = settings.netApprove === true;
 settings.hapticsStrength = Math.min(1, Math.max(0.3, (typeof settings.hapticsStrength === 'number' && isFinite(settings.hapticsStrength)) ? settings.hapticsStrength : 1));
 settings.hapticsSaver = settings.hapticsSaver !== false;   // on by default: a low, unplugged battery quiets the buzz
 settings.sharp = settings.sharp === true;   // SHARP RENDERING: opt-in lock on full DPR (adaptive resolution off)
+settings.batterySaver = settings.batterySaver === true;   // BATTERY SAVER: 30fps, 1× resolution, lighter effects (off unless chosen)
 if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
 if (typeof settings.netRelay !== 'string') settings.netRelay = '';
 if (typeof settings.netRelayUrl !== 'string') settings.netRelayUrl = '';
@@ -1163,7 +1173,7 @@ const uiScale = () => clamp(view.w / 560, 0.72, 1);
 // session starts sharp again. SHARP RENDERING (settings.sharp) opts out.
 const perf = { cap: CFG.dprCap, ema: STEP, slowT: 0, warm: 0 };
 function adaptResolution(dt) {
-  if (SHOT || settings.sharp || view.dpr <= 1) return;
+  if (SHOT || settings.sharp || view.dpr <= 1 || powerSaving()) return;
   if (dt > 0.1) return;   // tab switch / GC hitch: not steady-state cost
   if ((perf.warm += dt) < 1) { perf.ema = STEP; return; }   // let a fresh canvas settle
   perf.ema += (dt - perf.ema) * 0.05;
@@ -1177,7 +1187,7 @@ function adaptResolution(dt) {
 }
 function resize() {
   const cssW = window.innerWidth, cssH = window.innerHeight;
-  const dpr = Math.min(window.devicePixelRatio || 1, SHOT || settings.sharp ? CFG.dprCap : perf.cap);
+  const dpr = Math.min(window.devicePixelRatio || 1, SHOT ? CFG.dprCap : powerSaving() ? 1 : settings.sharp ? CFG.dprCap : perf.cap);
   perf.slowT = 0; perf.warm = 0;
   view.dpr = dpr;
   view.isTablet = Math.min(cssW, cssH) >= 700;
@@ -1878,9 +1888,10 @@ const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: 
 let batteryLow = false, batteryReady = false;   // batteryReady: the browser actually handed us battery data (it can refuse)
 try {
   if (navigator.getBattery) navigator.getBattery().then((b) => {
-    const sync = () => { batteryLow = !b.charging && b.level < 0.2; };
+    const sync = () => { batteryLow = !b.charging && b.level < 0.2; if (typeof applyPower === 'function') applyPower(); };   // the frame loop's saver follows too
+    batteryReady = true;
     sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
-    batteryReady = true; syncHapticRows();
+    syncHapticRows();
   }).catch(() => {});
 } catch (e) {}
 // Which haptic settings mean something on this device right now? The strength slider only does anything where the motor's
@@ -2204,12 +2215,16 @@ window.addEventListener('blur', () => { clearInput(); if (G.mode === 'play' && !
    10. PARTICLE POOL (~160 cap, no allocation in the hot loop)
    ------------------------------------------------------------------------- */
 const PCAP = 160, particles = [];
+let pCapLive = PCAP;   // 80 under battery saver (applyPower)
 for (let i = 0; i < PCAP; i++) particles.push({ live: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 2, color: '#fff', grav: 0, bounce: false, kind: 0 });
 let pHead = 0;
 function spawnP(x, y, vx, vy, life, size, color, grav, bounce, kind) {
   let p = null;
-  for (let i = 0; i < PCAP; i++) { const idx = (pHead + i) % PCAP; if (!particles[idx].live) { p = particles[idx]; pHead = (idx + 1) % PCAP; break; } }
-  if (!p) { p = particles[pHead]; pHead = (pHead + 1) % PCAP; }
+  // Battery saver keeps half the pool: purely visual (callers draw their rng before spawning,
+  // so the simulation is identical either way).
+  const cap = pCapLive;
+  for (let i = 0; i < cap; i++) { const idx = (pHead + i) % cap; if (!particles[idx].live) { p = particles[idx]; pHead = (idx + 1) % cap; break; } }
+  if (!p) { pHead %= cap; p = particles[pHead]; pHead = (pHead + 1) % cap; }
   p.live = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.life = life; p.max = life;
   p.size = size; p.color = color; p.grav = grav || 0; p.bounce = !!bounce; p.kind = kind || 0;
   return p;
@@ -3628,7 +3643,7 @@ function die(cause) {
   // no wire change; this is the one packet that tells co-runners you went down.
   if (netLive() && !netSpectating()) {
     const st = (p.facing > 0 ? 1 : 0) | 4;   // facing + deadRagdoll (bit2); onGround/inRun cleared
-    NET.sendPresence(p.x + p.w / 2, p.y + p.h / 2, 0, st, G.chain, Math.floor(G.finalScore), G.dist);
+    NET.sendPresence(p.x + p.w / 2, p.y + p.h / 2, 0, st, G.chain, Math.floor(G.finalScore), G.dist, G.frameCount, 0);
   }
 }
 
@@ -3732,7 +3747,7 @@ function update() {
     if (netLive() && !netSpectating() && G.frameCount % 6 === 0) {
       const pl = G.player;
       const st = (pl.facing > 0 ? 1 : 0) | (pl.onGround ? 2 : 0) | 8 | (slipT > 0.25 ? 16 : 0);
-      NET.sendPresence(pl.x + pl.w / 2, pl.y + pl.h / 2, (pl.vx * 10) | 0, st, G.chain, Math.floor(G.score), G.dist);
+      NET.sendPresence(pl.x + pl.w / 2, pl.y + pl.h / 2, (pl.vx * 10) | 0, st, G.chain, Math.floor(G.score), G.dist, G.frameCount, pl.vy);
     }
     generateAhead();
     const nextBand = bandFor(G.dist);
@@ -3873,6 +3888,11 @@ function frame(now) {
   rafId = requestAnimationFrame(frame);
   pollGamepad();
   if (shotFrozen) { render(1); return; }   // QA: re-render frozen state (survives post-load resizes)
+  // Pacing: skip whole callbacks (before any work) to hold 30fps under battery saver or
+  // 15fps behind a pause / run-over card. The fixed-step accumulator absorbs the longer dt,
+  // so the simulation advances exactly as it would at 60fps.
+  const gap = frameGapMs();
+  if (gap && lastT && now - lastT < gap - 1.5) return;
   if (!lastT) lastT = now;
   let dt = (now - lastT) / 1000; lastT = now;
   if (dt > 0.25) dt = 0.25;
@@ -3929,9 +3949,56 @@ function frame(now) {
   render(stepping ? clamp(acc / STEP, 0, 1) : 1);
   tickAudio();
 }
+/* ---------------------------------------------------------------------------
+   21b. POWER — battery saver, idle pacing, hidden-tab stop, idle audio
+   ------------------------------------------------------------------------- */
+// Saving when the player asked (Settings → Battery saver) or when the Battery Status API
+// says the battery is low and unplugged (Chromium; other browsers never report, so never
+// switch on by themselves). Never under #shot: goldens render at full rate and DPR.
+// One battery watcher serves both the haptics saver and this (see batteryLow / batteryReady near the haptics table).
+var power = { get lowBattery() { return batteryLow; }, set lowBattery(v) { batteryLow = !!v; }, get batteryKnown() { return batteryReady; }, audioIdleAt: 0, looping: false };   // var: resize() may run before this line at boot
+function powerSaving() { return !SHOT && (settings.batterySaver || !!(power && power.lowBattery)); }
+function frameGapMs() {
+  if (SHOT) return 0;
+  if (G.mode === 'pause' || (G.mode === 'dead' && G.deathCardShown)) return 1000 / 15;   // a still scene behind a card
+  return powerSaving() ? 1000 / 30 : 0;
+}
+var powerWas = null;
+function applyPower() {
+  const on = powerSaving();
+  if (on === powerWas) return;
+  powerWas = on;
+  pCapLive = on ? 80 : PCAP;
+  for (let i = pCapLive; i < PCAP; i++) particles[i].live = false;
+  if (!on && !settings.sharp) perf.cap = CFG.dprCap;   // leaving saver: adaptive resolution starts sharp again
+  resize();
+}
+if (settings.batterySaver) { pCapLive = 80; powerWas = true; }   // a saved choice applies from the first frame (resize() already capped DPR)
+// Hidden tab: no simulation, no rendering, no audio. Browsers already throttle rAF in the
+// background; stopping the loop outright also stops every per-frame timer and poll.
+function stopLoop() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
+function startLoop() { if (!rafId) { lastT = 0; rafId = requestAnimationFrame(frame); } }
+// Idle audio: with music off (or muted) and nothing played for 8 s outside a run, the
+// AudioContext is suspended — its render thread otherwise mixes silence all day. Any sound
+// or a run resumes it.
+function tickAudioPower() {
+  const musicOn = settings.music && !settings.muted;
+  if (G.mode === 'play' || G.mode === 'resume' || musicOn) {
+    power.audioIdleAt = performance.now();
+    if (musicOn) Audio.resume();   // no-op when running; wakes a context the idle path suspended
+    return;
+  }
+  if (performance.now() - power.audioIdleAt > 8000) Audio.suspend();
+}
+if (Audio && Audio.sfx) for (const k of Object.keys(Audio.sfx)) {
+  const f = Audio.sfx[k];
+  if (typeof f === 'function') Audio.sfx[k] = function () { power.audioIdleAt = performance.now(); Audio.resume(); return f.apply(this, arguments); };
+}
+
 // Music conductor: once per rAF, wall-clock — hitstop and 6-step catch-up can't stall it.
 // Danger (0..1) is flare proximity; the arrangement thins under pressure, never darkens.
 function tickAudio() {
+  tickAudioPower();
   const dead = G.player && G.player.dead;
   const danger = (G.mode === 'play' && !dead && G.player)
     ? clamp(1 - (G.player.x - G.flare.x - 260) / 420, 0, 1) : 0;
@@ -5320,6 +5387,7 @@ function showAttract() {
   $('attractStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m · BEST CHAIN ×${stats.bestChain}` + (logN ? ` · LOG ${logN}/${DISCOVERIES.length}` : '');
   updateWardrobeBadge();
   renderDailyCard();
+  syncOffline();
   showOverlay('ovAttract');
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
   G.mode = 'attract';
@@ -5703,6 +5771,8 @@ const SETTINGS_DEF = [
   // Device-dependent (adaptive resolution never runs under #shot): noShot keeps
   // the row out of the pause/settings goldens like the net rows below.
   { key: 'sharp', type: 'switch', label: 'Sharp rendering', noShot: true },
+  // Battery saver: 30fps, 1× resolution, lighter effects. Device-dependent like Sharp, so noShot.
+  { key: 'batterySaver', type: 'switch', label: 'Battery saver', noShot: true },
   { key: 'key:left', bind: 'left', type: 'key', label: 'Move left', section: 'Keyboard', noShot: true },
   { key: 'key:right', bind: 'right', type: 'key', label: 'Move right', noShot: true },
   { key: 'key:jump', bind: 'jump', type: 'key', label: 'Jump', noShot: true },
@@ -5788,10 +5858,16 @@ function syncSettingsUI() {
 }
 function toggleSetting(key) {
   settings[key] = !settings[key];
-  if (key === 'music' || key === 'sfx') Audio.syncChannels();
+  if (key === 'music' || key === 'sfx') { Audio.syncChannels(); if (settings[key] && !settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); } }
   if (key === 'haptics' && settings.haptics) buzz('success');   // feel it the moment it is switched on
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
   if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
+  if (key === 'batterySaver') {
+    applyPower();
+    // Say what is really happening: with the manual switch off, a low, unplugged battery keeps saving on.
+    announce(settings.batterySaver ? 'Battery saver on: 30 frames a second, lighter effects.'
+      : powerSaving() ? 'Battery saver switch off. Automatic saving stays on while the battery is low.' : 'Battery saver off.');
+  }
   syncSettingsUI(); persistAll();
 }
 // Mirrors the live switch onto the CSS motion rules; render/sim read lessMotion() per frame.
@@ -5834,6 +5910,7 @@ function syncKeyGuide() {
 function toggleMute() {
   settings.muted = !settings.muted;
   Audio.syncChannels(); persistAll();
+  if (!settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); }   // an idle-suspended context wakes with the sound
   announce(settings.muted ? 'Audio muted' : 'Audio on');
 }
 function announce(msg) { const el = $('srAnnounce'); if (el) el.textContent = msg; }
@@ -6026,6 +6103,10 @@ function renderRoster(roster, isHost) {
     const rname = (r.callsign && r.callsign !== ('P' + r.p)) ? r.callsign : ('PLAYER ' + r.p);
     who.textContent = rname + suffix;   // textContent: raw tags never reach DOM (I7)
     row.appendChild(who);
+    // Host view: each member's own measured link (reported in its PING), as a small dot.
+    const pq = isHost && !r.you && NET.quality ? (NET.quality().peers || []).find((q) => q.p === r.p) : null;
+    // The level is visible text (never colour alone) and the element has an accessible name.
+    if (pq) { const d = document.createElement('span'); d.className = 'q q-' + pq.level; d.textContent = LINK_WORD[pq.level] + ' ' + pq.rttMs + 'ms'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', LINK_WORD[pq.level] + ' link, ' + pq.rttMs + ' milliseconds'); d.title = LINK_WORD[pq.level] + ' link · ' + pq.rttMs + ' ms'; row.appendChild(d); }
     if (isHost && !r.you) {
       const k = document.createElement('button'); k.className = 'mini-chip coral'; k.textContent = 'Kick';
       k.onclick = () => kickPlayer(r);
@@ -6058,7 +6139,7 @@ function renderRoomCard() {
     $('roomApprove').classList.toggle('on', !!settings.netApprove);
     $('roomApprove').setAttribute('aria-checked', String(!!settings.netApprove));
   }
-  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · <span class="num">' + (info.rttMs | 0) + 'ms</span>';
+  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(NET.quality ? NET.quality() : null, isHost);
   renderMobilityLog();
   renderRoster(roster, isHost);
   $('btnRoomPlay').textContent = netRoundActive() ? (info.role === 1 ? 'Watch Round' : 'Join Round') : (isHost ? 'Start Together' : 'Ready to Run');
@@ -6112,20 +6193,57 @@ async function openRoomFlow() {
   if (!netEnabled()) return;
   Audio.ensure();
   if (!hasCallsign()) { showCallsign(openRoomFlow); return; }   // first-run callsign step (§13.4)
-  hideAllOverlays();
+  if (isOffline()) { openTogether(); return; }                  // the front door explains it, with the buttons off
+  // Stay on the front door while the relay is found (probing + connecting can take a while on
+  // a slow link): a live status line and a working Back, never a blank screen.
+  const req = ++joinReq;
+  if (!$('ovTogether').classList.contains('show')) { hideAllOverlays(); showOverlay('ovTogether'); }
+  setTogetherBusy(true);
+  roomOpening = true;
+  setTogetherHint('Opening a room… finding the nearest relay.');
   try {
     const relayDir = { mode: settings.netRelayMode };
     if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
     else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
     await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove, baseUrl: appBaseUrl() });
+    roomOpening = false;
+    if (req !== joinReq) { try { NET.leave(); } catch (x) {} return; }   // they went Back meanwhile
+    setTogetherBusy(false);
     applyCallsignToNet();
     renderRoomCard();
     announce('Room created. Invite link ready.');
+    hideAllOverlays();
     showOverlay('ovRoom');
   } catch (e) {
-    queueToast('relay unreachable — try a custom relay in Settings', 'sys');
-    showAttract();
+    roomOpening = false;
+    if (req !== joinReq) return;
+    setTogetherBusy(false);
+    setTogetherHint(isOffline() ? OFFLINE_TOGETHER : 'Couldn\'t reach a relay. Check your connection and try again, or set a custom relay in Settings.', true);
   }
+}
+// ---- offline awareness: single player never needs the network; Run Together says so plainly ----
+let roomOpening = false;
+const OFFLINE_TOGETHER = 'You\'re offline. Run Together needs a connection; single player works fully offline.';
+function isOffline() { return typeof navigator !== 'undefined' && navigator.onLine === false; }
+function syncOffline() {
+  const off = isOffline() && !netLive();
+  const note = $('offlineNote'); if (note) note.style.display = off && !SHOT ? '' : 'none';
+  if ($('ovTogether').classList.contains('show') && !joinLookup) {
+    for (const id of ['btnCreateRoom', 'btnJoinGo']) $(id).disabled = off;
+    if (off) setTogetherHint(OFFLINE_TOGETHER, true);
+    else if ($('joinHint').textContent === OFFLINE_TOGETHER) setTogetherHint('Type the code your friend sees, or paste their invite link.');
+  }
+}
+window.addEventListener('offline', () => { syncOffline(); if (netLive() && !NET.mockActive) queueToast('Connection lost · reconnecting when it\'s back', 'net'); });
+window.addEventListener('online', () => { syncOffline(); if (NET && NET.nudge) NET.nudge(); });
+// Words for the link levels (net.js quality()): honest and short.
+const LINK_WORD = { good: 'Good', fair: 'Fair', poor: 'Poor', unknown: 'Measuring', connecting: 'Connecting', reconnecting: 'Reconnecting', offline: 'Offline' };
+function linkLabelHtml(q, isHost) {
+  if (!q) return '';
+  if (q.level === 'unknown') return '<span class="q q-unknown">' + (isHost ? 'Connected' : 'Measuring…') + '</span>';
+  if (q.level === 'reconnecting' || q.level === 'connecting') return '<span class="q q-' + q.level + '">' + LINK_WORD[q.level] + '…</span>';
+  return '<span class="q q-' + q.level + '">' + LINK_WORD[q.level] + '</span> · <span class="num">' + (q.rttMs | 0) + ' ms</span>' +
+    (q.lossPct >= 2 ? ' · <span class="num">' + q.lossPct + '%</span> lost' : '');
 }
 /* ---- Run Together front door: Create a Room, or Join with a code / link ---------------------------
    One box takes whatever a friend sends: the code ("NYC-COMET-42", however typed), the invite link, or a
@@ -6148,6 +6266,7 @@ function openTogether() {
   $('joinInput').value = '';
   setTogetherHint('Type the code your friend sees, or paste their invite link.');
   showOverlay('ovTogether');
+  syncOffline();
   // Desktop: land in the box so they can just type or paste. Phones keep the keyboard down until they tap it.
   if (!input.pad.connected && !FORCE_TOUCH && !matchMedia('(pointer: coarse)').matches) { try { $('joinInput').focus(); } catch (e) {} }
 }
@@ -6171,6 +6290,7 @@ function beginJoin(payload) {
 }
 async function submitJoin() {
   if (joinLookup) return;
+  if (isOffline()) { setTogetherHint(OFFLINE_TOGETHER, true); return; }
   const p = NET.parseJoin($('joinInput').value);
   if (p.kind === 'empty') { setTogetherHint('Type the room code, or paste the invite link.', true); return; }
   if (p.kind === 'bad') { setTogetherHint(badJoinMessage(p), true); return; }
@@ -6246,22 +6366,44 @@ async function acceptInvite(role) {
     hideAllOverlays(); showOverlay('ovBlockedHost'); return;
   }
   joinOverride = false;                                    // override consumed (single-use)
+  if (isOffline()) { setJoinState(OFFLINE_TOGETHER); return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
   $('joinChoices').style.display = 'none';
-  $('btnJoinNotNow').style.display = 'none';
-  setJoinState('Joining…');
+  // Cancel stays reachable the whole time: a slow relay or a host who never answers must not
+  // strand anyone on a spinner. Each stage says what it is waiting for.
+  $('btnJoinNotNow').textContent = 'Cancel';
+  const req = ++joinReq;
+  joining = true;
+  setJoinState('Connecting to the relay…');
+  const off = NET.onEvent ? netProgress((e, d) => {
+    if (req !== joinReq) return;
+    if (e === 'join-progress' && d.stage === 'hello') setJoinState('Connected. Waiting for the host to let you in…');
+    if (e === 'join-progress' && d.stage === 'relay') setJoinState('Connecting to the relay…');
+  }) : null;
   try {
     await NET.acceptJoin(joinPayload, { ...netIdentity(), role });
-    const info = NET.info();
-    if (info.city) setJoinState('Joining… relay ' + info.city);
+    if (req !== joinReq) return;
     announce('Joined the room.');
     renderRoomCard();
     startRun({ watch: role === 1, sync: true });
   } catch (e) {
+    if (req !== joinReq) return;                           // cancelled or superseded: that screen is gone
     $('joinChoices').style.display = '';
-    $('btnJoinNotNow').style.display = '';
-    setJoinState(rejectMessage(e));
+    setJoinState(isOffline() ? OFFLINE_TOGETHER : rejectMessage(e));
+  } finally {
+    if (off) off();
+    if (req === joinReq) { joining = false; $('btnJoinNotNow').textContent = 'Not Now'; }
   }
+}
+let joining = false;
+// A scoped listener for the join screen (NET.onEvent has no unsubscribe of its own).
+const netProgressSubs = new Set();
+function netProgress(fn) { netProgressSubs.add(fn); return () => netProgressSubs.delete(fn); }
+if (NET && NET.onEvent) NET.onEvent((e, d) => { for (const fn of netProgressSubs) { try { fn(e, d); } catch (x) {} } });
+function cancelJoinFlow() {
+  joinReq++;
+  if (joining) { joining = false; try { NET.leave(); } catch (e) {} $('btnJoinNotNow').textContent = 'Not Now'; announce('Join cancelled.'); }
+  showAttract();
 }
 
 // --- Settings → Network (bespoke rows below the generic switch/slider loop) --
@@ -6361,7 +6503,7 @@ function syncNetworkSettings() {
   document.querySelectorAll('.net-relayurl').forEach((e) => { e.style.display = settings.netRelayMode === 'custom' ? '' : 'none'; });
   document.querySelectorAll('.net-relaylist').forEach((e) => { e.style.display = settings.netRelayMode === 'list' ? '' : 'none'; });
   document.querySelectorAll('.net-status-row').forEach((e) => {
-    if (active && info) { e.style.display = ''; e.innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · <span class="num">' + (info.rttMs | 0) + 'ms</span>'; }
+    if (active && info) { e.style.display = ''; e.innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(NET.quality ? NET.quality() : null, info.isHost); }
     else e.style.display = 'none';
   });
   const nb = NET.blocklist().length;
@@ -6494,7 +6636,7 @@ function ghostFor(p) {
   for (const c of ghosts) if (!c.active) {
     c.active = true; c.p = p; c.alpha = 0; c.rx = 0; c.x0 = c.x1 = c.t0 = c.t1 = 0;
     c.emoteId = -1; c.emoteSeq = 0; c.emoteT = 0; c.badgeKey = '';
-    c.dead = false; c.aliveSeen = false;
+    c.dead = false; c.aliveSeen = false; c.track = null; c.histSeq = 0; c.trackRun = -1; c.trackState = 0;
     ghostByP.set(p, c); return c;
   }
   return null;
@@ -6527,7 +6669,20 @@ function netSampleGhosts(now) {
     if (!nowDead) g.aliveSeen = true;
     else if (!g.dead && g.aliveSeen) netAnnounceDeath(g);
     g.dead = nowDead;
-    if (!g.t1 || now - g.t1 >= 80) {                        // ≥80ms → new interp keyframe
+    if (s.hist && window.SpaceManSmooth && !NET.mockActive) {
+      // Real room: every sample carries the sender's own clock → jitter-buffered playout
+      // (src/netsmooth.js). Feed each sample we have not seen, in arrival order.
+      if (!g.track) g.track = new window.SpaceManSmooth.Track();
+      for (const h of s.hist) if (h.seq > g.histSeq && h.runId === s.runId) {
+        g.histSeq = h.seq;                                  // by sequence, never arrival time (a burst shares one timestamp)
+        // A new trace (a live sample after a dead one, or a new round) starts its frame clock
+        // over and may reuse stamps still buffered from the last run: start the buffer over too.
+        if (g.trackRun !== h.runId || ((g.trackState & 4) && (h.state & 8) && !(h.state & 4))) g.track.reset();
+        g.trackRun = h.runId; g.trackState = h.state;
+        g.track.push({ t16: h.t, x: h.x, y: h.y, vx: h.vx / 10, vy: h.vy, ground: !!(h.state & 2) }, h.at);
+      }
+      g.x1 = s.x; g.y1 = s.y; g.t1 = now; g.vx = s.vx;         // latest known spot (spectator camera / world cursor)
+    } else if (!g.t1 || now - g.t1 >= 80) {                 // ≥80ms → new interp keyframe (#shot mock)
       g.x0 = g.t0 ? g.x1 : s.x; g.y0 = g.t0 ? g.y1 : s.y; g.t0 = g.t0 ? g.t1 : now - 100;
       g.x1 = s.x; g.y1 = s.y; g.t1 = now; g.vx = s.vx;
     } else { g.x1 = s.x; g.y1 = s.y; g.vx = s.vx; }          // refine the open keyframe
@@ -6615,7 +6770,7 @@ function sendLocalPresence() {
   if (!netLive() || netSpectating() || !G.player || G.frameCount % 6) return;
   const p = G.player;
   NET.sendPresence(p.x + p.w / 2, p.y + p.h / 2, (p.vx * 10) | 0,
-    (p.facing > 0 ? 1 : 0) | (p.onGround ? 2 : 0) | 8, G.chain, Math.floor(G.score), G.dist);
+    (p.facing > 0 ? 1 : 0) | (p.onGround ? 2 : 0) | 8, G.chain, Math.floor(G.score), G.dist, G.frameCount, p.vy);
 }
 
 function updateSpectator() {
@@ -6671,11 +6826,15 @@ function drawGhosts(alpha, iCamX) {
     // joiner mid-round): its y maps onto foreign terrain, so don't draw it as a
     // grounded body. The race strip still lists it. Real session only.
     if (!NET.mockActive && g.runId && myRunId && g.runId !== myRunId) continue;
-    const rt = now - 150;                                   // render 150ms in the past (§4.2)
-    let tx, ty;
-    if (g.t1 > g.t0 && rt <= g.t1) { const t = clamp((rt - g.t0) / (g.t1 - g.t0), 0, 1); tx = lerp(g.x0, g.x1, t); ty = lerp(g.y0, g.y1, t); }
-    else { const over = clamp(rt - g.t1, 0, 120); tx = g.x1 + g.vx * (over / 1000) * 10; ty = g.y1; }   // ≤120ms extrapolate
-    if (!g.rx) { g.rx = tx; g.ry = ty; } else { g.rx += (tx - g.rx) * 0.3; g.ry += (ty - g.ry) * 0.3; }
+    const sm = g.track && g.track.sample(now);
+    if (sm) { g.rx = sm.x; g.ry = sm.y; }                   // jitter buffer: interpolated, bounded extrapolation, error decays (netsmooth.js)
+    else {
+      const rt = now - 150;                                 // #shot mock: render 150ms in the past (§4.2)
+      let tx, ty;
+      if (g.t1 > g.t0 && rt <= g.t1) { const t = clamp((rt - g.t0) / (g.t1 - g.t0), 0, 1); tx = lerp(g.x0, g.x1, t); ty = lerp(g.y0, g.y1, t); }
+      else { const over = clamp(rt - g.t1, 0, 120); tx = g.x1 + g.vx * (over / 1000) * 10; ty = g.y1; }   // ≤120ms extrapolate
+      if (!g.rx) { g.rx = tx; g.ry = ty; } else { g.rx += (tx - g.rx) * 0.3; g.ry += (ty - g.ry) * 0.3; }
+    }
     // Ground-snap (§4.3): a peer reporting on-ground (state bit 2) stands on the
     // shared-world platform under its x, eased so it never floats — while airborne
     // it keeps smooth interpolation. Real session only; the #shot=room mock keeps
@@ -6775,6 +6934,23 @@ function drawNetHUD() {
   if (netLive() && NET.info().unstable) drawUnstableBanner(); else _unstableHit = null;
   if (!netSpectating()) drawCrewDirections();
   if (emoteAvailable()) drawEmoteUI(); else emTray.open = false;
+  drawLinkPill();
+}
+// In a run the link only speaks up when it matters: reconnecting, or a poor link (so a jumpy
+// ghost has an honest reason on screen). Good/fair stay silent — the room card has the detail.
+function drawLinkPill() {
+  if (NET.mockActive || !NET.quality) return;
+  const q = NET.quality();
+  if (q.level !== 'reconnecting' && q.level !== 'poor') return;
+  const us = uiScale(), text = q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
+  ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
+  const w = ctx.measureText(text).width + 22 * us, h = 18 * us;
+  let x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
+  if (emoteAvailable()) { const b = emoteLayout().button; x = b.x - 8 - w; y = b.y + (b.h - h) / 2; }   // beside the emote button, never on it
+  ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
+  ctx.fillStyle = '#FF8A6B'; ctx.beginPath(); ctx.arc(x + 9 * us, y + h / 2, 3 * us, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#F4F7FF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + 16 * us, y + h / 2 + 0.5);
+  ctx.textBaseline = 'alphabetic';
 }
 function raceRunners() {
   const out = [];
@@ -7116,7 +7292,7 @@ $('btnInitialsOk').onclick = () => commitInitials();
 $('btnTogether').onclick = () => openTogether();
 $('btnCreateRoom').onclick = () => openRoomFlow();
 $('btnJoinGo').onclick = () => submitJoin();
-$('btnTogetherBack').onclick = () => { joinReq++; setTogetherBusy(false); showAttract(); };
+$('btnTogetherBack').onclick = () => { joinReq++; if (roomOpening) { roomOpening = false; try { NET.leave(); } catch (e) {} } setTogetherBusy(false); showAttract(); };
 $('joinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitJoin(); } });
 $('joinInput').addEventListener('input', () => { if ($('joinHint').classList.contains('err')) setTogetherHint(''); });
 // Pasting a link is the whole request: go straight to the join prompt, no extra tap.
@@ -7133,14 +7309,16 @@ $('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} rend
 $('roomApprove').onclick = () => { settings.netApprove = !settings.netApprove; try { NET.setApprove(settings.netApprove); } catch (e) {} persistAll(); renderRoomCard(); syncSettingsUI(); announce(settings.netApprove ? 'Approve joins on.' : 'Approve joins off.'); };
 $('btnJoinPlay').onclick = () => acceptInvite(0);
 $('btnJoinWatch').onclick = () => acceptInvite(1);
-$('btnJoinNotNow').onclick = () => showAttract();
+$('btnJoinNotNow').onclick = () => cancelJoinFlow();
 $('btnBlockedNotNow').onclick = () => showAttract();
 $('btnJoinAnyway').onclick = () => { joinOverride = true; resetJoinPrompt(); hideAllOverlays(); showOverlay('ovJoin'); };   // deliberate one-time override past the block (§6)
 $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
-  if (e === 'reconnecting') announce('Reconnecting.');
+  if (e === 'reconnecting') { announce('Connection lost. Reconnecting.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
+  else if (e === 'reconnected') { announce('Reconnected.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
+  else if (e === 'quality') { if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'bye' && netLive()) { leaveRoom(); queueToast(d && d.reason === 1 ? 'The host closed the room.' : 'The host ended your room connection.', 'net'); }
   else if (e === 'approve-wait') {   // a held join is waiting for the host (§4.6)
     if (d && d.pubHex) { pendingJoins.set(d.pubHex, { pubHex: d.pubHex, role: d.role }); queueToast('Someone wants to join', 'net'); announce('Someone wants to join.'); }
@@ -7220,7 +7398,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); }
     Audio.suspend();   // kills the background drone on Android after an app switch
+    if (!SHOT) { power.looping = !!rafId; stopLoop(); }
   } else {
+    if (!SHOT && power.looping) startLoop();
+    if (NET && NET.nudge) NET.nudge();   // a socket that died while we were away reconnects now
     Audio.resume();
     SEASON = computeSeason();   // E13: the date can roll over mid-session
     if (G.mode === 'attract') renderDailyCard();   // …and so can the Daily Course
@@ -7506,7 +7687,7 @@ function setupAnimatedFavicon() {
       tinted = tc; tintFor = id;
     };
     const paint = () => {
-      if (broken || document.hidden) return;
+      if (broken || document.hidden || powerSaving()) return;   // no PNG encode every 0.9 s on a saving device
       if (lessMotion()) { if (String(link.href).indexOf('data:') === 0) link.href = 'favicon.png'; return; }
       if (G.mode === 'play' || G.mode === 'resume') return;   // toDataURL hitches the run; identity motion belongs to attract/pause/dead
       try {

@@ -12,7 +12,7 @@
   /* -------------------------------------------------------------------------
      0. WIRE CONSTANTS — relay frame types, app frame types, hard caps
      ------------------------------------------------------------------------- */
-  const PROTO = 4;                       // app protocol version (envelope ver)
+  const PROTO = 5;                       // app protocol version (envelope ver) — 5: timestamped/quantized presence, PING/PONG, reorder window
   const ROOM_CAP = 32;
   const WIRE_MAX = 256;                  // hard cap per encrypted app packet (pre-decrypt gate)
   const RELAY_FRAME_MAX = 65536;         // declared relay frame length above this = protocol violation
@@ -36,6 +36,10 @@
   // Shared kills: a guest reports an alien it killed (KILL, G→H); the host fans it out
   // to everyone else (KILLB, H→all) so it disappears on every screen.
   const A_KILL = 0x0d, A_KILLB = 0x18, A_KILLS = 0x19;   // KILLS (H→G): the round's kills so far, for a late joiner or a reconnect
+  // Link quality (v5): a guest PINGs the host every PING_MS carrying its own measured RTT/loss/jitter
+  // (so the host can show each member's link), the host answers PONG. Doubles as the app-level
+  // keepalive that spots a dead socket in seconds instead of the relay's 90 s liveness.
+  const A_PING = 0x1a, A_PONG = 0x1b;
   const KILL_REACH = 1800;   // px: a kill is only believed within this of the reporter's own last position
   const EMOTE_MAX = 5;                     // shipped emote id ceiling (clamp 0..5 at RECEIPT)
   // Frame-type space partition (Addendum D headroom): 0x00-0x3F core (specced),
@@ -73,6 +77,18 @@
 
   // Timing (ms). Liveness is app-level: relay drops to absent keys silently.
   const T_CONNECT = 8000, T_HANDSHAKE = 5000, T_DEAD = 90000, T_PING_IDLE = 25000;
+  // Link tuning (v5). Silence is counted in ticks of real timers, never by diffing clocks, so a
+  // suspended laptop or a stepped test clock can't fake an outage.
+  const TUNE = {
+    pingMs: 2000,        // guest PING cadence (and the host's heartbeat floor via PONG/SNAP)
+    deadTicks: 4,        // guest: this many ping ticks with nothing from the host → reconnect the socket
+    hostDeadTicks: 80,   // host: snap ticks (10 Hz) with nothing from any member → reconnect
+    heartbeatMs: 1000,   // host: an unchanged room still sends one SNAP per this, not ten
+    backlogSoft: 4096,   // socket send buffer (bytes) above which presence/snapshots thin out
+    backlogHard: 16384,  // …and above which non-essential presence is skipped outright
+    joinConnectMs: 20000, // guest: budget per relay host while joining (slow links need more than 13 s)
+  };
+  const REPLAY_WIN = 32;  // receive window: a frame up to 32 counters behind the newest is accepted once
   const BACKOFF_BASE = 500, BACKOFF_CAP = 10000, BACKOFF_RESET = 30000;
 
   /* -------------------------------------------------------------------------
@@ -411,11 +427,37 @@
   /* -------------------------------------------------------------------------
      4. AEAD ENVELOPES — 'S' app frames (AES-GCM, counter nonce) + 'C' code
      channel (random-nonce NaCl box: no counter state exists pre-join).
-     Replay rule: strict counter > highSeen per (pair, dir); highSeen moves
-     only after a successful open (garbage cannot burn counters).
+     Replay rule (v5): each counter opens at most once per (pair, dir), within
+     a 32-counter window behind the newest (reorder-tolerant); the window
+     moves only after a successful open (garbage cannot burn counters).
      ------------------------------------------------------------------------- */
   function makePair(aesKey, roomId8, epoch, sendDir) {
-    return { key: aesKey, roomId: roomId8, epoch, dir: sendDir, sendCtr: 0, highSeen: -1 };
+    return { key: aesKey, roomId: roomId8, epoch, dir: sendDir, sendCtr: 0, highSeen: -1, mask: 0, strictHigh: -1 };
+  }
+  // Only frames whose effect does not depend on arrival order may be taken out of send order:
+  // presence and snapshot rows carry the sender's own frame clock (receivers keep the newest
+  // per runner), and PING/PONG are matched by id. Every other frame — ROSTER, ROLE, WELCOME,
+  // ROUND/control, KILL/KILLB/KILLS, BYE, EMOTE, HELLO, and anything unknown — mutates state,
+  // so it must arrive after every earlier state frame: one whose counter is not above the last
+  // accepted state frame is dropped as 'late' (never struck — that is reordering, not an attack).
+  const REORDER_SAFE = new Set([A_PRES, A_SNAP, A_PING, A_PONG]);
+  // Anti-replay with a small window (the DTLS/IPsec rule): every counter opens at most once; one
+  // that arrives a little late (reordered on a lossy path) is still accepted, one from beyond the
+  // window is dropped as stale. `mask` bit i = counter highSeen−1−i already opened.
+  function replayCheck(pair, ctr) {                     // → null (fresh) | 'replay' | 'stale'
+    if (ctr > pair.highSeen) return null;
+    const back = pair.highSeen - ctr;
+    if (back === 0) return 'replay';
+    if (back > REPLAY_WIN) return 'stale';
+    return (pair.mask >>> (back - 1)) & 1 ? 'replay' : null;
+  }
+  function markSeen(pair, ctr) {
+    if (ctr > pair.highSeen) {
+      const sh = ctr - pair.highSeen;
+      let m = sh >= 32 ? 0 : (pair.mask << sh) >>> 0;
+      if (pair.highSeen >= 0 && sh <= 32) m = (m | (1 << (sh - 1))) >>> 0;   // the old newest now sits sh back
+      pair.mask = m; pair.highSeen = ctr;
+    } else pair.mask = (pair.mask | (1 << (pair.highSeen - ctr - 1))) >>> 0;
   }
   function envHead(pair, dir, ctr) {
     const iv = new Uint8Array(12);                      // dir(1) || counter u64 LE || 0x000000
@@ -457,12 +499,18 @@
     if (wire[2] !== theirDir) return { err: 'dir' };
     const dv = new DataView(wire.buffer, wire.byteOffset);
     const ctr = dv.getUint32(3, true) + dv.getUint32(7, true) * 4294967296;
-    if (ctr <= pair.highSeen) return { err: 'replay' };
+    const seen = replayCheck(pair, ctr);
+    if (seen) return { err: seen };
     const { iv, aad } = envHead(pair, theirDir, ctr);
     try {
       const pt = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, pair.key, wire.subarray(11)));
-      pair.highSeen = ctr;
-      return { pt };
+      if (replayCheck(pair, ctr)) return { err: 'replay' };   // a twin opened while we awaited decrypt
+      markSeen(pair, ctr);                                     // opened once, either way: a later copy is a replay
+      if (!(pt.length && REORDER_SAFE.has(pt[0]))) {
+        if (ctr <= pair.strictHigh) return { err: 'late' };
+        pair.strictHigh = ctr;
+      }
+      return { pt, ctr };
     } catch (e) { return { err: 'aead' }; }
   }
   function sealCode(pt, theirPub, myPriv) {             // 'C' ver nonce24 box
@@ -820,10 +868,18 @@
         }, 5000);
         c.timers.push(live);
       };
-      ws.onmessage = onMessage;
+      ws.onmessage = (ev) => { if (c.ws === ws) onMessage(ev); };   // a replaced socket's late bytes never reach the new stream
       ws.onerror = () => {};                            // close always follows; fail() runs once there
-      ws.onclose = () => { if (!c.closed && c.state !== 'down') fail('socket closed'); };
+      ws.onclose = () => { if (c.ws === ws && !c.closed && c.state !== 'down') fail('socket closed'); };
     };
+    // Bytes queued in the socket but not yet on the wire: the only honest
+    // congestion signal a browser gives. Senders thin out above TUNE.backlog*.
+    c.backlog = () => (c.ws && c.ws.readyState === 1 ? (c.ws.bufferedAmount | 0) : 0);
+    // The app layer decided the socket is dead (no traffic where traffic is due):
+    // drop it and reconnect now rather than waiting out T_DEAD.
+    c.kick = (why) => { if (!c.closed && c.state === 'established') fail(why || 'stale link'); };
+    // Network came back (online event / tab visible): skip the rest of a backoff wait.
+    c.nudge = () => { if (!c.closed && c.state === 'down') { clearTimers(); c.attempts = 0; c.connect(); } };
     c.ping = () => {
       const p = new Uint8Array(8);
       new DataView(p.buffer).setUint32(0, ++c.pingCtr, true);
@@ -845,7 +901,8 @@
      session direction (no JSON, no per-frame allocation on the send path).
      Decoders ignore trailing bytes (forward compat within a version).
      ------------------------------------------------------------------------- */
-  const HELLO_CORE = 36, HELLO_LEN = 43, WELCOME_LEN = 23, PRES_LEN = 21, SNAP_ENTRY = 19, SNAP_MAX = 11;
+  const HELLO_CORE = 36, HELLO_LEN = 43, WELCOME_LEN = 23, PRES_LEN = 20, SNAP_ENTRY = 20, SNAP_MAX = 11;
+  const Y_Q = 8, VY_Q = 8;                               // v5 quantization: y and vy in 1/8 px (y ±4095 px, vy ±15.9 px/step)
   const TAG_RE = /^[A-Z0-9]{3}$/;
   const wTag = (s) => (TAG_RE.test(s) ? s : 'AAA');     // whitelist, never a strike
   function makeScratch() { const b = new ArrayBuffer(WIRE_MAX); return { u8: new Uint8Array(b), dv: new DataView(b) }; }
@@ -912,24 +969,30 @@
       hostEpoch: pt[15], caps: dv.getUint32(16, true),
     };
   }
-  function encPres(s, o) {   // o: {seq,x,y,vx,state,chain,score,dist,runId}
+  // PRES v5 (20B): t u16 is the SENDER's sim clock (frames at 60/s, mod 2^16) at the sample —
+  // receivers order, dedupe and play samples out on it, so relay jitter/bursts/reorder never bend
+  // the motion. y and vy are quantized to 1/8 px (the old f32 y spent 2 bytes on nothing).
+  function encPres(s, o) {   // o: {t,x,y,vx,vy,state,chain,score,dist,runId}
     const u = s.u8, dv = s.dv;
     u[0] = A_PRES;
-    dv.setUint16(1, o.seq & 0xffff, true);
-    dv.setFloat32(3, o.x, true); dv.setFloat32(7, o.y, true);
-    dv.setInt8(11, Math.max(-127, Math.min(127, o.vx | 0)));
-    u[12] = o.state & 0x1f; u[13] = Math.min(4, o.chain | 0);
-    dv.setUint32(14, Math.min(9999999, o.score >>> 0), true);
-    dv.setUint16(18, Math.min(60000, o.dist | 0), true);
-    u[20] = o.runId & 0xff;
+    dv.setUint16(1, o.t & 0xffff, true);
+    dv.setFloat32(3, o.x, true);
+    dv.setInt16(7, Math.max(-32767, Math.min(32767, Math.round(o.y * Y_Q))), true);
+    dv.setInt8(9, Math.max(-127, Math.min(127, o.vx | 0)));
+    dv.setInt8(10, Math.max(-127, Math.min(127, Math.round((o.vy || 0) * VY_Q))));
+    u[11] = o.state & 0x1f; u[12] = Math.min(4, o.chain | 0);
+    dv.setUint32(13, Math.min(9999999, o.score >>> 0), true);
+    dv.setUint16(17, Math.min(60000, o.dist | 0), true);
+    u[19] = o.runId & 0xff;
     return u.subarray(0, PRES_LEN);
   }
   // Presence validation: clamps render weird, never escalate; NaN is the one strike.
-  function decPresBody(dv, u8, off, prev) {            // body starts at seq; prev = last accepted row or null
-    const x = dv.getFloat32(off + 2, true), y = dv.getFloat32(off + 6, true);
-    if (!isFinite(x) || !isFinite(y)) return { err: 'nan' };
-    let score = dv.getUint32(off + 13, true), dist = dv.getUint16(off + 17, true);
-    const runId = u8[off + 19];
+  function decPresBody(dv, u8, off, prev) {            // body starts at t; prev = last accepted row or null
+    const x = dv.getFloat32(off + 2, true);
+    if (!isFinite(x)) return { err: 'nan' };
+    const y = dv.getInt16(off + 6, true) / Y_Q;
+    let score = dv.getUint32(off + 12, true), dist = dv.getUint16(off + 16, true);
+    const runId = u8[off + 18];
     if (score > 9999999) score = 9999999;
     if (dist > 60000) dist = 60000;
     if (prev && prev.runId === runId) {                // per-runId monotonic (desync-tolerant)
@@ -937,9 +1000,9 @@
       if (dist < prev.dist) dist = prev.dist;
     }
     return {
-      seq: dv.getUint16(off, true),
+      t: dv.getUint16(off, true),
       x: Math.max(-1e6, Math.min(4e6, x)), y: Math.max(-4000, Math.min(4000, y)),
-      vx: dv.getInt8(off + 10), state: u8[off + 11] & 0x1f, chain: Math.min(4, u8[off + 12]),
+      vx: dv.getInt8(off + 8), vy: dv.getInt8(off + 9) / VY_Q, state: u8[off + 10] & 0x1f, chain: Math.min(4, u8[off + 11]),
       score, dist, runId,
     };
   }
@@ -947,7 +1010,52 @@
     if (pt.length < PRES_LEN) return { err: 'short' };
     return decPresBody(new DataView(pt.buffer, pt.byteOffset), pt, 1, prev);
   }
-  function encSnap(s, tick, rows) {                    // rows: [{p, pres}] ≤ SNAP_MAX
+  // Signed distance between two u16 sender clocks (-32768..32767).
+  const tDiff = (a, b) => ((a - b + 0x8000) & 0xffff) - 0x8000;
+  // Is sample `cur` older than (or a copy of) `prev` on the same trace? Reordered or duplicated
+  // presence is dropped so a ghost never steps back. A clock that jumps back by more than 5 s is
+  // a new trace (the sender restarted its run), never "old".
+  const presStale = (prev, cur) => !!prev && prev.runId === cur.runId && tDiff(cur.t, prev.t) <= 0 && tDiff(cur.t, prev.t) > -300;
+  // Admit one presence sample given the one held for that runner. Samples ride reorderable
+  // frames and order themselves by the sender clock t — but t restarts with every run, so
+  // across a restart only the envelope counter `ctr` of the carrying frame orders them:
+  //  - a sample from a frame sent before the current trace began (ctr < traceCtr) is dropped:
+  //    a delayed pre-restart copy can never revert the restarted runner;
+  //  - a life-state change (dead/inRun bits, or runId) that a newer frame overtook is dropped:
+  //    a pre-death sample can never pose as a restart;
+  //  - otherwise the usual rule: older t on the same trace (or a heartbeat copy) is stale.
+  // A new trace starts on a restart (live after dead), a new runId, or a clock jump ≥ 5 s.
+  // → { ok, trace } (trace = counter that began the admitted sample's trace) | { ok:false, copy }
+  function sampleAdmit(prev, cur, ctr) {
+    if (!prev || prev.x == null) return { ok: true, trace: ctr };
+    if (ctr < (prev.traceCtr || 0)) return { ok: false };
+    const life = ((prev.state ^ cur.state) & 12) !== 0 || prev.runId !== cur.runId;
+    if (life && ctr < (prev.ctr || 0)) return { ok: false };
+    const d = tDiff(cur.t, prev.t);
+    const restart = (prev.state & 4) && (cur.state & 8) && !(cur.state & 4);
+    const newTrace = restart || prev.runId !== cur.runId || d >= 300 || d <= -300;
+    if (!newTrace && presStale(prev, cur)) return { ok: false, copy: d === 0 };
+    return { ok: true, trace: newTrace ? ctr : (prev.traceCtr || 0) };
+  }
+  // Default sender clock when the game doesn't pass its sim frame: wall time in 60 Hz frames.
+  // Strictly increasing per session, so two samples taken inside one frame stay distinct.
+  function senderClock(S) {
+    let t = Math.round(performance.now() / (1000 / 60)) & 0xffff;
+    if (S.autoT != null && tDiff(t, S.autoT) <= 0) t = (S.autoT + 1) & 0xffff;
+    return (S.autoT = t);
+  }
+  // Recent samples per remote runner, in arrival order, for the renderer's jitter buffer
+  // (a burst after a stall delivers several at once; the latest-only view would lose them).
+  const HIST_N = 12;
+  // seq is the consumer's cursor: arrival times can repeat (a burst lands inside one coarse
+  // performance.now() tick), a sequence number never does.
+  let histSeq = 0;
+  function pushHist(row, q, at) {
+    const h = row.hist || (row.hist = []);
+    h.push({ t: q.t, x: q.x, y: q.y, vx: q.vx, vy: q.vy, state: q.state, runId: q.runId, at, seq: ++histSeq });
+    if (h.length > HIST_N) h.shift();
+  }
+  function encSnap(s, tick, rows) {                    // rows: [{p, pres}] <= SNAP_MAX
     const u = s.u8, dv = s.dv;
     u[0] = A_SNAP;
     dv.setUint16(1, tick & 0xffff, true);
@@ -957,10 +1065,13 @@
     for (let i = 0; i < n; i++) {
       const r = rows[i], q = r.pres;
       u[off] = r.p;
-      dv.setFloat32(off + 1, q.x, true); dv.setFloat32(off + 5, q.y, true);
-      dv.setInt8(off + 9, q.vx); u[off + 10] = q.state; u[off + 11] = q.chain;
-      dv.setUint32(off + 12, q.score, true); dv.setUint16(off + 16, q.dist, true);
-      u[off + 18] = q.runId;
+      dv.setUint16(off + 1, q.t & 0xffff, true);
+      dv.setFloat32(off + 3, q.x, true);
+      dv.setInt16(off + 7, Math.max(-32767, Math.min(32767, Math.round(q.y * Y_Q))), true);
+      dv.setInt8(off + 9, q.vx); dv.setInt8(off + 10, Math.max(-127, Math.min(127, Math.round((q.vy || 0) * VY_Q))));
+      u[off + 11] = q.state; u[off + 12] = q.chain;
+      dv.setUint32(off + 13, q.score, true); dv.setUint16(off + 17, q.dist, true);
+      u[off + 19] = q.runId;
       off += SNAP_ENTRY;
     }
     return u.subarray(0, off);
@@ -974,19 +1085,57 @@
     for (let i = 0; i < n; i++) {
       const off = 4 + i * SNAP_ENTRY;
       const p = pt[off];
-      if (p < 1 || p > ROOM_CAP) continue;             // bad slot → drop entry, keep frame
-      const x = dv.getFloat32(off + 1, true), y = dv.getFloat32(off + 5, true);
-      if (!isFinite(x) || !isFinite(y)) continue;
+      if (p < 1 || p > ROOM_CAP) continue;             // bad slot -> drop entry, keep frame
+      const x = dv.getFloat32(off + 3, true);
+      if (!isFinite(x)) continue;
       rows.push({
-        p,
-        x: Math.max(-1e6, Math.min(4e6, x)), y: Math.max(-4000, Math.min(4000, y)),
-        vx: dv.getInt8(off + 9), state: pt[off + 10] & 0x1f, chain: Math.min(4, pt[off + 11]),
-        score: Math.min(9999999, dv.getUint32(off + 12, true)),
-        dist: Math.min(60000, dv.getUint16(off + 16, true)),
-        runId: pt[off + 18],
+        p, t: dv.getUint16(off + 1, true),
+        x: Math.max(-1e6, Math.min(4e6, x)), y: Math.max(-4000, Math.min(4000, dv.getInt16(off + 7, true) / Y_Q)),
+        vx: dv.getInt8(off + 9), vy: dv.getInt8(off + 10) / VY_Q, state: pt[off + 11] & 0x1f, chain: Math.min(4, pt[off + 12]),
+        score: Math.min(9999999, dv.getUint32(off + 13, true)),
+        dist: Math.min(60000, dv.getUint16(off + 17, true)),
+        runId: pt[off + 19],
       });
     }
     return { tick, rows };
+  }
+  // PING (0x1a G->H) body {id u16, rttMs u16, lossPct u8, jitter u8 (x4 ms)}: the guest's own view of
+  // its link, so the host can show every member's quality without pinging anyone. PONG (0x1b H->G) {id u16}.
+  function encPing(s, id, rtt, loss, jit) {
+    const u = s.u8, dv = s.dv;
+    u[0] = A_PING; dv.setUint16(1, id & 0xffff, true);
+    dv.setUint16(3, Math.max(0, Math.min(65535, Math.round(rtt) || 0)), true);
+    u[5] = Math.max(0, Math.min(100, Math.round(loss * 100) || 0));
+    u[6] = Math.max(0, Math.min(255, Math.round((jit || 0) / 4)));
+    return u.subarray(0, 7);
+  }
+  function decPing(pt) {
+    if (pt.length < 7) return null;
+    const dv = new DataView(pt.buffer, pt.byteOffset);
+    return { id: dv.getUint16(1, true), rtt: dv.getUint16(3, true), loss: Math.min(100, pt[5]) / 100, jit: pt[6] * 4 };
+  }
+  function encPong(s, id) { const u = s.u8; u[0] = A_PONG; s.dv.setUint16(1, id & 0xffff, true); return u.subarray(0, 3); }
+  function decPong(pt) { return pt.length < 3 ? null : { id: new DataView(pt.buffer, pt.byteOffset).getUint16(1, true) }; }
+  // Link quality from what a client measured: honest thresholds a person feels in a platformer.
+  //   good  rtt < 150 ms, jitter < 60 ms, loss < 2 %
+  //   fair  rtt < 350 ms, jitter < 150 ms, loss < 10 %
+  //   poor  anything worse
+  function linkLevel(q) {
+    if (!q || !q.n) return 'unknown';
+    if (q.rtt < 150 && q.jit < 60 && q.loss < 0.02) return 'good';
+    if (q.rtt < 350 && q.jit < 150 && q.loss < 0.10) return 'fair';
+    return 'poor';
+  }
+  // Round-trip tracker (guest side): TCP-style smoothed RTT + mean deviation, and loss over the
+  // last pings (one that is not answered within 4 s counts as lost).
+  function makeLink() { return { n: 0, rtt: 0, jit: 0, loss: 0, out: new Map(), id: 0 }; }
+  function linkSample(q, ms) {
+    if (!q.n) { q.rtt = ms; q.jit = ms / 2; } else { q.jit += (Math.abs(ms - q.rtt) - q.jit) * 0.25; q.rtt += (ms - q.rtt) * 0.125; }
+    q.n++;
+    q.loss += (0 - q.loss) * 0.1;
+  }
+  function linkExpire(q, now) {
+    for (const [id, t] of q.out) if (now - t > 4000) { q.out.delete(id); q.loss += (1 - q.loss) * 0.1; }
   }
 
   // EMOTE (0x06 G→H) — body {emoteId u8, seq u8}. EMOTEB (0x16 H→all) — body
@@ -1270,8 +1419,9 @@
       role: opts.role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER,   // host may sit out while hosting
       adjIdx: opts.adjIdx == null ? CALLSIGN_NONE : opts.adjIdx & 0xff,
       nounIdx: opts.nounIdx == null ? CALLSIGN_NONE : opts.nounIdx & 0xff,
-      self: { seq: 0, x: 0, y: 0, vx: 0, state: 0, chain: 0, score: 0, dist: 0, runId: 1 },
-      ev: emitter(), tick: 0, snapTimer: null, rr: 0, slots: makeSlots(),
+      self: { t: 0, x: 0, y: 0, vx: 0, vy: 0, state: 0, chain: 0, score: 0, dist: 0, runId: 1 },
+      rxTicks: 0, lastSnapAt: 0, selfDirty: false, snapSkip: false,
+      ev: emitter(), tick: 0, snapTimer: null, slots: makeSlots(),
       out: makeScratch(), outSnap: makeScratch(), outRoster: makeScratch(), rosterQueue: Promise.resolve(), killed: new Set(),
       started: 0,
       invite: '', link: '', region: opts.region || '', relayHostName: '',
@@ -1336,7 +1486,9 @@
       const row = S.roster.get(key);
       if (!row) return joinAttempt(srcPub, key, wire);
       const res = await openApp(row.pair, wire);
+      if (res.err === 'stale' || res.err === 'late') return;     // reordered past the window, or a state frame overtaken by a newer one: dropped, never a strike (a slow path is not an attack)
       if (res.err) return strike(row, res.err);
+      S.rxTicks = 0;                                             // life on our socket (dead-link detection)
       const pt = res.pt;
       if (!pt.length) return;
       // Frame-type partition (Addendum D): reserved (0x40-0x7F) & experimental
@@ -1347,7 +1499,27 @@
       // new-world / roster / snap / emote-broadcast) → strike. The pair AEAD
       // already proved WHICH guest sent it; this refuses the forged ROLE.
       if (pt[0] === A_WELCOME || pt[0] === A_ROSTER || pt[0] === A_SNAP ||
-          pt[0] === A_BYE || pt[0] === A_ROUND || pt[0] === A_EMOTEB || pt[0] === A_KILLB || pt[0] === A_KILLS) return strike(row, 'host-frame');
+          pt[0] === A_BYE || pt[0] === A_ROUND || pt[0] === A_EMOTEB || pt[0] === A_KILLB || pt[0] === A_KILLS || pt[0] === A_PONG) return strike(row, 'host-frame');
+      if (pt[0] === A_PING) {                                    // link probe + the member's own link report (spectators too: it is a keepalive)
+        const pg = decPing(pt);
+        if (!pg) return;
+        // Bucket: burst 4, refill 1/s. Over-rate drops without a strike (a reconnect burst is honest).
+        const tp = performance.now();
+        row.pingBucket = Math.min(4, (row.pingBucket == null ? 4 : row.pingBucket) + (tp - (row.pingBucketT || tp)) / 1000);
+        row.pingBucketT = tp;
+        if (row.pingBucket < 1) return;
+        row.pingBucket -= 1;
+        // Always answer; but PING may be reordered, so only a newer id (wrap-aware) updates the report.
+        if (row.linkId == null || tDiff(pg.id, row.linkId) > 0) {
+          const was = row.link;
+          row.linkId = pg.id; row.link = { n: pg.rtt ? 1 : 0, rtt: pg.rtt, loss: pg.loss, jit: pg.jit };
+          // Tell the room UI when this member's link becomes known or visibly changes (level, or
+          // the round trip by ≥ 25 ms); the card is drawn at join, before any report exists.
+          if (row.link.n && (!was || !was.n || linkLevel(was) !== linkLevel(row.link) || Math.abs(was.rtt - row.link.rtt) >= 25)) S.ev.emit('quality', S.quality());
+        }
+        S.relay.send(row.pub, await sealApp(row.pair, encPong(S.out, pg.id)));
+        return;
+      }
       if (pt[0] === A_EMOTE) {                                   // guest emote (spectators MAY emote, §4.6/Addendum A)
         const em = decEmote(pt);
         if (!em) return;
@@ -1401,6 +1573,11 @@
         const pres = decPres(pt, row.pres);
         if (pres.err === 'nan') return strike(row, 'nan');
         if (pres.err) return;
+        // A sample older than the one we hold (reordered by a lossy path), a copy of it, or one
+        // sent before the runner's restart: drop, no strike (sampleAdmit).
+        const adm = sampleAdmit(row.pres, pres, res.ctr);
+        if (!adm.ok) return;
+        pres.ctr = res.ctr; pres.traceCtr = adm.trace;
         // Frames still in flight across a New Round carry the old runId; the
         // sender restarts on ROUND, so drop them (no strike) rather than let a
         // stale course position open a fresh trace on the new one.
@@ -1437,6 +1614,7 @@
         if (env.unverified) row.unverified = true;
         row.pres = pres;
         row.lastSeen = t;
+        pushHist(row, pres, t);
         return;
       }
       if (pt[0] === A_ROLE) {                                    // role change request (Addendum A)
@@ -1475,9 +1653,12 @@
         // and re-anchor the reconnecting peer to the live shared round at once.
         if (row.absent) {
           row.absent = false; S.ev.emit('rejoin', { p: row.p, tag: row.tag });
-          sendRoster(0, null, row).catch(() => {});             // the rejoiner missed changes while away: full snapshot
           sendRoster(1, [row], null, row).catch(() => {});      // everyone else just sees them return
         }
+        // Whether or not we noticed the drop (a quick blip never reaches F_PEER_GONE), frames sent
+        // meanwhile were lost: the rejoiner gets the whole roster and where everyone is, now.
+        sendRoster(0, null, row).catch(() => {});
+        snapTo(row).catch(() => {});
         if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});
         replayKills(row).catch(() => {});
         return;
@@ -1563,6 +1744,7 @@
       S.relay.send(row.pub, await sealApp(row.pair, w));
       S.ev.emit('join', { p, tag: row.tag, role: row.role });
       sendRoster(0).catch(() => {});                           // newcomers need the existing players too
+      snapTo(row).catch(() => {});                             // …and where they are, without waiting for the next change
       if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});   // anchor the joiner to the live shared round
       replayKills(row).catch(() => {});                          // …and show it which aliens are already gone
       return true;
@@ -1658,8 +1840,40 @@
       for (const r of members()) S.relay.send(r.pub, await sealApp(r.pair, pt));
     }
 
+    // Live rows worth fanning out: present, a runner, and fresh.
+    function liveRows(nowTick) {
+      const live = [];
+      for (const r of S.roster.values()) if (r.pres && !r.absent && r.role !== ROLE_SPECTATOR && (nowTick - r.lastSeen) <= PRES_STALE) live.push(r);
+      return live;
+    }
+    // Everything we know right now, to one member (a join or a rejoin).
+    async function snapTo(row) {
+      if (!S.relay || S.relay.state !== 'established') return;
+      const nowTick = performance.now();
+      const rows = S.role === ROLE_SPECTATOR || nowTick - (S.selfSeen || 0) > PRES_STALE ? [] : [{ p: 1, pres: S.self }];
+      for (const r of liveRows(nowTick)) if (r !== row) rows.push({ p: r.p, pres: r.pres });
+      // Everyone, in SNAP_MAX-sized frames: a 32-runner room needs three.
+      const tick = (((nowTick - S.started) | 0) >> 4) & 0xffff;
+      for (let i = 0; i < rows.length; i += SNAP_MAX) {
+        S.relay.send(row.pub, await sealApp(row.pair, encSnap(S.outSnap, tick, rows.slice(i, i + SNAP_MAX)).slice()));
+      }
+    }
+    // Full catch-up to every connected member, in send order per member: the round anchor
+    // first (it can carry a new runId), then that round's kills, the roster, and positions.
+    function resyncMembers() {
+      const round = S.roundRunId === S.runId && S.roundT0;
+      for (const row of members()) {
+        if (round) broadcastRound(0, row).catch(() => {});
+        replayKills(row).catch(() => {});
+        sendRoster(0, null, row).catch(() => {});
+        snapTo(row).catch(() => {});
+      }
+    }
     async function snapTick() {
       if (S.relay.state !== 'established') return;
+      // Dead-link detection: members PING every TUNE.pingMs, so a socket that has carried
+      // nothing for hostDeadTicks snap ticks is dead (NAT rebind, radio switch) — reconnect it.
+      if (members().length && ++S.rxTicks >= TUNE.hostDeadTicks) { S.rxTicks = 0; S.relay.kick('no member traffic'); return; }
       const nowTick = performance.now();
       // Housekeeping: an absent row keeps its P# through a short reconnect,
       // then frees it (P# ≤ 32 on the wire) and stops costing a seal per tick;
@@ -1667,16 +1881,29 @@
       for (const r of S.roster.values()) if (r.absent && nowTick - r.absentAt > ABSENT_GRACE) removeRow(r);
       for (const [key, pend] of S.pending) if (nowTick - pend.t > PENDING_TTL) dropPending(key);
       S.tick = (nowTick - S.started) | 0;
-      const live = [];
+      // Congestion: our own socket backing up means the uplink can't keep 10 Hz — send every
+      // other tick (and let samples replace each other in the meantime).
+      const backlog = S.relay.backlog ? S.relay.backlog() : 0;
+      if (backlog > TUNE.backlogSoft && (S.snapSkip = !S.snapSkip)) return;
       // Skip absent rows AND rows whose last PRES has gone stale (paused / backgrounded
       // peer that stopped streaming): don't rebroadcast a frozen position — peers age
       // it out and hide the ghost promptly even without a transport F_PEER_GONE.
-      for (const r of S.roster.values()) if (r.pres && !r.absent && r.role !== ROLE_SPECTATOR && (nowTick - r.lastSeen) <= PRES_STALE) live.push(r);
-      const rows = S.role === ROLE_SPECTATOR || nowTick - (S.selfSeen || 0) > PRES_STALE ? [] : [{ p: 1, pres: S.self }];
-      for (let i = 0; i < live.length && rows.length < SNAP_MAX; i++) {
-        rows.push({ p: live[(S.rr + i) % live.length].p, pres: live[(S.rr + i) % live.length].pres });
+      // Thrift (v5): a row rides along when it has a NEW sample since its last fan-out, or
+      // when its own last fan-out is a heartbeat old — tracked PER ROW, so in a full room
+      // (31 remote rows, 11 per frame) an overdue row carries into the next ticks instead of
+      // waiting for a global heartbeat. Oldest fan-out first; the room-wide heartbeat only
+      // sends an empty keepalive when there is nothing to carry.
+      const due = (sentAt, fresh) => fresh || nowTick - (sentAt || 0) >= TUNE.heartbeatMs;
+      const rows = [];
+      const selfLive = S.role !== ROLE_SPECTATOR && nowTick - (S.selfSeen || 0) <= PRES_STALE;
+      if (selfLive && due(S.selfSnapAt, S.selfDirty)) { rows.push({ p: 1, pres: S.self }); S.selfSnapAt = nowTick; S.selfDirty = false; }
+      const cand = liveRows(nowTick).filter((r) => due(r.snapAt, r.pres !== r.snapPres)).sort((a, b) => (a.snapAt || 0) - (b.snapAt || 0));
+      for (let i = 0; i < cand.length && rows.length < SNAP_MAX; i++) {
+        const r = cand[i];
+        rows.push({ p: r.p, pres: r.pres }); r.snapPres = r.pres; r.snapAt = nowTick;
       }
-      S.rr = live.length ? (S.rr + (SNAP_MAX - 1)) % live.length : 0;
+      if (!rows.length && nowTick - (S.lastSnapAt || 0) < TUNE.heartbeatMs) return;   // nothing due: no packet, no radio wake-up on anyone's phone
+      S.lastSnapAt = nowTick;
       const pt = encSnap(S.outSnap, (S.tick >> 4) & 0xffff, rows).slice();
       for (const r of members()) {
         S.relay.send(r.pub, await sealApp(r.pair, pt));          // one encode, n seals
@@ -1725,12 +1952,23 @@
       });
       S.link = linkBase(opts.baseUrl) + '#j=' + S.invite;
       S.started = performance.now();
+      if (S.closed) throw new Error('Room cancelled');
       await new Promise((resolve, reject) => {
         let settled = false;
+        S.cancelConnect = () => { if (!settled) { settled = true; reject(new Error('Room cancelled')); } };
         S.relay = RelayClient(relayHost, S.keys, {
-          onOpen: () => { if (!settled) { settled = true; resolve(); } S.ev.emit('state', { state: 'established' }); },
+          onOpen: () => {
+            if (!settled) { settled = true; resolve(); }
+            S.rxTicks = 0;
+            // The host's own link came back. Members stayed connected, so none of them will
+            // re-HELLO — but everything sent while we were down (a New Round, kills, roster
+            // changes) was lost. Give every member the same catch-up a rejoiner gets.
+            if (S.everUp) { resyncMembers(); S.ev.emit('reconnected', {}); }
+            S.everUp = true;
+            S.ev.emit('state', { state: 'established' });
+          },
           onPacket, onRtt: (ms) => S.ev.emit('rtt', { ms }),
-          onDown: (why) => { S.ev.emit('state', { state: 'down', why }); },
+          onDown: (why) => { S.ev.emit('state', { state: 'down', why }); if (S.everUp) S.ev.emit('reconnecting', { why }); },
           onPeerGone: (pub) => hostPeerGone(pub),
           onLog: (m) => S.ev.emit('log', { m }),
         });
@@ -1749,10 +1987,13 @@
       S.snapTimer = setInterval(() => { snapTick().catch(() => {}); }, 100);   // 10Hz fan-out
       return S;
     };
-    S.setPresence = (x, y, vx, state, chain, score, dist) => {
+    S.setPresence = (x, y, vx, state, chain, score, dist, t, vy) => {
       S.selfSeen = performance.now();
-      const s = S.self;
-      s.seq = (s.seq + 1) & 0xffff;
+      // A fresh object per sample: the snapshot fan-out compares identities, and the
+      // previous sample may still be queued for sealing.
+      const s = S.self = Object.assign({}, S.self);
+      s.t = (t == null ? senderClock(S) : t) & 0xffff; s.vy = +vy || 0;
+      S.selfDirty = true;
       s.x = x; s.y = y; s.vx = Math.max(-127, Math.min(127, vx | 0));
       s.state = state & 0x1f; s.chain = Math.min(4, chain | 0);
       s.score = Math.min(9999999, score >>> 0); s.dist = Math.min(60000, dist | 0); s.runId = S.runId;
@@ -1777,14 +2018,14 @@
       const out = [];
       const selfCall = cs(S.adjIdx, S.nounIdx, 1), sp = S.self;
       if (S.role !== ROLE_SPECTATOR && sp) {
-        out.push({ p: 1, you: true, host: true, spectator: false, x: sp.x, y: sp.y, vx: sp.vx, state: sp.state, chain: sp.chain, score: sp.score, dist: sp.dist, runId: sp.runId, suit: S.suit, hat: S.hat, callsign: selfCall, unverified: false });
+        out.push({ p: 1, you: true, host: true, spectator: false, x: sp.x, y: sp.y, vx: sp.vx, vy: sp.vy, t: sp.t, state: sp.state, chain: sp.chain, score: sp.score, dist: sp.dist, runId: sp.runId, suit: S.suit, hat: S.hat, callsign: selfCall, unverified: false });
         boardBump(1, selfCall, sp.score, sp.dist, sp.chain, false);
       }
       for (const r of S.roster.values()) {
         const call = cs(r.adjIdx, r.nounIdx, r.p);
         if (r.pres && !r.absent && r.role !== ROLE_SPECTATOR && performance.now() - r.lastSeen <= PRES_STALE) {
           const q = r.pres;
-          out.push({ p: r.p, you: false, host: false, spectator: false, x: q.x, y: q.y, vx: q.vx, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: r.suit, hat: r.hat, callsign: call, unverified: !!r.unverified, emoteId: r.emoteId, emoteSeq: r.emoteSeq });
+          out.push({ p: r.p, you: false, host: false, spectator: false, x: q.x, y: q.y, vx: q.vx, vy: q.vy, t: q.t, hist: r.hist, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: r.suit, hat: r.hat, callsign: call, unverified: !!r.unverified, emoteId: r.emoteId, emoteSeq: r.emoteSeq });
           boardBump(r.p, call, q.score, q.dist, q.chain, r.unverified);
         }
       }
@@ -1915,10 +2156,23 @@
       return admitJoin(pend.srcPub, key, pend.h, pend.pair);
     };
     S.setApprove = (on) => { S.approveJoins = !!on; };
-    S._onPacket = onPacket; S._onCodePacket = onCodePacket; S._onPeerGone = hostPeerGone; S._snapTick = snapTick;   // harness seam (offline drive; underscore = not a contract)
+    // The host's view: each member reports its own link in PING; the room reads as its median member.
+    S.quality = () => {
+      const peers = [];
+      for (const r of S.roster.values()) if (!r.absent && r.link && r.link.n) peers.push({ p: r.p, level: linkLevel(r.link), rttMs: r.link.rtt, lossPct: Math.round(r.link.loss * 100), jitterMs: r.link.jit });
+      const state = S.relay ? S.relay.state : 'closed';
+      if (state !== 'established') return { level: S.everUp ? 'reconnecting' : 'connecting', rttMs: 0, lossPct: 0, jitterMs: 0, peers };
+      if (!peers.length) return { level: 'unknown', rttMs: 0, lossPct: 0, jitterMs: 0, peers };
+      const med = (k) => peers.map((q) => q[k]).sort((a, b) => a - b)[(peers.length - 1) >> 1];
+      const q = { n: 1, rtt: med('rttMs'), loss: med('lossPct') / 100, jit: med('jitterMs') };
+      return { level: linkLevel(q), rttMs: q.rtt, lossPct: Math.round(q.loss * 100), jitterMs: q.jit, peers };
+    };
+    S._onPacket = onPacket; S._onCodePacket = onCodePacket; S._onPeerGone = hostPeerGone; S._snapTick = snapTick; S._snapTo = snapTo;   // harness seam (offline drive; underscore = not a contract)
     // Leaving tells every member (BYE closed) before the socket goes, so no
     // guest sits in a dead room. Seals are async; close once they are sent.
     S.close = () => {
+      S.closed = true;
+      if (S.cancelConnect) S.cancelConnect();
       if (S.snapTimer) clearInterval(S.snapTimer);
       if (S.codeRelay) S.codeRelay.close();
       const relay = S.relay;
@@ -1943,7 +2197,42 @@
       pair: null, peers: new Map(),    // p → latest snap row
       ev: emitter(), out: makeScratch(), seq: 0, roleSeq: 0, emoteSeq: 0, hostHex: hex(inv.hostPub),
       helloTimer: null, slots: makeSlots(), byed: null, welcomeGen: 0, hostGoneTimer: null, boardPub: new Map(), snapshotPs: null,
+      link: makeLink(), pingTimer: null, rxTicks: 0, everUp: false, presN: 0, lastPresState: -1, lastPresRun: -1, roundRaw: null, closed: false,
     };
+    // Link probe + dead-socket watchdog, every TUNE.pingMs of real time while in the room.
+    function pingTick() {
+      if (S.closed || S.byed != null || !S.relay) return;
+      if (S.relay.state !== 'established') { S.rxTicks = 0; return; }
+      linkExpire(S.link, performance.now());
+      // The host answers every PING and sends a snapshot heartbeat: silence for deadTicks
+      // ticks means our socket is dead without knowing it (a NAT rebind, a network switch).
+      if (S.welcomed && ++S.rxTicks >= TUNE.deadTicks) { S.rxTicks = 0; S.relay.kick('host silent'); return; }
+      sendPing().catch(() => {});
+      emitQuality();
+    }
+    async function sendPing() {
+      if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
+      const q = S.link, id = q.id = (q.id + 1) & 0xffff;
+      q.out.set(id, performance.now());
+      if (q.out.size > 8) q.out.delete(q.out.keys().next().value);
+      S.relay.send(S.inv.hostPub, await sealApp(S.pair, encPing(S.out, id, q.rtt, q.loss, q.jit)));
+    }
+    function startPing() {
+      if (S.pingTimer || S.closed || S.byed != null) return;
+      S.pingTimer = setInterval(pingTick, TUNE.pingMs);
+      sendPing().catch(() => {});                              // an RTT right away: it anchors the shared clock
+    }
+    let lastLevel = '';
+    function emitQuality() {
+      const q = S.quality();
+      if (q.level !== lastLevel) { lastLevel = q.level; S.ev.emit('quality', q); }
+    }
+    // Re-anchor the shared round clock while the RTT estimate is still settling (first few pings).
+    function anchorRound() {
+      if (S.roundRaw == null) return;
+      const rtt = S.link.n ? S.link.rtt : ((S.relay && S.relay.rtt) || 0);
+      S.localRoundT0 = S.roundRaw - rtt / 2;
+    }
     // Relay says the host key left. A host transport blip reconnects within
     // seconds (and its SNAP resumes); only a lasting absence ends the room.
     function hostGone(pub) {
@@ -1969,6 +2258,7 @@
     // arrives for THIS loop. S.welcomed stays set from an earlier connection,
     // so a reconnect keys on the welcome generation instead.
     function helloLoop() {
+      if (S.closed) return;
       if (S.helloTimer) clearInterval(S.helloTimer);
       const gen = S.welcomeGen;
       sendHello().catch(() => {});
@@ -1983,6 +2273,7 @@
       if (droppedKeys.has(key)) return;                          // blocked host (Addendum G): dropped on receipt
       const res = await openApp(S.pair, wire);
       if (res.err) { S.ev.emit('drop', { why: res.err }); return; }
+      S.rxTicks = 0;                                             // the host is reaching us (dead-link watchdog)
       if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; }   // the host is back
       const pt = res.pt;
       if (!pt.length) return;
@@ -1991,6 +2282,7 @@
         const w = decWelcome(pt);
         if (!w || w.proto !== PROTO) return;
         S.welcomed = w; S.p = w.yourP; S.caps = w.caps; S.welcomeGen++;
+        startPing();
         // Adopt the host epoch MONOTONICALLY (Addendum F.1): a WELCOME must
         // never rewind the control gate — a downgrade would resurrect control
         // frames the stale-epoch rule already declared dead on arrival.
@@ -2042,13 +2334,31 @@
       if (pt[0] === A_SNAP) {
         const snap = decSnap(pt);
         if (!snap) return;
+        const at = performance.now();
         for (const row of snap.rows) {
           const prev = S.peers.get(row.p);                       // carry the transient emote across position updates
-          if (prev) { row.emoteId = prev.emoteId; row.emoteSeq = prev.emoteSeq; }
-          row.receivedAt = performance.now();
+          // Older (reordered), sent before the runner restarted, or a heartbeat copy: keep ours
+          // (a copy refreshes its age). See sampleAdmit.
+          const adm = sampleAdmit(prev, row, res.ctr);
+          if (!adm.ok) { if (adm.copy) prev.receivedAt = at; continue; }
+          row.ctr = res.ctr; row.traceCtr = adm.trace;
+          if (prev) { row.emoteId = prev.emoteId; row.emoteSeq = prev.emoteSeq; row.hist = prev.hist; }
+          row.receivedAt = at;
+          pushHist(row, row, at);
           S.peers.set(row.p, row);
         }
         S.ev.emit('snap', { tick: snap.tick, n: snap.rows.length });
+        return;
+      }
+      if (pt[0] === A_PONG) {                                    // our link probe came back
+        const pg = decPong(pt);
+        const sent = pg && S.link.out.get(pg.id);
+        if (sent == null) return;
+        S.link.out.delete(pg.id);
+        linkSample(S.link, performance.now() - sent);
+        if (S.link.n <= 4) anchorRound();                        // the first RTTs sharpen the shared clock
+        S.ev.emit('rtt', { ms: S.link.rtt });
+        emitQuality();
         return;
       }
       if (pt[0] === A_KILLS) {                                   // host replay: the aliens this round has already lost
@@ -2086,8 +2396,10 @@
         // flare reads zero. host time − rtt/2 corrects for the one-way delay so
         // both screens compute the same flareX to within rtt/2. Pre-roll and
         // running are the two encodings (one of startDelayMs/elapsedMs is set).
-        const rttHalf = (S.relay && S.relay.rtt) ? S.relay.rtt / 2 : 0;
-        S.localRoundT0 = performance.now() + (rb.startDelayMs || 0) - (rb.elapsedMs || 0) - rttHalf;
+        // v5: the half RTT is the app-level one (guest↔host through the relay, from PING),
+        // not the relay socket's own — the one-way delay that actually separates the clocks.
+        S.roundRaw = performance.now() + (rb.startDelayMs || 0) - (rb.elapsedMs || 0);
+        anchorRound();
         S.roundRunId = rb.runId;
         S.ev.emit('round', { seed: rb.seed, runId: rb.runId, countdown: rb.countdown, startInMs: rb.startDelayMs || 0, elapsedMs: rb.elapsedMs || 0 });
         return;
@@ -2097,6 +2409,7 @@
         if (!b) return;
         S.byed = b.reason;                                       // stop presence + hello retries; reason maps to a kind message
         if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
+        if (S.pingTimer) { clearInterval(S.pingTimer); S.pingTimer = null; }
         S.ev.emit('bye', { reason: b.reason, detail: b.detail });
         return;
       }
@@ -2111,36 +2424,60 @@
       S.pair = makePair(await derivePairKey(S.keys, S.inv.hostPub, S.inv.roomId, S.inv.epoch), S.inv.roomId, S.inv.epoch, DIR_G2H);
       let lastErr = null;
       for (const h of hosts) {
+        if (S.closed) throw new Error('Join cancelled');
+        S.ev.emit('join-progress', { stage: 'relay', host: h });
         try {
           await new Promise((resolve, reject) => {
             let settled = false;
+            const t = setTimeout(() => { if (!settled) { settled = true; reject(new Error('relay connect failed')); } }, TUNE.joinConnectMs);
+            S.cancelConnect = () => { if (!settled) { settled = true; clearTimeout(t); reject(new Error('Join cancelled')); } };
             S.relay = RelayClient(h, S.keys, {
               onOpen: () => {
-                if (!settled) { settled = true; resolve(); }
+                if (!settled) { settled = true; clearTimeout(t); resolve(); }
+                S.rxTicks = 0;
                 helloLoop();                             // (re)connect always re-hellos
+                if (S.everUp) S.ev.emit('reconnected', {});
+                else S.ev.emit('join-progress', { stage: 'hello' });
+                S.everUp = true;
                 S.ev.emit('state', { state: 'established' });
+                emitQuality();
               },
               onPacket, onRtt: (ms) => S.ev.emit('rtt', { ms }),
-              onDown: (why) => S.ev.emit('state', { state: 'down', why }),
+              onDown: (why) => { S.ev.emit('state', { state: 'down', why }); if (S.everUp && S.welcomed) { S.ev.emit('reconnecting', { why }); emitQuality(); } },
               onPeerGone: hostGone,
               onLog: (m) => S.ev.emit('log', { m }),
             });
             S.relay.connect();
-            setTimeout(() => { if (!settled) { settled = true; reject(new Error('relay connect failed')); } }, T_CONNECT + T_HANDSHAKE);
           });
           lastErr = null;
           break;
-        } catch (e) { lastErr = e; if (S.relay) S.relay.close(); S.relay = null; }
+        } catch (e) { lastErr = e; if (S.relay) S.relay.close(); S.relay = null; if (S.closed) break; }
       }
+      S.cancelConnect = null;
       if (lastErr) throw lastErr;
       return S;
     };
-    S.sendPresence = async (x, y, vx, state, chain, score, dist) => {
+    // Presence rate adapts to the link (v5): 10 Hz on a good one, 5 Hz on a fair one or when our
+    // socket is backing up, ~3 Hz on a poor one; nothing but essentials when it is badly backed
+    // up (queued positions only arrive stale and delay everything behind them). A change of
+    // life state (died, respawned, new round) always goes out at once.
+    S.presEvery = () => {
+      const lv = linkLevel(S.link), backlog = S.relay && S.relay.backlog ? S.relay.backlog() : 0;
+      if (backlog > TUNE.backlogHard) return Infinity;
+      if (lv === 'poor') return 3;
+      if (lv === 'fair' || backlog > TUNE.backlogSoft) return 2;
+      return 1;
+    };
+    S.sendPresence = async (x, y, vx, state, chain, score, dist, t, vy) => {
       if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
       if (S.role === ROLE_SPECTATOR || S.requestedRole === ROLE_SPECTATOR) return;
-      S.seq = (S.seq + 1) & 0xffff;
+      const essential = (state & 0x0c) !== (S.lastPresState & 0x0c) || S.welcomed.runId !== S.lastPresRun;
+      const every = S.presEvery();
+      if (!essential && (S.presN++ % every) !== 0) return;
+      if (essential) S.presN = 1;
+      S.lastPresState = state; S.lastPresRun = S.welcomed.runId;
       const pt = encPres(S.out, {
-        seq: S.seq, x, y, vx, state, chain, score, dist, runId: S.welcomed.runId,
+        t: t == null ? senderClock(S) : t, x, y, vx, vy, state, chain, score, dist, runId: S.welcomed.runId,
       });
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, pt));
     };
@@ -2192,7 +2529,7 @@
         if (id.role === ROLE_SPECTATOR) continue;               // spectators stream no ghost
         if (q.x == null || performance.now() - q.receivedAt > PRES_STALE) continue;
         const call = id.callsign || ('P' + p);
-        out.push({ p, you: p === S.p, host: p === 1, spectator: false, x: q.x, y: q.y, vx: q.vx, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: id.suit || 0, hat: id.hat || 0, callsign: call, unverified: false, emoteId: q.emoteId, emoteSeq: q.emoteSeq });
+        out.push({ p, you: p === S.p, host: p === 1, spectator: false, x: q.x, y: q.y, vx: q.vx, vy: q.vy, t: q.t, hist: q.hist, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: id.suit || 0, hat: id.hat || 0, callsign: call, unverified: false, emoteId: q.emoteId, emoteSeq: q.emoteSeq });
         gBoardBump(p, call, q.score, q.dist, q.chain, false);
       }
       return out;
@@ -2207,8 +2544,19 @@
       const now = performance.now();
       return { active, runId, elapsedMs: active ? (now - S.localRoundT0) : 0, startInMs: active ? Math.max(0, S.localRoundT0 - now) : 0 };
     };
+    // What this guest can honestly say about its link to the host.
+    S.quality = () => {
+      const q = S.link, state = S.relay ? S.relay.state : 'closed';
+      if (state !== 'established' || !S.welcomed) return { level: S.everUp ? 'reconnecting' : 'connecting', rttMs: Math.round(q.rtt), lossPct: Math.round(q.loss * 100), jitterMs: Math.round(q.jit), peers: [] };
+      return { level: linkLevel(q), rttMs: Math.round(q.rtt), lossPct: Math.round(q.loss * 100), jitterMs: Math.round(q.jit), peers: [] };
+    };
     S._onPacket = onPacket;                                    // harness seam (offline drive)
+    S._pingTick = pingTick;
     S.close = () => {
+      S.closed = true;
+      if (S.cancelConnect) S.cancelConnect();
+      if (S.cancelAdmit) S.cancelAdmit();
+      if (S.pingTimer) { clearInterval(S.pingTimer); S.pingTimer = null; }
       if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
       if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; }
       if (S.relay) S.relay.close();
@@ -2325,15 +2673,20 @@
       // or claim success until the host has authenticated and welcomed us.
       let timer, unsubscribe;
       const admitted = new Promise((resolve, reject) => {
-        timer = setTimeout(() => reject(new Error('Host did not admit this join. Ask them to check the room and approvals.')), 30000);
-        unsubscribe = next.ev.on((e) => {
+        // The 30 s admission clock starts once the relay answers, so a slow connection
+        // doesn't eat the host's time to approve (the relay stage has its own budget).
+        const arm = () => { clearTimeout(timer); timer = setTimeout(() => reject(new Error('Host did not admit this join. Ask them to check the room and approvals.')), 30000); };
+        timer = setTimeout(() => reject(new Error('Host did not admit this join. Ask them to check the room and approvals.')), 30000 + TUNE.joinConnectMs * 2);
+        next.cancelAdmit = () => reject(new Error('Join cancelled'));
+        unsubscribe = next.ev.on((e, d) => {
+          if (e === 'join-progress' && d.stage === 'hello') arm();
           if (e === 'welcomed') resolve();
           if (e === 'bye') reject(new Error('The host declined or ended this room.'));
         });
       });
       try { await Promise.all([next.join(), admitted]); }
       catch (e) { next.close(); if (session === next) session = null; throw e; }
-      finally { clearTimeout(timer); unsubscribe(); }
+      finally { clearTimeout(timer); unsubscribe(); next.cancelAdmit = null; }
       if (session !== next) { next.close(); throw new Error('Join cancelled'); }
       NET.active = true;
       return NET.info();
@@ -2430,10 +2783,25 @@
     blocklist() { return Array.from(blocklist.values()); },
     isDropped(pubHex) { return droppedKeys.has(pubHex); },
 
-    sendPresence(px, py, vx, state, chain, score, dist) {
+    // frame (optional) = the sender's sim frame counter at this sample (v5 presence clock);
+    // vy (optional) = vertical velocity in px/step. Both only sharpen the receiver's playout.
+    sendPresence(px, py, vx, state, chain, score, dist, frame, vy) {
       if (!NET.active || !session) return;            // cheap no-op from the game tick when idle
-      if (session.isHost) session.setPresence(px, py, vx, state, chain, score, dist);
-      else session.sendPresence(px, py, vx, state, chain, score, dist).catch(() => {});
+      if (session.isHost) session.setPresence(px, py, vx, state, chain, score, dist, frame, vy);
+      else session.sendPresence(px, py, vx, state, chain, score, dist, frame, vy).catch(() => {});
+    },
+    // Link quality for the room UI: {level: good|fair|poor|unknown|connecting|reconnecting|offline,
+    // rttMs, lossPct, jitterMs, peers:[{p, level, rttMs, lossPct, jitterMs}] (host only)}.
+    quality() {
+      if (!session || session.mock) return { level: session && session.mock ? 'good' : 'offline', rttMs: session && session.mock ? 23 : 0, lossPct: 0, jitterMs: 0, peers: [] };
+      return session.quality ? session.quality() : { level: 'unknown', rttMs: 0, lossPct: 0, jitterMs: 0, peers: [] };
+    },
+    // The network is back (online event, tab visible again): reconnect now instead of
+    // sitting out a backoff timer. Cheap no-op when the socket is fine.
+    nudge() {
+      if (!session || !session.relay || !session.relay.nudge) return;
+      session.relay.nudge();
+      if (session.codeRelay && session.codeRelay.nudge) session.codeRelay.nudge();
     },
     roster() {
       if (!session) return [];
@@ -2484,6 +2852,7 @@
         runId: (session.isHost ? session.runId : (session.welcomed ? session.welcomed.runId : 0)) | 0,
         mobility: session.mobility || [],
         unstable: !!session.unstable,
+        quality: session.mock ? 'good' : (session.quality ? session.quality().level : 'unknown'),
       };
     },
     onEvent(cb) { ev.on(cb); },
@@ -2585,7 +2954,9 @@
       env: { makePair, sealApp, openApp, sealCode, openCode, DIR_G2H, DIR_H2G },
       invite: { encodeInvite, decodeInvite, joinProof, rejoinToken, codeKeypair, randomCode, CODE_WORDS },
       map: { regionOf, cityOfHost, probeHost, pickRegion, greatCircle, nearRegions },
-      frames: { encHello, decHello, encWelcome, decWelcome, encPres, decPres, encSnap, decSnap, makeScratch },
+      frames: { encHello, decHello, encWelcome, decWelcome, encPres, decPres, encSnap, decSnap, encPing, decPing, encPong, decPong, makeScratch, PRES_LEN, SNAP_ENTRY, SNAP_MAX },
+      link: { linkLevel, makeLink, linkSample, linkExpire, replayCheck, markSeen, presStale, tDiff, A_PING, A_PONG, REPLAY_WIN },
+      TUNE,
       RelayClient, HostSession, GuestSession, fetchInviteByCode,
       session: () => session,
     },
