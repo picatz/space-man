@@ -37,13 +37,18 @@ of AI models for web game development.
 ## Daily Course and challenges
 
 **Daily Course** on the title screen (or Y / Triangle on a controller) runs the
-same course for everyone in the world that UTC day. The card shows today's best
-and attempts; they start fresh each day, with nothing lost by skipping one.
+same course for everyone in the world that UTC day, under one of seven themes
+(low gravity, alien swarm, star rush, sky bridges, meteor field, heavy metal,
+afterburner) named on the card. The card shows today's best and attempts; they
+start fresh each day, with nothing lost by skipping one.
 
 **Share Run** on the death card sends a short, spoiler-free result plus a link
 (the native share sheet where available, otherwise the clipboard). The link is a
-challenge on the exact same course: `#daily=YYYY-MM-DD&beat=<score>` for a Daily
-Course (accepted up to a week old), or `#seed=<n>&beat=<score>` for any other run.
+challenge on the exact same course: `#daily=YYYY-MM-DD&beat=<score>&v=2` for a
+Daily Course (accepted up to a week old), or `#seed=<n>&beat=<score>&v=2` for any
+other run. `v` names the world generator that builds the course (2 = today's
+designed set pieces). A link without `&v=` is the legacy form: it replays the
+original (gen 1) course that links shared before generator 2 always meant.
 Opening one shows the score to beat, the next start plays that course, and the
 HUD carries the target beside your score. Course generation draws from its own
 seeded stream, so kills, effects and misses can never change the course. Runs

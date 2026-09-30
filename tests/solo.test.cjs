@@ -125,7 +125,7 @@ test('the death card shares a spoiler-free result with a challenge link', async 
 
 test('a title screen left up across 00:00 UTC rolls the Daily card to the new day', (t) => {
   const c = solo(t), t0 = Date.UTC(2026, 8, 28, 23, 59, 30);
-  c.run(`Date.now = () => ${t0}; saveJSON(LS.daily, {day:'2026-09-28', best:777, bestDist:10, runs:2}); showAttract();`);
+  c.run(`Date.now = () => ${t0}; saveJSON(LS.daily, {day:'2026-09-28', best:777, bestDist:10, runs:2, gen:2}); showAttract();`);
   assert.equal(c.elements.get('dailyInfo').textContent, 'BEST 777 · 2 RUNS');
   c.run(`Date.now = () => ${t0 + 60000}; for (let i=0;i<60;i++) update();`);
   assert.equal(c.run('G.mode'), 'attract');

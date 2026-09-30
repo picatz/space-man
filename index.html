@@ -1126,14 +1126,17 @@ function persistAll() {
 }
 
 // Daily Course + challenge links. src/course.js validates; this owns the state.
-// sm2.daily = { day, best, bestDist, runs } for the current UTC day only — a new
+// sm2.daily = { day, best, bestDist, runs, gen } for the current UTC day only — a new
 // day quietly starts fresh (no streaks, nothing to lose by skipping one).
 const COURSE = window.SpaceManCourse;
 function loadDaily() {
+  // `gen` names the generator the record's course was built with: a record from
+  // another generator (no field = gen 1, the pre-theme Daily) is a different
+  // course, so today's themed Daily starts fresh instead of inheriting its best.
   const today = COURSE.dayKey(Date.now()), d = loadJSON(LS.daily, null);
-  if (!d || typeof d !== 'object' || d.day !== today) return { day: today, best: 0, bestDist: 0, runs: 0 };
+  if (!d || typeof d !== 'object' || d.day !== today || (d.gen || 1) !== COURSE.GEN) return { day: today, best: 0, bestDist: 0, runs: 0, gen: COURSE.GEN };
   const n = (v) => Math.max(0, Math.min(1e9, v | 0));
-  return { day: today, best: n(d.best), bestDist: n(d.bestDist), runs: n(d.runs) };
+  return { day: today, best: n(d.best), bestDist: n(d.bestDist), runs: n(d.runs), gen: COURSE.GEN };
 }
 let dailyCardDay = null;   // the UTC day the title's Daily card last rendered
 // A validated #daily= / #seed=&beat= link waits here for the next START.

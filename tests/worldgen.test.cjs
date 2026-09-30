@@ -470,3 +470,69 @@ test('the new aliens and their effects draw without error', (t) => {
   assert.deepEqual(errs.errs, []);
   assert.ok(errs.types.length >= 4, errs.types.join());
 });
+
+/* ---------------------------------------------------------------------------
+   Review follow-ups (PR #19) */
+const dayWithTheme = (C, id) => { for (let d = Date.UTC(2026, 9, 1); ; d += 86400000) { const k = new Date(d).toISOString().slice(0, 10); if (C.theme(k).id === id) return k; } };
+
+test('a same-day Daily record from the gen-1 Daily never becomes the gen-2 course’s best or target', (t) => {
+  const c = solo(t);
+  const day = c.run('COURSE.dayKey(Date.now())');
+  // What the previous build wrote on an upgrade day: no generator field (= gen 1).
+  c.run(`saveJSON(LS.daily, { day: '${day}', best: 777, bestDist: 90, runs: 4 })`);
+  c.run('renderDailyCard()');
+  assert.equal(c.elements.get('dailyInfo').textContent, 'NEW TODAY', 'the card must not show a best from a different course');
+  assert.equal(c.run('dailyCourse().target'), 0, 'the old score is not the themed course’s target');
+  c.run('startRun({ course: dailyCourse() }); G.score = 300; G.dist = 40; G.finalScore = undefined; finalizeDeath();');
+  assert.deepEqual(json(c, 'return loadJSON(LS.daily, null)'), { day, best: 300, bestDist: 40, runs: 1, gen: 2 }, 'a fresh, versioned record');
+  // An old gen-1 #daily= link for today replays gen 1 and leaves today's gen-2 record alone.
+  c.run(`challenge = COURSE.parse('#daily=${day}&beat=5', Date.now()); startRun(); G.score = 9999; G.dist = 900; G.finalScore = undefined; finalizeDeath();`);
+  assert.equal(c.run('G.gen'), 1);
+  assert.deepEqual(json(c, 'return loadJSON(LS.daily, null)'), { day, best: 300, bestDist: 40, runs: 1, gen: 2 });
+  // A record from any other generator is ignored the same way.
+  c.run(`saveJSON(LS.daily, { day: '${day}', best: 50, bestDist: 5, runs: 1, gen: 7 })`);
+  assert.equal(c.run('loadDaily().best'), 0);
+});
+
+test('every Daily theme opens with its own set piece, and the checker walks it', (t) => {
+  const c = solo(t), C = course();
+  c.run(CHECKER);
+  for (const th of C.THEMES) {
+    assert.ok(th.opener && th.opener.length > 0, `${th.id}: an opening set piece`);
+    const day = dayWithTheme(C, th.id);
+    const r = json(c, `${STREAM(`startRun({ course: dailyCourse('${day}') })`, 900)}
+      const ids = G.wg.S.log.map((s) => s.id);
+      return { ids: ids.slice(0, 6), check: __check(plats, plats[3]) };`);
+    for (const id of th.opener) assert.ok(r.ids.includes(id), `${th.id}: opener ${id} runs early (${r.ids.join(', ')})`);
+    assert.deepEqual(r.check.bad, [], `${th.id}: the opening is traversable`);
+  }
+});
+
+test('METEOR FIELD keeps its promise: cracked slabs inside the first sector', (t) => {
+  const c = solo(t), C = course(), day = dayWithTheme(C, 'meteor');
+  assert.match(C.theme(day).blurb, /first sector/);
+  const first = json(c, `${STREAM(`startRun({ course: dailyCourse('${day}') })`, 1200)}
+    return Math.min(...plats.filter((p) => p.crumble).map((p) => (p.x - G.startX) / 10));`);
+  assert.ok(first < 300, `first cracked slab at ${first}m, but the first sector ends at 300m`);
+});
+
+test('docs name the current protocol version everywhere the wire carries it', () => {
+  const PROTO = +/const PROTO = (\d+);/.exec(fs.readFileSync(path.join(__dirname, '..', 'src', 'net.js'), 'utf8'))[1];
+  const doc = fs.readFileSync(path.join(__dirname, '..', 'docs', 'wire-protocol.md'), 'utf8'), lines = doc.split('\n');
+  const hex = '0x' + PROTO.toString(16).padStart(2, '0');
+  assert.match(doc, new RegExp('\\*\\*Protocol version:\\*\\* `' + PROTO + '`'));
+  const layout = lines.filter((l) => /^\d+\s+1\s+0x[0-9a-f]{2}\s+(envelope )?version\b/i.test(l));
+  assert.ok(layout.length >= 2, 'the S and C envelope layouts');
+  for (const l of layout) assert.ok(l.includes(hex), 'layout byte must be ' + hex + ': ' + l);
+  for (const l of lines.filter((l) => /`ver|byte 1 ≠/.test(l) && /(=|≠)\s*`?\d/.test(l) && !/PROTO/.test(l))) assert.fail('a version byte that does not name PROTO: ' + l);
+  assert.ok(doc.includes('`ver(1)=PROTO (currently ' + hex + ')'), 'AAD version byte');
+});
+
+test('README documents the current link formats with &v=2 and the legacy form without it', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8'), C = course(), now = Date.UTC(2026, 8, 30);
+  const daily = /`(#daily=YYYY-MM-DD&beat=<score>&v=2)`/.exec(readme), seed = /`(#seed=<n>&beat=<score>&v=2)`/.exec(readme);
+  assert.ok(daily && seed, 'both current formats carry &v=2');
+  assert.equal(C.parse(daily[1].replace('YYYY-MM-DD', '2026-09-30').replace('<score>', '5'), now).gen, 2);
+  assert.equal(C.parse(seed[1].replace('<n>', '7').replace('<score>', '5'), now).gen, 2);
+  assert.match(readme, /without `&v=`[^.]*(original|legacy)/i, 'explains the legacy form');
+});

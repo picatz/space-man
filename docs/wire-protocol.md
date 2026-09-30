@@ -273,7 +273,7 @@ envelope, which is the opaque packet inside `SendPacket` / `RecvPacket`:
 ```
 offset  size  field
 0       1     0x53                 ('S')
-1       1     0x03                 envelope version = PROTO = 5
+1       1     0x05                 envelope version = PROTO (currently 5)
 2       1     dir                  0x01 guest→host, 0x02 host→guest
 3       8     counter u64 LE       per (pairKey, dir), starts at 0, +1 per frame
 11      ...   AES-GCM ciphertext   (plaintext frame + 16-byte tag appended)
@@ -285,7 +285,7 @@ Header overhead = **11 bytes**; AES-GCM tag = **16 bytes**. Total per-frame over
 
 - **Nonce (96-bit, counter-based, never random):**
   `nonce = dir(1) || counter(u64 LE, 8) || 0x00 0x00 0x00`.
-- **AAD (11 bytes):** `ver(1)=1 || roomId(8) || epoch(1) || dir(1)`.
+- **AAD (11 bytes):** `ver(1)=PROTO (currently 0x05) || roomId(8) || epoch(1) || dir(1)`.
 - Counter starts at 0 and increments by 1 per sent frame per (pairKey, dir). At 2³² frames
   the pair is exhausted and MUST be closed (unreachable in practice — assert anyway).
 
@@ -294,7 +294,7 @@ Header overhead = **11 bytes**; AES-GCM tag = **16 bytes**. Total per-frame over
 The receiver keeps `highSeen` per (pair, dir), initialized to `-1`. Decode order:
 
 1. `wire.length > 256` → error `size` (**strike**), before any decryption.
-2. `wire.length < 27` or byte 0 ≠ `0x53` or byte 1 ≠ `4` → error `ver` (**strike**).
+2. `wire.length < 27` or byte 0 ≠ `0x53` or byte 1 ≠ PROTO (currently `5`) → error `ver` (**strike**).
 3. byte 2 ≠ the peer's expected direction → error `dir` (**strike**).
 4. `counter ≤ highSeen` → error `replay` (**strike**).
 5. AES-GCM open with the derived nonce/AAD; failure → error `aead` (**strike**).
@@ -317,7 +317,7 @@ the code channel are **random 24-byte** values (no counter state exists pre-join
 ```
 offset  size  field
 0       1     0x43                 ('C')
-1       1     0x05                 version = 5
+1       1     0x05                 version = PROTO (currently 5)
 2       24    nonce                random
 26      ...   NaCl box(payload)    crypto_box(payload, nonce, theirPub, myPriv) = tag(16)||ct
 ```
@@ -336,7 +336,7 @@ An invite is a fixed-order binary payload, base64url-encoded (alphabet
 
 | offset | size | field | notes |
 |---|---|---|---|
-| 0 | 1 | `ver` | = `4`; unknown → refuse ("update to play together") |
+| 0 | 1 | `ver` | = PROTO (currently `5`); anything else → refuse ("update to play together") |
 | 1 | 1 | `flags` | bit0 = approve-joins hint; bit1 = custom relay present |
 | 2 | 8 | `roomId` | random; room namespace + HKDF salt |
 | 10 | 1 | `epoch` | current epoch at issue time |
@@ -351,7 +351,7 @@ Fixed-size total (no custom relay) = **66 bytes** → 88 base64url chars.
 ### 8.2 Decode & validation (MUST)
 
 - Reject non-base64url input, or a decoded length `< 66` → `parse` error.
-- Byte 0 ≠ 3 → `version` error.
+- Byte 0 ≠ PROTO (currently 5) → `version` error.
 - `region` must match `^[a-z0-9]{3}$` after decode, else `parse` error.
 - If `flags & 2`: read `n = payload[46]`; require `4 ≤ n ≤ 64` and enough remaining bytes;
   `relayHost` must match `^[A-Za-z0-9.\-]+(:\d{1,5})?$`, else `relayhost` error (no scheme,
@@ -855,7 +855,7 @@ algorithms would put peers on different courses.
 Refresh both clients and create a fresh room after upgrading.
 
 - **The protocol version is the app-envelope version byte = `5`** ([§7.1](#71-app-envelope-s--0x53)).
-  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 5` is
+  It is the single number that gates compatibility. A frame whose envelope `ver ≠ PROTO` (currently 5) is
   dropped + struck.
 - **HELLO version negotiation.** HELLO carries `protoMin`/`protoMax`. The host requires
   overlap with its own supported range (`[5,5]` today). No overlap → the join is refused
@@ -1010,7 +1010,7 @@ A conforming client MUST uphold these (condensed from the reference security rev
 
 | Field | Rule | Action on violation |
 |---|---|---|
-| envelope `ver` | = 1 | strike |
+| envelope `ver` | = PROTO (currently 5) | strike |
 | envelope `dir` | matches sender role (0x01 G→H / 0x02 H→G) | strike |
 | envelope `counter` | `> highSeen(pair, dir)` | drop + strike |
 | wire size | ≤ 256 B | drop + strike (pre-decrypt) |
