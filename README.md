@@ -66,15 +66,17 @@ flare timing, identities and emotes are shared, and so are the aliens: every
 patrol's position and every shooter's telegraph and firing schedule are a pure
 function of the round clock, so everyone sees the same alien in the same place
 however long their own screen has been running (a slow phone, a backgrounded tab
-and a late joiner all line up). Spectators see them move too. Combat results
-(who stomped or shot which alien), pickups, missions and scores are still
-simulated locally, shots are aimed at and only ever hit their own player, and
-watching is a live positional view, not a frame-perfect broadcast of the
-runner's combat. Shared kills and cooperative objectives require an
-authoritative world-event protocol.
+and a late joiner all line up). Spectators see them move too. An alien any
+player kills disappears for everyone (the host checks each report: near the
+reporter, this round, once, rate-limited). Scores, missions, chains and pickups
+are still each player's own, shots are aimed at and only ever hit their own
+player, and watching is a live positional view, not a frame-perfect broadcast of
+the runner's combat. Cooperative objectives would need a fuller authoritative
+world-event protocol.
 
-Version 3.4 uses room protocol 3 because deep-run terrain (the endgame ramp
-and DEBRIS FIELD past 2500m) changed; version 3.3 introduced protocol 2.
+Version 3.6 uses room protocol 4 because aliens are now shared (round-clock
+motion and shared kills); version 3.4 introduced protocol 3 (deep-run terrain:
+the endgame ramp and DEBRIS FIELD past 2500m) and 3.3 protocol 2.
 Refresh both devices and create a fresh room/link after upgrading. Old invites
 show an update prompt instead of connecting incompatible courses.
 

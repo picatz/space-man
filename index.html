@@ -2395,6 +2395,7 @@ function resetRun(seed, replayable) {
   seedRng(seed);
   // A real room (not the #shot mock) shares the course AND its clock: aliens move on the round clock.
   G.sharedWorld = netLive() && !NET.mockActive;
+  G.remoteKilled = new Set();
   G.worldRng = G.sharedWorld || replayable ? mulberry32((seed >>> 0) ^ 0x574F524C) : null;
   G.worldLastShooterX = -Infinity;
   // World is anchored to a FIXED reference height (not view.h) so a given seed produces
@@ -2937,6 +2938,21 @@ function tryShoot() {
 // phone drops steps, a backgrounded tab drops them all, a late joiner generates
 // its copy long after the host did). Everything needed is captured the first time
 // an alien is seen, before anything has moved it; nothing here draws from any rng.
+// An alien's identity on the wire: its spawn x in 1/8 px. Spawn comes from the shared seed, so every
+// screen computes the same number for the same alien; `rs.x0` is that spawn x once the round clock drives it.
+function enemyId(e) { return Math.max(0, Math.round((e.rs ? e.rs.x0 : e.x) * 8)); }
+// Another player's kill: the alien goes for everyone. No score, mission progress or chain here — those
+// are the killer's own. If the alien isn't on this screen yet, remember it so it never appears.
+function remoteKill(id) {
+  for (const e of G.enemies) {
+    if (e.dead || enemyId(e) !== id) continue;
+    e.dead = true; e.squash = 0.01;
+    spawnP(e.x, e.y, 0, -0.6, 22, 3, e.golden ? 'rgba(255,201,60,.9)' : 'rgba(159,241,255,.85)', 0.04, false, 0);
+    return;
+  }
+  if (G.remoteKilled.size >= 512) G.remoteKilled.clear();
+  G.remoteKilled.add(id);
+}
 function roundStep() {
   const rc = NET.roundClock();
   return rc && rc.active ? Math.max(0, rc.elapsedMs) / (STEP * 1000) : 0;
@@ -2944,6 +2960,7 @@ function roundStep() {
 function syncEnemyToRound(e, T, fire) {
   let s = e.rs;
   if (!s) {
+    if (G.remoteKilled.size && G.remoteKilled.has(enemyId(e))) { e.dead = true; e.squash = 2.1; return; }   // killed by someone else before we ever saw it
     const dist = (e.x - G.startX) / 10;
     s = e.rs = { x0: e.x, dir0: e.dir, wp0: e.walkPhase, bob0: e.bob, f0: e.fireT, ivl: bandParams(bandFor(dist), dist).shootIvl, shots: -1 };
   }
@@ -3061,6 +3078,7 @@ function updateBullets() {
 
 function killEnemy(e, method, interrupted) {
   e.dead = true; e.squash = 0.01;
+  if (G.sharedWorld) NET.kill(enemyId(e));   // everyone else's copy of this alien goes too
   G.killsRun++; stats.kills++;
   const mult = 1 << G.chain;
   const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult;
@@ -6767,6 +6785,7 @@ if (NET) NET.onEvent((e, d) => {
   else if (e === 'rotated') { if (netLive()) renderRoomCard(); }   // fresh link/code/QR after New Link
   else if (e === 'roster' || e === 'ok' || e === 'kick' || e === 'banned') { if (netLive()) renderRoomCard(); }
   else if (e === 'emote') netEmoteToast(d);
+  else if (e === 'kill') { if (G.sharedWorld && d && d.runId === NET.info().runId && d.p !== NET.info().myP) remoteKill(d.id); }
   // Shared-round clock (§4.1): a genuinely NEW round (pre-roll countdown) toasts;
   // the targeted anchor a joiner/reconnector receives (startInMs 0) stays silent.
   else if (e === 'round' || e === 'round-begin') {

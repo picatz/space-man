@@ -273,7 +273,7 @@ envelope, which is the opaque packet inside `SendPacket` / `RecvPacket`:
 ```
 offset  size  field
 0       1     0x53                 ('S')
-1       1     0x03                 envelope version = PROTO = 3
+1       1     0x03                 envelope version = PROTO = 4
 2       1     dir                  0x01 guest→host, 0x02 host→guest
 3       8     counter u64 LE       per (pairKey, dir), starts at 0, +1 per frame
 11      ...   AES-GCM ciphertext   (plaintext frame + 16-byte tag appended)
@@ -436,7 +436,7 @@ sealed under the pair key. Total **43 bytes** (36-byte historical core + 7 appen
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x01` |
 | 1 | 1 | protoMin | u8 | **S** if `protoMin > protoMax` |
-| 2 | 1 | protoMax | u8 | join rejected if no overlap with host `[3,3]` |
+| 2 | 1 | protoMax | u8 | join rejected if no overlap with host `[4,4]` |
 | 3 | 3 | tag | ASCII | **W**: `[A-Z0-9]{3}`, else `"AAA"` |
 | 6 | 1 | suit | u8 | **W**: cosmetic index, else 0 |
 | 7 | 1 | hat | u8 | **W**: cosmetic index, else 0 |
@@ -459,7 +459,7 @@ Direction: **host → guest**. Total **23 bytes**.
 | offset | size | field | type | notes |
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x02` |
-| 1 | 1 | proto | u8 | = 3 (PROTO); guest drops WELCOME whose `proto ≠ 3` |
+| 1 | 1 | proto | u8 | = 4 (PROTO); guest drops WELCOME whose `proto ≠ 4` |
 | 2 | 1 | yourP | u8 | your P-number, 1..32 (1 is always the host) |
 | 3 | 4 | seed | u32 LE | shared world seed |
 | 7 | 1 | runId | u8 | current round id |
@@ -628,6 +628,18 @@ client SHOULD handle them; all are core-range and are validated (not ignored).
 | BYE | `0x09` | H→G | `reason u8 (0 kicked…6 not-approved) || detail u8` |
 | ROUND | `0x0a` | H→all | `seed u32 || runId u8 || countdown u8 || flags u8` (rides the control envelope: room id, host epoch, seq) |
 | EMOTEB | `0x16` | H→all | `P u8 || emoteId u8 || seq u8` |
+| KILL | `0x0d` | G→H | `runId u8 || id u32 LE` — the reporter killed the alien whose spawn x is `id / 8` px |
+| KILLB | `0x18` | H→all but the reporter | `P u8 || runId u8 || id u32 LE` |
+
+`KILL` is host-validated and never struck for being unbelievable: a spectator sending one is a
+strike (`spectator-kill`, like `spectator-pres`); a `KILL` whose `runId` is not the host's current
+round is dropped; reports are rate-limited (burst 12, refill 6/s, over-rate dropped); a report is
+believed only when the alien's spawn x is within 1800 px of the reporter's own last accepted
+PRES `x` (so a guest cannot remove aliens across the whole course); and a `(runId, id)` is
+fanned out once. `id` is identical on every screen because spawn comes from the shared seed.
+The host applies the kill to its own game and fans out `KILLB` to every other member; a guest
+emitting `KILLB` is forging host authority (strike `host-frame`). Kill *results* (score, mission
+progress, chain) stay with the killer.
 
 Receipt rules a conforming host/guest MUST honor: `emoteId` is clamped to `0–5` **at receipt**
 (out-of-range is dropped, not just unrendered); EMOTE is per-key rate-limited; the broadcast
@@ -646,6 +658,26 @@ A transport-dropped member keeps its roster row (and P#) as *absent* for 60 s so
 re-WELCOMEs the same P#; after that the row is removed and its P# may be reused (the reused
 P# starts a fresh board row). A held approve-mode join is discarded when its key leaves the
 relay or after 35 s, so a late ✓ can never admit a peer that is gone.
+
+#### 10.8.1 Shared aliens
+
+No frame carries alien motion. Both screens generate the same aliens from the room seed and
+then derive everything from the **round clock** (§8, the same clock as the shared flare), where
+`T = elapsedMs / 16.667` round steps and `t = elapsedMs / 1000` seconds:
+
+- **Patrol** with lane `[minX, maxX]` (`L = maxX − minX`), speed `v` px/step, spawn offset `o`
+  and direction `d`: unfold to `q₀ = o` if `d > 0` else `2L − o`, then `q = (q₀ + v·T) mod 2L` and
+  `x = minX + (q ≤ L ? q : 2L − q)`. The walk cycle is `phase₀ + 0.15·T`.
+- **Shooter** hover is `baseY + 4·sin(bob₀ + 0.05·T)`. It fires at `f₀ + k·ivl` for `k ≥ 0`,
+  where `ivl` is the band's shot interval at the alien's own spawn distance (never the local
+  player's), and telegraphs for the 0.4 s before each. On first sight a client adopts the
+  current shot count without firing, so a late arrival never sees a burst of missed shots.
+- Shots are aimed at, and only ever hit, their own player. Spectators run the same schedule
+  without firing.
+
+Everything is captured the first time an alien is seen, before anything has moved it, so
+nothing consumes the world stream. Two clients' clocks agree to about half an RTT; that is
+the whole tolerance (a few px of patrol, a shot that lands a few ms apart).
 
 ### 10.9 Frames specified but not in this snapshot
 
@@ -771,20 +803,24 @@ invite. A custom relay in settings skips probing and sets `flags` bit1 + the hos
 
 ## 13. Protocol version & compatibility
 
-Version 3 adds the v3.4.0 endgame ramp (shared-flare speed past 3000m) and
+Version 4 shares the aliens. In a room an alien's position, walk cycle, hover and
+shot schedule are a pure function of the round clock ([§10.8.1](#1081-shared-aliens)), and an alien one
+player kills disappears for everyone (`KILL`/`KILLB`, [§10.8](#108-frames-now-implemented-emote--host-control-stage)).
+A version 3 client would move aliens per frame and ignore the new frames, so mixed
+rooms would show different aliens. Version 3 added the v3.4.0 endgame ramp (shared-flare speed past 3000m) and
 DEBRIS FIELD rolls past 2500m to the room world-generation stream. Version 2
 (v3.3.0) introduced that isolated stream and synchronized round adoption.
 Invite, app-envelope, code-envelope and HELLO/WELCOME version fields all use
-`3`; field layouts and crypto derivation labels are unchanged. Older invites
+`4`; field layouts and crypto derivation labels are unchanged. Older invites
 are refused before connecting, with an update prompt: mixing terrain
 algorithms would put peers on different courses.
 Refresh both clients and create a fresh room after upgrading.
 
-- **The protocol version is the app-envelope version byte = `3`** ([§7.1](#71-app-envelope-s--0x53)).
+- **The protocol version is the app-envelope version byte = `4`** ([§7.1](#71-app-envelope-s--0x53)).
   It is the single number that gates compatibility. A frame whose envelope `ver ≠ 3` is
   dropped + struck.
 - **HELLO version negotiation.** HELLO carries `protoMin`/`protoMax`. The host requires
-  overlap with its own supported range (`[3,3]` today). No overlap → the join is refused
+  overlap with its own supported range (`[4,4]` today). No overlap → the join is refused
   (silent drop in this snapshot; a `BYE(reason=3)` "update to play together" in a later
   stage). `protoMin > protoMax` is itself a strike.
 - **Forward-compatibility contract (both directions MUST honor):**
@@ -868,7 +904,7 @@ same key. **Strike-able (S) events:**
 - HELLO too short (`short`), HELLO/re-hello proof mismatch (`proof`).
 - PRES with NaN/Inf position (`nan`).
 - Anti-cheat hard teleport (`teleport`, [§15.3](#153-anti-cheat-envelope)).
-- PRES from a spectator (`spectator-pres`).
+- PRES from a spectator (`spectator-pres`), or KILL from a spectator (`spectator-kill`).
 - ROSTER `count` overrun.
 
 Clamps (**C**) and whitelist fallbacks (**W**) are **never** strikes.
@@ -940,7 +976,7 @@ A conforming client MUST uphold these (condensed from the reference security rev
 | envelope `dir` | matches sender role (0x01 G→H / 0x02 H→G) | strike |
 | envelope `counter` | `> highSeen(pair, dir)` | drop + strike |
 | wire size | ≤ 256 B | drop + strike (pre-decrypt) |
-| HELLO `protoMin/Max` | overlap [3,3], `min ≤ max` | refuse join / strike |
+| HELLO `protoMin/Max` | overlap [4,4], `min ≤ max` | refuse join / strike |
 | tag (HELLO/ROSTER) | `[A-Z0-9]{3}` | force `"AAA"` (**W**) |
 | suit/hat | index in local cosmetic tables | force 0 (**W**) |
 | HELLO `proof` | HMAC match | silent drop + strike |
@@ -994,8 +1030,8 @@ joining fresh (no rejoin token), producing a HELLO **plaintext** (43 bytes):
 offset  bytes                                            field
 ------  -----------------------------------------------  ----------------------------------
 0x00    01                                               type = HELLO (0x01)
-0x01    03                                               protoMin = 3
-0x02    03                                               protoMax = 3
+0x01    04                                               protoMin = 4
+0x02    04                                               protoMax = 4
 0x03    4B 41 47                                          tag = "KAG"  (ASCII K,A,G)
 0x06    03                                               suit = 3
 0x07    01                                               hat = 1
@@ -1052,7 +1088,7 @@ envelope is little-endian.
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `PROTO` | 3 | app-envelope / protocol version |
+| `PROTO` | 4 | app-envelope / protocol version |
 | `ROOM_CAP` / `PLAYER_CAP` | 32 | player slots |
 | `SPECTATOR_CAP` | 16 | spectator slots |
 | `WIRE_MAX` | 256 | max app packet wire size (pre-decrypt gate) |
@@ -1081,6 +1117,6 @@ envelope is little-endian.
 **Frame type values.** Relay: `01` ServerKey, `02` ClientInfo, `03` ServerInfo, `04`
 SendPacket, `05` RecvPacket, `06` KeepAlive, `07` NotePreferred, `08` PeerGone, `12` Ping,
 `13` Pong, `14` Health, `15` Restarting. App (implemented): `01` HELLO, `02` WELCOME, `03`
-ROSTER, `04` PRES, `05` SNAP, `0c` ROLE. App (specified, not in this snapshot): `06` EMOTE,
+ROSTER, `04` PRES, `05` SNAP, `0c` ROLE. App (also implemented): `0d` KILL, `18` KILLB. App (specified, not in this snapshot): `06` EMOTE,
 `07` MOMENT, `08` LEAVE, `09` BYE, `0a` ROUND, `0b` MIGRATE, `16` EMOTEB. Code channel: `01`
 CODEREQ, `02` CODERESP.

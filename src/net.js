@@ -12,7 +12,7 @@
   /* -------------------------------------------------------------------------
      0. WIRE CONSTANTS — relay frame types, app frame types, hard caps
      ------------------------------------------------------------------------- */
-  const PROTO = 3;                       // app protocol version (envelope ver)
+  const PROTO = 4;                       // app protocol version (envelope ver)
   const ROOM_CAP = 32;
   const WIRE_MAX = 256;                  // hard cap per encrypted app packet (pre-decrypt gate)
   const RELAY_FRAME_MAX = 65536;         // declared relay frame length above this = protocol violation
@@ -33,6 +33,10 @@
   // (Appendix A). EMOTEB=0x16 is still ≤ FRAME_CORE_HI so it is validated, not
   // ignored. Emote ids are the shipped set 0-5 (wave/laugh/skull/heart/gg/panic).
   const A_EMOTE = 0x06, A_EMOTEB = 0x16, A_BYE = 0x09, A_ROUND = 0x0a;
+  // Shared kills: a guest reports an alien it killed (KILL, G→H); the host fans it out
+  // to everyone else (KILLB, H→all) so it disappears on every screen.
+  const A_KILL = 0x0d, A_KILLB = 0x18;
+  const KILL_REACH = 1800;   // px: a kill is only believed within this of the reporter's own last position
   const EMOTE_MAX = 5;                     // shipped emote id ceiling (clamp 0..5 at RECEIPT)
   // Frame-type space partition (Addendum D headroom): 0x00-0x3F core (specced),
   // 0x40-0x7F reserved for future standard extensions (records/social, and the
@@ -953,6 +957,12 @@
   function decEmote(pt) { return pt.length < 3 ? null : { emoteId: pt[1], seq: pt[2] }; }
   function encEmoteB(s, p, emoteId, seq) { const u = s.u8; u[0] = A_EMOTEB; u[1] = p & 0xff; u[2] = emoteId & 0xff; u[3] = seq & 0xff; return u.subarray(0, 4); }
   function decEmoteB(pt) { return pt.length < 4 ? null : { p: pt[1], emoteId: pt[2], seq: pt[3] }; }
+  // KILL (0x0d G→H) body {runId u8, id u32 LE}; KILLB (0x18 H→all) body {p u8, runId u8, id u32 LE}.
+  // id is the alien's spawn x in 1/8 px (identical on every screen: spawn comes from the shared seed).
+  function encKill(s, runId, id) { const u = s.u8; u[0] = A_KILL; u[1] = runId & 0xff; new DataView(u.buffer, u.byteOffset).setUint32(2, id >>> 0, true); return u.subarray(0, 6); }
+  function decKill(pt) { return pt.length < 6 ? null : { runId: pt[1], id: new DataView(pt.buffer, pt.byteOffset).getUint32(2, true) }; }
+  function encKillB(s, p, runId, id) { const u = s.u8; u[0] = A_KILLB; u[1] = p & 0xff; u[2] = runId & 0xff; new DataView(u.buffer, u.byteOffset).setUint32(3, id >>> 0, true); return u.subarray(0, 7); }
+  function decKillB(pt) { return pt.length < 7 ? null : { p: pt[1], runId: pt[2], id: new DataView(pt.buffer, pt.byteOffset).getUint32(3, true) }; }
   // BYE (0x09 H→G) — body {reason u8, detail u8}. reason: 0 kicked, 1 closed,
   // 2 rotated, 3 version, 4 full, 5 banned, 6 not approved.
   function encBye(s, reason, detail) { const u = s.u8; u[0] = A_BYE; u[1] = reason & 0xff; u[2] = (detail || 0) & 0xff; return u.subarray(0, 3); }
@@ -1211,7 +1221,7 @@
       nounIdx: opts.nounIdx == null ? CALLSIGN_NONE : opts.nounIdx & 0xff,
       self: { seq: 0, x: 0, y: 0, vx: 0, state: 0, chain: 0, score: 0, dist: 0, runId: 1 },
       ev: emitter(), tick: 0, snapTimer: null, rr: 0, slots: makeSlots(),
-      out: makeScratch(), outSnap: makeScratch(), outRoster: makeScratch(), rosterQueue: Promise.resolve(),
+      out: makeScratch(), outSnap: makeScratch(), outRoster: makeScratch(), rosterQueue: Promise.resolve(), killed: new Set(),
       started: 0,
       invite: '', link: '', region: opts.region || '', relayHostName: '',
       codeReplies: 0, codeRepliesMin: 0, codeMinMark: 0,
@@ -1282,7 +1292,7 @@
       // new-world / roster / snap / emote-broadcast) → strike. The pair AEAD
       // already proved WHICH guest sent it; this refuses the forged ROLE.
       if (pt[0] === A_WELCOME || pt[0] === A_ROSTER || pt[0] === A_SNAP ||
-          pt[0] === A_BYE || pt[0] === A_ROUND || pt[0] === A_EMOTEB) return strike(row, 'host-frame');
+          pt[0] === A_BYE || pt[0] === A_ROUND || pt[0] === A_EMOTEB || pt[0] === A_KILLB) return strike(row, 'host-frame');
       if (pt[0] === A_EMOTE) {                                   // guest emote (spectators MAY emote, §4.6/Addendum A)
         const em = decEmote(pt);
         if (!em) return;
@@ -1304,6 +1314,23 @@
         // client surfaces peer emotes too — incl. spectators, whose presence()
         // row is null (positionless) so no world bubble ever draws for them.
         S.ev.emit('emote', { p: row.p, id: em.emoteId, seq: row.emoteSeq });
+        return;
+      }
+      if (pt[0] === A_KILL) {                                    // a guest reports an alien it killed
+        const k = decKill(pt);
+        if (!k) return;
+        if (row.role === ROLE_SPECTATOR) return strike(row, 'spectator-kill');   // spectators stream nothing and kill nothing
+        if (k.runId !== S.runId) return;                         // in flight across a New Round: drop, no strike
+        // Token bucket: burst 12, refill 6/s. Over-rate drops without a strike (a chain of kills is human).
+        const tk = performance.now();
+        row.killBucket = Math.min(12, (row.killBucket == null ? 12 : row.killBucket) + (tk - (row.killBucketT || tk)) * 0.006);
+        row.killBucketT = tk;
+        if (row.killBucket < 1) return;
+        row.killBucket -= 1;
+        // Plausibility: the reporter must be near that alien (its own last PRES), so a guest
+        // cannot wipe out aliens across the whole course. Believed kills only; never a strike.
+        if (!row.pres || Math.abs(k.id / 8 - row.pres.x) > KILL_REACH) return;
+        acceptKill(row.p, k.runId, k.id, row);
         return;
       }
       if (pt[0] === A_PRES) {
@@ -1537,6 +1564,19 @@
       const pt = encEmoteB(S.out, p, emoteId, seq).slice();
       for (const r of members()) S.relay.send(r.pub, await sealApp(r.pair, pt));
     }
+    // A believed kill: dedupe per (runId, alien), tell the host's own game, and fan it out to
+    // everyone except the reporter (whose game already applied it).
+    const KILLED_CAP = 8192;
+    function acceptKill(p, runId, id, except) {
+      const key = runId * 4294967296 + id;
+      if (S.killed.has(key)) return;
+      if (S.killed.size >= KILLED_CAP) S.killed.clear();
+      S.killed.add(key);
+      S.ev.emit('kill', { p, id, runId });
+      if (!S.relay || S.relay.state !== 'established') return;
+      const pt = encKillB(S.out, p, runId, id).slice();
+      (async () => { for (const r of members()) if (r !== except) S.relay.send(r.pub, await sealApp(r.pair, pt)); })().catch(() => {});
+    }
     // ROUND (new-world) broadcast — rides the host-epoch/seq control envelope so
     // a guest CANNOT forge or replay it: encCtrl binds {roomId, hostEpoch, seq}
     // under the pair AEAD, guests validate via ctrlGate before adopting.
@@ -1698,6 +1738,7 @@
 
     // Emote from the host itself: authoritative, so fan EMOTEB(p=1) directly. The
     // UI self-echo is owned by NET.emote(); this shows the host's bubble to guests.
+    S.sendKill = (id) => { acceptKill(1, S.runId, id >>> 0, null); };
     S.sendEmote = (id) => {
       const e = id | 0;
       if (e < 0 || e > EMOTE_MAX) return;
@@ -1762,6 +1803,7 @@
         S.seed = new DataView(rand(4).buffer).getUint32(0, true);
         S.runId = S.runId >= 255 ? 1 : S.runId + 1;              // u8, never 0 (0 = unknown → render-only ghost)
         S.self.runId = S.runId;
+        S.killed.clear();
         // S.self still holds the last run's sample (often dead, far down the old
         // course). Stop fanning it out under the new runId until the host's game
         // reports from the new course, or peers see a dead host at the start.
@@ -1942,6 +1984,12 @@
         S.ev.emit('snap', { tick: snap.tick, n: snap.rows.length });
         return;
       }
+      if (pt[0] === A_KILLB) {                                   // host fan-out: another player killed this alien
+        const kb = decKillB(pt);
+        if (!kb || !S.welcomed || kb.runId !== S.welcomed.runId) return;   // stale round: ignore
+        S.ev.emit('kill', { p: kb.p, id: kb.id, runId: kb.runId });
+        return;
+      }
       if (pt[0] === A_EMOTEB) {                                  // host emote fan-out → this peer's bubble
         const eb = decEmoteB(pt);
         if (!eb || eb.emoteId > EMOTE_MAX) return;               // ignore out-of-range (defense in depth; host already clamped)
@@ -2026,6 +2074,11 @@
     // Emote → host (§4.6). Spectators MAY emote (no role gate). The host clamps,
     // rate-limits, and re-broadcasts EMOTEB; the local self-echo is owned by
     // NET.emote(). seq is advisory (host re-stamps its own into EMOTEB).
+    S.sendKill = async (id) => {
+      if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
+      if (S.role === ROLE_SPECTATOR || S.requestedRole === ROLE_SPECTATOR) return;
+      S.relay.send(S.inv.hostPub, await sealApp(S.pair, encKill(S.out, S.welcomed.runId, id >>> 0)));
+    };
     S.sendEmote = async (id) => {
       if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
       const e = id | 0;
@@ -2232,6 +2285,8 @@
     // self-echo the renderer reads for the immediate own-bubble, and best-effort
     // relay it (the EMOTE/EMOTEB wire lands with the emote-frame stage — until
     // then this is a local echo only, never a throw).
+    // Tell the room an alien died (id = its spawn x in 1/8 px). Best-effort, real rooms only.
+    kill(id) { if (session && session.sendKill) { try { const r = session.sendKill(id); if (r && r.catch) r.catch(() => {}); } catch (x) {} } },
     emote(id) {
       const e = id | 0;
       if (e < 0 || e > 5) return;
@@ -2436,6 +2491,7 @@
       roster: { encRoster, decRoster, ROSTER_ENTRY, ROSTER_MAX },
       role: { encRole, decRole },
       emote: { encEmote, decEmote, encEmoteB, decEmoteB, EMOTE_MAX, A_EMOTE, A_EMOTEB },
+      kill: { encKill, decKill, encKillB, decKillB, A_KILL, A_KILLB, KILL_REACH },
       bye: { encBye, decBye, A_BYE },
       round: { encRoundBody, decRoundBody, A_ROUND },
       ctrl: { encCtrl, decCtrl, makeCtrlGate, ctrlGate },

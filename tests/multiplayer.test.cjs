@@ -242,6 +242,8 @@ test('old course versions are rejected before opening a socket', async (t) => {
   const invite = bytes.b64uDec(host.net.info().link.split('#j=')[1]); invite[0] = 1;
   const before = hub.packetCount;
   await assert.rejects(guest.net.acceptJoin(bytes.b64uEnc(invite)), /update/);
+  invite[0] = 3;                       // v3.4 clients: same terrain, but aliens still moved per-frame and kills weren't shared
+  await assert.rejects(guest.net.acceptJoin(bytes.b64uEnc(invite)), /update/);
   assert.equal(hub.packetCount, before); assert.equal(guest.net.active, false);
 });
 
