@@ -224,3 +224,21 @@ test('a room turning unstable with the tray open moves the teammate cue below th
   assert.ok(seen.length, 'the cue was drawn');
   assert.ok(seen[0] > L.tray.y + L.tray.h, 'below the tray as laid out around the new banner: ' + seen[0] + ' vs ' + (L.tray.y + L.tray.h));
 });
+
+test('on the frame a room turns unstable, the ammo pips clear the tray that is actually drawn, in render order', async (t) => {
+  const { guest } = await playing(t, { width: 667, height: 375 });
+  guest.run('resize(); G.mode = "play"; input.usingTouch = false; G.shards = 5');
+  down(guest, ...centre(guest, guest.run('emoteLayout()').button), 1);
+  guest.run('input.usingTouch = false');
+  const ctx = guest.run('ctx'), pips = [];
+  const viewW = guest.run('view.w'), trayW = guest.run('emoteLayout().tray.w'), trays = [];
+  ctx.fillRect = (x, y, w, h) => { if (x > viewW - 90 && w > 0 && w < 8 && h > 8 && h < 14) pips.push(y); };
+  guest.run('globalThis.__t = []; const rr = roundRect; roundRect = (x, y, w, h, r) => { if (Math.abs(w - ' + trayW + ') < 1e-6) __t.push(y + h); return rr(x, y, w, h, r); }');
+  guest.net._n1.session().unstable = true;                                       // unstable from this very frame
+  guest.run('drawHUD(); drawNetHUD()');                                          // render()'s order: the HUD, then the net layer
+  delete ctx.fillRect;
+  const drawnTrayBottom = guest.run('__t')[0];
+  assert.ok(pips.length >= 3, 'ammo pips were drawn');
+  assert.ok(drawnTrayBottom, 'the tray was drawn');
+  for (const y of pips) assert.ok(y >= drawnTrayBottom, `every ammo pip clears the tray as drawn (${y} vs ${drawnTrayBottom})`);
+});

@@ -6867,18 +6867,28 @@ function drawSpectatorHUD() {
     _specHits[key] = { x0: x * kx, x1: (x + w) * kx, y0: by * ky, y1: (by + h) * ky };
   });
 }
-function drawUnstableBanner() {
+// One source for the banner's geometry (view px) and its LEAVE target (CSS px), so nothing that lays itself out around the
+// banner (the emote tray, the ammo readout, the teammate cue) depends on the order things were drawn in this frame.
+function unstableBannerGeom() {
   const us = uiScale(), y = safeInset('top') + 76 * us, x = view.w / 2;   // below the strip + shifted HUD chain line
-  const label = 'UNSTABLE ROOM', bw = 150 * us, bh = 22 * us, bx = x - bw / 2;
+  const bw = 150 * us, bh = 22 * us, bx = x - bw / 2, lx = bx + bw - 40 * us;
+  return { us, y, bx, bw, bh, lx };
+}
+function unstableHitRect() {   // CSS px, or null when the room is fine
+  if (!netLive() || !NET.info().unstable) return null;
+  const g = unstableBannerGeom(), kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+  return { x0: g.lx * kx - 8, x1: (g.bx + g.bw) * kx + 8, y0: g.y * ky - 6, y1: (g.y + g.bh) * ky + 6 };
+}
+function drawUnstableBanner() {
+  const { us, y, bx, bw, bh, lx } = unstableBannerGeom();
+  const label = 'UNSTABLE ROOM';
   ctx.fillStyle = 'rgba(20,8,14,0.86)'; roundRect(bx, y, bw, bh, 6); ctx.fill();
   ctx.strokeStyle = 'rgba(255,79,102,0.4)'; ctx.lineWidth = 1; ctx.stroke();
   ctx.fillStyle = '#FF8A9A'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.fillText(label, bx + 8 * us, y + bh / 2);
-  const lx = bx + bw - 40 * us;
   ctx.fillStyle = '#FF4F66'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.fillText('LEAVE', lx, y + bh / 2);
   ctx.textBaseline = 'alphabetic';
-  const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
-  _unstableHit = { x0: lx * kx - 8, x1: (bx + bw) * kx + 8, y0: y * ky - 6, y1: (y + bh) * ky + 6 };
+  _unstableHit = unstableHitRect();
 }
 
 /* ---- emotes: desktop keys 1-6; touch and mouse get a dedicated button that opens a small tray of the six ---- */
@@ -6887,7 +6897,8 @@ const EMOTE_TRAY_MS = 4000, EMOTE_BTN = 40, EMOTE_ITEM = 44, EMOTE_GAP = 6;   //
 function inRect(p, r) { return r && p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1; }
 function netPointerDown(e) {
   const p = pointerPos(e);
-  if (_unstableHit && inRect(p, _unstableHit)) { leaveRoom(); return true; }
+  const leaveHit = unstableHitRect();
+  if (leaveHit && inRect(p, leaveHit)) { leaveRoom(); return true; }
   if (netSpectating()) {
     if (_specHits) {
       if (inRect(p, _specHits.play)) { startRun(); return true; }
@@ -6930,7 +6941,8 @@ function emoteLayout() {
   const trayW = 6 * item + 5 * gap + 2 * pad, trayH = item + 2 * pad;
   const button = { x: right - btn, y: top, w: btn, h: btn };
   // A room in trouble shows the UNSTABLE ROOM banner with a LEAVE target; the tray sits below it so an emote can never leave the room.
-  const below = _unstableHit ? Math.max(top + btn + gap, _unstableHit.y1 / k + gap) : top + btn + gap;
+  const hit = unstableHitRect();
+  const below = hit ? Math.max(top + btn + gap, hit.y1 / k + gap) : top + btn + gap;
   const tray = { x: right - trayW, y: below, w: trayW, h: trayH };
   const items = [];
   for (let i = 0; i < 6; i++) items.push({ i, x: tray.x + pad + i * (item + gap), y: tray.y + pad, w: item, h: item });
