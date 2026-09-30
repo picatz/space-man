@@ -2393,7 +2393,14 @@ function seedRng(seed) { rng = (seed === null || seed === undefined) ? Math.rand
 // worldgen draws from its own stream and gameplay randomness can't fork it.
 function resetRun(seed, replayable) {
   seedRng(seed);
-  G.worldRng = (netLive() && !NET.mockActive) || replayable ? mulberry32((seed >>> 0) ^ 0x574F524C) : null;
+  // A real room (not the #shot mock) shares the course AND its clock: aliens move on the round clock.
+  G.sharedWorld = netLive() && !NET.mockActive;
+  // Aliens that have died this round (by anyone, including us) stay dead across a restart within the same
+  // round: the course is shared, so a respawn must not bring back what the room already cleared. A new
+  // round (or leaving the room) starts clean.
+  const roundId = G.sharedWorld ? NET.info().runId : 0;
+  if (!G.deadAliens || !G.sharedWorld || G.deadAliensRun !== roundId) { G.deadAliens = new Set(); G.deadAliensRun = roundId; }
+  G.worldRng = G.sharedWorld || replayable ? mulberry32((seed >>> 0) ^ 0x574F524C) : null;
   G.worldLastShooterX = -Infinity;
   // World is anchored to a FIXED reference height (not view.h) so a given seed produces
   // the identical layout on phone (360) and tablet/desktop (400). view.h only controls
@@ -2522,15 +2529,27 @@ function seatMidRound(elapsedMs) {
   }
   // 3. Seat on the platform bracketing the target (nearest solid ground behind it if
   //    the target lands in a gap; the furthest generated slab if the walk was capped).
-  const plat = platAtX(targetX) || G.platforms[G.platforms.length - 1];
-  p.x = clamp(targetX, plat.x + 4, plat.x + plat.w - 4);   // keep feet on the slab
+  // Seat on a platform with nothing on it. Aliens are shared world state now (every
+  // screen sees the same ones in the same places), so we never delete one to make
+  // room: we walk to the nearest clear slab near the crew instead.
+  const clear = (pl) => !G.enemies.some((e) => !e.dead && e.x + e.w >= pl.x - 40 && e.x <= pl.x + pl.w + 40);
+  const home = platAtX(targetX) || G.platforms[G.platforms.length - 1];
+  let plat = home;
+  if (!clear(home)) {
+    let best = null, bestD = Infinity;
+    for (const pl of G.platforms) {
+      if (pl.w < 120 || pl.crumble || pl.x + pl.w < flare.x + 250 || !clear(pl)) continue;
+      const d = Math.abs(pl.x + pl.w / 2 - targetX);
+      if (d < bestD) { bestD = d; best = pl; }
+    }
+    if (best) plat = best;
+  }
+  const seatX = plat === home ? targetX : plat.x + plat.w / 2;
+  p.x = clamp(seatX, plat.x + 4, plat.x + plat.w - 4);   // keep feet on the slab
   p.y = plat.y - CFG.ph; p.px = p.x; p.py = p.y; p.vx = 0; p.vy = 0;
   p.onGround = true; p.jumping = false; p.airFrames = 0; p.coyote = 0; p.buffer = 0;
   p.groundPlat = plat; p.jumpPlat = plat; p.jumpStartX = p.x;
-  // Land on a safe slab: enemies are local simulation, so clear the seat
-  // platform (and any shots in flight near it) rather than dropping a late
-  // joiner onto a patrol that kills them on frame 1.
-  G.enemies = G.enemies.filter((e) => e.x + e.w < plat.x - 40 || e.x > plat.x + plat.w + 40);
+  // Shots already in flight near the seat are local: drop them so nobody is sniped on frame 1.
   G.ebullets = G.ebullets.filter((b) => Math.abs(b.x - p.x) > 500);
   // Reseat the camera on the grounded target (matches updateCamera's grounded aim
   // exactly, off the platform's own height) so frame 1 never eases a phantom jump.
@@ -2918,12 +2937,82 @@ function tryShoot() {
 /* ---------------------------------------------------------------------------
    16. ENEMIES + BULLETS
    ------------------------------------------------------------------------- */
-function updateEnemies() {
+// In a room every alien is a pure function of the shared round clock, so both
+// screens see it in the same place however long each has been simulating (a slow
+// phone drops steps, a backgrounded tab drops them all, a late joiner generates
+// its copy long after the host did). Everything needed is captured the first time
+// an alien is seen, before anything has moved it; nothing here draws from any rng.
+// An alien's identity on the wire: its spawn x in 1/8 px. Spawn comes from the shared seed, so every
+// screen computes the same number for the same alien; `rs.x0` is that spawn x once the round clock drives it.
+function enemyId(e) { return Math.max(0, Math.round((e.rs ? e.rs.x0 : e.x) * 8)); }
+// Remember an alien as dead for the rest of this round (oldest forgotten first, never all at once).
+function markAlienDead(id) {
+  if (G.deadAliens.has(id)) return;
+  if (G.deadAliens.size >= 20000) G.deadAliens.delete(G.deadAliens.values().next().value);
+  G.deadAliens.add(id);
+}
+// Another player's kill (or one the host replays to us on joining): the alien goes for everyone. No score,
+// mission progress or chain here, those are the killer's own. If the alien isn't on this screen yet, the
+// memory above makes sure it never appears.
+function remoteKill(id, runId) {
+  // Kills replayed to a joiner arrive before its game has started the round: file them under the round they
+  // name, and the round-start reset (same runId) keeps them.
+  if (!G.deadAliens || G.deadAliensRun !== runId) { G.deadAliens = new Set(); G.deadAliensRun = runId; }
+  markAlienDead(id);
+  for (const e of G.enemies) {
+    if (e.dead || enemyId(e) !== id) continue;
+    e.dead = true; e.squash = 0.01;
+    spawnP(e.x, e.y, 0, -0.6, 22, 3, e.golden ? 'rgba(255,201,60,.9)' : 'rgba(159,241,255,.85)', 0.04, false, 0);
+    return;
+  }
+}
+function roundStep() {
+  const rc = NET.roundClock();
+  return rc && rc.active ? Math.max(0, rc.elapsedMs) / (STEP * 1000) : 0;
+}
+function syncEnemyToRound(e, T, fire) {
+  let s = e.rs;
+  if (!s) {
+    if (G.deadAliens.size && G.deadAliens.has(enemyId(e))) { e.dead = true; e.squash = 2.1; return; }   // already dead this round: never appears
+    const dist = (e.x - G.startX) / 10;
+    s = e.rs = { x0: e.x, dir0: e.dir, wp0: e.walkPhase, bob0: e.bob, f0: e.fireT, ivl: bandParams(bandFor(dist), dist).shootIvl, shots: -1 };
+  }
+  if (e.type === 'patrol') {
+    // Ping-pong between the platform ends at `speed` px per step, unfolded into one
+    // lap of length 2L so the position at any T is a modulo, not an integration.
+    const L = e.maxX - e.minX;
+    if (L > 0) {
+      const off = clamp(s.x0 - e.minX, 0, L), q0 = s.dir0 > 0 ? off : 2 * L - off;
+      const q = (q0 + e.speed * T) % (2 * L);
+      e.x = e.minX + (q <= L ? q : 2 * L - q);
+      e.dir = q < L ? 1 : -1;
+    }
+    e.walkPhase = s.wp0 + 0.15 * T;
+    return;
+  }
+  e.bob = s.bob0 + 0.05 * T; e.y = e.baseY + Math.sin(e.bob) * 4;
+  // Shots fall at f0 + k * ivl on the round clock; telegraph is the last 0.4 s before one.
+  const t = T * STEP, n = t >= s.f0 ? Math.floor((t - s.f0) / s.ivl) + 1 : 0;
+  const rem = s.f0 + n * s.ivl - t, wasTel = e.telegraph > 0;
+  e.fireT = rem; e.telegraph = rem <= 0.4 ? rem : 0;
+  if (!wasTel && e.telegraph > 0 && fire && G.mode === 'play') Audio.sfx.telegraph();
+  if (s.shots < 0) s.shots = n;                       // first sight: never a burst of missed shots
+  else if (n > s.shots) { s.shots = n; if (fire) enemyFire(e); }
+}
+function enemyFire(e) {
   const p = G.player, B = bandParams(G.band, G.dist);
+  let dx = p.x - e.x, dy = (p.y + p.h / 2) - e.y;
+  if (G.band >= 5) dx += p.vx * 12;
+  const d = Math.hypot(dx, dy) || 1, sp = B.ebSpeed;
+  G.ebullets.push({ x: e.x, y: e.y, px: e.x, py: e.y, vx: dx / d * sp, vy: dy / d * sp, life: 220, grazed: false });
+}
+function updateEnemies(spectating) {
+  const p = G.player, B = bandParams(G.band, G.dist), T = G.sharedWorld ? roundStep() : 0;
   for (const e of G.enemies) {
     e.px = e.x; e.py = e.y;
     if (e.dead) { e.squash += 0.25; continue; }
-    if (e.type === 'patrol') {
+    if (G.sharedWorld) syncEnemyToRound(e, T, !spectating);
+    else if (e.type === 'patrol') {
       e.x += e.dir * e.speed;
       if (e.x <= e.minX) { e.x = e.minX; e.dir = 1; }
       if (e.x >= e.maxX) { e.x = e.maxX; e.dir = -1; }
@@ -2935,10 +3024,7 @@ function updateEnemies() {
       if (e.telegraph > 0) e.telegraph -= STEP;
       if (e.fireT <= 0) {
         e.fireT = B.shootIvl; e.telegraph = 0;
-        let dx = p.x - e.x, dy = (p.y + p.h / 2) - e.y;
-        if (G.band >= 5) dx += p.vx * 12;
-        const d = Math.hypot(dx, dy) || 1, sp = B.ebSpeed;
-        G.ebullets.push({ x: e.x, y: e.y, px: e.x, py: e.y, vx: dx / d * sp, vy: dy / d * sp, life: 220, grazed: false });
+        enemyFire(e);
       }
     }
     e.lookX = clamp((p.x - e.x) / 120, -1, 1);
@@ -3005,6 +3091,7 @@ function updateBullets() {
 
 function killEnemy(e, method, interrupted) {
   e.dead = true; e.squash = 0.01;
+  if (G.sharedWorld) { markAlienDead(enemyId(e)); NET.kill(enemyId(e)); }   // stays dead for us after a respawn; everyone else's copy goes too
   G.killsRun++; stats.kills++;
   const mult = 1 << G.chain;
   const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult;
@@ -6299,6 +6386,7 @@ function updateSpectator() {
   }
   netFollowCamera();
   updateFlareShared();
+  updateEnemies(true);   // aliens keep their round-clock places for the watcher; they never fire at the bot
   // Keep the replicated course bounded, including when switching far ahead.
   G.enemies = G.enemies.filter((e) => e.x > p.x - 900);
   G.pickups = G.pickups.filter((k) => k.x > p.x - 900);
@@ -6710,6 +6798,7 @@ if (NET) NET.onEvent((e, d) => {
   else if (e === 'rotated') { if (netLive()) renderRoomCard(); }   // fresh link/code/QR after New Link
   else if (e === 'roster' || e === 'ok' || e === 'kick' || e === 'banned') { if (netLive()) renderRoomCard(); }
   else if (e === 'emote') netEmoteToast(d);
+  else if (e === 'kill') { if (!NET.mockActive && d && d.runId === NET.info().runId && d.p !== NET.info().myP) remoteKill(d.id, d.runId); }
   // Shared-round clock (§4.1): a genuinely NEW round (pre-roll countdown) toasts;
   // the targeted anchor a joiner/reconnector receives (startInMs 0) stays silent.
   else if (e === 'round' || e === 'round-begin') {
