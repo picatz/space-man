@@ -499,8 +499,27 @@
   .room-invite { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
   .invite-block .k { font-size: 9px; letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
   .invite-block .v { font-family: var(--font-num); font-size: 12px; color: var(--suit); word-break: break-all; margin-top: 2px; }
-  .invite-block .code { font-size: 20px; letter-spacing: 3px; color: var(--cyan-lt); white-space: nowrap; }
+  .invite-block .code { font-size: 24px; letter-spacing: 3px; color: var(--cyan-lt); white-space: nowrap; }
   .chip-row { display: flex; gap: 8px; margin-top: 6px; }
+  /* The room code is what people read out loud: big, first, and a tap copies it. */
+  /* The room card holds a QR, a roster and the host controls: never taller than the window, so Leave/Back stay reachable. */
+  #ovRoom .panel { max-height: calc(100dvh - 24px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+  .room-codebar { text-align: center; margin: 2px 0 12px; }
+  .room-codebar .code { font-size: 30px; letter-spacing: 4px; margin-top: 4px; white-space: normal; overflow-wrap: anywhere; }
+  @media (max-width: 430px) { .room-codebar .code { font-size: 26px; letter-spacing: 3px; } }
+  .invite-block .code { cursor: pointer; }
+  .invite-block .code:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
+  .invite-block .code-note { font-size: 10px; letter-spacing: 1px; color: var(--ui); opacity: 0.6; margin-top: 4px; }
+  /* Run Together hub: create a room, or join one with a code or link. */
+  .together-or { display: flex; align-items: center; gap: 10px; margin: 16px 0 10px; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--ui); opacity: 0.6; }
+  .together-or::before, .together-or::after { content: ''; flex: 1; height: 1px; background: rgba(56, 225, 255, 0.22); }
+  .join-label { display: block; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); margin-bottom: 6px; }
+  .join-input { width: 100%; box-sizing: border-box; min-height: 54px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(56, 225, 255, 0.4); background: rgba(6, 10, 28, 0.75); color: var(--suit); font: 700 20px var(--font-num); letter-spacing: 3px; text-transform: uppercase; text-align: center; }
+  .join-input::placeholder { color: rgba(207, 227, 255, 0.32); }
+  .join-input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .join-input:disabled { opacity: 0.6; }
+  .join-hint { min-height: 36px; margin: 8px 2px 6px; font-size: 12px; line-height: 1.45; color: var(--ui); opacity: 0.85; }
+  .join-hint.err { color: var(--coral); opacity: 1; }
   .mini-chip {
     font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
     color: var(--cyan); background: rgba(56, 225, 255, 0.12); border: 1px solid rgba(56, 225, 255, 0.3);
@@ -706,11 +725,33 @@
   </div>
 </div>
 
+<!-- Run Together: the front door — create a room, or join one with a code or a link -->
+<div class="overlay" id="ovTogether">
+  <div class="panel">
+    <div class="title-lg" style="font-size:22px;">Run Together</div>
+    <div class="sub">Race the same course with friends, on any device.</div>
+    <button class="btn pulse" id="btnCreateRoom">Create a Room</button>
+    <div class="together-or" aria-hidden="true">or join a friend</div>
+    <label class="join-label" for="joinInput">Room code or link</label>
+    <input class="join-input" id="joinInput" type="text" inputmode="text" enterkeyhint="go" autocomplete="off"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NYC-COMET-42"
+      aria-describedby="joinHint" />
+    <div class="join-hint" id="joinHint" role="status" aria-live="polite">Type the code your friend sees, or paste their invite link.</div>
+    <button class="btn" id="btnJoinGo">Join</button>
+    <button class="btn ghost" id="btnTogetherBack">Back</button>
+  </div>
+</div>
+
 <!-- Run Together: room card — attract-anchored so the idle scene stays behind it -->
 <div class="overlay attract-anchor" id="ovRoom">
   <div class="panel">
     <div class="title-lg" id="roomTitle" style="font-size:20px;">Room</div>
     <div class="net-sub" id="roomCounts"></div>
+    <div class="room-codebar invite-block" id="roomCodeBar">
+      <div class="k">Room code · tap to copy</div>
+      <div class="v code" id="roomCode" role="button" tabindex="0" aria-label="Room code. Activate to copy."></div>
+      <div class="code-note" id="roomCodeNote"></div>
+    </div>
     <div class="room-top" id="roomTop">
       <canvas class="room-qr" id="roomQr" width="245" height="245"></canvas>
       <div class="room-invite">
@@ -721,10 +762,6 @@
             <button class="mini-chip" id="btnRoomCopy">Copy</button>
             <button class="mini-chip" id="btnRoomShare" style="display:none;">Share…</button>
           </div>
-        </div>
-        <div class="invite-block">
-          <div class="k">Code</div>
-          <div class="v code" id="roomCode"></div>
         </div>
       </div>
     </div>
@@ -1815,9 +1852,9 @@ function inMuteHit(p) { const h = G._muteHit; return !!h && p.x >= h.x0 && p.x <
 /* ---- menu focus: keyboard Tab/Enter is native; a gamepad drives the same DOM
    focus (D-pad/stick moves, A activates, B backs out). Never active in a run. ---- */
 // Stacking order: later ids sit on top when two overlays are ever shown at once.
-const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'];
+const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovTogether', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'];
 const PRIMARY_OVERLAY = { attract: 'ovAttract', pause: 'ovPause', dead: 'ovDead' };
-const MENU_BACK = { ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
+const MENU_BACK = { ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
 function topOverlayId() {
   for (let i = OVERLAY_IDS.length - 1; i >= 0; i--) if (document.getElementById(OVERLAY_IDS[i]).classList.contains('show')) return OVERLAY_IDS[i];
   return null;
@@ -1943,8 +1980,13 @@ function keyAction(k) {
 }
 // Is keyboard focus on a live overlay control? Then Enter/Space belong to it.
 function focusInOverlay() { const a = document.activeElement; return !!(a && a !== document.body && a.closest && a.closest('.overlay.show')); }
+// A text box (the room-code field) owns its keys: typing COMET-42 must not mute, pause or restart the game.
+function isTextField(t) {
+  return !!t && (t.tagName === 'TEXTAREA' || t.isContentEditable || (t.tagName === 'INPUT' && /^(text|search|url|tel|email|password)$/i.test(t.type || 'text')));
+}
 function onKey(e, down) {
   const k = (e.key || '').toLowerCase();
+  if (isTextField(e.target)) { if (down && k === 'escape' && menuBack()) e.preventDefault(); return; }
   if (down && (k === 'enter' || k === ' ') && G.mode !== 'play' && focusInOverlay()) return;   // native button activation — never a second startRun/restart
   if (down && k === 'escape' && menuBack()) { e.preventDefault(); return; }   // Escape closes a sub-menu before it pauses
   const act = keyAction(k);
@@ -5873,11 +5915,13 @@ function renderRoomCard() {
     '</span> · spectators <span class="num">' + info.spectators + '/' + info.specCap + '</span>';
   // QR / link / code are host-only (guests don't re-share their own invite, §4.4).
   $('roomTop').style.display = isHost ? '' : 'none';
+  $('roomCodeBar').style.display = isHost ? '' : 'none';
   $('roomApproveRow').style.display = isHost ? '' : 'none';
   $('roomHostControls').style.display = isHost ? '' : 'none';
   if (isHost) {
     $('roomLink').textContent = shortLink(info.link);
-    $('roomCode').textContent = info.code || '—';
+    $('roomCode').textContent = info.joinCode || '—';
+    $('roomCodeNote').textContent = info.joinCode ? 'Friends type it under Run Together → Join, or scan the QR.' : 'This room is on a custom relay: friends join with the link or QR.';
     drawRoomQr(info.link);
     $('btnRoomShare').style.display = navigator.share ? '' : 'none';
     $('roomApprove').classList.toggle('on', !!settings.netApprove);
@@ -5890,18 +5934,30 @@ function renderRoomCard() {
   $('roomStatus').textContent = netRoundActive() ? 'A round is in progress. Jump in with the crew.' : (isHost ? 'Invite your crew, then start a shared countdown.' : 'You’re connected. Ready up and wait for the host to start.');
   if (isHost) renderPendingJoins();
 }
+// Copy text and say so only when it worked; without a clipboard (plain-HTTP LAN origins) offer a selectable prompt.
+function copyText(text, what, promptTitle) {
+  const copied = () => { queueToast(what + ' copied', 'sys'); announce(what + ' copied.'); };
+  const manual = () => { try { window.prompt(promptTitle, text); } catch (e) {} };
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(copied, manual);
+    else manual();
+  } catch (e) { manual(); }
+}
 function copyRoomLink() {
   const link = netLive() ? NET.info().link : '';
   if (!link) return;
-  const done = () => { queueToast('Invite link copied', 'sys'); announce('Invite link copied.'); };
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(link).then(done, done);
-    else done();
-  } catch (e) { done(); }
+  copyText(link, 'Invite link', 'Copy the invite link');
+}
+function copyRoomCode() {
+  const code = netLive() ? NET.info().joinCode : '';
+  if (!code) return;
+  copyText(code, 'Room code', 'Copy the room code');
 }
 function shareRoomLink() {
-  const link = netLive() ? NET.info().link : '';
-  if (link && navigator.share) { try { navigator.share({ url: link }); } catch (e) {} }
+  const info = netLive() ? NET.info() : null;
+  if (info && info.link && navigator.share) {
+    try { navigator.share({ title: 'Space Man — Run Together', text: info.joinCode ? 'Join my run! Room code ' + info.joinCode : 'Join my run!', url: info.link }); } catch (e) {}
+  }
 }
 function kickPlayer(r) {
   // Native confirm — the app's one existing confirm pattern (btnReset); host-only,
@@ -5915,6 +5971,12 @@ function kickPlayer(r) {
   if (window.confirm("Kicked. Rotate the invite so they can't return?")) { try { NET.rotateLink(); } catch (e) {} }
   renderRoomCard();
 }
+// Invite links point at the site the app is being served from (so the link and QR open where the host is),
+// falling back to the published site when it runs from a file or something odd.
+function appBaseUrl() {
+  try { if (/^https?:$/.test(location.protocol)) return location.origin + location.pathname.replace(/[^/]*$/, ''); } catch (e) {}
+  return undefined;
+}
 async function openRoomFlow() {
   if (!netEnabled()) return;
   Audio.ensure();
@@ -5924,7 +5986,7 @@ async function openRoomFlow() {
     const relayDir = { mode: settings.netRelayMode };
     if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
     else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-    await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove });
+    await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove, baseUrl: appBaseUrl() });
     applyCallsignToNet();
     renderRoomCard();
     announce('Room created. Invite link ready.');
@@ -5932,6 +5994,69 @@ async function openRoomFlow() {
   } catch (e) {
     queueToast('relay unreachable — try a custom relay in Settings', 'sys');
     showAttract();
+  }
+}
+/* ---- Run Together front door: Create a Room, or Join with a code / link ---------------------------
+   One box takes whatever a friend sends: the code ("NYC-COMET-42", however typed), the invite link, or a
+   whole chat message with a link in it. A code is looked up on its relay, then the usual Play/Watch
+   prompt follows, exactly as if they had opened the link. */
+let joinLookup = false;
+let joinReq = 0;   // bumped whenever the screen is left or reopened, so a slow lookup can't act on a screen the player has left
+function setTogetherHint(msg, isError) { const h = $('joinHint'); h.textContent = msg || ''; h.classList.toggle('err', !!isError); }
+function setTogetherBusy(on) {
+  joinLookup = on;
+  for (const id of ['joinInput', 'btnJoinGo', 'btnCreateRoom']) $(id).disabled = on;
+}
+function openTogether() {
+  if (!netEnabled()) return;
+  joinReq++;
+  Audio.ensure();
+  if (netLive() && !NET.mockActive) { renderRoomCard(); hideAllOverlays(); showOverlay('ovRoom'); return; }   // already in a room: back to it
+  hideAllOverlays();
+  setTogetherBusy(false);
+  $('joinInput').value = '';
+  setTogetherHint('Type the code your friend sees, or paste their invite link.');
+  showOverlay('ovTogether');
+  // Desktop: land in the box so they can just type or paste. Phones keep the keyboard down until they tap it.
+  if (!input.pad.connected && !FORCE_TOUCH && !matchMedia('(pointer: coarse)').matches) { try { $('joinInput').focus(); } catch (e) {} }
+}
+function badJoinMessage(p) {
+  if (p.reason === 'word') return '"' + p.word + '" isn\'t one of our room words. Check the spelling, or paste the link.';
+  if (p.reason === 'region') return '"' + p.region.toUpperCase() + '" isn\'t a relay location we know. Codes start with a 3-letter place, like NYC-COMET-42.';
+  if (p.reason === 'long') return 'That\'s too long. Paste just the link, or type the code.';
+  return 'That doesn\'t look like a room code. It looks like NYC-COMET-42, or paste the invite link.';
+}
+function lookupFailMessage(e, p) {
+  const m = e && e.message ? e.message : '';
+  if (/no answer/i.test(m)) return 'No room answers to ' + p.display + '. Check the code, and that the host still has the room open.' + (p.region ? '' : ' Codes work best with their 3-letter place first, like NYC-COMET-42.');
+  if (/update/i.test(m)) return 'Update to play together.';
+  return 'Couldn\'t reach the relay. Check your connection, or ask for the link instead.';
+}
+function beginJoin(payload) {
+  joinReq++;
+  joinPayload = payload;
+  resetJoinPrompt();
+  hideAllOverlays(); showOverlay('ovJoin');
+}
+async function submitJoin() {
+  if (joinLookup) return;
+  const p = NET.parseJoin($('joinInput').value);
+  if (p.kind === 'empty') { setTogetherHint('Type the room code, or paste the invite link.', true); return; }
+  if (p.kind === 'bad') { setTogetherHint(badJoinMessage(p), true); return; }
+  if (p.kind === 'invite') { beginJoin(p.payload); return; }
+  const req = ++joinReq;
+  setTogetherBusy(true);
+  setTogetherHint('Looking for ' + p.display + '…');
+  try {
+    const found = await NET.lookupCode($('joinInput').value);
+    if (req !== joinReq) return;
+    setTogetherBusy(false);
+    beginJoin(found.invite);
+  } catch (e) {
+    if (req !== joinReq) return;
+    setTogetherBusy(false);
+    setTogetherHint(lookupFailMessage(e, p), true);
+    try { $('joinInput').focus(); $('joinInput').select(); } catch (x) {}
   }
 }
 function leaveRoom() {
@@ -6771,7 +6896,16 @@ $('btnQuit').onclick = () => {
 $('btnAgain').onclick = () => tryRestart();
 $('btnInitialsOk').onclick = () => commitInitials();
 // --- Run Together wiring ---
-$('btnTogether').onclick = () => openRoomFlow();
+$('btnTogether').onclick = () => openTogether();
+$('btnCreateRoom').onclick = () => openRoomFlow();
+$('btnJoinGo').onclick = () => submitJoin();
+$('btnTogetherBack').onclick = () => { joinReq++; setTogetherBusy(false); showAttract(); };
+$('joinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitJoin(); } });
+$('joinInput').addEventListener('input', () => { if ($('joinHint').classList.contains('err')) setTogetherHint(''); });
+// Pasting a link is the whole request: go straight to the join prompt, no extra tap.
+$('joinInput').addEventListener('paste', () => setTimeout(() => { if (NET.parseJoin($('joinInput').value).kind === 'invite') submitJoin(); }, 0));
+$('roomCode').onclick = () => copyRoomCode();
+$('roomCode').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyRoomCode(); } });
 $('btnRoomCopy').onclick = () => copyRoomLink();
 $('btnRoomShare').onclick = () => shareRoomLink();
 $('btnRoomPlay').onclick = () => startRun({ watch: netSpectating() });
