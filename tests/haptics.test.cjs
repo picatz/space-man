@@ -14,15 +14,15 @@ test('haptics follow the switch, and the strength scales how long the motor runs
   const { c, buzzes } = solo(t);
   c.run('settings.haptics = true; settings.hapticsStrength = 1; settings.hapticsSaver = true; batteryLow = false;');
   c.run("buzz('heavy'); buzz('success')");
-  assert.deepEqual(buzzes, [18, [10, 28, 10]]);
+  assert.deepEqual(buzzes, [18, [15, 28, 15]]);
   buzzes.length = 0;
   c.run('settings.hapticsStrength = 0.5');
   c.run("buzz('heavy'); buzz('success')");
-  assert.deepEqual(buzzes, [10, [10, 28, 10]], 'shorter pulses (floored at what a phone motor can render), same gaps between them');
+  assert.deepEqual(buzzes, [15, [15, 28, 15]], 'shorter pulses (floored at what a phone motor can render), same gaps between them');
   buzzes.length = 0;
   c.run('settings.hapticsStrength = 0.3');
   c.run("buzz('select')");
-  assert.deepEqual(buzzes, [10], 'never shorter than the motor can play');
+  assert.deepEqual(buzzes, [15], 'never shorter than the motor can play');
   buzzes.length = 0;
   c.run('settings.haptics = false');
   c.run("buzz('heavy')");
@@ -62,7 +62,7 @@ test('turning haptics on lets you feel it, and switching off is silent', (t) => 
   const { c, buzzes } = solo(t);
   c.run('settings.haptics = false; settings.hapticsStrength = 1; batteryLow = false;');
   c.run("toggleSetting('haptics')");
-  assert.deepEqual(buzzes, [[10, 28, 10]], 'a confirming buzz');
+  assert.deepEqual(buzzes, [[15, 28, 15]], 'a confirming buzz');
   c.run("toggleSetting('haptics')");
   assert.deepEqual(buzzes.slice(1), [0], 'switching off makes no buzz and cuts any pulse still running');
 });
@@ -165,7 +165,7 @@ test('letting go of the strength slider feels the new strength, once, at that st
   assert.equal(c.run('settings.hapticsStrength'), 0.5);
   assert.deepEqual(buzzes, []);
   range.onchange();                                            // letting go: one confirming buzz at the new strength
-  assert.deepEqual(buzzes, [[10, 28, 10]]);
+  assert.deepEqual(buzzes, [[15, 28, 15]]);
 });
 
 test('swapping or unplugging controllers keeps the strength row honest, without waiting for a connect event', (t) => {

@@ -2106,7 +2106,7 @@ function syncHapticRows() {
 // Is the buzz allowed right now? (switch on, and not saving a nearly flat battery)
 function hapticsOn() { return !!settings.haptics && !SHOT && !(settings.hapticsSaver && batteryLow); }
 // Strength scales how long the motor runs (phones) and how hard it spins (controllers); the rhythm never changes.
-const HAPTIC_FLOOR = 10;   // ms: shorter pulses are below what most phone motors can render
+const HAPTIC_FLOOR = 15;   // ms: shorter pulses are below what most phone motors can render
 function scaleBuzz(pat, k) { return Array.isArray(pat) ? pat.map((v, i) => (i % 2 === 0 ? Math.max(HAPTIC_FLOOR, Math.round(v * k)) : v)) : Math.max(HAPTIC_FLOOR, Math.round(pat * k)); }
 function stopBuzz() { try { if (navigator.vibrate) navigator.vibrate(0); } catch (e) {} }
 function buzz(kind) {
@@ -2218,6 +2218,15 @@ function pollMenuNav(gp, just) {
 }
 
 function gamepadButton(gp, index) { return !!(gp && gp.buttons[index] && gp.buttons[index].pressed); }
+// What kind of pad is this? Browsers differ in how they word the id, so match the vendor id and the well-known names.
+function padFamily(gp) {
+  const id = String((gp && gp.id) || '').toLowerCase();
+  if (/045e|xbox|xinput/.test(id)) return 'xbox';   // first: Xbox pads are also called "Wireless Controller"
+  if (/057e|nintendo|switch|pro controller/.test(id)) return 'nintendo';
+  if (/054c|dualsense|dualshock|wireless controller|playstation/.test(id)) return 'playstation';
+  return 'generic';
+}
+function padName(gp) { return { playstation: 'DUALSENSE', xbox: 'XBOX CONTROLLER', nintendo: 'PRO CONTROLLER', generic: 'CONTROLLER' }[padFamily(gp)]; }
 function pollGamepad() {
   if (!navigator.getGamepads) return;
   const pads = navigator.getGamepads();
@@ -2233,7 +2242,8 @@ function pollGamepad() {
   }
   if (!input.pad.connected) {
     input.pad.connected = true; input.pad.prev = []; document.body.classList.add('gamepad-active');
-    queueToast('CONTROLLER READY', 'sys');
+    document.body.dataset.pad = padFamily(gp);
+    queueToast(padName(gp) + ' READY', 'sys');
   }
   const pressed = (i) => gamepadButton(gp, i);
   const just = (i) => pressed(i) && !input.pad.prev[i];
@@ -2247,6 +2257,7 @@ function pollGamepad() {
   input.down = pressed(13) || (gp.axes[1] || 0) > 0.5;   // dpad-down / left-stick-down → let go of a ledge
   input.firePad = !!padState.fire && (pressed(2) || pressed(5) || pressed(7));
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
+  if (just(8) && netInRun() && G.mode === 'play') { crew.peek = false; toggleCrew(); }   // Share / Select / View: the crew standings
   const menuTook = pollMenuNav(gp, just);
   if (padState.pause && just(9)) {
     if (menuSubOpen()) menuBack();   // Start closes a sub-menu like B (no-op for the initials picker)
