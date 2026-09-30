@@ -20,13 +20,13 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
       classList: { add: (...v) => v.forEach((x) => classes.add(x)), remove: (...v) => v.forEach((x) => classes.delete(x)), contains: (v) => classes.has(v), toggle(v, on) { if (on ?? !classes.has(v)) classes.add(v); else classes.delete(v); } },
       getContext: () => drawing, addEventListener() {}, setAttribute() {}, removeAttribute() {},
       appendChild(e) { this.children.push(e); return e; }, querySelectorAll() { return []; }, querySelector() { return null; },
-      getBoundingClientRect: () => ({ top: 0, left: 0, width, height }), closest() { return null; }, toDataURL() { return ''; }, focus() {} };
+      getBoundingClientRect: () => ({ top: 0, left: 0, width, height }), getClientRects: () => [{ top: 0, left: 0, width, height }], closest() { return null; }, toDataURL() { return ''; }, focus() {}, click() { if (this.onclick) this.onclick({}); } };
   }
   const elements = new Map();
   const document = { getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
     createElement: element, createTextNode: (s) => ({ textContent: s }), querySelectorAll: () => [], querySelector: () => null,
     addEventListener() {}, body: element(), head: element(), documentElement: element(), hidden: false };
-  const sandbox = { console, TextEncoder, TextDecoder, URL, Uint8Array, Uint32Array, Int32Array, Float32Array, ArrayBuffer, DataView,
+  const sandbox = { console, TextEncoder, TextDecoder, URL, AbortController, Uint8Array, Uint32Array, Int32Array, Float32Array, ArrayBuffer, DataView,
     crypto: webcrypto, performance: { now: () => hub.now() }, document,
     Image: class {}, navigator: {}, location: { hash, origin: 'https://space.test', href: 'https://space.test/' },
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },

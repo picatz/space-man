@@ -546,6 +546,35 @@
     if (!/^[A-Z]{4,6}-\d\d$/.test(c)) return null;
     return keypairFromRaw(sha256(utf8('sm.code.v1|' + region + '|' + c)));
   }
+  // What a person reads out or types: the relay region's 3-letter code in front of the room code
+  // (NYC-COMET-42). A code only exists on the relay its host picked, so the region has to travel
+  // with it; the keypair derivation above is unchanged (region and code stay separate inputs).
+  // Where an invite link points: wherever this app is actually being served (so the link and its QR open
+  // the same site the host is on), never an arbitrary string; the published site is the fallback.
+  const DEFAULT_LINK_BASE = 'https://picatz.github.io/space-man/';
+  const linkBase = (u) => (typeof u === 'string' && /^https?:\/\/[^\s#?]{1,200}$/.test(u)) ? u : DEFAULT_LINK_BASE;
+  const joinCodeText = (region, code) => (region && code ? String(region).toUpperCase() + '-' + code : code || '');
+  // Turn whatever was typed or pasted into a join target: a link/fragment/raw invite, or a room code.
+  // Tolerant on purpose (case, spaces, dashes, dots, "comet 42", "COMET42", a link buried in a message),
+  // strict about what it hands on: an invite is only ever a URL-safe base64 run, a code only ever
+  // [region-]WORD-NN with WORD from the list. `regions` is optional; when given a typed region must be known.
+  function parseJoin(input, regions) {
+    if (typeof input !== 'string') return { kind: 'empty' };
+    const s = input.trim();
+    if (!s) return { kind: 'empty' };
+    if (s.length > 4096) return { kind: 'bad', reason: 'long' };
+    const link = /(?:^|[#?&\s])j=([A-Za-z0-9_-]{80,700})(?![A-Za-z0-9_-])/.exec(s);
+    if (link) return { kind: 'invite', payload: link[1] };
+    if (/^[A-Za-z0-9_-]{80,700}$/.test(s)) return { kind: 'invite', payload: s };
+    const compact = s.toUpperCase().replace(/[^A-Z0-9]+/g, '');
+    const m = /^([A-Z]{3})?([A-Z]{4,6})(\d\d)$/.exec(compact);
+    if (!m) return { kind: 'bad', reason: 'shape' };
+    if (CODE_WORDS.indexOf(m[2]) < 0) return { kind: 'bad', reason: 'word', word: m[2] };
+    const region = m[1] ? m[1].toLowerCase() : null;
+    if (region && regions && regions.indexOf(region) < 0) return { kind: 'bad', reason: 'region', region };
+    const code = m[2] + '-' + m[3];
+    return { kind: 'code', code, region, display: joinCodeText(region, code) };
+  }
 
   /* -------------------------------------------------------------------------
      6. RELAY MAP — embedded snapshot (OUR schema; self-hosted fleets swap this
@@ -621,15 +650,19 @@
     }
     return best;
   }
-  async function pickRegion() {
+  // The n relay regions closest to this device (by time zone; no network).
+  function nearRegions(n) {
     let lat = 40, lon = -95;                            // fallback: continental midpoint
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       if (TZ_LL[tz]) { lat = TZ_LL[tz][0]; lon = TZ_LL[tz][1]; }
     } catch (e) { /* keep fallback */ }
-    const near = RELAY_MAP.regions.slice()
+    return RELAY_MAP.regions.slice()
       .sort((a, b) => greatCircle(lat, lon, a.lat, a.lon) - greatCircle(lat, lon, b.lat, b.lon))
-      .slice(0, 5);
+      .slice(0, n);
+  }
+  async function pickRegion() {
+    const near = nearRegions(5);
     const times = await Promise.all(near.map((rg) => probeHost(rg.hosts[0])));
     let win = 0;
     for (let i = 1; i < near.length; i++) if (times[i] < times[win]) win = i;
@@ -1234,6 +1267,9 @@
       out: makeScratch(), outSnap: makeScratch(), outRoster: makeScratch(), rosterQueue: Promise.resolve(), killed: new Set(),
       started: 0,
       invite: '', link: '', region: opts.region || '', relayHostName: '',
+      // A typed code is looked up on the region's public relays, so it is only offered when the room lives on one
+      // (a custom relay host with no region can be joined by link/QR, which carry the relay, but not by code).
+      codeOk: !opts.relayHost || !!opts.region,
       codeReplies: 0, codeRepliesMin: 0, codeMinMark: 0,
     };
     // Separate caps (Addendum A): count players vs spectators across the roster.
@@ -1678,7 +1714,7 @@
         region: S.region, relayHost: opts.relayHost || '', secret: S.secret,
         expiryMin: opts.expiryMin || Math.floor(Date.now() / 60000) + 1440,
       });
-      S.link = 'https://picatz.github.io/space-man/#j=' + S.invite;
+      S.link = linkBase(opts.baseUrl) + '#j=' + S.invite;
       S.started = performance.now();
       await new Promise((resolve, reject) => {
         let settled = false;
@@ -1809,7 +1845,7 @@
         region: S.region || RELAY_MAP.regions[0].code, relayHost: opts.relayHost || '', secret: S.secret,
         expiryMin: opts.expiryMin || Math.floor(Date.now() / 60000) + 1440,
       });
-      S.link = 'https://picatz.github.io/space-man/#j=' + S.invite;
+      S.link = linkBase(opts.baseUrl) + '#j=' + S.invite;
       S.ev.emit('rotated', { epoch: S.epoch, code: S.code, link: S.link });
       return { link: S.link, code: S.code, epoch: S.epoch };
     };
@@ -2172,7 +2208,8 @@
   }
 
   // Short-code rendezvous: throwaway keypair asks the code listener for the invite.
-  async function fetchInviteByCode(region, code, relayHostOverride) {
+  // ctl (optional): { timeoutMs } in; { cancel } out, so a race between regions can stop the losers.
+  async function fetchInviteByCode(region, code, relayHostOverride, ctl) {
     const ck = codeKeypair(region, code);
     if (!ck) throw new Error('bad code');
     const rg = regionOf(region);
@@ -2180,9 +2217,12 @@
     if (!host) throw new Error('unknown relay region — update to play together');
     const tmp = await genKeypair();
     return new Promise((resolve, reject) => {
-      let done = false;
-      const relay = RelayClient(host, tmp, {
+      let done = false, relay = null, timer = null;
+      const finish = (fn, v) => { if (done) return; done = true; clearTimeout(timer); if (relay) relay.close(); fn(v); };
+      if (ctl) ctl.cancel = () => finish(reject, new Error('cancelled'));
+      relay = RelayClient(host, tmp, {
         onOpen: () => {
+          if (done) return;
           const body = cat(new Uint8Array([C_REQ]), tmp.pub);
           relay.send(ck.pub, sealCode(body, ck.pub, tmp.priv));
         },
@@ -2192,14 +2232,33 @@
           if (!pt || pt.length < 3 || pt[0] !== C_RESP) return;
           const n = new DataView(pt.buffer, pt.byteOffset).getUint16(1, true);
           if (n > 200 || pt.length < 3 + n) return;
-          done = true;
-          relay.close();
-          resolve(td.decode(pt.subarray(3, 3 + n)));
+          finish(resolve, td.decode(pt.subarray(3, 3 + n)));
         },
         onRtt: () => {}, onDown: () => {}, onPeerGone: () => {}, onLog: () => {},
       });
       relay.connect();
-      setTimeout(() => { if (!done) { done = true; relay.close(); reject(new Error('no answer for that code')); } }, 10000);
+      timer = setTimeout(() => finish(reject, new Error('no answer for that code')), (ctl && ctl.timeoutMs) || 10000);
+    });
+  }
+  // Ask one region (typed prefix) or the few nearest (no prefix) for a code's invite. First answer wins and the
+  // rest are cancelled; if none answers, the error says so. Never opens more than `regions.length` sockets.
+  async function lookupInvite(regions, code, o) {
+    if (!regions.length) throw new Error('unknown relay region — update to play together');
+    const ctls = regions.map(() => ({ timeoutMs: o.timeoutMs || 7000 }));
+    return new Promise((resolve, reject) => {
+      let left = regions.length, firstErr = null, won = false;
+      regions.forEach((rg, i) => {
+        fetchInviteByCode(rg.code, code, o.relayHost, ctls[i]).then((invite) => {
+          if (won) return;
+          won = true;
+          ctls.forEach((c, j) => { if (j !== i && c.cancel) c.cancel(); });
+          resolve({ invite, region: rg.code });
+        }, (e) => {
+          if (won) return;
+          if (!firstErr || /no answer/.test(e.message)) firstErr = e;
+          if (--left === 0) reject(firstErr);
+        });
+      });
     });
   }
 
@@ -2280,10 +2339,20 @@
       if (dec.err) return { err: dec.err };
       return { hostHex: hex(dec.inv.hostPub), custom: !!(dec.inv.flags & 2), region: dec.inv.region };
     },
+    // Resolve a typed room code to its invite without joining (the UI shows the usual Play/Watch prompt next).
+    // A typed region (NYC-COMET-42) asks that one relay; a bare code asks the few relays nearest this device.
+    async lookupCode(str, opts) {
+      const o = opts || {};
+      const p = parseJoin(str, RELAY_MAP.regions.map((r) => r.code));
+      if (p.kind === 'invite') return { invite: p.payload, region: null };
+      if (p.kind !== 'code') throw new Error(p.kind === 'empty' ? 'bad code' : 'bad code (' + (p.reason || 'shape') + ')');
+      const regions = p.region ? [regionOf(p.region)].filter(Boolean) : nearRegions(5);
+      return lookupInvite(regions, p.code, o);
+    },
+    parseJoin(str) { return parseJoin(str, RELAY_MAP.regions.map((r) => r.code)); },
     async enterCode(str, opts) {
       const o = opts || {};
-      const region = o.region || (session ? session.region : null) || RELAY_MAP.regions[0].code;
-      const invite = await fetchInviteByCode(region, str, o.relayHost);
+      const { invite } = await NET.lookupCode(str, o);
       return NET.acceptJoin(invite, o);
     },
     leave() {
@@ -2391,6 +2460,7 @@
         spectators: c ? c.spectators : Array.from(session.rosterMap.values()).filter((r) => r.role === ROLE_SPECTATOR).length,
         cap: PLAYER_CAP, specCap: SPECTATOR_CAP,
         code: session.code || '',
+        joinCode: session.isHost && session.codeOk ? joinCodeText(session.region, session.code) : '',
         link: session.link || '',
         isHost: !!session.isHost,
         caps: session.caps || CAPS,
@@ -2446,7 +2516,7 @@
         roster: R,
         relayHostName: 'derp12d.tailscale.com',                            // → cityOfHost = "Chicago"
         relay: { rtt: 23 },
-        code: 'TANGO-42',
+        code: 'TANGO-42', region: 'ord', codeOk: true,                     // Chicago relay → "ORD-TANGO-42"
         link: DUMMY_LINK,
         caps: CAPS, hostEpoch: 0,
         counts() { let players = spectate ? 0 : 1, spectators = spectate ? 1 : 0; for (const r of R.values()) { if (r.role === ROLE_SPECTATOR) spectators++; else players++; } return { players, spectators }; },
@@ -2503,7 +2573,7 @@
       keys: { detectX25519, genKeypair, keypairFromRaw, ecdh, derivePairKey, isWebX: () => webX, forceVendored: () => { webX = false; } },
       env: { makePair, sealApp, openApp, sealCode, openCode, DIR_G2H, DIR_H2G },
       invite: { encodeInvite, decodeInvite, joinProof, rejoinToken, codeKeypair, randomCode, CODE_WORDS },
-      map: { regionOf, cityOfHost, probeHost, pickRegion, greatCircle },
+      map: { regionOf, cityOfHost, probeHost, pickRegion, greatCircle, nearRegions },
       frames: { encHello, decHello, encWelcome, decWelcome, encPres, decPres, encSnap, decSnap, makeScratch },
       RelayClient, HostSession, GuestSession, fetchInviteByCode,
       session: () => session,
