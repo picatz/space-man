@@ -5840,7 +5840,12 @@ function toggleSetting(key) {
   if (key === 'haptics' && settings.haptics) buzz('success');   // feel it the moment it is switched on
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
   if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
-  if (key === 'batterySaver') { applyPower(); announce(settings.batterySaver ? 'Battery saver on: 30 frames a second, lighter effects.' : 'Battery saver off.'); }
+  if (key === 'batterySaver') {
+    applyPower();
+    // Say what is really happening: with the manual switch off, a low, unplugged battery keeps saving on.
+    announce(settings.batterySaver ? 'Battery saver on: 30 frames a second, lighter effects.'
+      : powerSaving() ? 'Battery saver switch off. Automatic saving stays on while the battery is low.' : 'Battery saver off.');
+  }
   syncSettingsUI(); persistAll();
 }
 // Mirrors the live switch onto the CSS motion rules; render/sim read lessMotion() per frame.
