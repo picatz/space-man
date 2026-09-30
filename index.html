@@ -3157,7 +3157,7 @@ function enemyFire(e) {
   let dx = p.x - e.x, dy = (p.y + p.h / 2) - e.y;
   if (G.band >= 5) dx += p.vx * 12;
   const d = Math.hypot(dx, dy) || 1, sp = B.ebSpeed;
-  G.ebullets.push({ x: e.x, y: e.y, px: e.x, py: e.y, vx: dx / d * sp, vy: dy / d * sp, life: 220, grazed: false });
+  G.ebullets.push({ x: e.x, y: e.y, px: e.x, py: e.y, vx: dx / d * sp, vy: dy / d * sp, life: 220, grazed: false, src: e });
 }
 function updateEnemies(spectating) {
   const p = G.player, B = bandParams(G.band, G.dist), T = G.sharedWorld ? roundStep() : 0;

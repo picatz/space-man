@@ -448,3 +448,20 @@ test('a real graze slows time in solo play, but never in a room or with Reduce M
   assert.equal(graze('settings.reduceMotion = true; G.sharedWorld = false;').scale, 1, 'Reduce Motion: no slow-mo');
   assert.equal(graze('settings.reduceMotion = false; G.sharedWorld = true;').scale, 1, 'a room: one screen\'s clock can\'t wait');
 });
+
+test('saber: a parried shot goes back to the alien that fired it, even with other shooters lined up better', (t) => {
+  const c = solo(t);
+  const r = json(c, `${STAGE} ${MK}
+    POW.grant('saber', true);
+    const far = mk(400, -6, 'shoot'), near = mk(300, 0, 'shoot');     // both ahead; "near" is the better-lined-up shooter on the straight-back line
+    G.enemies = [far, near];
+    const b = { x: p.x + p.w / 2 + 30, y: p.y + p.h / 2, px: 0, py: 0, vx: -6, vy: 0, life: 100, grazed: false, src: far };
+    G.ebullets = [b];
+    POW.fire(); S.swingT = 1;
+    POW.combat();
+    const back = S.refl.find((q) => q.live);
+    return { hasRefl: !!back, targetIsSource: !!back && back.target === far, targetIsOther: !!back && back.target === near };`);
+  assert.equal(r.hasRefl, true, 'the shot was parried');
+  assert.equal(r.targetIsSource, true, 'and locked onto the shooter that fired it');
+  assert.equal(r.targetIsOther, false);
+});

@@ -342,8 +342,9 @@
     // Straight back up the line it came in on, locked onto the nearest shooter
     // along that line — RETURN TO SENDER.
     const sp = Math.hypot(b.vx, b.vy) || 1, ux = -b.vx / sp, uy = -b.vy / sp;
-    let target = null, best = 0.6;
-    for (const e of G.enemies) {
+    // The alien that actually fired it, if it is still there; otherwise the best-lined-up shooter, otherwise straight back.
+    let target = b.src && !b.src.dead && G.enemies.indexOf(b.src) >= 0 ? b.src : null, best = 0.6;
+    if (!target) for (const e of G.enemies) {
       if (e.dead || e.type !== 'shoot') continue;
       const dx = e.x - b.x, dy = e.y - b.y, d = Math.hypot(dx, dy);
       if (d > 800 || d < 1) continue;
