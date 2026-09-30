@@ -897,6 +897,7 @@
 <script src="src/callsigns.js"></script>
 <script src="src/relay-directory.js"></script>
 <script src="src/qr.js"></script>
+<script src="src/netsmooth.js"></script>
 <script src="src/net.js"></script>
 
 <script>
@@ -3570,7 +3571,7 @@ function die(cause) {
   // no wire change; this is the one packet that tells co-runners you went down.
   if (netLive() && !netSpectating()) {
     const st = (p.facing > 0 ? 1 : 0) | 4;   // facing + deadRagdoll (bit2); onGround/inRun cleared
-    NET.sendPresence(p.x + p.w / 2, p.y + p.h / 2, 0, st, G.chain, Math.floor(G.finalScore), G.dist);
+    NET.sendPresence(p.x + p.w / 2, p.y + p.h / 2, 0, st, G.chain, Math.floor(G.finalScore), G.dist, G.frameCount, 0);
   }
 }
 
@@ -3672,7 +3673,7 @@ function update() {
     if (netLive() && !netSpectating() && G.frameCount % 6 === 0) {
       const pl = G.player;
       const st = (pl.facing > 0 ? 1 : 0) | (pl.onGround ? 2 : 0) | 8 | (slipT > 0.25 ? 16 : 0);
-      NET.sendPresence(pl.x + pl.w / 2, pl.y + pl.h / 2, (pl.vx * 10) | 0, st, G.chain, Math.floor(G.score), G.dist);
+      NET.sendPresence(pl.x + pl.w / 2, pl.y + pl.h / 2, (pl.vx * 10) | 0, st, G.chain, Math.floor(G.score), G.dist, G.frameCount, pl.vy);
     }
     generateAhead();
     const nextBand = bandFor(G.dist);
@@ -6412,7 +6413,7 @@ function ghostFor(p) {
   for (const c of ghosts) if (!c.active) {
     c.active = true; c.p = p; c.alpha = 0; c.rx = 0; c.x0 = c.x1 = c.t0 = c.t1 = 0;
     c.emoteId = -1; c.emoteSeq = 0; c.emoteT = 0; c.badgeKey = '';
-    c.dead = false; c.aliveSeen = false;
+    c.dead = false; c.aliveSeen = false; c.track = null; c.histAt = 0;
     ghostByP.set(p, c); return c;
   }
   return null;
@@ -6445,7 +6446,16 @@ function netSampleGhosts(now) {
     if (!nowDead) g.aliveSeen = true;
     else if (!g.dead && g.aliveSeen) netAnnounceDeath(g);
     g.dead = nowDead;
-    if (!g.t1 || now - g.t1 >= 80) {                        // ≥80ms → new interp keyframe
+    if (s.hist && window.SpaceManSmooth && !NET.mockActive) {
+      // Real room: every sample carries the sender's own clock → jitter-buffered playout
+      // (src/netsmooth.js). Feed each sample we have not seen, in arrival order.
+      if (!g.track) g.track = new window.SpaceManSmooth.Track();
+      for (const h of s.hist) if (h.at > g.histAt && h.runId === s.runId) {
+        g.histAt = h.at;
+        g.track.push({ t16: h.t, x: h.x, y: h.y, vx: h.vx / 10, vy: h.vy, ground: !!(h.state & 2) }, h.at);
+      }
+      g.x1 = s.x; g.y1 = s.y; g.t1 = now; g.vx = s.vx;         // latest known spot (spectator camera / world cursor)
+    } else if (!g.t1 || now - g.t1 >= 80) {                 // ≥80ms → new interp keyframe (#shot mock)
       g.x0 = g.t0 ? g.x1 : s.x; g.y0 = g.t0 ? g.y1 : s.y; g.t0 = g.t0 ? g.t1 : now - 100;
       g.x1 = s.x; g.y1 = s.y; g.t1 = now; g.vx = s.vx;
     } else { g.x1 = s.x; g.y1 = s.y; g.vx = s.vx; }          // refine the open keyframe
@@ -6538,7 +6548,7 @@ function sendLocalPresence() {
   if (!netLive() || netSpectating() || !G.player || G.frameCount % 6) return;
   const p = G.player;
   NET.sendPresence(p.x + p.w / 2, p.y + p.h / 2, (p.vx * 10) | 0,
-    (p.facing > 0 ? 1 : 0) | (p.onGround ? 2 : 0) | 8, G.chain, Math.floor(G.score), G.dist);
+    (p.facing > 0 ? 1 : 0) | (p.onGround ? 2 : 0) | 8, G.chain, Math.floor(G.score), G.dist, G.frameCount, p.vy);
 }
 
 function updateSpectator() {
@@ -6594,11 +6604,15 @@ function drawGhosts(alpha, iCamX) {
     // joiner mid-round): its y maps onto foreign terrain, so don't draw it as a
     // grounded body. The race strip still lists it. Real session only.
     if (!NET.mockActive && g.runId && myRunId && g.runId !== myRunId) continue;
-    const rt = now - 150;                                   // render 150ms in the past (§4.2)
-    let tx, ty;
-    if (g.t1 > g.t0 && rt <= g.t1) { const t = clamp((rt - g.t0) / (g.t1 - g.t0), 0, 1); tx = lerp(g.x0, g.x1, t); ty = lerp(g.y0, g.y1, t); }
-    else { const over = clamp(rt - g.t1, 0, 120); tx = g.x1 + g.vx * (over / 1000) * 10; ty = g.y1; }   // ≤120ms extrapolate
-    if (!g.rx) { g.rx = tx; g.ry = ty; } else { g.rx += (tx - g.rx) * 0.3; g.ry += (ty - g.ry) * 0.3; }
+    const sm = g.track && g.track.sample(now);
+    if (sm) { g.rx = sm.x; g.ry = sm.y; }                   // jitter buffer: interpolated, bounded extrapolation, error decays (netsmooth.js)
+    else {
+      const rt = now - 150;                                 // #shot mock: render 150ms in the past (§4.2)
+      let tx, ty;
+      if (g.t1 > g.t0 && rt <= g.t1) { const t = clamp((rt - g.t0) / (g.t1 - g.t0), 0, 1); tx = lerp(g.x0, g.x1, t); ty = lerp(g.y0, g.y1, t); }
+      else { const over = clamp(rt - g.t1, 0, 120); tx = g.x1 + g.vx * (over / 1000) * 10; ty = g.y1; }   // ≤120ms extrapolate
+      if (!g.rx) { g.rx = tx; g.ry = ty; } else { g.rx += (tx - g.rx) * 0.3; g.ry += (ty - g.ry) * 0.3; }
+    }
     // Ground-snap (§4.3): a peer reporting on-ground (state bit 2) stands on the
     // shared-world platform under its x, eased so it never floats — while airborne
     // it keeps smooth interpolation. Real session only; the #shot=room mock keeps

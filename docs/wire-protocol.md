@@ -1,7 +1,7 @@
 # Space Man — Run Together Wire Protocol
 
 **Status:** public, versioned interoperability specification.
-**Protocol version:** `4` (the app-envelope version byte; see [§13](#13-protocol-version--compatibility)).
+**Protocol version:** `5` (the app-envelope version byte; see [§13](#13-protocol-version--compatibility)).
 **Audience:** an engineer building a third-party client (TUI, native mobile, bot, test
 harness) that must interoperate with Space Man rooms without access to the reference
 implementation.
@@ -117,6 +117,18 @@ IDLE → CONNECTING → HANDSHAKE → ESTABLISHED → (DOWN) → CLOSED
   The client MUST also answer inbound `Ping` with `Pong` echoing the first 8 bytes (the
   handshake advertises `CanAckPings:true`).
 - The client keeps at most 8 outstanding ping tokens; older ones are evicted.
+- **App-level watchdog (v5).** 90 s is far too long on a phone that just switched networks:
+  the old TCP socket is dead but no FIN ever arrives. Inside a room, traffic is always due
+  (a guest PINGs every 2 s and the host answers; the host sends at least one SNAP per
+  second), so silence is counted in **ticks of a real timer** — never by diffing clocks,
+  which a suspended tab or a stepped test clock would fool: a guest that hears nothing from
+  the host for **4 ping ticks** (~8 s), or a host that hears nothing from any member for
+  **80 snap ticks** (~8 s), drops the socket and reconnects at once (normal backoff, first
+  retry ~0.5 s). The reconnect re-HELLOs and resumes the same seat ([§10.8](#108-frames-now-implemented-emote--host-control-stage)).
+- **Nudge.** When the browser reports the network is back (`online`) or the tab becomes
+  visible, a client waiting out a backoff delay reconnects immediately.
+- A client ignores every event (message, close) from a socket it has already replaced, so a
+  late close from a dead socket can never tear down its successor.
 
 ### 2.4 Reconnect backoff
 
@@ -273,7 +285,7 @@ envelope, which is the opaque packet inside `SendPacket` / `RecvPacket`:
 ```
 offset  size  field
 0       1     0x53                 ('S')
-1       1     0x03                 envelope version = PROTO = 4
+1       1     0x05                 envelope version = PROTO = 5
 2       1     dir                  0x01 guest→host, 0x02 host→guest
 3       8     counter u64 LE       per (pairKey, dir), starts at 0, +1 per frame
 11      ...   AES-GCM ciphertext   (plaintext frame + 16-byte tag appended)
@@ -285,24 +297,32 @@ Header overhead = **11 bytes**; AES-GCM tag = **16 bytes**. Total per-frame over
 
 - **Nonce (96-bit, counter-based, never random):**
   `nonce = dir(1) || counter(u64 LE, 8) || 0x00 0x00 0x00`.
-- **AAD (11 bytes):** `ver(1)=1 || roomId(8) || epoch(1) || dir(1)`.
+- **AAD (11 bytes):** `ver(1)=PROTO || roomId(8) || epoch(1) || dir(1)`.
 - Counter starts at 0 and increments by 1 per sent frame per (pairKey, dir). At 2³² frames
   the pair is exhausted and MUST be closed (unreachable in practice — assert anyway).
 
 ### 7.3 Replay rule (MUST)
 
-The receiver keeps `highSeen` per (pair, dir), initialized to `-1`. Decode order:
+The receiver keeps `highSeen` per (pair, dir), initialized to `-1`, and (v5) a 32-bit
+`mask` of which of the 32 counters just below `highSeen` have already opened. Decode order:
 
 1. `wire.length > 256` → error `size` (**strike**), before any decryption.
-2. `wire.length < 27` or byte 0 ≠ `0x53` or byte 1 ≠ `4` → error `ver` (**strike**).
+2. `wire.length < 27` or byte 0 ≠ `0x53` or byte 1 ≠ `5` → error `ver` (**strike**).
 3. byte 2 ≠ the peer's expected direction → error `dir` (**strike**).
-4. `counter ≤ highSeen` → error `replay` (**strike**).
+4. `counter = highSeen`, or `counter` inside the window whose `mask` bit is set → error
+   `replay` (**strike**). `counter < highSeen − 32` → error `stale` (dropped, **no strike**).
 5. AES-GCM open with the derived nonce/AAD; failure → error `aead` (**strike**).
-6. On success, set `highSeen = counter` and deliver the plaintext.
+6. On success, record the counter (advance `highSeen` and shift `mask`, or set its `mask`
+   bit) and deliver the plaintext.
 
 `highSeen` advances **only** after a successful open, so forged/garbage frames cannot burn
-counter space. Accept is strictly monotonic (`counter > highSeen`); late or duplicate frames
-are dropped. At 10 Hz presence this reorder loss is invisible.
+counter space. Each counter opens **at most once**, so replays are still refused and
+struck; a frame that arrives a little late (reordered by a lossy path — possible across a
+reconnect or a relay mesh even though each relay leg is TCP) is accepted once. Anything
+older than the window is indistinguishable from a replay but also harmless, so it is dropped
+without penalizing an honest peer on a bad path (the DTLS/IPsec rule). Frames whose meaning
+depends on order carry their own ordering: presence/snapshots a sender timestamp
+([§10.4](#104-pres-0x04)), control frames the host-epoch/seq gate ([§10.7](#107-control-frame-envelope-hostepochseq-gate)).
 
 ### 7.4 NaCl secretbox (relay handshake & code channel)
 
@@ -317,7 +337,7 @@ the code channel are **random 24-byte** values (no counter state exists pre-join
 ```
 offset  size  field
 0       1     0x43                 ('C')
-1       1     0x04                 version = 4
+1       1     0x05                 version = 5
 2       24    nonce                random
 26      ...   NaCl box(payload)    crypto_box(payload, nonce, theirPub, myPriv) = tag(16)||ct
 ```
@@ -336,7 +356,7 @@ An invite is a fixed-order binary payload, base64url-encoded (alphabet
 
 | offset | size | field | notes |
 |---|---|---|---|
-| 0 | 1 | `ver` | = `4`; unknown → refuse ("update to play together") |
+| 0 | 1 | `ver` | = `5`; unknown → refuse ("update to play together") |
 | 1 | 1 | `flags` | bit0 = approve-joins hint; bit1 = custom relay present |
 | 2 | 8 | `roomId` | random; room namespace + HKDF salt |
 | 10 | 1 | `epoch` | current epoch at issue time |
@@ -436,7 +456,7 @@ sealed under the pair key. Total **43 bytes** (36-byte historical core + 7 appen
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x01` |
 | 1 | 1 | protoMin | u8 | **S** if `protoMin > protoMax` |
-| 2 | 1 | protoMax | u8 | join rejected if no overlap with host `[4,4]` |
+| 2 | 1 | protoMax | u8 | join rejected if no overlap with host `[5,5]` |
 | 3 | 3 | tag | ASCII | **W**: `[A-Z0-9]{3}`, else `"AAA"` |
 | 6 | 1 | suit | u8 | **W**: cosmetic index, else 0 |
 | 7 | 1 | hat | u8 | **W**: cosmetic index, else 0 |
@@ -459,7 +479,7 @@ Direction: **host → guest**. Total **23 bytes**.
 | offset | size | field | type | notes |
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x02` |
-| 1 | 1 | proto | u8 | = 4 (PROTO); guest drops WELCOME whose `proto ≠ 4` |
+| 1 | 1 | proto | u8 | = 5 (PROTO); guest drops WELCOME whose `proto ≠ 5` |
 | 2 | 1 | yourP | u8 | your P-number, 1..32 (1 is always the host) |
 | 3 | 4 | seed | u32 LE | shared world seed |
 | 7 | 1 | runId | u8 | current round id |
@@ -516,31 +536,47 @@ op ordering. A full 32-player roster is 7 chunks.
 
 ### 10.4 PRES (0x04)
 
-Direction: **guest → host**, the 10 Hz heartbeat and leaderboard feed. Total **21 bytes**.
-(Spectators MUST NOT send PRES — see [§12.1](#121-roles--spectators).)
+Direction: **guest → host**, the presence heartbeat and leaderboard feed. Total **20 bytes**
+(v5; was 21). (Spectators MUST NOT send PRES — see [§12.1](#121-roles--spectators).)
 
 | offset | size | field | type | rule |
 |---|---|---|---|---|
 | 0 | 1 | type | u8 | = `0x04` |
-| 1 | 2 | seq | u16 LE | per-sender monotonic (interp ordering; replay already handled at AEAD) |
+| 1 | 2 | t | u16 LE | **sender clock** at the sample: the sender's sim frame counter (60/s), mod 2¹⁶ |
 | 3 | 4 | x | f32 LE | **C** finite, `[-1e6, 4e6]`; **S** if NaN/Inf |
-| 7 | 4 | y | f32 LE | **C** finite, `[-4000, 4000]`; **S** if NaN/Inf |
-| 11 | 1 | vx | i8 | **C** ±127 (display lean only) |
-| 12 | 1 | state | u8 | bit0 facing-right, bit1 onGround, bit2 deadRagdoll, bit3 inRun, bit4 slipstream; **mask `& 0x1f`** |
-| 13 | 1 | chain | u8 | **C** 0..4 |
-| 14 | 4 | score | u32 LE | **C** ≤ 9 999 999; per-runId monotonic (decrease → clamp to previous) |
-| 18 | 2 | dist | u16 LE | **C** ≤ 60 000; per-runId monotonic |
-| 20 | 1 | runId | u8 | round id; unknown → renders as ghost, excluded from board |
+| 7 | 2 | y | i16 LE | y × 8 (1/8 px, ±4095 px); **C** `[-4000, 4000]` after decode |
+| 9 | 1 | vx | i8 | **C** ±127, 1/10 px per step |
+| 10 | 1 | vy | i8 | vy × 8 (1/8 px per step, ±15.9); display/extrapolation only |
+| 11 | 1 | state | u8 | bit0 facing-right, bit1 onGround, bit2 deadRagdoll, bit3 inRun, bit4 slipstream; **mask `& 0x1f`** |
+| 12 | 1 | chain | u8 | **C** 0..4 |
+| 13 | 4 | score | u32 LE | **C** ≤ 9 999 999; per-runId monotonic (decrease → clamp to previous) |
+| 17 | 2 | dist | u16 LE | **C** ≤ 60 000; per-runId monotonic |
+| 19 | 1 | runId | u8 | round id; unknown → renders as ghost, excluded from board |
 
 Per-runId monotonicity: if the incoming `runId` matches the last accepted row's `runId`,
 `score`/`dist` are clamped upward to the previous values (desync-tolerant, no strike). A new
 `runId` resets the trace.
 
+**Sender clock `t` (v5).** Receivers order, de-duplicate and *play out* samples on `t`, never
+on arrival time, so relay jitter, head-of-line bursts and reordering cannot bend the motion.
+Compare two stamps with the signed 16-bit difference `d = ((a − b + 0x8000) & 0xffff) − 0x8000`.
+A sample with `−300 < d ≤ 0` against the last accepted one of the same `runId` is stale (a
+reordered or duplicated frame) and is dropped **without a strike**; a jump of 300 frames
+(5 s) or more either way is a new trace (the sender restarted its run), as is a live sample
+right after a dead one. A sender that has no sim clock uses wall time in 60 Hz frames, kept
+strictly increasing.
+
+**Rate (v5).** 10 Hz on a good link; a guest thins to every 2nd sample (5 Hz) on a *fair*
+link or when its socket's send buffer exceeds 4 KiB, every 3rd on a *poor* link, and sends
+only essential samples above 16 KiB of backlog. A change of life state (dead / inRun bits)
+or of `runId` is always sent at once. The receiver's jitter buffer interpolates across the
+gaps, so a lower rate costs latency, not smoothness.
+
 ### 10.5 SNAP (0x05)
 
-Direction: **host → all**, batched presence fan-out. Header 4 bytes; each entry **19 bytes**
-(`P` + a PRES body minus `seq`); at most **11 entries** (`SNAP_MAX`).
-Max size = 4 + 11 × 19 = **213 bytes** plaintext.
+Direction: **host → all**, batched presence fan-out. Header 4 bytes; each entry **20 bytes**
+(`P` + a PRES body, v5); at most **11 entries** (`SNAP_MAX`).
+Max size = 4 + 11 × 20 = **224 bytes** plaintext (≤ 229).
 
 Header:
 
@@ -555,19 +591,35 @@ Entry (repeated, starting at offset 4):
 | rel. offset | size | field | rule |
 |---|---|---|---|
 | 0 | 1 | P | 1..32; entry dropped if out of range (frame kept) |
-| 1 | 4 | x | f32 LE | **C** / entry dropped if NaN |
-| 5 | 4 | y | f32 LE | **C** / entry dropped if NaN |
+| 1 | 2 | t | u16 LE | that runner's own sender clock (forwarded unchanged from its PRES) |
+| 3 | 4 | x | f32 LE | **C** / entry dropped if NaN |
+| 7 | 2 | y | i16 LE | y × 8 |
 | 9 | 1 | vx | i8 | |
-| 10 | 1 | state | u8 | mask `& 0x1f` |
-| 11 | 1 | chain | u8 | **C** 0..4 |
-| 12 | 4 | score | u32 LE | **C** ≤ 9 999 999 |
-| 16 | 2 | dist | u16 LE | **C** ≤ 60 000 |
-| 18 | 1 | runId | u8 | |
+| 10 | 1 | vy | i8 | vy × 8 |
+| 11 | 1 | state | u8 | mask `& 0x1f` |
+| 12 | 1 | chain | u8 | **C** 0..4 |
+| 13 | 4 | score | u32 LE | **C** ≤ 9 999 999 |
+| 17 | 2 | dist | u16 LE | **C** ≤ 60 000 |
+| 19 | 1 | runId | u8 | |
 
 The host round-robins live players so that, in a full room, every live player appears in a
-SNAP at ≥ 4 Hz; when the room is ≤ 11 players everyone appears every tick (10 Hz). The
-recipient's own row is included (enables self-echo). A sitting-out (spectator) host streams
-no ghost of its own.
+SNAP at ≥ 4 Hz. **Thrift (v5):** a tick carries only rows with a *new* sample since the last
+fan-out; every row is re-sent at least once per second (heartbeat) so receivers keep it
+fresh, and a tick with nothing new sends **no packet at all** (an idle room costs one SNAP
+per second per member instead of ten — fewer radio wake-ups on every phone). When the
+host's own socket backs up past 4 KiB it fans out every other tick. A newly admitted or
+re-welcomed member is sent one SNAP with every live row right away. A receiver keeps, per
+P, the newest sample by `t` (an older one is ignored; an identical heartbeat copy only
+refreshes its age) and hands recent samples to its jitter buffer. A sitting-out (spectator)
+host streams no ghost of its own.
+
+**Rendering (informative).** The reference client plays each runner out through a jitter
+buffer (`src/netsmooth.js`): playout runs behind the sender clock by the window's low
+percentile of (arrival − send) plus the observed spread and one send interval; the playout
+clock slews at most ±6 % (a clock step > 450 ms re-syncs at once); positions between samples
+use cubic Hermite on the sent velocities; when the buffer runs dry it extrapolates at most
+220 ms and then glides to a stop; a correction from fresh data decays with τ ≈ 90 ms instead
+of jumping, and only a jump > 360 px snaps.
 
 ### 10.6 ROLE (0x0c)
 
@@ -631,6 +683,23 @@ client SHOULD handle them; all are core-range and are validated (not ignored).
 | KILL | `0x0d` | G→H | `runId u8 || id u32 LE` — the reporter killed the alien whose spawn x is `id / 8` px |
 | KILLB | `0x18` | H→all but the reporter | `P u8 || runId u8 || id u32 LE` |
 | KILLS | `0x19` | H→G | `runId u8 || count u8 (≤ 48) || id u32 LE × count` — the round's kills so far |
+| PING | `0x1a` | G→H | `id u16 || rttMs u16 || lossPct u8 || jitter u8 (×4 ms)` — v5 link probe carrying the guest's own measurement |
+| PONG | `0x1b` | H→G | `id u16` — echo of a PING id |
+
+**PING/PONG (v5).** Every member (spectators too — it is a keepalive) PINGs the host every
+2 s; the host answers with PONG. The guest times the round trip (TCP-style smoothed RTT and
+mean deviation as jitter; a PING unanswered after 4 s counts as lost, loss is an EWMA) and
+reports its current numbers in the next PING, so the host can show each member's link
+without sending probes of its own. Link level, used by the room UI and the presence rate:
+*good* = RTT < 150 ms, jitter < 60 ms, loss < 2 %; *fair* = RTT < 350 ms, jitter < 150 ms,
+loss < 10 %; otherwise *poor*. The first RTT samples also refine the shared round clock
+anchor (ROUND's `elapsedMs` is corrected by half the app-level RTT, not the relay socket's).
+PING is rate-limited per key (burst 4, refill 1/s, over-rate dropped); a guest that sends
+PONG is forging a host frame (strike `host-frame`).
+
+On a re-HELLO the host always re-sends the full roster (`op 0`) and a SNAP of every live row
+to that member, as well as the ROUND anchor and `KILLS` — whether or not it saw the member's
+transport drop, because frames sent during even a short blip were lost.
 
 `KILL` is host-validated and never struck for being unbelievable: a spectator sending one is a
 strike (`spectator-kill`, like `spectator-pres`); a `KILL` whose `runId` is not the host's current
@@ -807,6 +876,14 @@ invite. A custom relay in settings skips probing and sets `flags` bit1 + the hos
 
 ## 13. Protocol version & compatibility
 
+Version 5 makes rooms hold up on bad links: presence carries the sender's own clock and
+quantized `y`/`vy` (PRES 20 B, SNAP entries 20 B), a `PING`/`PONG` link probe drives a
+quality indicator and presence-rate adaptation, the replay rule accepts a frame reordered
+within 32 counters exactly once, and unchanged snapshots are no longer re-sent ten times a
+second. The PRES/SNAP layouts changed, so a version 4 peer cannot share a room with a
+version 5 one: invites and envelopes are refused before connecting, with the usual update
+prompt.
+
 Version 4 shares the aliens. In a room an alien's position, walk cycle, hover and
 shot schedule are a pure function of the round clock ([§10.8.1](#1081-shared-aliens)), and an alien one
 player kills disappears for everyone (`KILL`/`KILLB`, [§10.8](#108-frames-now-implemented-emote--host-control-stage)).
@@ -815,16 +892,16 @@ rooms would show different aliens. Version 3 added the v3.4.0 endgame ramp (shar
 DEBRIS FIELD rolls past 2500m to the room world-generation stream. Version 2
 (v3.3.0) introduced that isolated stream and synchronized round adoption.
 Invite, app-envelope, code-envelope and HELLO/WELCOME version fields all use
-`4`; field layouts and crypto derivation labels are unchanged. Older invites
+`5`; crypto derivation labels are unchanged. Older invites
 are refused before connecting, with an update prompt: mixing terrain
 algorithms would put peers on different courses.
 Refresh both clients and create a fresh room after upgrading.
 
-- **The protocol version is the app-envelope version byte = `4`** ([§7.1](#71-app-envelope-s--0x53)).
-  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 4` is
+- **The protocol version is the app-envelope version byte = `5`** ([§7.1](#71-app-envelope-s--0x53)).
+  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 5` is
   dropped + struck.
 - **HELLO version negotiation.** HELLO carries `protoMin`/`protoMax`. The host requires
-  overlap with its own supported range (`[4,4]` today). No overlap → the join is refused
+  overlap with its own supported range (`[5,5]` today). No overlap → the join is refused
   (silent drop in this snapshot; a `BYE(reason=3)` "update to play together" in a later
   stage). `protoMin > protoMax` is itself a strike.
 - **Forward-compatibility contract (both directions MUST honor):**
@@ -851,12 +928,12 @@ snapshot) is authoritative.** Discrepancies found:
 1. **PRES length.** Prior spec labels PRES "17B" (and repeats "presence is 17B" in its
    decisions log). The actual frame is **21 bytes** (1 type + 20 body). The spec's *own*
    field table sums to 20 body bytes, so the "17B" label was already internally
-   inconsistent. **Authoritative: 21 bytes.**
+   inconsistent. **Authoritative (v4): 21 bytes; v5: 20 bytes** (see [§10.4](#104-pres-0x04)).
 2. **SNAP entry / header size.** Prior spec says each SNAP entry is "16B" built from a
    "PRES-body minus seq (15B)", and max size "3 + 11×16 = 179B". A PRES body minus `seq` is
    **18 bytes**, so an entry is **19 bytes** (1 `P` + 18), the header is **4 bytes**
    (type + tick + count), and the max is **4 + 11×19 = 213 bytes**. **Authoritative: entry
-   19 B, header 4 B, max 213 B.**
+   19 B, header 4 B, max 213 B (v4); v5: entry 20 B, max 224 B.**
 3. **HELLO length.** Prior spec header says HELLO is "62B"; its own field table sums to a
    36-byte core. The code ships a **43-byte** HELLO (36-byte core + `role` + `caps(4)` +
    `adjIdx` + `nounIdx`, per addenda A/C/D). **Authoritative: 43 bytes** (36 accepted for
@@ -905,6 +982,9 @@ that key are silently dropped and its roster entry is removed. Ban survives reco
 same key. **Strike-able (S) events:**
 
 - AEAD `size` (wire > 256 B, pre-decrypt), `ver` (bad envelope), `dir`, `replay`, `aead`.
+  (`stale` — a counter older than the replay window — is dropped, never struck.)
+- A host-only frame from a guest (`host-frame`: WELCOME, ROSTER, SNAP, BYE, ROUND, EMOTEB,
+  KILLB, KILLS, PONG).
 - HELLO too short (`short`), HELLO/re-hello proof mismatch (`proof`).
 - PRES with NaN/Inf position (`nan`).
 - Anti-cheat hard teleport (`teleport`, [§15.3](#153-anti-cheat-envelope)).
@@ -923,6 +1003,8 @@ table (evict-oldest under key-spray); 3 pre-join strikes ban the key too.
 | HELLO per key | 1 / 5 s, and ≤ 5 / session | drop |
 | Joins per room | 10 / min | drop (queue then drop) |
 | PRES per key | token bucket refill **14/s**, burst **20** | drop frame (no strike) |
+| PRES older than the last accepted (same trace) | — | drop frame (no strike) |
+| PING per key | token bucket refill **1/s**, burst **4** | drop (no strike) |
 | Role change per key | ≤ 1 / 1.5 s | ignore |
 | CODEREQ replies (host) | ≤ 6 / min **and** ≤ 64 / room life | silence |
 | Roster | 32 players + 16 spectators | reject join |
@@ -976,11 +1058,11 @@ A conforming client MUST uphold these (condensed from the reference security rev
 
 | Field | Rule | Action on violation |
 |---|---|---|
-| envelope `ver` | = 1 | strike |
+| envelope `ver` | = PROTO (5) | strike |
 | envelope `dir` | matches sender role (0x01 G→H / 0x02 H→G) | strike |
-| envelope `counter` | `> highSeen(pair, dir)` | drop + strike |
+| envelope `counter` | not yet opened, within 32 of `highSeen(pair, dir)` | replay: drop + strike; older than the window: drop (`stale`, no strike) |
 | wire size | ≤ 256 B | drop + strike (pre-decrypt) |
-| HELLO `protoMin/Max` | overlap [4,4], `min ≤ max` | refuse join / strike |
+| HELLO `protoMin/Max` | overlap [5,5], `min ≤ max` | refuse join / strike |
 | tag (HELLO/ROSTER) | `[A-Z0-9]{3}` | force `"AAA"` (**W**) |
 | suit/hat | index in local cosmetic tables | force 0 (**W**) |
 | HELLO `proof` | HMAC match | silent drop + strike |
@@ -1034,8 +1116,8 @@ joining fresh (no rejoin token), producing a HELLO **plaintext** (43 bytes):
 offset  bytes                                            field
 ------  -----------------------------------------------  ----------------------------------
 0x00    01                                               type = HELLO (0x01)
-0x01    04                                               protoMin = 4
-0x02    04                                               protoMax = 4
+0x01    05                                               protoMin = 5
+0x02    05                                               protoMax = 5
 0x03    4B 41 47                                          tag = "KAG"  (ASCII K,A,G)
 0x06    03                                               suit = 3
 0x07    01                                               hat = 1
@@ -1063,21 +1145,21 @@ DF 04 C8 31 00 1F 00 00 00 05 11
 envelope. The 11-byte cleartext header is:
 
 ```
-53 04 01 00 00 00 00 00 00 00 00
+53 05 01 00 00 00 00 00 00 00 00
 │  │  │  └──────────────────────┘ counter = 0  (u64 LE)
 │  │  └ dir = 0x01 (guest→host)
-│  └ envelope version = 4
+│  └ envelope version = 5
 └ 'S' (0x53)
 ```
 
 followed by the AES-GCM ciphertext of the 43-byte plaintext plus a 16-byte tag (opaque,
 non-deterministic — depends on the pair key and the random-free counter nonce
-`01 00 00 00 00 00 00 00 00 00 00 00`, AAD `04 <roomId·8> <epoch> 01`). Total sealed wire:
+`01 00 00 00 00 00 00 00 00 00 00 00`, AAD `05 <roomId·8> <epoch> 01`). Total sealed wire:
 11 + 43 + 16 = **70 bytes**. This whole envelope becomes the `SendPacket` payload prefixed
 by the 32-byte host public key, itself wrapped in the 5-byte relay frame header:
 
 ```
-04 00 00 00 66  <hostPub·32>  53 04 01 00 00 00 00 00 00 00 00  <ct+tag·59>
+04 00 00 00 66  <hostPub·32>  53 05 01 00 00 00 00 00 00 00 00  <ct+tag·59>
 │  └─────────┘  └──────────┘  └───── 'S' envelope (70 B) ───────────────────┘
 │  len=0x66=102 relay dst key
 └ relay frameType = SendPacket (0x04)
@@ -1092,7 +1174,11 @@ envelope is little-endian.
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `PROTO` | 4 | app-envelope / protocol version |
+| `PROTO` | 5 | app-envelope / protocol version |
+| `REPLAY_WIN` | 32 | receive window behind the newest counter (reorder tolerance) |
+| `PING_MS` | 2000 | guest link probe cadence |
+| watchdog | 4 ping ticks (guest) / 80 snap ticks (host) | silence → reconnect the socket |
+| heartbeat | 1000 ms | an unchanged room's SNAP cadence |
 | `ROOM_CAP` / `PLAYER_CAP` | 32 | player slots |
 | `SPECTATOR_CAP` | 16 | spectator slots |
 | `WIRE_MAX` | 256 | max app packet wire size (pre-decrypt gate) |

@@ -17,6 +17,7 @@ const SHELL = [
   './src/callsigns.js',
   './src/relay-directory.js',
   './src/qr.js',
+  './src/netsmooth.js',
   './src/net.js',
   './manifest.json',
   './favicon.png',
