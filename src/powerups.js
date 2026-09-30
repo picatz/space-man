@@ -735,12 +735,16 @@
       from = a0; ang = lerp(a0, a1, k); swinging = S.swingT <= A.active + 2;
     }
     ctx.save(); ctx.translate(x, y); ctx.scale(p.facing, 1);
-    if (swinging) {   // the smear: an annular wedge from the swing's start to the blade
+    if (swinging) {   // the smear: a crescent trailing ~70° behind the blade, fading as the swing ends
+      const tail = S.swingDir > 0 ? Math.max(from, ang - 1.2) : Math.min(from, ang + 1.2);
+      const lo = Math.min(tail, ang), hi = Math.max(tail, ang), fade = 1 - clamp(S.swingT / (A.active + 2), 0, 1);
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.28 * (1 - clamp(S.swingT / (A.active + 2), 0, 1)) + 0.12;
       ctx.fillStyle = I.color;
-      const lo = Math.min(from, ang), hi = Math.max(from, ang);
-      ctx.beginPath(); ctx.arc(hx * 0.5, hy, A.reach, lo, hi); ctx.arc(hx * 0.5, hy, 14, hi, lo, true); ctx.closePath(); ctx.fill();
+      for (let i = 0; i < 2; i++) {   // two bands: a bright outer rim over a soft body
+        ctx.globalAlpha = (i ? 0.45 : 0.18) * fade + 0.05;
+        const r0 = i ? A.reach - 8 : 18;
+        ctx.beginPath(); ctx.arc(hx * 0.5, hy, A.reach, lo, hi); ctx.arc(hx * 0.5, hy, r0, hi, lo, true); ctx.closePath(); ctx.fill();
+      }
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     }
     const L = 34, ex = hx + Math.cos(ang) * L, ey = hy + Math.sin(ang) * L;
