@@ -121,7 +121,16 @@ test('a real spectator sees aliens in their round-clock places and its stand-in 
       host.net.sendPresence(X, 240, 0, 11, 0, 900, 797);
       await host.net._n1.session()._snapTick();
       try { await until(() => guest.net.presence().some((p) => p.x === X && p.state === 11), 'host ghost fresh', 1500); break; }
-      catch (e) { if (k >= 3) throw e; }
+      catch (e) {
+        if (k < 3) continue;
+        const hs = host.net._n1.session(), gs = guest.net._n1.session();
+        throw new Error(e.message + ' :: ' + JSON.stringify({
+          X, seen: guest.net.presence().map((p) => [p.p, Math.round(p.x), p.state]),
+          peers: [...gs.peers.entries()].map(([p, q]) => [p, Math.round(q.x), q.state, Math.round(guest.run('performance.now()') - q.receivedAt)]),
+          hostRows: [...hs.roster.values()].map((r) => [r.p, r.role, !!r.absent]), gRelay: gs.relay.state, hRelay: hs.relay.state,
+          gByed: gs.byed, gActive: guest.net.active, selfSeenAge: Math.round(host.run('performance.now()') - hs.selfSeen),
+        }));
+      }
     }
     guest.run('netTick(.1)');
   };
