@@ -47,7 +47,8 @@ test('normal solo runs stay random, and a shared run is the exact same course fo
   assert.equal(a.run('G.course'), null);
   assert.notDeepEqual(terrain(a, 'startRun()', false), played);           // next run: new random course
   assert.notEqual(a.run('G.runSeed'), seed);
-  assert.deepEqual(terrain(b, `challenge = COURSE.parse('#seed=${seed}&beat=10', Date.now()); startRun()`, false), played);
+  assert.deepEqual(terrain(b, `challenge = COURSE.parse(COURSE.link({ kind: 'seed', seed: ${seed}, gen: G.gen }, 10).split('#')[1], Date.now()); startRun()`, false), played);
+  assert.equal(b.run('G.gen'), 2);
   // Mercy reshapes a struggling player's course, so that run isn't offered as a race.
   a.run('stats.mercy=true; stats.deadStreak=9; startRun()');
   assert.equal(a.run('G.worldRng'), null); assert.equal(a.run('G.mercy'), true);
@@ -56,9 +57,11 @@ test('normal solo runs stay random, and a shared run is the exact same course fo
 test('challenge fragments accept valid links and reject everything else', () => {
   const C = course(), now = Date.UTC(2026, 8, 28, 23, 59);
   assert.deepEqual({ ...C.parse('#daily=2026-09-28&beat=1234', now) },
-    { kind: 'daily', day: '2026-09-28', seed: C.daySeed('2026-09-28'), beat: 1234 });
+    { kind: 'daily', day: '2026-09-28', seed: C.daySeed('2026-09-28'), beat: 1234, gen: 1 });
   assert.equal(C.parse('#daily=2026-09-21', now).beat, 0);                 // a week old, no score
-  assert.deepEqual({ ...C.parse('#seed=42&beat=900', now) }, { kind: 'seed', seed: 42, beat: 900 });
+  assert.deepEqual({ ...C.parse('#seed=42&beat=900', now) }, { kind: 'seed', seed: 42, beat: 900, gen: 1 });
+  assert.deepEqual({ ...C.parse('#seed=42&beat=900&v=2', now) }, { kind: 'seed', seed: 42, beat: 900, gen: 2 });
+  assert.equal(C.parse('#v=2&daily=2026-09-28', now).gen, 2);
   assert.equal(C.parse('beat=7&seed=4294967295', now).seed, 4294967295);
   for (const bad of [
     '', '#', '#seed=42', '#beat=5', '#daily=2026-09-29', '#daily=2026-09-20', '#daily=2026-02-30',
@@ -67,11 +70,14 @@ test('challenge fragments accept valid links and reject everything else', () => 
     '#seed=1&beat=1&beat=2', '#daily=2026-09-28&seed=1&beat=1', '#daily=2026-09-28&beat=<b>x</b>',
     '#shot=dead&seed=3&beat=5', '#j=AQBrYWctcm9vbS1tb2Nr', '#seed=1&beat=1&x=1', '#seed=%31&beat=1',
     '#seed=1&beat=1&' , '#' + 'seed=1&'.repeat(12) + 'beat=1', '#daily=2026-09-28&beat=' + '9'.repeat(80),
+    '#seed=1&beat=1&v=3', '#seed=1&beat=1&v=0', '#seed=1&beat=1&v=2&v=2', '#seed=1&beat=1&v=22', '#v=2',
   ]) assert.equal(C.parse(bad, now), null, bad);
   const link = C.link({ kind: 'daily', day: '2026-09-28' }, 1234);
   assert.equal(link, 'https://picatz.github.io/space-man/#daily=2026-09-28&beat=1234');
   assert.equal(C.parse(link.slice(link.indexOf('#')), now).beat, 1234);
   assert.equal(C.link({ kind: 'seed', seed: 77 }, 5), 'https://picatz.github.io/space-man/#seed=77&beat=5');
+  assert.equal(C.link({ kind: 'seed', seed: 77, gen: 2 }, 5), 'https://picatz.github.io/space-man/#seed=77&beat=5&v=2');
+  assert.equal(C.parse(C.link({ kind: 'daily', day: '2026-09-28', gen: 2 }, 9).split('#')[1], now).gen, 2);
 });
 
 test('a challenge link plays its seed once, and Play Again races it again', (t) => {
@@ -110,11 +116,11 @@ test('the death card shares a spoiler-free result with a challenge link', async 
   assert.match(c.elements.get('deadCourse').textContent, /^DAILY 2026-09-28/);
   c.run('shareRun()');
   await new Promise((r) => setImmediate(r));
-  assert.equal(copied, 'SPACE MAN · Daily 2026-09-28 · 1,234 pts · 940 m 🚀\nhttps://picatz.github.io/space-man/#daily=2026-09-28&beat=1234');
+  assert.equal(copied, 'SPACE MAN · Daily 2026-09-28 · 1,234 pts · 940 m 🚀\nhttps://picatz.github.io/space-man/#daily=2026-09-28&beat=1234&v=2');
   assert.equal(c.elements.get('btnShare').textContent, 'Copied ✓');
   c.run("startRun(); G.score=50; G.dist=12; die('void'); showDeathCard(); shareRun();");
   await new Promise((r) => setImmediate(r));
-  assert.equal(copied, 'SPACE MAN · 50 pts · 12 m 🚀\nhttps://picatz.github.io/space-man/#seed=' + c.run('G.runSeed') + '&beat=50');
+  assert.equal(copied, 'SPACE MAN · 50 pts · 12 m 🚀\nhttps://picatz.github.io/space-man/#seed=' + c.run('G.runSeed') + '&beat=50&v=2');
 });
 
 test('a title screen left up across 00:00 UTC rolls the Daily card to the new day', (t) => {
