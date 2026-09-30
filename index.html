@@ -899,6 +899,7 @@
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
 <script src="src/course.js"></script>
+<script src="src/powerups.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
      #j= invite is accepted (net-spec §4.1 lazy gate). -->
@@ -1133,6 +1134,7 @@ function persistAll() {
 // sm2.daily = { day, best, bestDist, runs } for the current UTC day only — a new
 // day quietly starts fresh (no streaks, nothing to lose by skipping one).
 const COURSE = window.SpaceManCourse;
+const POW = window.SpaceManPowerups;   // power-ups, verbs + joy moments (src/powerups.js)
 function loadDaily() {
   const today = COURSE.dayKey(Date.now()), d = loadJSON(LS.daily, null);
   if (!d || typeof d !== 'object' || d.day !== today) return { day: today, best: 0, bestDist: 0, runs: 0 };
@@ -1861,6 +1863,8 @@ const Audio = (() => {
     // A hidden tab's drone is a trust breach on mobile — mirror of resume() above.
     suspend() { if (ac && ac.state === 'running') { try { ac.suspend(); } catch (e) {} } },
     sfx: SFX, tickMusic, musicReset, musicEvent, chordTones, killSting,
+    // Raw voices for src/powerups.js (same sfx bus, same mute/volume gating).
+    synth: { tone, noise, bell, degF, chordTones, get ctx() { return ac; }, get out() { return sfxGain; }, get noiseBuf() { return noiseBuf; } },
     degFreq(deg, oct) { return degF(deg, oct); },
     syncChannels() {
       if (sfxGain) sfxGain.gain.setTargetAtTime(sfxLvl(), now(), .025);
@@ -2037,6 +2041,7 @@ function pollGamepad() {
   }
   noteRumble(gp);
   if (!gp) {
+    input.firePad = false;   // a controller pulled out with FIRE held must not leave the saber swinging
     if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
     return;
   }
@@ -2054,6 +2059,7 @@ function pollGamepad() {
   if (jump && !input.pad.prev[0]) { input.jumpPressed = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   if (jump || input.pad.prev[0]) input.jumpHeld = jump;
   input.down = pressed(13) || (gp.axes[1] || 0) > 0.5;   // dpad-down / left-stick-down → let go of a ledge
+  input.firePad = !!padState.fire && (pressed(2) || pressed(5) || pressed(7));
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   const menuTook = pollMenuNav(gp, just);
   if (padState.pause && just(9)) {
@@ -2097,6 +2103,7 @@ function onKey(e, down) {
   const act = keyAction(k);
   if (act === 'left' || act === 'right' || act === 'down') input[act] = down;
   if (act === 'jump') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
+  if (act === 'fire') input.fireKey = down;
   if (act === 'fire' && down) { input.shoot = true; flags.taughtShoot = true; }
   if (down) {
     input.usingKeys = true; input.usingTouch = false;
@@ -2153,7 +2160,7 @@ canvas.addEventListener('pointerdown', (e) => {
     input.usingTouch = false;
     if (G.mode === 'play') {
       if (inMuteHit(pointerPos(e))) { input.muteHold = { id: e.pointerId, t: performance.now(), fired: false }; return; }
-      input.shoot = true; flags.taughtShoot = true;
+      input.shoot = true; input.fireMouse = true; flags.taughtShoot = true;
     }
     return;
   }
@@ -2181,7 +2188,6 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 }, { passive: false });
 canvas.addEventListener('pointermove', (e) => {
-  if (emWheel.open && e.pointerId === emWheel.armId) { emWheel.sel = emoteWheelSector(pointerPos(e).x, pointerPos(e).y); return; }
   if (input.stick.active && e.pointerId === input.stick.id) {
     const p = pointerPos(e); input.stick.x = p.x; input.stick.y = p.y;
     const dx = p.x - input.stick.cx, dead = 12, full = 48, mag = Math.abs(dx);
@@ -2191,10 +2197,7 @@ canvas.addEventListener('pointermove', (e) => {
 }, { passive: false });
 function endPointer(e) {
   input.downIds.delete(e.pointerId);
-  if (e.pointerId === emWheel.armId) {   // resolve/cancel the emote wheel
-    if (emWheel.open) { if (emWheel.sel >= 0) sendEmote(emWheel.sel); emWheel.open = false; }
-    emWheel.armed = false; emWheel.armId = -1; emWheel.sel = -1;
-  }
+  if (e.pointerType === 'mouse') input.fireMouse = false;
   if (input.muteHold && e.pointerId === input.muteHold.id) {
     if (!input.muteHold.fired && performance.now() - input.muteHold.t < 400) toggleMute();
     input.muteHold = null;
@@ -2547,8 +2550,10 @@ function seedRng(seed) { rng = (seed === null || seed === undefined) ? Math.rand
 const RACE_MIN_SPAN = 1200, RACE_PAD = 0.06;
 const raceView = { anchor: 0, span: RACE_MIN_SPAN, lowPrev: 0, at: -1 };
 function raceReset() { raceView.at = -1; raceView.span = RACE_MIN_SPAN; }
+const emTray = { open: false, at: 0 };            // the emote tray (declared up here so a run reset and leaving a room can close it)
 function resetRun(seed, replayable) {
   raceReset();
+  emTray.open = false;                              // a new run never inherits the last one's open tray
   seedRng(seed);
   // A real room (not the #shot mock) shares the course AND its clock: aliens move on the round clock.
   G.sharedWorld = netLive() && !NET.mockActive;
@@ -2805,6 +2810,7 @@ function tryRestart() {
 }
 function clearInput() {
   input.left = input.right = input.down = input.jumpHeld = input.jumpPressed = input.shoot = false;
+  input.fireKey = input.fireMouse = input.firePad = false;
   input.stickX = 0;
   input.stick.active = false; input.stick.id = -1;
   input.jumpZone.active = false; input.jumpZone.id = -1;
@@ -2867,6 +2873,7 @@ function updatePlayer() {
   p.vy += grav;
   if (p.vy > CFG.maxFall) p.vy = CFG.maxFall;
   if (p.vy >= 0) p.jumping = false;
+  POW.jet(p);   // jetpack thrust (no-op without one)
 
   p.x += p.vx;
   const prevFeet = p.py + p.h;
@@ -3081,6 +3088,7 @@ function updateHints() {
 
 function tryShoot() {
   const p = G.player;
+  if (POW.fire()) return;   // a lit saber owns FIRE
   if (G.cooldown > 0) return;
   if (G.ammo <= 0) { Audio.sfx.shoot(true); return; }
   G.ammo--; G.cooldown = CFG.pBulletCooldown;
@@ -3161,7 +3169,7 @@ function enemyFire(e) {
   let dx = p.x - e.x, dy = (p.y + p.h / 2) - e.y;
   if (G.band >= 5) dx += p.vx * 12;
   const d = Math.hypot(dx, dy) || 1, sp = B.ebSpeed;
-  G.ebullets.push({ x: e.x, y: e.y, px: e.x, py: e.y, vx: dx / d * sp, vy: dy / d * sp, life: 220, grazed: false });
+  G.ebullets.push({ x: e.x, y: e.y, px: e.x, py: e.y, vx: dx / d * sp, vy: dy / d * sp, life: 220, grazed: false, src: e });
 }
 function updateEnemies(spectating) {
   const p = G.player, B = bandParams(G.band, G.dist), T = G.sharedWorld ? roundStep() : 0;
@@ -3228,11 +3236,11 @@ function updateBullets() {
     const b = G.ebullets[i]; b.px = b.x; b.py = b.y; b.x += b.vx; b.y += b.vy; b.life--;
     if (b.life <= 0 || Math.abs(b.x - p.x) > 1400) { G.ebullets.splice(i, 1); continue; }
     const dx = b.x - (p.x + p.w / 2), dy = b.y - (p.y + p.h / 2), dist = Math.hypot(dx, dy);
-    if (!p.dead && dist < 9) { die('bullet'); return; }
+    if (!p.dead && dist < 9) { if (POW.guard(null)) { G.ebullets.splice(i, 1); continue; } die('bullet'); return; }
     if (!b.grazed && dist < 16) {
       b.grazed = true; G.score += CFG.scoreGraze; popup(b.x, b.y, '+5 CLOSE', '#FFE59A');
       missionProgress('graze', 1);
-      if (G.mode === 'play') { G.timescale = 0.35; G.slowTimer = 0.18; }   // readable skill beat, still <0.2s
+      if (G.mode === 'play' && !lessMotion() && !G.sharedWorld) { G.timescale = 0.35; G.slowTimer = 0.18; }   // readable skill beat, still <0.2s; never in a room (one screen's clock can't wait) or with Reduce Motion
       spawnP(b.x, b.y, 0, 0, 20, 3, 'rgba(232,244,255,0.8)', 0, false, 3);
       Audio.sfx.closeCall(clamp(dx / 120, -1, 1)); buzz('select');
     }
@@ -3253,7 +3261,7 @@ function killEnemy(e, method, interrupted) {
   const mult = 1 << G.chain;
   const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult;
   G.score += pts;
-  missionProgress(method, 1);
+  missionProgress(method === 'slash' ? 'shoot' : method, 1);
   if (e.golden) {
     G.score += 100; G.ammo = CFG.ammoCap; G.ammoPulse = 1;
     popup(e.x, e.y - 30, 'LUCKY ALIEN +100', '#FFE59A');
@@ -3267,6 +3275,7 @@ function killEnemy(e, method, interrupted) {
   if (method === 'stomp' && rng() < CFG.killDropChance)
     G.pickups.push({ type: 'ammo', x: e.x, y: e.y, vy: -2, amt: CFG.killDropAmt, parachute: false, bob: 0, grabbed: false });
   if (method === 'stomp') { Audio.sfx.stomp(G.chain); G.freeze = 0.09; G.trauma = Math.min(1, G.trauma + 0.25); G.kickX = 0; G.kickY = -5; G.kickAt = G.time; buzz('heavy'); flags.taughtStomp = true; }   // kick down — you drove through it
+  else if (method === 'slash') POW.slashKill(e);
   else { Audio.sfx.stomp(Math.min(G.chain, 1)); G.freeze = 0.05; G.trauma = Math.min(1, G.trauma + 0.1); buzz('light'); }
 }
 
@@ -3297,7 +3306,7 @@ function collisions() {
       // The bounce moved the player; iterating on with stale feet would read a
       // second overlapping enemy as side contact and kill the player unfairly.
       break;
-    } else { die('contact'); return; }
+    } else { if (POW.guard(e)) break; die('contact'); return; }
   }
   if (p.y > G.groundY + 340) { die('void'); return; }   // fixed threshold → view-independent
   if (p.x <= G.flare.x + 6) { die('flare'); return; }
@@ -3720,9 +3729,11 @@ function update() {
       if (G.frameCount % (c.loopT > 0 ? 2 : 5) === 0) spawnP(c.x, c.y, -p.facing * .4, .2, 18, 1.6, 'rgba(159,241,255,.7)', 0, false, 0);
     }
     updateEnemies();
+    POW.combat();     // saber arc + reflected shots: aliens moved, shots not yet
     updateBullets();
     updatePickups();
     collisions();
+    POW.update();     // power-up pickups, timers, fuel, joy moments
     // Camera is parked while dead — sync prev so interpolation can't shimmer
     // against a stale frame (magnified by deathZoom).
     if (G.player.dead) { G.camXprev = G.camX; G.camYprev = G.camY; finishTick(); return; }
@@ -4048,6 +4059,7 @@ function render(alpha) {
   ctx.fillRect(iCamX - 40, G.groundY + 60, view.w + 80, 600);
   drawPlatforms(iCamX);
   drawPickups(iCamX);
+  POW.drawWorld(iCamX);
   drawPBFlag();
   drawEnemies(iCamX, alpha);
   drawBullets(iCamX, alpha);
@@ -4055,6 +4067,7 @@ function render(alpha) {
   vigPose = arrivalPose();          // E13: this frame's pose morph + prop anchors
   drawArrivalBack();
   drawGhosts(alpha, iCamX);          // under-player layer (Run Together); no-op solo
+  POW.drawBack(alpha);               // jetpack + flame behind the suit
   if (G.player && !netSpectating()) {
     // D6: in a live room, a default-suit local player also gets their per-slot
     // tint so they're distinct from other defaults. Swap only for the draw and
@@ -4063,6 +4076,7 @@ function render(alpha) {
     if (eff && eff !== G.cosmetics.suit) { const s0 = G.cosmetics.suit; G.cosmetics.suit = eff; drawPlayer(alpha); G.cosmetics.suit = s0; }
     else drawPlayer(alpha);
   }
+  POW.drawFront(alpha);              // saber, shield bubble, magnet tethers
   drawArrivalFront();
   drawParticles(alpha);
   drawHints(iCamX, iCamY);
@@ -4788,6 +4802,7 @@ function armCapsule(sx, sy, ang, len, bend) {   // ang: radians from hanging-dow
   return [hx, hy];
 }
 function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
+  if (POW.hidesPistol()) return;   // the saber takes the glove
   ctx.fillStyle = P.visBot;
   rrPath(ctx, -2, -3.6, 7, 3.4, 1.4); ctx.fill();     // rounded body
   ctx.fillRect(-1.4, -0.8, 2.2, 2.2);                  // grip drops into the glove
@@ -5185,19 +5200,23 @@ function drawHUD() {
   }
 
   const touch = FORCE_TOUCH || input.usingTouch;
+  // In a room the emote button owns the top-right corner; the right-hand column (ammo, shards) starts under it.
+  let rTop = top;
+  if (emoteAvailable()) { const L = emoteLayout(), eb = emTray.open ? L.tray : L.button; rTop = Math.max(top, eb.y + eb.h + 6); }   // under the tray while it is open
   if (!touch) {
     const rx = view.w - left, pw2 = 6 * us, sp = 9 * us;
     for (let i = 0; i < CFG.ammoCap; i++) {
       ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.15)';
-      ctx.fillRect(rx - i * sp - pw2, top + 2, pw2 - 1, 11 * us);
+      ctx.fillRect(rx - i * sp - pw2, rTop + 2, pw2 - 1, 11 * us);
     }
     ctx.fillStyle = '#CFE3FF'; ctx.font = fontStr(600, Math.max(9.5, 9 * us), FONT); ctx.textAlign = 'right';
-    ctx.fillText('AMMO', rx, top + 24 * us);
+    ctx.fillText('AMMO', rx, rTop + 24 * us);
   }
   if (G.shards > 0) {
     ctx.fillStyle = '#9FF1FF'; ctx.font = fontStr(700, 9 * us, FONT); ctx.textAlign = 'right';
-    ctx.fillText('✦ ' + G.shards, view.w - left, top + 42 * us);
+    ctx.fillText('✦ ' + G.shards, view.w - left, rTop + 42 * us);
   }
+  POW.drawHUD(us, rTop, left);   // power-up gauges + headline slot
 }
 function drawMuteButton(x, y, s, us) {
   const muted = settings.muted;
@@ -5295,6 +5314,7 @@ function drawTouchControls() {
   const dim = learned && !input.shootBtn.pressed && !input.stick.active && !input.jumpZone.active ? 0.6 : 1;
   ctx.globalAlpha = dim;
   const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r;
+  if (!POW.drawFireButton(sx, sy, r)) {   // a lit saber repaints FIRE as SABER
   ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU);
   ctx.fillStyle = input.shootBtn.pressed ? 'rgba(255,201,60,0.35)' : 'rgba(255,201,60,0.16)'; ctx.fill();
   ctx.strokeStyle = 'rgba(255,201,60,0.7)'; ctx.lineWidth = 2; ctx.stroke();
@@ -5306,6 +5326,7 @@ function drawTouchControls() {
   }
   ctx.fillStyle = G.ammo > 0 ? 'rgba(255,201,60,0.9)' : 'rgba(255,255,255,0.3)';
   ctx.font = '900 13px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('FIRE', sx, sy + 5);
+  }
   {
     const cssW = window.innerWidth, cssH = window.innerHeight;
     const gx = input.stick.active ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
@@ -5326,6 +5347,7 @@ function drawTouchControls() {
     ctx.globalAlpha = dim * (input.jumpZone.active ? .82 : .32); ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(jx, jy, 25, 0, TAU); ctx.stroke();
     ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1.6; drawChevron(jx, jy + 2, 0);
+    POW.drawJumpRing(jx, jy);   // jetpack fuel, under the thumb that spends it
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -5492,7 +5514,7 @@ function renderDeathCard() {
   if (fs > G.prevBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${(fs - G.prevBest).toLocaleString()}</span>`;
   else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
   const missionMark = G.mission && G.mission.done ? ' · MISSION ✓' : '';
-  $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
+  $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}${POW.deathStats()}`;
   const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
   if (target) { dt.textContent = target; dt.style.display = 'block'; } else dt.style.display = 'none';
   const dc = $('deadCourse'), courseText = deathCourseLine(fs);
@@ -6289,6 +6311,7 @@ async function submitJoin() {
 }
 function leaveRoom() {
   raceReset();
+  emTray.open = false;
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
   pendingJoins.clear();                                     // held joins belong to the room we just left
@@ -6696,12 +6719,7 @@ function netTick(dt) {
   if (G.mode === 'dead' && G.deathCardShown && roundResultKeyNow() !== roundResultKey) renderRoomBoard();
   for (const g of ghosts) if (g.emoteT > 0) g.emoteT = Math.max(0, g.emoteT - dt);
   if (selfEmote.t > 0) selfEmote.t = Math.max(0, selfEmote.t - dt);
-  // Open the armed emote wheel once the press can no longer affect the jump (D5).
-  if (emWheel.armed && !emWheel.open) {
-    const dead = G.player && G.player.dead;
-    const settled = dead || (G.player && (G.player.onGround || G.player.vy >= 0));
-    if (performance.now() - emWheel.armT >= 400 && settled) { emWheel.open = true; emWheel.sel = -1; }
-  }
+  if (emTray.open && (performance.now() - emTray.at > EMOTE_TRAY_MS || !emoteAvailable())) emTray.open = false;   // the tray never lingers
   // Slipstream (§4.7): live same-run ghost within 64px for >0.25s → +2 pts/s,
   // client-side only, capped 200/run, never authoritative. Sets our own state
   // bit so peers can see the intent (routed through sendPresence's state byte).
@@ -6910,9 +6928,11 @@ function drawNetHUD() {
   if (!netInRun()) return;
   if (netSpectating()) drawSpectatorHUD(); else { _specHits = null; }
   drawRoundStatus();
-  if (!netSpectating()) drawCrewDirections();
-  if (emWheel.open) drawEmoteWheel();
+  // The banner goes first: it publishes the LEAVE hit area the emote tray (and the teammate cue that steps around the tray)
+  // lay themselves out around, so nothing is drawn or hit against last frame's banner.
   if (netLive() && NET.info().unstable) drawUnstableBanner(); else _unstableHit = null;
+  if (!netSpectating()) drawCrewDirections();
+  if (emoteAvailable()) drawEmoteUI(); else emTray.open = false;
   drawLinkPill();
 }
 // In a run the link only speaks up when it matters: reconnecting, or a poor link (so a jumpy
@@ -6923,7 +6943,9 @@ function drawLinkPill() {
   if (q.level !== 'reconnecting' && q.level !== 'poor') return;
   const us = uiScale(), text = q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
   ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
-  const w = ctx.measureText(text).width + 22 * us, h = 18 * us, x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
+  const w = ctx.measureText(text).width + 22 * us, h = 18 * us;
+  let x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
+  if (emoteAvailable()) { const b = emoteLayout().button; x = b.x - 8 - w; y = b.y + (b.h - h) / 2; }   // beside the emote button, never on it
   ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
   ctx.fillStyle = '#FF8A6B'; ctx.beginPath(); ctx.arc(x + 9 * us, y + h / 2, 3 * us, 0, TAU); ctx.fill();
   ctx.fillStyle = '#F4F7FF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + 16 * us, y + h / 2 + 0.5);
@@ -7018,7 +7040,10 @@ function drawCrewDirections() {
     ctx.textAlign = dir < 0 ? 'left' : 'right';
     ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + 11 * us + 'px ' + FONT_NUM;
     const distance = Math.round(Math.abs(g.rx - G.player.x) / 10);
-    ctx.fillText((dir < 0 ? '‹ ' : '') + (g.callsign || 'P' + g.p) + ' · ' + distance + 'm' + (dir > 0 ? ' ›' : ''), x, y, view.w * 0.42);
+    // The right-hand cue steps down out of the way of the emote button (and its tray while open).
+    let ly = y;
+    if (dir > 0 && emoteAvailable()) { const L = emoteLayout(), b = emTray.open ? L.tray : L.button; ly = Math.max(y, b.y + b.h + 16 * us); }
+    ctx.fillText((dir < 0 ? '‹ ' : '') + (g.callsign || 'P' + g.p) + ' · ' + distance + 'm' + (dir > 0 ? ' ›' : ''), x, ly, view.w * 0.42);
   }
 }
 function drawSpectatorHUD() {
@@ -7042,26 +7067,37 @@ function drawSpectatorHUD() {
     _specHits[key] = { x0: x * kx, x1: (x + w) * kx, y0: by * ky, y1: (by + h) * ky };
   });
 }
-function drawUnstableBanner() {
+// One source for the banner's geometry (view px) and its LEAVE target (CSS px), so nothing that lays itself out around the
+// banner (the emote tray, the ammo readout, the teammate cue) depends on the order things were drawn in this frame.
+function unstableBannerGeom() {
   const us = uiScale(), y = safeInset('top') + 76 * us, x = view.w / 2;   // below the strip + shifted HUD chain line
-  const label = 'UNSTABLE ROOM', bw = 150 * us, bh = 22 * us, bx = x - bw / 2;
+  const bw = 150 * us, bh = 22 * us, bx = x - bw / 2, lx = bx + bw - 40 * us;
+  return { us, y, bx, bw, bh, lx };
+}
+function unstableHitRect() {   // CSS px, or null when the room is fine
+  if (!netLive() || !NET.info().unstable) return null;
+  const g = unstableBannerGeom(), kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+  return { x0: g.lx * kx - 8, x1: (g.bx + g.bw) * kx + 8, y0: g.y * ky - 6, y1: (g.y + g.bh) * ky + 6 };
+}
+function drawUnstableBanner() {
+  const { us, y, bx, bw, bh, lx } = unstableBannerGeom();
+  const label = 'UNSTABLE ROOM';
   ctx.fillStyle = 'rgba(20,8,14,0.86)'; roundRect(bx, y, bw, bh, 6); ctx.fill();
   ctx.strokeStyle = 'rgba(255,79,102,0.4)'; ctx.lineWidth = 1; ctx.stroke();
   ctx.fillStyle = '#FF8A9A'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.fillText(label, bx + 8 * us, y + bh / 2);
-  const lx = bx + bw - 40 * us;
   ctx.fillStyle = '#FF4F66'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.fillText('LEAVE', lx, y + bh / 2);
   ctx.textBaseline = 'alphabetic';
-  const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
-  _unstableHit = { x0: lx * kx - 8, x1: (bx + bw) * kx + 8, y0: y * ky - 6, y1: (y + bh) * ky + 6 };
+  _unstableHit = unstableHitRect();
 }
 
-/* ---- emotes: desktop 1-6, mobile long-press-in-jump-zone radial wheel ---- */
-const emWheel = { open: false, armId: -1, cx: 0, cy: 0, sel: -1, armT: 0, armed: false };
+/* ---- emotes: desktop keys 1-6; touch and mouse get a dedicated button that opens a small tray of the six ---- */
+const EMOTE_TRAY_MS = 4000, EMOTE_BTN = 40, EMOTE_ITEM = 44, EMOTE_GAP = 6;   // times in ms, sizes in CSS px (a comfortable touch target)
 function inRect(p, r) { return r && p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1; }
 function netPointerDown(e) {
   const p = pointerPos(e);
-  if (_unstableHit && inRect(p, _unstableHit)) { leaveRoom(); return true; }
+  const leaveHit = unstableHitRect();
+  if (leaveHit && inRect(p, leaveHit)) { leaveRoom(); return true; }
   if (netSpectating()) {
     if (_specHits) {
       if (inRect(p, _specHits.play)) { startRun(); return true; }
@@ -7071,17 +7107,19 @@ function netPointerDown(e) {
     }
     return true;                                    // spectators never drive the sim
   }
-  // Emote-wheel arm (touch): a long-press that can no longer influence the jump
-  // opens the radial wheel (§4.6 / D5). Never on the move stick or fire button.
-  if (settings.netEmotes && e.pointerType !== 'mouse') {
-    const dead = G.player && G.player.dead;
-    if (dead || (G.mode === 'play' && !isMoveHalf(p) && !inShoot(p))) {
-      const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
-      emWheel.armed = true; emWheel.open = false; emWheel.armId = e.pointerId; emWheel.sel = -1;
-      emWheel.armT = performance.now(); emWheel.cx = p.x / kx; emWheel.cy = p.y / ky;
+  // The emote button and its tray are a dedicated control: nothing about holding jump can open them any more.
+  if (emoteAvailable()) {
+    const hit = emoteHit(p);
+    if (hit) {
+      // Same hand-off the canvas handler does for any press: which input the HUD follows, and unlock suspended sound.
+      if (e.pointerType === 'mouse') input.usingTouch = false; else { input.usingTouch = true; input.usingKeys = false; Audio.ensure(); Audio.resume(); }
+      if (hit.kind === 'btn') { emTray.open = !emTray.open; emTray.at = performance.now(); }
+      else if (hit.kind === 'item') { sendEmote(hit.i); emTray.open = false; }
+      return true;                                  // a press on the button, the tray or one of its emotes is never also a jump
     }
+    emTray.open = false;                            // any other press just tidies the tray away and carries on (a jump is a jump)
   }
-  return false;                                     // let the jump proceed; the wheel only opens on the hold
+  return false;
 }
 function sendEmote(id) {
   if (!netLive() || !settings.netEmotes) return;
@@ -7089,27 +7127,55 @@ function sendEmote(id) {
   selfEmote = { id: e, t: 1.2, seq: (selfEmote.seq || 0) + 1 };
   netEmoteSfx();
 }
-function drawEmoteWheel() {
-  const us = uiScale(), r = 70 * us, cx = emWheel.cx, cy = emWheel.cy;
+// Only a live, playing, non-spectating runner in a room with emotes on has the button (the death card has its own row).
+function emoteAvailable() { return netInRun() && settings.netEmotes && !netSpectating() && G.mode === 'play' && !(G.player && G.player.dead); }
+// Everything in view px, sized from CSS px so the targets stay finger-sized at any canvas scale. Top-right, under the race
+// strip: out of the thumbs' way (stick, jump and fire live at the bottom) so it can't be hit by accident.
+function emoteLayout() {
+  const k = window.innerWidth / view.w;
+  const btn = EMOTE_BTN / k, gap = EMOTE_GAP / k, pad = 6 / k;
+  const right = view.w - 12 - safeInset('right') / k, top = 12 + safeInset('top') + 26 + 8;   // top matches the race strip; side insets are CSS px
+  const room = view.w - 24 - (safeInset('right') + safeInset('left')) / k;
+  const item = Math.max(36 / k, Math.min(EMOTE_ITEM / k, (room - 2 * pad - 5 * gap) / 6));
+  const trayW = 6 * item + 5 * gap + 2 * pad, trayH = item + 2 * pad;
+  const button = { x: right - btn, y: top, w: btn, h: btn };
+  // A room in trouble shows the UNSTABLE ROOM banner with a LEAVE target; the tray sits below it so an emote can never leave the room.
+  const hit = unstableHitRect();
+  const below = hit ? Math.max(top + btn + gap, hit.y1 / k + gap) : top + btn + gap;
+  const tray = { x: right - trayW, y: below, w: trayW, h: trayH };
+  const items = [];
+  for (let i = 0; i < 6; i++) items.push({ i, x: tray.x + pad + i * (item + gap), y: tray.y + pad, w: item, h: item });
+  return { k, button, tray, items };
+}
+function emoteHit(p) {   // p in CSS px; returns {kind:'btn'} | {kind:'item', i} | {kind:'tray'} | null
+  const L = emoteLayout(), k = L.k;
+  const inside = (r, slack) => p.x >= (r.x - slack) * k && p.x <= (r.x + r.w + slack) * k && p.y >= (r.y - slack) * k && p.y <= (r.y + r.h + slack) * k;
+  if (inside(L.button, 2)) return { kind: 'btn' };
+  if (!emTray.open) return null;
+  for (const it of L.items) if (inside(it, EMOTE_GAP / 2 / k)) return { kind: 'item', i: it.i };
+  return inside(L.tray, 0) ? { kind: 'tray' } : null;
+}
+function drawEmoteUI() {
+  const L = emoteLayout(), b = L.button, open = emTray.open;
   ctx.save();
-  ctx.fillStyle = 'rgba(6,8,24,0.55)'; ctx.beginPath(); ctx.arc(cx, cy, r + 18 * us, 0, TAU); ctx.fill();
-  for (let i = 0; i < 6; i++) {
-    const a = -Math.PI / 2 + i * TAU / 6, ex = cx + Math.cos(a) * r, ey = cy + Math.sin(a) * r;
-    const on = emWheel.sel === i;
-    ctx.fillStyle = on ? '#38E1FF' : 'rgba(10,14,32,0.85)';
-    ctx.beginPath(); ctx.arc(ex, ey, 18 * us, 0, TAU); ctx.fill();
-    ctx.strokeStyle = 'rgba(56,225,255,0.4)'; ctx.lineWidth = 1; ctx.stroke();
-    ctx.fillStyle = on ? '#06122A' : '#F4F7FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = (i === 4 ? '900 ' + (12 * us) + 'px ' + FONT : (16 * us) + 'px ' + FONT_NUM);
-    ctx.fillText(EMOTE_GLYPH[i], ex, ey + 1);
+  ctx.fillStyle = open ? '#38E1FF' : 'rgba(10,14,32,0.72)';
+  ctx.beginPath(); ctx.arc(b.x + b.w / 2, b.y + b.h / 2, b.w / 2, 0, TAU); ctx.fill();
+  ctx.strokeStyle = open ? '#9FF1FF' : 'rgba(56,225,255,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = Math.round(b.w * 0.5) + 'px ' + FONT_NUM; ctx.fillStyle = '#F4F7FF';
+  ctx.fillText('😊', b.x + b.w / 2, b.y + b.h / 2 + 1);
+  if (open) {
+    const t = L.tray;
+    ctx.fillStyle = 'rgba(6,8,24,0.9)'; roundRect(t.x, t.y, t.w, t.h, t.h / 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(56,225,255,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+    for (const it of L.items) {
+      ctx.fillStyle = 'rgba(56,225,255,0.12)'; ctx.beginPath(); ctx.arc(it.x + it.w / 2, it.y + it.h / 2, it.w / 2, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#F4F7FF';
+      ctx.font = it.i === 4 ? '900 ' + Math.round(it.w * 0.34) + 'px ' + FONT : Math.round(it.w * 0.5) + 'px ' + FONT_NUM;
+      ctx.fillText(EMOTE_GLYPH[it.i], it.x + it.w / 2, it.y + it.h / 2 + 1);
+    }
   }
   ctx.textBaseline = 'alphabetic'; ctx.restore();
-}
-function emoteWheelSector(px, py) {
-  const dx = px / (window.innerWidth / view.w) - emWheel.cx, dy = py / (window.innerHeight / view.h) - emWheel.cy;
-  if (dx * dx + dy * dy < (24 * uiScale()) ** 2) return -1;   // dead zone: release near center = cancel
-  let a = Math.atan2(dy, dx) + Math.PI / 2; if (a < 0) a += TAU;
-  return Math.floor((a + TAU / 12) % TAU / (TAU / 6));
 }
 
 /* ---- roster long-press sheet (hide / block / kick) ---- */
@@ -7470,7 +7536,7 @@ function runShot() {
       G.mode = 'play';
       const N = SHOT_FRAMES || 220;
       for (let i = 0; i < N; i++) { if (G.player.dead) break; botInput(); G.freeze = 0; G.timescale = 1; G.slowTimer = 0; update(); netTick(STEP); }
-      if (HASH.wheel) { emWheel.open = true; emWheel.cx = view.w / 2; emWheel.cy = view.h * 0.60; emWheel.sel = 3; }   // QA: emote wheel
+      if (HASH.wheel) { emTray.open = true; emTray.at = performance.now(); }   // QA: emote tray
       if (HASH.unstable && NET._n1 && NET._n1.session()) NET._n1.session().unstable = true;   // QA: unstable-room banner
     } else if (scene === 'dead') {   // death card with the ROOM column populated
       if (NET && NET.mock) NET.mock(SHOT_SEED !== null ? SHOT_SEED : 42, { scene: 'play' });
