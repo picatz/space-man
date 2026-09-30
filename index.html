@@ -3508,7 +3508,7 @@ function bombLands(b) {
     spawnP(b.x, pl.y - 6, 0, 0, 14, 5, 'rgba(255,201,60,.9)', 0, false, 3);
     const p = G.player;
     if (G.mode === 'play' && Math.abs(b.x - p.x) < FOE_NEAR) Audio.sfx.boom();
-    if (!p.dead && Math.abs(p.x + p.w / 2 - b.x) < 20 && Math.abs(p.y + p.h - pl.y) < 30) die('bullet');
+    if (!p.dead && Math.abs(p.x + p.w / 2 - b.x) < 20 && Math.abs(p.y + p.h - pl.y) < 30 && !POW.guard(null)) die('bullet');   // a shield absorbs the blast like any other hit
     return true;
   }
   return false;
@@ -3569,7 +3569,7 @@ function collisions() {
     } else { if (POW.guard(e)) break; die('contact'); return; }
   }
   // A brute's shockwave rolls along its slab: only feet on that slab can meet it.
-  if (p.onGround) for (const e of G.enemies) if (e.type === 'brute' && !e.dead && FOES.waveHits(e, pcx, pfeet)) { die('contact'); return; }
+  if (p.onGround) for (const e of G.enemies) if (e.type === 'brute' && !e.dead && FOES.waveHits(e, pcx, pfeet)) { if (POW.guard(null)) break; die('contact'); return; }   // the shield takes the wave (passing the brute would kill it)
   if (p.y > G.groundY + 340) { die('void'); return; }   // fixed threshold → view-independent
   if (p.x <= G.flare.x + 6) { die('flare'); return; }
 

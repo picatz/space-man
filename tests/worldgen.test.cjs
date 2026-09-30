@@ -572,3 +572,30 @@ test('README documents the current link formats with &v=2 and the legacy form wi
   assert.equal(C.parse(seed[1].replace('<n>', '7').replace('<score>', '5'), now).gen, 2);
   assert.match(readme, /without `&v=`[^.]*(original|legacy)/i, 'explains the legacy form');
 });
+
+test('a shield absorbs a brute shockwave and a bomb blast, like any other hit', (t) => {
+  const c = solo(t);
+  const r = json(c, `
+    resetRun(3, true); G.mode = 'play'; G.enemies = []; G.ebullets = []; G.bullets = [];
+    const pl = newPlatform(0, 270, 520); G.platforms = [pl]; POW.update();
+    const p = G.player, S = POW.state, out = {};
+    const stand = (x) => Object.assign(p, { x, y: 270 - p.h, vx: 0, vy: 0, onGround: true, groundPlat: pl, dead: false, hang: null });
+    // the wave
+    const br = { type: 'brute', v2: true, x: 300, y: 253, px: 300, py: 253, x0: 300, w: 36, h: 34, minX: 34, maxX: 486, dir0: -1, speed: 0.45, per: 220, ph: 0, ev: -1, hp: 3, hurt: 0, telegraph: 0,
+      platX0: 0, platX1: 520, platY: 270, slamT: -1, waveL: NaN, waveR: NaN, dead: false, lookX: 0, lookY: 0 };
+    let slam = -1; for (let T = 0; T < 260; T++) { const ev = FOES.step(br, T, 0, 0); if ((ev & FOES.EV.SLAM) && slam < 0) slam = T; }
+    FOES.step(br, slam + 10, 0, 0);
+    stand(br.waveR - p.w / 2); G.enemies = [br]; POW.grant('shield');
+    collisions();
+    out.waveAlive = !p.dead; out.waveShieldSpent = S.shield === 0; out.brutesLives = !br.dead;
+    // the same wave with no shield still kills (the guard is the only difference)
+    stand(br.waveR - p.w / 2); S.invul = 0; S.shield = 0; collisions(); out.waveKillsUnshielded = p.dead;
+    // the blast
+    G.enemies = []; stand(200); POW.grant('shield');
+    const bomb = { bomb: true, x: p.x + p.w / 2, px: p.x + p.w / 2, y: 270, py: 268, vx: 0, vy: 1 };
+    bombLands(bomb);
+    out.blastAlive = !p.dead; out.blastShieldSpent = S.shield === 0;
+    stand(200); S.invul = 0; S.shield = 0; bombLands(Object.assign({}, bomb, { x: p.x + p.w / 2, px: p.x + p.w / 2 })); out.blastKillsUnshielded = p.dead;
+    return out;`);
+  assert.deepEqual(r, { waveAlive: true, waveShieldSpent: true, brutesLives: true, waveKillsUnshielded: true, blastAlive: true, blastShieldSpent: true, blastKillsUnshielded: true });
+});

@@ -959,12 +959,12 @@ rooms would show different aliens. Version 3 added the v3.4.0 endgame ramp (shar
 DEBRIS FIELD rolls past 2500m to the room world-generation stream. Version 2
 (v3.3.0) introduced that isolated stream and synchronized round adoption.
 Invite, app-envelope, code-envelope and HELLO/WELCOME version fields all use
-`5`; crypto derivation labels are unchanged. Older invites
+`6`; crypto derivation labels are unchanged. Older invites
 are refused before connecting, with an update prompt: mixing terrain
 algorithms would put peers on different courses.
 Refresh both clients and create a fresh room after upgrading.
 
-- **The protocol version is the app-envelope version byte = `5`** ([§7.1](#71-app-envelope-s--0x53)).
+- **The protocol version is the app-envelope version byte = `6`** ([§7.1](#71-app-envelope-s--0x53)).
   It is the single number that gates compatibility. A frame whose envelope `ver ≠ PROTO` (currently 6) is
   dropped + struck.
 - **HELLO version negotiation.** HELLO carries `protoMin`/`protoMax`. The host requires
@@ -1227,7 +1227,7 @@ non-deterministic — depends on the pair key and the random-free counter nonce
 by the 32-byte host public key, itself wrapped in the 5-byte relay frame header:
 
 ```
-04 00 00 00 66  <hostPub·32>  53 05 01 00 00 00 00 00 00 00 00  <ct+tag·59>
+04 00 00 00 66  <hostPub·32>  53 06 01 00 00 00 00 00 00 00 00  <ct+tag·59>
 │  └─────────┘  └──────────┘  └───── 'S' envelope (70 B) ───────────────────┘
 │  len=0x66=102 relay dst key
 └ relay frameType = SendPacket (0x04)
