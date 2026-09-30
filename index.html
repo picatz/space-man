@@ -38,6 +38,15 @@
     --panel: rgba(10, 14, 32, 0.86);
     --font-num: ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif;
     --font: 'Orbitron', ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif;
+    /* Design tokens — one language for every card, chip, row and button.
+       The canvas mirrors the palette in src/art.js (SpaceManArt.C). */
+    --r-xs: 8px; --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
+    --fs-cap: 10px; --fs-sm: 12px; --fs-md: 14px; --fs-lg: 21px; --fs-hero: 46px;
+    --line: rgba(207, 227, 255, 0.08); --line-2: rgba(207, 227, 255, 0.16); --edge: rgba(56, 225, 255, 0.25);
+    --ease-out: cubic-bezier(.2, .9, .3, 1); --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
+    --dur-1: 110ms; --dur-2: 200ms; --dur-3: 320ms;
+    --shadow-card: 0 18px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
 
   * {
@@ -102,21 +111,28 @@
   .overlay.attract-anchor.in { background: linear-gradient(to bottom, rgba(4, 5, 16, 0) 45%, rgba(4, 5, 16, 0.55) 100%); }
 
   .panel {
-    background: var(--panel);
-    border: 1px solid rgba(56, 225, 255, 0.25);
-    border-radius: 20px;
+    /* a faint cyan sheen falls from the top edge: the card is lit by the same sky as the world */
+    background: linear-gradient(180deg, rgba(56, 225, 255, 0.07), rgba(56, 225, 255, 0) 140px), var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: var(--r-lg);
     --px: 26px; --py: 22px;
     padding: var(--py) var(--px);
     max-width: 440px;
     width: 100%;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--shadow-card);
     opacity: 0;
     transform: translateY(14px) scale(0.97);
-    transition: opacity 0.16s cubic-bezier(.2, .9, .3, 1), transform 0.16s cubic-bezier(.2, .9, .3, 1);
+    transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-3) var(--ease-spring);
   }
   .overlay.in .panel { opacity: 1; transform: translateY(0) scale(1); }
+  /* Screen transition: the card settles, then its rows rise in a quick 25ms cascade. */
+  @keyframes rowRise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .overlay.in .panel > :not(.dock) { animation: rowRise var(--dur-3) var(--ease-out) both; }
+  .overlay.in .panel > :nth-child(2) { animation-delay: 25ms; } .overlay.in .panel > :nth-child(3) { animation-delay: 50ms; }
+  .overlay.in .panel > :nth-child(4) { animation-delay: 75ms; } .overlay.in .panel > :nth-child(5) { animation-delay: 100ms; }
+  .overlay.in .panel > :nth-child(6) { animation-delay: 125ms; } .overlay.in .panel > :nth-child(n+7) { animation-delay: 150ms; }
   /* Every card fits the window it is in: never taller than the space the overlay leaves it (window height minus notch,
      home bar and margin), scrolling inside itself when a screen is short — a phone on its side, a small desktop window,
      an iPad with the keyboard up. Nothing is ever cut off with no way to reach it. */
@@ -131,6 +147,8 @@
     background: rgb(10, 14, 32); border-top: 1px solid rgba(207, 227, 255, 0.08); }
   .dock.top { bottom: auto; top: calc(-1 * var(--py)); margin-top: calc(-1 * var(--py)); padding: var(--py) var(--px) 12px;
     border-top: 0; border-bottom: 1px solid rgba(207, 227, 255, 0.08); }
+  /* A top dock under a title (Pause) must not ride up over it: only a first-child dock pulls into the padding. */
+  .panel > * + .dock.top { margin-top: var(--sp-2); top: 0; padding-top: var(--sp-2); }
   .dock .btn:first-child { margin-top: 0; }
   .dead-cols { display: block; }
   /* Never taller than the viewport: a long panel (Settings/Pause with the Run
@@ -161,6 +179,9 @@
     text-transform: uppercase;
     margin-bottom: 6px;
   }
+  .title-lg.t-md { font-size: var(--fs-lg); }
+  /* Eyebrow: the small tracked caption above a hero value (RUN OVER, section heads). */
+  .eyebrow { font-size: var(--fs-cap); font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan-lt); opacity: 0.85; }
   .sub {
     font-weight: 500;
     font-size: 13px;
@@ -183,10 +204,18 @@
     margin: 6px 0;
     width: 100%;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(56, 225, 255, 0.35);
-    transition: transform 0.08s ease;
+    box-shadow: 0 4px 14px rgba(56, 225, 255, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out), filter var(--dur-2) var(--ease-out), background-color var(--dur-2), border-color var(--dur-2);
   }
-  .btn:active { transform: scale(0.97); }
+  /* Press: sinks 1px and dims a touch — instant on the way down, springy on release. */
+  .btn:active { transform: translateY(1px) scale(0.97); filter: brightness(0.94); transition-duration: 40ms; }
+  .btn:disabled { opacity: 0.45; filter: saturate(0.4); cursor: default; box-shadow: none; transform: none; }
+  @media (hover: hover) and (pointer: fine) {
+    .btn:hover { filter: brightness(1.08); box-shadow: 0 6px 22px rgba(56, 225, 255, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.6); }
+    .btn.ghost:hover { background: rgba(56, 225, 255, 0.08); border-color: rgba(56, 225, 255, 0.55); box-shadow: none; }
+    .btn.coral:hover { box-shadow: 0 6px 22px rgba(255, 79, 102, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.45); }
+    .mini-chip:hover, .arrow-btn:hover { background: rgba(56, 225, 255, 0.2); }
+  }
   /* Keyboard + controller focus ring — same cyan ring as the switches/sliders.
      A gamepad has no :focus-visible heuristic, so .gamepad-active forces it. */
   .overlay button:focus-visible, .overlay summary:focus-visible,
@@ -197,7 +226,7 @@
      without level-4 `not` just keep the rows visible (the safe side). */
   @media (pointer: coarse) and (not (any-pointer: fine)) { .key-row { display: none; } }
   .btn.ghost {
-    background: transparent;
+    background: rgba(207, 227, 255, 0.025);
     color: var(--ui);
     border: 1px solid rgba(207, 227, 255, 0.3);
     box-shadow: none;
@@ -205,8 +234,10 @@
   .btn.coral {
     background: linear-gradient(180deg, #ff8b9b, var(--coral));
     color: #fff;
-    box-shadow: 0 4px 14px rgba(255, 79, 102, 0.35);
+    box-shadow: 0 4px 14px rgba(255, 79, 102, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    text-shadow: 0 1px 0 rgba(120, 10, 30, 0.35);
   }
+  .btn.ghost.coral { background: rgba(255, 79, 102, 0.05); color: #FF8B9B; border-color: rgba(255, 79, 102, 0.4); box-shadow: none; text-shadow: none; }
 
   .row { display: flex; gap: 10px; }
   .row .btn { margin: 6px 0; min-width: 0; padding: 14px 10px; }
@@ -226,6 +257,7 @@
   /* E9.1: panels appear, they don't slide/scale in; still dim the backdrop. */
   body.reduce-motion .btn, body.reduce-motion .overlay, body.reduce-motion .panel { transition: none; }
   body.reduce-motion .panel { opacity: 1; transform: none; }
+  body.reduce-motion .overlay.in .panel > * { animation: none; }
   body.reduce-motion #deadMedal.stamp { animation: none; }
   body.reduce-motion #deadDelta { transition: none; opacity: 1; transform: none; }
   body.reduce-motion #deadTapHint { transition: none; }
@@ -344,7 +376,20 @@
 
   /* Death card staged reveal (E9.3): hero number dressed, medal stamps in on
      its existing 300ms SFX, NEW BEST slides in last, tap hint fades late. */
-  #deadScore { font-weight: 800; text-shadow: 0 0 18px rgba(56, 225, 255, 0.35); }
+  /* Death card hierarchy: eyebrow → hero score → medal → delta pill → stat tiles → next goal. */
+  #deadScore { font-weight: 800; font-size: var(--fs-hero); line-height: 1.05; margin: 2px 0 4px; letter-spacing: 1px; text-shadow: 0 0 22px rgba(56, 225, 255, 0.4); }
+  #deadMedal { font-size: 18px; letter-spacing: 4px; font-weight: 700; opacity: 1; height: 0; overflow: visible; }
+  #deadMedal.has { height: 24px; }
+  #deadDelta { display: inline-block; margin: 8px 0 2px; padding: 5px 12px; border-radius: var(--r-pill); font-weight: 700; letter-spacing: 2px; font-size: 12px;
+    background: rgba(207, 227, 255, 0.06); border: 1px solid var(--line-2); opacity: 0; }
+  #deadDelta.best { background: rgba(255, 201, 60, 0.1); border-color: rgba(255, 201, 60, 0.4); }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); margin: 12px 0 4px; }
+  .stat-grid .stat { padding: 7px 4px 6px; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); }
+  .stat-grid b { display: block; font: 800 15px var(--font-num); color: var(--suit); letter-spacing: 0.5px; }
+  .stat-grid span { display: block; margin-top: 2px; font-size: 8.5px; letter-spacing: 1.5px; color: var(--cyan); opacity: 0.9; }
+  .stat-grid .stat.done b { color: var(--green); }
+  .next-goal { font-size: 11px; letter-spacing: 1px; margin-top: 6px; color: var(--cyan-lt); opacity: 0.85; }
+  .next-goal::before { content: '▸ '; color: var(--gold); }
   @keyframes medalStamp { 0% { transform: scale(1.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
   #deadMedal.stamp { animation: medalStamp 0.25s cubic-bezier(.2, .9, .3, 1); }
   #deadDelta { opacity: 0; transform: translateY(6px); transition: opacity 0.25s ease, transform 0.25s ease; }
@@ -352,6 +397,20 @@
   #deadTapHint { opacity: 0; font-size: 10px; letter-spacing: 2px; margin-top: 10px; transition: opacity 0.4s ease; }
   #deadTapHint.show { opacity: 0.5; }
 
+  .medal-empty { font-size: var(--fs-cap); letter-spacing: 2px; text-transform: uppercase; color: var(--ui); opacity: 0.6; }
+  /* Narrow phones (320–380 wide): tighter tracking so two-word buttons stay on one line. */
+  @media (max-width: 380px) {
+    .panel { --px: 18px; }
+    .btn { letter-spacing: 1px; font-size: 13px; }
+    .row .btn { padding: 12px 6px; }
+    #btnDaily .daily-info { font-size: 10px; }
+  }
+  /* Short portrait (small phones): the title card sheds its teaching rows so the
+     wordmark and the hero keep their sky — the first run teaches in-game anyway. */
+  @media (orientation: portrait) and (max-height: 680px) {
+    #ovAttract .control-guide, #ovAttract #attractStats { display: none !important; }
+    #ovAttract #attractMedals { margin: 2px 0 8px !important; }
+  }
   /* Compact cards for short (phone-landscape) viewports. */
   @media (max-height: 430px) {
     .overlay { --oy: 10px; }
@@ -374,8 +433,17 @@
     #ovDead .panel, #ovPause .panel, #ovSettings .panel { max-width: min(760px, 100%); }
     .dead-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 26px; text-align: center; align-items: start; }
     .dead-side { align-self: stretch; }
-    #deadScore { font-size: 38px !important; margin: 2px 0 !important; }
-    #deadMedal { height: 20px !important; font-size: 17px !important; }
+    #deadScore { font-size: 38px; margin: 2px 0; }
+    #deadMedal { font-size: 16px; }
+    #deadMedal.has { height: 20px; }
+    .stat-grid { margin: 8px 0 2px; }
+    .stat-grid .stat { padding: 4px 2px; }
+    /* Title card goes two-column and sits low: wordmark and hero keep the sky. */
+    #ovAttract { justify-content: flex-end; }
+    #ovAttract .panel { max-width: min(740px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 22px; align-items: center; }
+    #ovAttract #attractMedals { margin: 2px 0 6px !important; }
+    #ovAttract .control-guide { margin: 4px 0; }
+    #ovAttract .stats-line { margin-top: 4px; }
     #ovPause .settings-list, #ovSettings .settings-list { column-count: 2; column-gap: 28px; }
     #ovPause .settings-list > *, #ovSettings .settings-list > * { break-inside: avoid; }
     .control-guide { margin: 8px 0 4px; }
@@ -648,11 +716,14 @@
 <!-- Attract / landing -->
 <div class="overlay attract-anchor" id="ovAttract">
   <div class="panel">
+    <div class="attract-main">
     <div id="attractBest" class="title-lg" style="font-size:17px;letter-spacing:2px;color:var(--gold);margin-bottom:4px;">BEST 0</div>
     <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
     <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
     <button class="btn pulse" id="btnPlay">Tap to Start</button>
     <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course</span><span class="daily-info" id="dailyInfo"></span></button>
+    </div>
+    <div class="attract-side">
     <div class="control-guide desktop-guide" aria-label="Keyboard controls">
       <div><b>A D / ← →</b><span>MOVE</span></div>
       <div><b>SPACE</b><span>JUMP</span></div>
@@ -675,6 +746,7 @@
       <button class="btn ghost" id="btnTogether">Run Together</button>
     </div>
     <div id="attractStats" class="stats-line"></div>
+    </div>
   </div>
 </div>
 
@@ -700,12 +772,12 @@
   <div class="panel">
     <div class="dead-cols">
     <div class="dead-main">
-    <div class="sub" style="letter-spacing:3px;">RUN OVER</div>
-    <div id="deadScore" class="title-lg" style="font-size:44px;margin:4px 0;">0</div>
-    <div id="deadMedal" class="sub" style="font-size:20px;letter-spacing:4px;height:24px;"></div>
-    <div id="deadDelta" class="sub" style="margin:8px 0;font-weight:700;letter-spacing:2px;"></div>
-    <div id="deadStats" class="stats-line" style="opacity:0.8;"></div>
-    <div id="deadTarget" class="sub" style="font-size:11px;opacity:0.7;margin-top:4px;display:none;"></div>
+    <div class="eyebrow">Run Over</div>
+    <div id="deadScore" class="title-lg">0</div>
+    <div id="deadMedal" class="sub"></div>
+    <div id="deadDelta" class="sub"></div>
+    <div id="deadStats" class="stat-grid"></div>
+    <div id="deadTarget" class="sub next-goal" style="display:none;"></div>
     <div id="deadCourse" class="sub" style="font-size:11px;letter-spacing:1.5px;color:var(--gold);margin-top:6px;display:none;"></div>
     <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
     <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
@@ -733,7 +805,7 @@
 <!-- Settings -->
 <div class="overlay" id="ovSettings">
   <div class="panel">
-    <div class="title-lg" style="font-size:22px;">Settings</div>
+    <div class="title-lg t-md">Settings</div>
     <div class="settings-list" data-settings-host></div>
     <button class="btn ghost" id="btnWardrobe2" style="margin-top:12px;">Suit Up</button>
     <button class="btn ghost coral" id="btnReset">Reset All Data</button>
@@ -744,7 +816,7 @@
 <!-- Wardrobe — bottom-anchored so the live attract scene stays the preview -->
 <div class="overlay attract-anchor" id="ovWardrobe">
   <div class="panel">
-    <div class="title-lg" style="font-size:20px;">Your Spacefarer</div>
+    <div class="title-lg t-md">Your Spacefarer</div>
     <div class="swatch-row" id="suitRow"></div>
     <div class="ward-name" id="suitName"></div>
     <div class="swatch-row" id="hatRow"></div>
@@ -757,7 +829,7 @@
 <!-- Records: top 5 → stats → discovery logbook -->
 <div class="overlay" id="ovTrophy">
   <div class="panel">
-    <div class="title-lg" style="font-size:22px;">Records</div>
+    <div class="title-lg t-md">Records</div>
     <table class="scores" id="trophyScores"></table>
     <div id="trophyStats" class="stats-line"></div>
     <div id="logbook"></div>
@@ -769,7 +841,7 @@
 <!-- Initials entry -->
 <div class="overlay" id="ovInitials">
   <div class="panel">
-    <div class="title-lg" style="font-size:20px;">New High Score!</div>
+    <div class="title-lg t-md">New High Score!</div>
     <div class="sub">Enter your initials</div>
     <div class="initials" id="initialsPicker"></div>
     <button class="btn" id="btnInitialsOk">OK</button>
@@ -779,7 +851,7 @@
 <!-- Run Together: the front door — create a room, or join one with a code or a link -->
 <div class="overlay" id="ovTogether">
   <div class="panel">
-    <div class="title-lg" style="font-size:22px;">Run Together</div>
+    <div class="title-lg t-md">Run Together</div>
     <div class="sub">Race the same course with friends, on any device.</div>
     <button class="btn pulse" id="btnCreateRoom">Create a Room</button>
     <div class="together-or" aria-hidden="true">or join a friend</div>
@@ -796,7 +868,7 @@
 <!-- Run Together: room card — attract-anchored so the idle scene stays behind it -->
 <div class="overlay attract-anchor" id="ovRoom">
   <div class="panel">
-    <div class="title-lg" id="roomTitle" style="font-size:20px;">Room</div>
+    <div class="title-lg t-md" id="roomTitle">Room</div>
     <div class="net-sub" id="roomCounts"></div>
     <div class="room-codebar invite-block" id="roomCodeBar">
       <div class="k">Room code · tap to copy</div>
@@ -840,7 +912,7 @@
 <!-- Run Together: join invite prompt -->
 <div class="overlay" id="ovJoin">
   <div class="panel">
-    <div class="title-lg" id="joinTitle" style="font-size:20px;">Join This Run Together?</div>
+    <div class="title-lg t-md" id="joinTitle">Join This Run Together?</div>
     <div id="joinState"></div>
     <div id="joinCustomDir">This room uses a custom relay directory.</div>
     <div id="joinChoices">
@@ -854,7 +926,7 @@
 <!-- Run Together: blocked-host warning -->
 <div class="overlay" id="ovBlockedHost">
   <div class="panel">
-    <div class="title-lg" style="font-size:20px;">Blocked Host</div>
+    <div class="title-lg t-md">Blocked Host</div>
     <div class="sub">This room is hosted by someone you've blocked.</div>
     <button class="btn" id="btnBlockedNotNow">Not Now</button>
     <button class="btn ghost" id="btnJoinAnyway">Join Anyway</button>
@@ -864,7 +936,7 @@
 <!-- Run Together: callsign picker (two-column spinner) -->
 <div class="overlay" id="ovCallsign">
   <div class="panel">
-    <div class="title-lg" style="font-size:20px;">Your Callsign</div>
+    <div class="title-lg t-md">Your Callsign</div>
     <div class="callsign-cols" id="callsignCols"></div>
     <div id="callsignPreview"></div>
     <button class="btn ghost" id="btnCallsignReroll">Re-roll</button>
@@ -891,6 +963,9 @@
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
 <script src="src/course.js"></script>
+<!-- Presentation only: shared palette + draw helpers, and the character animation rig. -->
+<script src="src/art.js"></script>
+<script src="src/anim.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
      #j= invite is accepted (net-spec §4.1 lazy gate). -->
@@ -1151,7 +1226,9 @@ const tmetaEl = document.getElementById('tmeta');   // eased every tick during a
 const view = { w: 640, h: 360, scale: 1, dpr: 1, isTablet: false };
 // Shared HUD/text scale — shrinks on narrow (portrait) views. Used by both the
 // HUD chrome and the popup layer so the two never drift apart.
-const uiScale = () => clamp(view.w / 560, 0.72, 1);
+// Floor 0.86: a phone held upright (420 logical px) still gets a HUD you can read
+// at a glance mid-jump (the odometer lands ~16 CSS px instead of ~13).
+const uiScale = () => clamp(view.w / 560, 0.86, 1);
 
 // Adaptive resolution: a phone that can't hold ~45fps steps its backing-store
 // DPR down (2 → 1.5 → 1) at a calm moment. Render-only — logical view size,
@@ -1231,6 +1308,23 @@ const GLOW = {
   green: glowSprite(30, 'rgba(78,240,122,0.4)', 0.25),
   white: glowSprite(40, 'rgba(232,244,255,0.5)', 0.2),
 };
+// Presentation kit (src/art.js palette + helpers, src/anim.js rig). The rig is a
+// render-side READ of the player, stepped per sim tick in finishTick — it never
+// writes sim state or draws from rng, so runs and #shot frames stay deterministic.
+const ART = window.SpaceManArt, ANIM = window.SpaceManAnim;
+const rig = ANIM.createRig();
+const _rigIn = { onGround: true, vx: 0, vy: 0, dead: false, kills: 0, hang: false, idle: 0 };
+const _legIn = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 0, hipY: 0, hipX: 4, len: 6.4 };
+const _leg = new Float32Array(12), _pt = new Float32Array(2);
+function rigTick() {
+  const p = G.player; if (!p) return;
+  const s = _rigIn;
+  s.onGround = !!p.onGround; s.vx = p.vx; s.vy = p.vy; s.dead = !!p.dead; s.kills = G.killsRun | 0; s.hang = !!p.hang; s.idle = p.idle || 0;
+  ANIM.stepRig(rig, s, STEP, lessMotion());
+  if (rig.stomp > 0.9) { rig.stompX = p.x + p.w / 2; rig.stompY = p.y + p.h + 2; }   // where the shock ring blooms
+  if (G.companion) ANIM.stepComet(rig, G.companion.x, G.companion.y, STEP, rig.stomp > 0.9);
+  else rig.tailFill = 0;
+}
 
 /* Gradients are allocation-heavy to build; none of these change per frame.
    Boot-built ones depend only on constants; view-sized ones are nulled in
@@ -1238,7 +1332,7 @@ const GLOW = {
 // Platform slab gradient re-baked per sector hue (E6): the readable #38E1FF
 // rim stays fixed, only the dark end tints. Rebuilt on band change only —
 // drawPlatforms lazily detects the hue mismatch, same pattern as buildNebula.
-let platGrad = null, platGradHue = -1;
+let platGrad = null, platGradHue = -1, platAccent = '#6BF7E0';
 function buildPlatGrad(hue) {
   const g = ctx.createLinearGradient(0, 0, 0, 44);
   g.addColorStop(0, '#38E1FF'); g.addColorStop(1, `hsl(${hue} 55% 24%)`);
@@ -3727,6 +3821,7 @@ function update() {
         const topCss = card.getBoundingClientRect().top;
         if (topCss > 0) {
           const topView = topCss * (view.h / window.innerHeight);
+          G.attractCardTop = topView;   // the wordmark reads this to stay clear on tight screens
           // keep the hero (drawn above the platform line) fully clear of the card
           platformScreenY = Math.min(platformScreenY, topView - 14);
         }
@@ -3768,6 +3863,7 @@ function update() {
   finishTick();
 }
 function finishTick() {
+  rigTick();   // presentation rig: a read of this tick's player, never a write
   updateParticles();
   updatePopups();
   G.trauma = Math.max(0, G.trauma - 0.03);
@@ -3905,7 +4001,7 @@ function render(alpha) {
   ctx.fillStyle = '#060818'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(view.scale, 0, 0, view.scale, 0, 0);
 
-  drawBackground(iCamX);
+  drawBackground(iCamX, iCamY);
 
   // Reduce Motion drops the hit-punch zoom outright (death zoom is already softened).
   const zoom = (G.player && G.player.dead ? G.deathZoom : (lessMotion() ? 1 : G.punchZoom));
@@ -3916,6 +4012,24 @@ function render(alpha) {
   if (G.player && G.player.dead && G.deathFocus) {
     pvx = clamp(G.deathFocus.x - iCamX, view.w * 0.22, view.w * 0.78);
     pvy = clamp(G.deathFocus.y - iCamY, view.h * 0.25, view.h * 0.70);
+  }
+  // Portrait death framing: the run-over card owns the lower half of a tall
+  // screen, so the camera eases the fallen hero up into the clear sky above it
+  // (render-only; Reduce Motion cuts straight to the framed shot with the card).
+  if (G.player && G.player.dead && G.deathFocus && view.h > view.w * 1.2) {
+    const k = lessMotion() ? (G.deathCardShown ? 1 : 0) : easeOutCubic(clamp((G.deathSeq - 0.25) / 1.1, 0, 1));
+    const fx = G.deathFocus.x - iCamX, fy = G.deathFocus.y - iCamY;
+    // Aim a little above the card's top edge once it is up (tall cards on small
+    // phones reach well past mid-screen); ease the aim so the reveal never pops.
+    let want = view.h * 0.3;
+    if (G.deathCardShown && !SHOT) {
+      const card = $('ovDead').firstElementChild;
+      const top = card ? card.getBoundingClientRect().top * (view.h / window.innerHeight) : 0;
+      if (top > 0) want = Math.min(want, top - 40);
+    }
+    if (G.deathPanY === undefined || !G.deathCardShown) G.deathPanY = want;
+    G.deathPanY += (want - G.deathPanY) * 0.12;
+    ctx.translate((view.w * 0.5 - fx) * k * 0.6, (Math.max(40, G.deathPanY) - fy) * k);
   }
   ctx.translate(pvx + G.shake.x, pvy + G.shake.y); ctx.rotate(G.shake.rot);
   ctx.scale(zoom, zoom); ctx.translate(-pvx, -pvy);
@@ -4022,16 +4136,21 @@ function drawToast() {
 // drawn wordmark can never drift apart — one measurement, two consumers.
 function wordmarkMetrics() {
   const text = 'SPACE MAN';
-  const cy = Math.max(52, view.h * 0.19);
+  let cy = Math.max(52, view.h * 0.19);
   let size = clamp(view.w * 0.13, 18, 68);
   ctx.font = '900 ' + size + 'px ' + FONT;
   const w = ctx.measureText(text).width;
   const maxW = view.w * (view.h > view.w ? 0.78 : 0.86);   // portrait: keep chroma fringe off the edge
   if (w > maxW) { size = Math.max(14, size * maxW / w); ctx.font = '900 ' + size + 'px ' + FONT; }
-  return { text, cy, size };
+  // Tight title (phone on its side: the card rises to ~⅓ height): lift the mark so
+  // the hero standing above the card never overlaps it, and drop the taglines.
+  const ct = G.mode === 'attract' ? G.attractCardTop : undefined;
+  const tight = ct !== undefined && ct - (cy + size * 0.62) < 70;
+  if (tight) cy = Math.max(size * 0.55 + 6, Math.min(cy, ct - 64 - size * 0.55));
+  return { text, cy, size, tight };
 }
 function drawWordmark() {
-  const { text, cy, size } = wordmarkMetrics();
+  const { text, cy, size, tight } = wordmarkMetrics();
   const cx = view.w / 2 + cy * 0.08;       // compensate the skew's x-shift so it stays centered
   const off = clamp(size * 0.045, 1.5, 6);   // chroma fringe scales with size instead of a fixed 3px
   ctx.save();
@@ -4042,15 +4161,16 @@ function drawWordmark() {
   ctx.globalAlpha = 0.55; ctx.fillStyle = '#38E1FF'; ctx.fillText(text, cx, cy + 2.5);    // cyan glow underlay
   ctx.globalAlpha = 1; ctx.fillStyle = '#F4F7FF'; ctx.fillText(text, cx, cy);             // white top layer
   ctx.restore();
-  // tagline pulse under the wordmark
-  ctx.globalAlpha = 0.4 + 0.3 * (0.5 + 0.5 * Math.sin(G.time * 3));
+  if (tight) return;
+  // tagline pulse under the wordmark (floor 0.55: never dims past legible; still under Reduce Motion)
+  ctx.globalAlpha = lessMotion() ? 0.8 : 0.55 + 0.3 * (0.5 + 0.5 * Math.sin(G.time * 3));
   ctx.fillStyle = '#9FF1FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.font = '700 ' + clamp(size * 0.2, 9, 13) + 'px ' + FONT;
   const tagY = cy + size * 0.62;
   ctx.fillText('OUTRUN THE FLARE', view.w / 2, tagY);
   // E7: one line of fiction under the tagline — alpha floor raised to 0.55 so
   // it never dims past legible (AR10's "illegible dim phase").
-  ctx.globalAlpha = 0.55 + 0.25 * (0.5 + 0.5 * Math.sin(G.time * 2 + 1.7));
+  ctx.globalAlpha = lessMotion() ? 0.7 : 0.55 + 0.25 * (0.5 + 0.5 * Math.sin(G.time * 2 + 1.7));
   ctx.fillStyle = '#9FB3E0'; ctx.font = '600 ' + clamp(size * 0.16, 10, 13) + 'px ' + FONT;
   ctx.fillText('THE SUN LET GO. KEEP RUNNING.', view.w / 2, tagY + 16);
   ctx.globalAlpha = 1;
@@ -4094,7 +4214,72 @@ function buildStars() {
   for (let i = 0; i < 40; i++) starfield.near.push({ x: sr() * W, y: sr() * view.h * 0.75, ph: sr() * TAU });
   starsBuilt = true;
 }
-function drawBackground(camX) {
+/* ---- skyline ridges: two cached silhouette tiles per sector hue (far, near),
+   seamless 1024-wide, drawn with their own parallax (x and y) between the stars
+   and the action. Atmospheric perspective: the far range is lighter and softer.
+   Built from ART.ridgeProfile (integer-frequency sines) — no rng anywhere. ---- */
+const RIDGE_W = 1024, RIDGE_H = 300;
+let ridgeTiles = null, ridgePrev = null, ridgeHue = -1;
+const _ridgeProf = new Float32Array(RIDGE_W + 1);
+function buildRidgeTile(hue, near) {
+  const B = ART.biome(hue), c = makeCanvas(RIDGE_W, RIDGE_H), g = c.getContext('2d');
+  const base = near ? 176 : 150, amp = near ? 48 : 72;
+  ART.ridgeProfile(RIDGE_W, near ? 7 : 3, near ? 1.4 : 1, _ridgeProf);
+  const grd = g.createLinearGradient(0, base - amp, 0, RIDGE_H);
+  grd.addColorStop(0, near ? B.ridgeNear : B.ridgeFar); grd.addColorStop(0.3, near ? B.ridgeNear : B.ridgeFar);
+  grd.addColorStop(1, 'rgba(6,8,24,0)');
+  g.fillStyle = grd; g.beginPath(); g.moveTo(0, RIDGE_H);
+  for (let x = 0; x <= RIDGE_W; x += 4) g.lineTo(x, base - _ridgeProf[x] * amp);
+  g.lineTo(RIDGE_W, RIDGE_H); g.closePath(); g.fill();
+  // crystal spires on the near range (deterministic spots, lit on one face)
+  if (near) {
+    for (let i = 0; i < 9; i++) {
+      const sx = Math.round(ANIM.hash01(i * 7.3 + 1) * (RIDGE_W - 40)) + 20, sh = 16 + ANIM.hash01(i * 3.1 + 2) * 34, sw = 5 + ANIM.hash01(i * 5.7) * 7;
+      const gy = base - _ridgeProf[sx - (sx % 4)] * amp + 4;
+      g.fillStyle = B.ridgeNear; g.beginPath(); g.moveTo(sx - sw, gy); g.lineTo(sx, gy - sh); g.lineTo(sx + sw, gy); g.closePath(); g.fill();
+      g.fillStyle = B.rimNear; g.beginPath(); g.moveTo(sx - sw, gy); g.lineTo(sx, gy - sh); g.lineTo(sx - sw * 0.25, gy); g.closePath(); g.fill();
+    }
+  } else {
+    // far outposts: a few pinprick lights along the crest
+    g.fillStyle = B.accent;
+    for (let i = 0; i < 12; i++) {
+      const sx = Math.round(ANIM.hash01(i * 11.1 + 4) * RIDGE_W) & ~3;
+      g.globalAlpha = 0.35 + ANIM.hash01(i) * 0.4;
+      g.fillRect(sx, base - _ridgeProf[sx] * amp + 6 + ANIM.hash01(i * 2.3) * 14, 1.5, 1.5);
+    }
+    g.globalAlpha = 1;
+  }
+  // rim light along the crest
+  g.strokeStyle = near ? B.rimNear : B.rimFar; g.lineWidth = near ? 1.5 : 1.2; g.lineJoin = 'round';
+  g.beginPath();
+  for (let x = 0; x <= RIDGE_W; x += 4) { const yy = base - _ridgeProf[x] * amp; if (x) g.lineTo(x, yy); else g.moveTo(x, yy); }
+  g.stroke();
+  return c;
+}
+function drawRidges(camX, camY) {
+  const hue = BAND_HUE[G.band] || 218;
+  if (hue !== ridgeHue) {
+    ridgePrev = (ridgeTiles && G.sectorFadeT < 1.5) ? ridgeTiles : null;   // crossfade with the sky
+    ridgeTiles = [buildRidgeTile(hue, false), buildRidgeTile(hue, true)]; ridgeHue = hue;
+  }
+  const px = lessMotion() ? 0.5 : 1, gs = G.groundY - camY;
+  const fade = ridgePrev && G.sectorFadeT < 1.5 ? 1 - easeOutQuad(clamp(G.sectorFadeT / 1.5, 0, 1)) : 0;
+  for (let layer = 0; layer < 2; layer++) {
+    const par = layer ? 0.16 : 0.07, vpar = layer ? 0.4 : 0.22;
+    const ty = view.h * 0.6 + (gs - view.h * 0.6) * vpar + (layer ? 36 : 6) - 160;
+    const x0 = -(((camX * par * px) % RIDGE_W) + RIDGE_W) % RIDGE_W;
+    const la = layer ? 0.9 : 0.62;   // haze: the far range sits back in the sky
+    ctx.globalAlpha = la;
+    for (let x = x0; x < view.w; x += RIDGE_W) ctx.drawImage(ridgeTiles[layer], x, ty);
+    ctx.globalAlpha = 1;
+    if (fade > 0) {
+      ctx.globalAlpha = fade * la;
+      for (let x = x0; x < view.w; x += RIDGE_W) ctx.drawImage(ridgePrev[layer], x, ty);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+function drawBackground(camX, camY) {
   const hue = BAND_HUE[G.band] || 218;
   if (!skyCanvas || skyHue !== hue) { skyCanvas = buildSky(hue); skyHue = hue; }
   ctx.drawImage(skyCanvas, 0, 0, 1, skyCanvas.height, 0, 0, view.w, view.h);
@@ -4141,10 +4326,11 @@ function drawBackground(camX) {
     ctx.fillRect(x, s.y, 2, 2);
   }
   ctx.globalAlpha = 1;
-  if (G.mode === 'attract') drawAttractFlareGlow();
-  if (G.player && G.mode !== 'attract') { drawFlareTongues(); drawFloorBloom(); }
   if (G.whale) drawWhale(camX, hue);
   drawPlanet(camX);
+  if (camY !== undefined) drawRidges(camX, camY);   // skyline depth sits behind the flare light
+  if (G.mode === 'attract') drawAttractFlareGlow();
+  if (G.player && G.mode !== 'attract') { drawFlareTongues(); drawFloorBloom(); }
   if (G.sat) drawSatellite(camX);
   if (G.ufo) {
     const u = G.ufo, uy = u.y + Math.sin(u.phase) * 5;
@@ -4298,10 +4484,26 @@ function drawSaucerBody(x, uy, domeBright) {
   ctx.beginPath(); ctx.arc(x, uy - 3, 7, Math.PI, 0); ctx.fill();
   ctx.fillStyle = '#FFC93C'; for (const lx of [-10, 0, 10]) { ctx.beginPath(); ctx.arc(x + lx, uy + 2, 1.5, 0, TAU); ctx.fill(); }
 }
+// Ambient foreground: soft dust motes drifting up past the lens (faster than the
+// action = in front of it) and three out-of-focus bokeh discs for depth. Fixed
+// hashed layout, one cached sprite per sector hue, ~25 drawImage calls.
+const MOTES = [];
+for (let i = 0; i < 22; i++) MOTES.push({ x: ANIM.hash01(i * 4.1) * 1200, y: ANIM.hash01(i * 9.7 + 3), par: 1.1 + ANIM.hash01(i * 2.9) * 0.6, r: 1 + ANIM.hash01(i * 6.1) * 1.6, ph: ANIM.hash01(i * 1.3) * TAU });
+for (let i = 0; i < 3; i++) MOTES.push({ x: 150 + i * 420, y: 0.2 + i * 0.3, par: 1.9, r: 7 + i * 3, ph: i * 2, bokeh: true });
+let moteSpr = null, moteHue = -1;
 function drawForeground(camX) {
-  ctx.fillStyle = 'rgba(232,244,255,0.06)';
-  const W = 900;
-  for (let i = 0; i < 14; i++) { const x = ((i * 137 - camX * 1.3) % W + W) % W, y = (i * 53) % view.h; ctx.fillRect(x, y, 2, 2); }
+  const hue = BAND_HUE[G.band] || 218;
+  if (hue !== moteHue) { moteSpr = ART.glow(16, ART.biome(hue).mote.replace(/, 1\)$/, ', 0.9)'), 0.2); moteHue = hue; }
+  const spr = moteSpr, calm = lessMotion(), W = 1200, H = view.h + 40;
+  for (const m of MOTES) {
+    const x = ((m.x - camX * m.par) % W + W) % W - 20;
+    if (x < -40 || x > view.w + 40) continue;
+    const y = calm ? m.y * H : (((m.y * H - G.time * 7 * m.par) % H) + H) % H - 20;
+    const s = m.r * (m.bokeh ? 4 : 5);
+    ctx.globalAlpha = m.bokeh ? 0.07 : 0.22 + 0.2 * Math.sin(G.time * 1.3 + m.ph);
+    ctx.drawImage(spr, x - s / 2, y - s / 2, s, s);
+  }
+  ctx.globalAlpha = 1;
 }
 
 /* ---- flare wall ---- */
@@ -4332,8 +4534,8 @@ function drawPlatforms(camX) {
   // Sector-tinted slab art (E6), rebuilt only on hue change — a few gradient
   // stops, < 1ms, same lazy pattern as buildNebula.
   const hue = BAND_HUE[G.band] || 218;
-  if (platGradHue !== hue) { platGrad = buildPlatGrad(hue); platGradHue = hue; }
-  const underGlow = platGlow(hue);
+  if (platGradHue !== hue) { platGrad = buildPlatGrad(hue); platGradHue = hue; platAccent = ART.biome(hue).accent; }
+  const underGlow = platGlow(hue), calm = lessMotion();
   for (const pl of G.platforms) {
     if (pl.x + pl.w < camX - 40 || pl.x > camX + view.w + 40) continue;
     const w = pl.w;
@@ -4352,6 +4554,16 @@ function drawPlatforms(camX) {
     ctx.strokeStyle = '#E9FDFF'; ctx.lineWidth = 2.5;
     ctx.beginPath(); ctx.moveTo(4, 2); ctx.lineTo(w - 4, 2); ctx.stroke();
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect(2, 1, 10, 3.5); ctx.fillRect(w - 12, 1, 10, 3.5);
+    // Surface detail that reads at speed: a sheen band under the rim, panel seams,
+    // a row of running lights in the sector accent, and a shaded underside lip.
+    ctx.fillStyle = 'rgba(233,253,255,0.16)'; ctx.fillRect(4, 4, w - 8, 5);
+    ctx.strokeStyle = 'rgba(8,24,60,0.2)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let sx = 44; sx < w - 20; sx += 48) { ctx.moveTo(sx + 0.5, 12); ctx.lineTo(sx + 0.5, 33); }
+    ctx.stroke();
+    ctx.fillStyle = platAccent; ctx.globalAlpha = (calm ? 0.7 : 0.55 + 0.35 * Math.sin(G.time * 2.2 + pl.x * 0.01)) * fade;
+    for (let sx = 20; sx < w - 10; sx += 48) ctx.fillRect(sx - 1, 22, 3, 2);
+    ctx.globalAlpha = fade;
+    ctx.fillStyle = 'rgba(4,10,30,0.28)'; ctx.fillRect(6, 35, w - 12, 3);
     if (pl.crumble) {
       // Cracked slab — readable before you commit to the jump; the fractures
       // heat to amber once it's been touched and the countdown is live.
@@ -4501,12 +4713,18 @@ const SGN = [-1, 1];
 function drawEnemies(camX, alpha) {
   for (const e of G.enemies) {
     if (e.x < camX - 80 || e.x > camX + view.w + 80) continue;
+    const ex = lerp(e.px, e.x, alpha), ey = lerp(e.py, e.y, alpha);
+    if (e.type === 'patrol' && !e.dead) ART.contactShadow(ctx, ex, ey + e.h / 2 + 1, 26, 0.75);
     ctx.save();
-    ctx.translate(lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha));
+    ctx.translate(ex, ey);
     if (e.dead) { const s = clamp(1 - e.squash, 0, 1); ctx.scale(1 + e.squash, s); }
     const walk = e.type === 'patrol' ? Math.sin(e.walkPhase) : Math.sin(e.bob || 0);
     const squash = 1 + walk * 0.08;
     const tel = e.telegraph > 0;
+    // Anticipation: a shooter crouches into its shot while telegraphing.
+    if (tel && !e.dead && !lessMotion()) { ctx.translate(0, e.h / 2); ctx.scale(1.08, 0.9); ctx.translate(0, -e.h / 2); }
+    // Blink on a per-alien offset of the frame clock (never rng): alive, not synced.
+    const blink = !e.dead && ((G.time + e.x * 0.0137) % 3.3) < 0.11;
     if (e.type === 'shoot') { ctx.fillStyle = '#1F9E4E'; ctx.beginPath(); ctx.ellipse(0, 7, 16, 6, 0, 0, TAU); ctx.fill(); }
     ctx.drawImage(e.golden ? GLOW.gold : GLOW.green, -30, -30, 60, 60);
     ctx.fillStyle = e.golden ? '#FFC93C' : (tel && Math.floor(G.time * 20) % 2 ? '#8CFFB0' : '#4EF07A');
@@ -4526,8 +4744,8 @@ function drawEnemies(camX, alpha) {
     }
     const lx = e.lookX * 2, ly = e.lookY * 1.5;
     for (const sgn of SGN) {
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(sgn * 5, -2, 3.5, 4.5, 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#0a1428'; ctx.beginPath(); ctx.arc(sgn * 5 + lx, -2 + ly, 1.8, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(sgn * 5, -2, 3.5, blink ? 0.7 : 4.5, 0, 0, TAU); ctx.fill();
+      if (!blink) { ctx.fillStyle = '#0a1428'; ctx.beginPath(); ctx.arc(sgn * 5 + lx, -2 + ly, 1.8, 0, TAU); ctx.fill(); }
     }
     ctx.strokeStyle = e.golden ? '#7A4C00' : '#176B3A'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
     ctx.beginPath();
@@ -4571,20 +4789,34 @@ function drawBullets(camX, alpha) {
 function drawCompanion() {
   const c = G.companion;
   if (!c || (G.player && G.player.dead)) return;
+  const cs = rig.comet;
+  // Comet tail: the rig's ring buffer of recent positions, tapering and fading —
+  // a real trail that swoops with every turn instead of a fixed squiggle.
+  if (rig.tailFill) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round'; ctx.strokeStyle = '#9FF1FF';
+    let px0 = c.x, py0 = c.y;
+    for (let i = 1; i < ANIM.TAIL; i++) {
+      ANIM.tailPoint(rig, i, _pt);
+      const k = 1 - i / ANIM.TAIL;
+      ctx.globalAlpha = 0.5 * k; ctx.lineWidth = 1 + 6 * k;
+      ctx.beginPath(); ctx.moveTo(px0, py0); ctx.lineTo(_pt[0], _pt[1]); ctx.stroke();
+      px0 = _pt[0]; py0 = _pt[1];
+    }
+    ctx.restore();
+  }
   ctx.save(); ctx.translate(c.x, c.y);
   ctx.drawImage(GLOW.cyan, -24, -24, 48, 48);
+  // Body squashes along its motion (stretch into the swoop), and bobs.
+  const ang = Math.atan2(cs.vy, cs.vx || 0.0001), sq = lessMotion() ? 0 : cs.squash;
+  ctx.save(); ctx.rotate(ang); ctx.scale(1 + sq, 1 - sq * 0.6); ctx.rotate(-ang);
   ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.fill();
-  // two happy blinks during the victory loop
-  const blink = c.loopT > 0 && ((c.loopT > 0.5 && c.loopT < 0.62) || (c.loopT > 0.2 && c.loopT < 0.32));
-  if (blink) {
-    ctx.strokeStyle = '#F4F7FF'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(0.2, -1.5); ctx.lineTo(3.2, -1.3); ctx.stroke();
-  } else {
-    ctx.fillStyle = '#F4F7FF'; ctx.beginPath(); ctx.arc(1.5, -1.5, 2.2, 0, TAU); ctx.fill();
-    ctx.fillStyle = '#1479FF'; ctx.beginPath(); ctx.arc(2.1, -1.4, 1, 0, TAU); ctx.fill();
-  }
-  ctx.strokeStyle = 'rgba(159,241,255,.65)'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(-5, 2); ctx.quadraticCurveTo(-13, 5 + Math.sin(c.phase) * 3, -19, 1); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.beginPath(); ctx.arc(-1.8, -2.4, 1.6, 0, TAU); ctx.fill();   // specular
+  ctx.restore();
+  // Personality: ^^ on the victory loop or a stomp, sleepy beside an idle hero,
+  // otherwise it glances where it's flying and blinks on the hero's cadence.
+  const idle = G.player ? G.player.idle || 0 : 0;
+  const mood = (c.loopT > 0 || cs.happy > 0) ? 1 : idle > 6 ? 3 : 0;
+  ART.eyes(ctx, 1.2 + cs.look * 1.2, -1.2, 2.3, 1.6, 2, cs.look, 0, ANIM.lidAmount(rig), mood, '#F4F7FF', '#1479FF');
   ctx.restore();
 }
 
@@ -4683,6 +4915,19 @@ function drawPlayer(alpha) {
   const PAL = PALETTES[G.cosmetics.suit] || PALETTES.classic;
   const x = lerp(p.px, p.x, alpha) + p.w / 2;
   const y = lerp(p.py, p.y, alpha) + p.h / 2 + p.landDip;
+  // Hit reaction: a white impact flash + shock ring at the fatal point, read over
+  // the hitstop (Reduce Motion keeps the flash, drops the expanding ring).
+  if (p.dead && G.deathFocus && G.deathSeq < 0.45) {
+    const k = clamp(G.deathSeq / 0.45, 0, 1), f = G.deathFocus, r = 40 * (1 + k);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (1 - k) * 0.85;
+    ctx.drawImage(GLOW.white, f.x - r, f.y - r, r * 2, r * 2);
+    ctx.globalCompositeOperation = 'source-over';
+    if (!lessMotion()) {
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 0.6 + 3 * (1 - k);
+      ctx.beginPath(); ctx.arc(f.x, f.y, 8 + ART.ease.outCubic(k) * 36, 0, TAU); ctx.stroke();
+    }
+    ctx.restore();
+  }
   if (p.dead && G.deathSeq > 0.08) {
     if (G.helmet) {
       ctx.save(); ctx.translate(lerp(G.helmet.px, G.helmet.x, alpha) + p.w / 2, lerp(G.helmet.py, G.helmet.y, alpha)); ctx.rotate(lerp(G.helmet.prot, G.helmet.rot, alpha));
@@ -4746,6 +4991,25 @@ function drawPlayer(alpha) {
   // Rotated before the facing scale (matches the dead-branch tumble convention
   // above) so the lean direction is world-oriented, not mirrored by facing.
   const lean = clamp(p.vx * 0.018, -0.14, 0.14) + (p.onGround ? 0 : clamp(p.vy * 0.008, -0.1, 0.12)) + (V ? V.rot : 0);
+  // Contact shadow on the slab below: grounds the jump arc (height reads at a
+  // glance) and fades with altitude. A pure read of the platform list.
+  if (!V || V.a > 0.5) {
+    const gp = p.onGround ? p.groundPlat : (p.hang ? null : platformUnder(x, y + hh, 190));
+    if (gp && x > gp.x - 6 && x < gp.x + gp.w + 6) {
+      const alt = clamp((gp.y - (y + hh)) / 190, 0, 1);
+      ART.contactShadow(ctx, x, gp.y + 1, 30 - alt * 12, (1 - alt) * 0.9);
+    }
+  }
+  // Presentation rig (src/anim.js): landing crouch, stomp pop, launch extension.
+  const calm = lessMotion();
+  if (rig.stomp > 0 && !calm && rig.stompX !== undefined) {   // stomp impact: a flat shock ring where the boots hit
+    const k = 1 - rig.stomp, rr = 6 + ART.ease.outCubic(k) * 26;
+    ctx.save(); ctx.globalAlpha = rig.stomp * 0.8; ctx.strokeStyle = '#FFE59A'; ctx.lineWidth = 2.2 * rig.stomp + 0.4;
+    ctx.beginPath(); ctx.ellipse(rig.stompX, rig.stompY, rr, rr * 0.32, 0, 0, TAU); ctx.stroke(); ctx.restore();
+  }
+  const crouch = clamp(rig.crouch.x, 0, 1.2) * (calm ? 0.5 : 1);
+  const pop = calm ? 0 : rig.stomp;                          // stomp: stretch tall, then settle
+  const sxR = 1 - pop * 0.1, syR = 1 + pop * 0.14;
   ctx.save();
   if (V && V.a < 1) ctx.globalAlpha = V.a;
   if (p.onGround) {
@@ -4755,28 +5019,34 @@ function drawPlayer(alpha) {
     ctx.translate(vX, vY + hh);
     ctx.rotate(lean);
     ctx.scale(p.facing, 1);
-    ctx.scale(p.sqX + breathe, p.sqY - breathe);
+    ctx.scale((p.sqX + breathe) * sxR, (p.sqY - breathe) * syR);
     ctx.translate(0, -hh);
   } else {
     ctx.translate(vX, vY);
     ctx.rotate(lean);
     ctx.scale(p.facing, 1);
-    ctx.scale(p.sqX + breathe, p.sqY - breathe);
+    ctx.scale((p.sqX + breathe) * sxR, (p.sqY - breathe) * syR);
   }
   if (V && V.s !== 1) ctx.scale(V.s, V.s);            // star delivery uncurl
   if (V && V.scan < 0.999) scanClip(hh, V.scan);      // beam materialize bands
-  const bob = p.onGround ? Math.sin(p.runCycle * 2) * 1.5 : 0;   // torso bob, twice per stride
+  // Torso bob twice per stride, plus the landing crouch sinking the upper body
+  // while the feet stay planted (the knees take it).
+  const bob = (p.onGround ? Math.sin(p.runCycle * 2) * 1.5 : 0) + crouch * 2.6;
 
-  // Legs: two capsules in a cooler shade so they separate from the white torso
-  // instead of merging into one blob; back leg a touch darker for depth.
-  // Ledge hang: legs dangle near-straight with a subtle sway; else run/air pose.
-  const legSwing = p.hang ? Math.sin(p.hang.t * 6) * 1.4
-    : (p.onGround ? Math.sin(p.runCycle) * Math.min(Math.abs(p.vx) * 1.2, 6) : p.pose);
-  ctx.lineWidth = 4.5; ctx.lineCap = 'round';
-  ctx.strokeStyle = PAL.legB;
-  ctx.beginPath(); ctx.moveTo(4, hh - 13); ctx.lineTo(4 - legSwing * 0.5, hh - 1); ctx.stroke();   // back leg
-  ctx.strokeStyle = PAL.legF;
-  ctx.beginPath(); ctx.moveTo(-4, hh - 13); ctx.lineTo(-4 + legSwing * 0.5, hh - 1); ctx.stroke();  // front leg
+  // Legs: two-bone IK (hip → knee → boot) in a cooler shade than the torso;
+  // back leg a touch darker for depth. The run cycle lifts the swing foot and
+  // bends the knee; air poses tuck on the rise and reach down to land.
+  const L = _legIn;
+  L.runCycle = p.runCycle; L.speed = p.onGround ? Math.min(Math.abs(p.vx) / CFG.maxRun, 1) : 0;
+  L.onGround = !!p.onGround; L.pose = p.pose; L.hang = !!p.hang; L.hangT = p.hang ? p.hang.t : 0;
+  L.launch = calm ? 0 : rig.launch; L.stomp = pop; L.groundY = hh - 1; L.hipY = hh - 13 + crouch * 2.6; L.hipX = 4;
+  ANIM.legPose(L, _leg);
+  ctx.lineWidth = 4.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let k = 0; k < 2; k++) {
+    const i = k * 6;
+    ctx.strokeStyle = k ? PAL.legF : PAL.legB;
+    ctx.beginPath(); ctx.moveTo(_leg[i], _leg[i + 1]); ctx.lineTo(_leg[i + 2], _leg[i + 3]); ctx.lineTo(_leg[i + 4], _leg[i + 5]); ctx.stroke();
+  }
 
   ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6 + bob, 7, 16, 3); ctx.fill();
 
@@ -4837,6 +5107,11 @@ function drawPlayer(alpha) {
   }
   ctx.restore();
 
+  // Head group: idle life tilts the helmet a hair (a slow look-around) and the
+  // landing crouch nods it; everything below rides this one transform.
+  const idleTilt = (!calm && p.idle > 1.5 && p.onGround) ? Math.sin(p.idle * 0.9) * 0.06 : 0;
+  const headDip = crouch * 0.8;
+  ctx.save(); ctx.translate(0, -hh + 8 + bob * 0.35 + headDip); ctx.rotate(idleTilt - pop * 0.08); ctx.translate(0, hh - 8);
   ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -hh - 4, 40, 40);
   ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, -hh + 8, 11, 0, TAU); ctx.fill();
   // E4: the astronaut is afraid — mirrors the enemy lookX/lookY eye-tracking,
@@ -4845,6 +5120,25 @@ function drawPlayer(alpha) {
   // screen regardless of which way the sprite is scaled.
   const lookLocal = clamp((G.flare.x - x) / 300, -1, 1) * p.facing * G.glanceT;
   ctx.fillStyle = suitVisor(G.cosmetics.suit); ctx.beginPath(); ctx.ellipse(1 + lookLocal * 2.5, -hh + 8, 7.5, 6.5, 0, 0, TAU); ctx.fill();
+  // LED eyes behind the visor: blink on the rig's cadence, ^^ after a stomp or a
+  // banked chain, wide on the hit, sleepy after a long stargaze. Two tiny
+  // rounded strokes — the whole face budget.
+  {
+    const mood = ANIM.eyeMood(rig, p.idle || 0), lid = ANIM.lidAmount(rig);
+    const ex = 1.6 + lookLocal * 3 + (p.onGround ? 0 : 0.4), ey = -hh + 8.4 + (p.onGround ? 0 : (p.vy < 0 ? -0.5 : 0.5));
+    ctx.strokeStyle = 'rgba(232,252,255,0.95)'; ctx.lineCap = 'round';
+    for (const s of SGN) {
+      const cx = ex + s * 2.7;
+      ctx.beginPath();
+      if (mood === 1) { ctx.lineWidth = 1.3; ctx.arc(cx, ey + 1, 1.5, Math.PI * 1.1, Math.PI * 1.9); }
+      else {
+        const h = (mood === 2 ? 2.4 : mood === 3 ? 0.5 : 1.7) * (1 - lid);
+        ctx.lineWidth = mood === 2 ? 2 : 1.7;
+        ctx.moveTo(cx, ey - h / 2); ctx.lineTo(cx, ey + h / 2 + 0.01);
+      }
+      ctx.stroke();
+    }
+  }
   const glx = Math.sin(p.glint * 1.2) * 3 + lookLocal * 3;
   ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(glx - 2, -hh + 5, 2, 3, -0.4, 0, TAU); ctx.fill();
   if (SEASON.frost) {   // E13 seasonal: frost creeps in from the visor edge (render-only, off under SHOT)
@@ -4857,6 +5151,7 @@ function drawPlayer(alpha) {
   // Hat rides inside the same transform — it inherits facing flip and squash
   // (the beanie squashes on landing for free).
   ctx.save(); ctx.translate(0, -hh + 8); drawHat(G.cosmetics.hat, 1); ctx.restore();
+  ctx.restore();   // head group
   ctx.restore();
 }
 
@@ -4975,8 +5270,20 @@ function fontStr(weight, size, family) {
 // Portrait mission captions (view.w < 480): the full label doesn't fit the
 // pill at the type floor, so E10 swaps in these shortened forms by kind.
 const MISSION_SHORT = { stomp: 'STOMP 3', shoot: 'BLAST 3', shard: '5 SHARDS', graze: 'DODGE 2', distance: 'REACH 350m', airchain: '3 IN 1 LEAP', trail: '2 FULL TRAILS', bigair: '3 BIG AIRS' };
+// Top scrim: a soft dark band behind the HUD so white numerals hold contrast over
+// bright sky, the flare and passing shards. One cached 1px strip, stretched.
+let hudScrim = null;
+function drawHudScrim(h) {
+  if (!hudScrim) {
+    hudScrim = makeCanvas(1, 64); const g = hudScrim.getContext('2d'), grd = g.createLinearGradient(0, 0, 0, 64);
+    grd.addColorStop(0, 'rgba(4,5,16,0.55)'); grd.addColorStop(0.55, 'rgba(4,5,16,0.22)'); grd.addColorStop(1, 'rgba(4,5,16,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 1, 64);
+  }
+  ctx.drawImage(hudScrim, 0, 0, 1, 64, 0, 0, view.w, h);
+}
 function drawHUD() {
   const us = uiScale();
+  drawHudScrim((netInRun() ? 32 : 0) + safeInset('top') + 96 * us);
   // Run Together: the race strip owns the topmost band, so the run HUD shifts
   // down by (strip 26 + 6 gap) while in a room (§10.1). Solo: netInRun() false → 0.
   const netBand = netInRun() ? 32 : 0;
@@ -5161,12 +5468,29 @@ function drawCelebration() {
 
 /* ---- touch controls ---- */
 // Icon glyph, not micro-text: replaces the 9px MOVE/JUMP captions, which sat
-// below the 10px CSS-px legibility floor. dir: -1 left, 1 right, 0 up.
+// below the 10px CSS-px legibility floor. dir: -1 left, 1 right, 0 up — the
+// apex points the way it moves.
 function drawChevron(cx, cy, dir) {
   ctx.beginPath();
   if (dir === 0) { ctx.moveTo(cx - 6, cy + 3); ctx.lineTo(cx, cy - 4); ctx.lineTo(cx + 6, cy + 3); }
-  else { ctx.moveTo(cx + dir * 3, cy - 6); ctx.lineTo(cx - dir * 4, cy); ctx.lineTo(cx + dir * 3, cy + 6); }
+  else { ctx.moveTo(cx - dir * 3, cy - 6); ctx.lineTo(cx + dir * 4, cy); ctx.lineTo(cx - dir * 3, cy + 6); }
   ctx.stroke();
+}
+// Premium control skin: glassy discs (cached radial sprites, no per-frame
+// gradients), segmented ammo arc, pressed states that sink and brighten, and a
+// gentle idle breath. Once MOVE and JUMP are learned the guides step back
+// (alpha ×0.6) so the action owns the screen; FIRE keeps its ammo read.
+const TOUCH_SPR = {};
+function touchDisc(key, r, inner, outer) {
+  const k = key + r;
+  if (!TOUCH_SPR[k]) {
+    const c = makeCanvas(r * 2 + 4, r * 2 + 4), g = c.getContext('2d'), m = r + 2;
+    const grd = g.createRadialGradient(m, m - r * 0.35, r * 0.1, m, m, r);
+    grd.addColorStop(0, inner); grd.addColorStop(1, outer);
+    g.fillStyle = grd; g.beginPath(); g.arc(m, m, r, 0, TAU); g.fill();
+    TOUCH_SPR[k] = c;
+  }
+  return TOUCH_SPR[k];
 }
 function drawTouchControls() {
   layoutTouch();
@@ -5174,38 +5498,70 @@ function drawTouchControls() {
   // logical units mixed coordinate systems and pushed the pip ring off-screen.
   ctx.save();
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-  const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r;
-  ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU);
-  ctx.fillStyle = input.shootBtn.pressed ? 'rgba(255,201,60,0.35)' : 'rgba(255,201,60,0.16)'; ctx.fill();
-  ctx.strokeStyle = 'rgba(255,201,60,0.7)'; ctx.lineWidth = 2; ctx.stroke();
-  for (let i = 0; i < CFG.ammoCap; i++) {
-    const a = -Math.PI / 2 + (i / CFG.ammoCap) * TAU;
-    ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.35)';
-    const pr = r + 8 + G.ammoPulse * 4;
-    ctx.beginPath(); ctx.arc(sx + Math.cos(a) * pr, sy + Math.sin(a) * pr, 2.6, 0, TAU); ctx.fill();
-  }
-  ctx.fillStyle = G.ammo > 0 ? 'rgba(255,201,60,0.9)' : 'rgba(255,255,255,0.3)';
-  ctx.font = '900 13px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('FIRE', sx, sy + 5);
+  const calm = lessMotion(), breath = calm ? 0 : Math.sin(G.time * 2.1) * 0.5 + 0.5;
+  const learned = flags.taughtRun && flags.taughtJump ? 0.6 : 1;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // FIRE
   {
-    const cssW = window.innerWidth, cssH = window.innerHeight;
-    const gx = input.stick.active ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
-    const gy = input.stick.active ? input.stick.cy : cssH - safeInset('bottom') - (view.isTablet ? 92 : 76);
-    ctx.globalAlpha = 0.3; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(gx, gy, 34, 0, TAU); ctx.stroke();
+    const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r, down = input.shootBtn.pressed, has = G.ammo > 0;
+    const rr = r * (down ? 0.93 : 1);
+    ctx.globalAlpha = has ? (down ? 0.55 : 0.18 + breath * 0.1) : 0.08;
+    ctx.drawImage(GLOW.gold, sx - rr * 1.7, sy - rr * 1.7, rr * 3.4, rr * 3.4);
+    ctx.globalAlpha = down ? 1 : 0.85;
+    const disc = has ? touchDisc('fire', r, 'rgba(255,214,110,0.38)', 'rgba(120,70,0,0.28)') : touchDisc('fire0', r, 'rgba(200,210,230,0.18)', 'rgba(20,24,40,0.3)');
+    ctx.drawImage(disc, sx - rr - 2, sy - rr - 2, rr * 2 + 4, rr * 2 + 4);
+    ctx.strokeStyle = has ? (down ? '#FFE59A' : 'rgba(255,201,60,0.8)') : 'rgba(207,227,255,0.3)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx, sy, rr, 0, TAU); ctx.stroke();
+    // ammo: one arc segment per round, the ring reads as a magazine
+    const pr = r + 7 + G.ammoPulse * 4, seg = TAU / CFG.ammoCap, gap = 0.16;
+    ctx.lineWidth = 3.2;
+    for (let i = 0; i < CFG.ammoCap; i++) {
+      const a0 = -Math.PI / 2 + i * seg + gap / 2;
+      ctx.strokeStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.22)';
+      ctx.beginPath(); ctx.arc(sx, sy, pr, a0, a0 + seg - gap); ctx.stroke();
+    }
+    // lance glyph + label
+    ctx.globalAlpha = has ? 1 : 0.45;
+    ctx.strokeStyle = has ? '#FFF1C9' : '#CFE3FF'; ctx.lineWidth = 2.4;
+    const gyy = sy - rr * 0.18;
+    ctx.beginPath(); ctx.moveTo(sx - rr * 0.36, gyy); ctx.lineTo(sx + rr * 0.2, gyy); ctx.stroke();
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(sx + rr * 0.3, gyy - 5); ctx.lineTo(sx + rr * 0.3, gyy + 5); ctx.moveTo(sx + rr * 0.3 - 5, gyy); ctx.lineTo(sx + rr * 0.3 + 5, gyy); ctx.stroke();
+    ctx.fillStyle = has ? 'rgba(255,229,154,0.95)' : 'rgba(207,227,255,0.6)';
+    ctx.font = fontStr(800, Math.max(10, Math.round(r * 0.32)), FONT); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText('FIRE', sx, sy + rr * 0.5);
+    ctx.globalAlpha = 1;
+  }
+  {
+    const cssW = window.innerWidth, cssH = window.innerHeight, R = 34;
+    const act = input.stick.active;
+    const gx = act ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
+    const gy = act ? input.stick.cy : cssH - safeInset('bottom') - (view.isTablet ? 92 : 76);
+    const base = (act ? 1 : (0.7 + breath * 0.12)) * learned;
+    // stick well
+    ctx.globalAlpha = base * 0.9;
+    ctx.drawImage(touchDisc('well', R, 'rgba(20,30,60,0.28)', 'rgba(6,8,24,0.5)'), gx - R - 2, gy - R - 2, R * 2 + 4, R * 2 + 4);
+    ctx.globalAlpha = base * (act ? 0.7 : 0.4); ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(gx, gy, R, 0, TAU); ctx.stroke();
     // Inner knob always renders — direction/magnitude feedback is the whole
     // point of a floating stick (rests centered when idle).
-    const kx = input.stick.active ? clamp(input.stick.x, gx - 34, gx + 34) : gx;
-    ctx.globalAlpha = input.stick.active ? 0.55 : 0.22;
-    ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(kx, gy, 12, 0, TAU); ctx.fill();
-    ctx.globalAlpha = input.stick.active ? .7 : .38; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.6;
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    drawChevron(gx - 44, gy + 50, -1); drawChevron(gx + 44, gy + 50, 1);
+    const kx = act ? clamp(input.stick.x, gx - R, gx + R) : gx;
+    if (act && Math.abs(kx - gx) > 2) {   // pull line: where the thumb is taking him
+      ctx.globalAlpha = 0.35; ctx.lineWidth = 6; ctx.strokeStyle = '#38E1FF';
+      ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(kx, gy); ctx.stroke();
+    }
+    ctx.globalAlpha = (act ? 0.95 : 0.55) * learned;
+    ctx.drawImage(touchDisc('knob', 13, 'rgba(210,250,255,0.9)', 'rgba(56,200,255,0.55)'), kx - 15, gy - 15, 30, 30);
+    ctx.globalAlpha = (act ? 0.8 : 0.5) * learned; ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1.6;
+    drawChevron(gx - R + 9, gy, -1); drawChevron(gx + R - 9, gy, 1);
     // The jump region is intentionally large; this quiet affordance explains
     // the invisible hit area without covering the action.
-    const jx = cssW * (settings.lefty ? .26 : .74), jy = cssH - safeInset('bottom') - 44;
-    ctx.globalAlpha = input.jumpZone.active ? .82 : .32; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.arc(jx, jy, 25, 0, TAU); ctx.stroke();
-    ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1.6; drawChevron(jx, jy + 2, 0);
+    const jx = cssW * (settings.lefty ? .26 : .74), jy = cssH - safeInset('bottom') - 44, jd = input.jumpZone.active, jr = jd ? 23 : 25;
+    ctx.globalAlpha = (jd ? 0.9 : 0.55 + breath * 0.1) * learned;
+    ctx.drawImage(touchDisc(jd ? 'jumpD' : 'jump', 25, jd ? 'rgba(159,241,255,0.4)' : 'rgba(40,60,100,0.22)', 'rgba(6,8,24,0.4)'), jx - jr - 2, jy - jr - 2, jr * 2 + 4, jr * 2 + 4);
+    ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5; ctx.globalAlpha = (jd ? 0.95 : 0.45) * learned;
+    ctx.beginPath(); ctx.arc(jx, jy, jr, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = '#E8F8FF'; ctx.lineWidth = 2; drawChevron(jx, jy + 2 - (jd ? 2 : 0), 0);
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -5231,7 +5587,7 @@ function medalGlyphs() {
   const col = { PLATINUM: '#8FB7FF', GOLD: '#FFC93C', SILVER: '#CBD6E6', BRONZE: '#D98A48' };
   let s = '';
   order.forEach((m) => { const n = stats.medals[m] || 0; if (n > 0) s += `<span style="color:${col[m]}">${sym[m]}${n}</span> `; });
-  return s || '<span style="opacity:0.4">no medals yet</span>';
+  return s || '<span class="medal-empty">No medals yet · 750 for bronze</span>';
 }
 
 function showAttract() {
@@ -5370,8 +5726,13 @@ function renderDeathCard() {
   // Computed exactly as before; only its reveal (showDeathCard's timer) is staged.
   if (fs > G.prevBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${(fs - G.prevBest).toLocaleString()}</span>`;
   else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
-  const missionMark = G.mission && G.mission.done ? ' · MISSION ✓' : '';
-  $('deadStats').innerHTML = `DIST ${G.dist}m · KILLS ${G.killsRun} · STARS ${G.shards} · BEST CHAIN ×${G.bestChainRun}${missionMark}`;
+  $('deadDelta').classList.toggle('best', fs > G.prevBest);
+  $('deadMedal').classList.toggle('has', !!G.runMedal);   // reserve the stamp's line only when a medal is coming
+  // Stat tiles: value over label, one glance per number (numbers only — no markup from state).
+  const tile = (v, k, cls) => `<div class="stat${cls ? ' ' + cls : ''}"><b>${v}</b><span>${k}</span></div>`;
+  $('deadStats').innerHTML = tile((G.dist | 0) + 'm', 'DIST') + tile(G.killsRun | 0, 'KILLS') + tile(G.shards | 0, 'STARS') + tile('×' + (G.bestChainRun | 0), 'CHAIN')
+    + (G.mission && G.mission.done ? tile('✓', 'MISSION', 'done') : '');
+  $('deadStats').style.gridTemplateColumns = G.mission && G.mission.done ? 'repeat(5, minmax(0, 1fr))' : '';
   const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
   if (target) { dt.textContent = target; dt.style.display = 'block'; } else dt.style.display = 'none';
   const dc = $('deadCourse'), courseText = deathCourseLine(fs);
