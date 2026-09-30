@@ -4,7 +4,11 @@ An addictive arcade space platformer PWA. Outrun the solar flare, stomp aliens,
 chain mid-air combos, and chase your personal best.
 
 - Single self-contained `index.html` — canvas rendering, synthesized audio,
-  zero external dependencies. Works offline once installed.
+  zero external dependencies. Works offline once installed: the page and all its
+  scripts launch from one versioned cache, so updates never mix old and new files.
+  A **Battery saver** setting (also automatic on a low, unplugged battery where the
+  browser reports it) caps play at 30 fps with lighter rendering; the simulation
+  is identical at any frame rate.
 - Plays great on phone (portrait or landscape), tablet, and desktop.
 - Touch: left side of the screen steers (floating stick), right side jumps
   (hold for higher), dedicated shoot button. Desktop: A/D or arrows, Space to
@@ -56,6 +60,8 @@ where the mercy assist has eased the course share the game link without a seed.
 
 ## Run Together
 
+Emotes live on a dedicated button (top right, under the race strip) that opens a small tray of six; on a keyboard the keys 1-6 send them. Holding jump never opens anything.
+
 Choose **Run Together**, then **Create a room** or **Join a room**. Joining takes
 a typed room code (for example `ORD-…`, or just the words on any device) or a
 pasted link; hosting shows the code, a copy button, a share link and a QR.
@@ -85,8 +91,19 @@ player, and watching is a live positional view, not a frame-perfect broadcast of
 the runner's combat. Cooperative objectives would need a fuller authoritative
 world-event protocol.
 
-Version 3.6 uses room protocol 4 because aliens are now shared (round-clock
-motion and shared kills); version 3.4 introduced protocol 3 (deep-run terrain:
+Rooms are built for bad links (trains, cafés, planes). Each ghost plays out
+through a small jitter buffer keyed on the sender's own clock, so late or bunched
+packets cost a little delay, never a teleport or a rubber band; the room card
+shows an honest Good/Fair/Poor with the round trip (the host sees each member's
+link), presence thins out on a poor link, and a connection that dies silently
+(a network switch) is replaced in seconds, back in the same seat of the same
+round with the aliens it missed. Offline, the title says single player is ready
+and Run Together explains why it is unavailable instead of spinning.
+
+Version 3.16 uses room protocol 6 (every room builds the designed world-gen-2 course with
+its five new aliens; see `docs/wire-protocol.md`). Version 3.8 used protocol 5 (timestamped, quantized presence and a link
+probe). Version 3.6 used room protocol 4 because
+aliens are now shared (round-clock motion and shared kills); version 3.4 introduced protocol 3 (deep-run terrain:
 the endgame ramp and DEBRIS FIELD past 2500m) and 3.3 protocol 2.
 Refresh both devices and create a fresh room/link after upgrading. Old invites
 show an update prompt instead of connecting incompatible courses.

@@ -2,28 +2,28 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { client, relay } = require('./harness.cjs');
 
-test('touch controls draw for a new player and for one who has learned them, and recede only when idle', (t) => {
+test('touch guides show fully to a new player, recede for one who has learned move and jump, and wake when a thumb lands', (t) => {
   const c = client(relay());
   t.after(() => c.close());
   c.run('startRun(); G.mode = "play"; input.usingTouch = true;');
-  const alphas = [];
-  const ctx = c.run('ctx');
-  Object.defineProperty(ctx, 'globalAlpha', { configurable: true, get() { return 1; }, set(v) { alphas.push(Math.round(v * 100) / 100); } });
-  const draw = () => { alphas.length = 0; c.run('drawTouchControls()'); return alphas.slice(); };
-
-  // Every layer, in draw order: fire button, stick ring, stick knob, stick chevrons, jump ring, then reset.
-  c.run('flags.taughtRun = flags.taughtJump = flags.taughtShoot = false');
-  assert.deepEqual(draw(), [1, 0.3, 0.22, 0.38, 0.32, 1], 'a new player sees the controls at full strength');
-
-  c.run('flags.taughtRun = flags.taughtJump = flags.taughtShoot = true');
-  assert.deepEqual(draw(), [0.6, 0.18, 0.13, 0.23, 0.19, 1], 'a veteran with idle thumbs sees every layer at 60%');
-
+  const dim = () => c.run('touchDim()');
+  c.run('flags.taughtRun = flags.taughtJump = false');
+  assert.equal(dim(), 1, 'a new player sees the guides at full strength');
+  c.run('flags.taughtRun = true; flags.taughtJump = false');
+  assert.equal(dim(), 1, 'half-learned is still new');
+  c.run('flags.taughtRun = flags.taughtJump = true');
+  assert.equal(dim(), 0.6, 'a veteran with idle thumbs sees a quiet outline');
   c.run('input.stick.active = true');
-  assert.equal(draw()[0], 1, 'they wake up when a thumb lands on the stick');
+  assert.equal(dim(), 1, 'they wake when a thumb lands on the stick');
   c.run('input.stick.active = false; input.shootBtn.pressed = true');
-  assert.equal(draw()[0], 1, '…or on fire');
+  assert.equal(dim(), 1, '...or on fire');
   c.run('input.shootBtn.pressed = false; input.jumpZone.active = true');
-  assert.equal(draw()[0], 1, '…or jump');
+  assert.equal(dim(), 1, '...or jump');
+  c.run('input.jumpZone.active = false');
+  const ctx = c.run('ctx'), a = [];
+  Object.defineProperty(ctx, 'globalAlpha', { configurable: true, get: () => 1, set: (v) => a.push(v) });
+  c.run('drawTouchControls()');
+  assert.ok(a.length > 5, 'and the controls actually draw');
 });
 
 test('a keyboard, mouse or controller takes over from the touch controls, and touch takes them back', (t) => {

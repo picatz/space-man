@@ -3,11 +3,16 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 const ROOT = path.resolve(__dirname, '..');
+// Every src/ module, in index.html's <script> order.
+const MODULES = ['contracts', 'save-schema', 'input-snapshot', 'course', 'worldgen', 'enemies', 'powerups', 'art', 'anim', 'callsigns', 'relay-directory', 'qr', 'netsmooth', 'net'];
 
 // No game/network behavior is mocked. Only browser APIs and the opaque relay
 // transport are replaced; clients exchange the real encrypted wire protocol.
 function client(hub, { game = true, width = 1280, height = 720, storage = new Map(), hash = '', dpr = 1, navigator = {} } = {}) {
   const timers = new Set();
+  // Per-client network link (tests/netbench.cjs shapes it): every socket this client opens carries it.
+  const link = { latency: 0, jitter: 0, loss: 0, reorder: 0, bandwidth: 0, queueMax: 64, down: false, rng: null };
+  const Socket = class extends hub.Socket { constructor(...a) { super(...a); this.link = link; this.born = Date.now(); } };
   const drawing = new Proxy({}, { get(target, key) {
     if (key in target) return target[key];
     if (key === 'measureText') return (s) => ({ width: String(s).length * 7 });
@@ -18,7 +23,7 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
     const classes = new Set();
     return { style: { setProperty() {} }, dataset: {}, children: [], width: 1280, height: 720,
       classList: { add: (...v) => v.forEach((x) => classes.add(x)), remove: (...v) => v.forEach((x) => classes.delete(x)), contains: (v) => classes.has(v), toggle(v, on) { if (on ?? !classes.has(v)) classes.add(v); else classes.delete(v); } },
-      getContext: () => drawing, listeners: {}, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, setAttribute() {}, removeAttribute() {},
+      getContext: () => drawing, listeners: {}, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, setAttribute(k, v) { (this.attrs ||= {})[k] = String(v); }, removeAttribute(k) { if (this.attrs) delete this.attrs[k]; },
       appendChild(e) { this.children.push(e); return e; }, querySelectorAll() { return []; }, querySelector() { return null; },
       getBoundingClientRect: () => ({ top: 0, left: 0, width, height }), getClientRects: () => [{ top: 0, left: 0, width, height }], closest() { return null; }, toDataURL() { return ''; }, focus() {}, click() { if (this.onclick) this.onclick({}); } };
   }
@@ -37,19 +42,19 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
     clearTimeout(t) { clearTimeout(t); timers.delete(t); },
     setInterval(fn, ms) { const t = setInterval(fn, ms); timers.add(t); return t; },
     clearInterval(t) { clearInterval(t); timers.delete(t); },
-    WebSocket: hub.Socket,
+    WebSocket: Socket,
   };
   sandbox.window = sandbox;
   const context = vm.createContext(sandbox);
   const run = (code) => vm.runInContext(code, context);
-  for (const name of ['contracts', 'save-schema', 'input-snapshot', 'course', 'worldgen', 'enemies', 'callsigns', 'relay-directory', 'qr', 'net']) run(fs.readFileSync(path.join(ROOT, 'src', name + '.js'), 'utf8'));
+  for (const name of MODULES) run(fs.readFileSync(path.join(ROOT, 'src', name + '.js'), 'utf8'));
   if (game) {
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     run(html.match(/<script>\s*([\s\S]*?)<\/script>/)[1]);
   }
   // Dispatch a DOM event to the handlers the game registered on an element (by id).
   const dispatch = (id, type, ev) => { const e = { preventDefault() {}, ...ev }; for (const fn of (elements.get(id)?.listeners[type] || [])) fn(e); };
-  return { run, context, net: context.SpaceManNet, elements, dispatch, close() { context.SpaceManNet.leave(); for (const t of timers) { clearTimeout(t); clearInterval(t); } } };
+  return { run, context, net: context.SpaceManNet, elements, link, dispatch, close() { context.SpaceManNet.leave(); for (const t of timers) { clearTimeout(t); clearInterval(t); } } };
 }
 function relay() {
   let offset = 1000;
@@ -58,7 +63,9 @@ function relay() {
   function frame(socket, type, payload) {
     const b = new Uint8Array(5 + payload.length); b[0] = type;
     new DataView(b.buffer).setUint32(1, payload.length, false); b.set(payload, 5);
-    setImmediate(() => { if (socket.readyState === 1) socket.onmessage?.({ data: b.buffer }); });
+    const deliver = () => { if (socket.readyState === 1 && !(socket.link && (socket.link.down || socket.born < socket.link.deadBefore))) socket.onmessage?.({ data: b.buffer }); };
+    if (type === 5 && hub.shape && socket.link) hub.shape(socket, b.length, deliver, 'down');
+    else setImmediate(deliver);
   }
   hub.Socket = class {
     constructor() {
@@ -69,8 +76,15 @@ function relay() {
         frame(this, 1, hub.api.bytes.cat(new Uint8Array([0x44,0x45,0x52,0x50,0xf0,0x9f,0x94,0x91]), hub.server.pub));
       });
     }
+    get bufferedAmount() { return this.queued || 0; }
     send(data) {
-      const b = new Uint8Array(data), type = b[0], p = b.slice(5), api = hub.api;
+      const b = new Uint8Array(data);
+      if (b[0] === 4 && hub.shape && this.link) { hub.shape(this, b.length, () => this.relayed(b), 'up'); return; }
+      this.relayed(b);
+    }
+    relayed(b) {
+      if (this.readyState !== 1) return;
+      const type = b[0], p = b.slice(5), api = hub.api;
       if (type === 2) {
         this.pub = p.slice(0, 32); clients.set(api.bytes.hex(this.pub), this);
         const key = api.nacl.boxKey(this.pub, hub.server.priv), nonce = webcrypto.getRandomValues(new Uint8Array(24));
@@ -78,7 +92,7 @@ function relay() {
         frame(this, 3, api.bytes.cat(nonce, api.nacl.secretboxSeal(api.bytes.utf8('{"version":2}'), nonce, key)));
       } else if (type === 4 && !hub.admissionPaused) {
         const dst = clients.get(api.bytes.hex(p.slice(0, 32)));
-        if (dst) { hub.packetCount++; frame(dst, 5, api.bytes.cat(this.pub, p.slice(32))); }
+        if (dst) { hub.packetCount++; hub.byteCount = (hub.byteCount || 0) + b.length; frame(dst, 5, api.bytes.cat(this.pub, p.slice(32))); }
       } else if (type === 0x12) frame(this, 0x13, p);
     }
     close() {
@@ -93,6 +107,6 @@ function relay() {
 }
 async function until(fn, message = 'condition', timeout = 3000) {
   const start = performance.now();
-  while (!fn()) { if (performance.now() - start > timeout) throw new Error('Timed out: ' + message); await new Promise((r) => setTimeout(r, 10)); }
+  while (!fn()) { if (performance.now() - start > timeout) throw new Error('Timed out: ' + (typeof message === 'function' ? message() : message)); await new Promise((r) => setTimeout(r, 10)); }
 }
-module.exports = { client, relay, until };
+module.exports = { client, relay, until, MODULES };
