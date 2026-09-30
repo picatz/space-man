@@ -465,3 +465,17 @@ test('saber: a parried shot goes back to the alien that fired it, even with othe
   assert.equal(r.targetIsSource, true, 'and locked onto the shooter that fired it');
   assert.equal(r.targetIsOther, false);
 });
+
+test('the parry bell rings on the SFX bus, so the Music setting cannot silence or move it', (t) => {
+  const c = solo(t);
+  const r = json(c, `${STAGE} ${MK}
+    POW.grant('saber', true);
+    const OUT = { name: 'sfx bus' };
+    const dests = [];
+    Audio.synth = { ctx: { currentTime: 0 }, out: OUT, degF: () => 440, chordTones: () => [220, 275, 330], tone() {}, noise() {}, bell: (f, d, g, when, dest) => dests.push(dest) };
+    const b = { x: p.x + p.w / 2 + 30, y: p.y + p.h / 2, px: 0, py: 0, vx: -6, vy: 0, life: 100, grazed: false };
+    G.ebullets = [b]; POW.fire(); S.swingT = 1; POW.combat();
+    return { n: dests.length, onSfx: dests.every((d) => d === OUT) };`);
+  assert.ok(r.n >= 1, 'the parry rang a bell');
+  assert.equal(r.onSfx, true, 'and every bell went to the SFX bus');
+});

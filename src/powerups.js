@@ -559,7 +559,7 @@
     expire() { const A = syn(); if (!A || !A.ctx) return; const t = A.ctx.currentTime; [5, 3, 1].forEach((d, i) => { const f = A.degF(d, 1); A.tone('triangle', f, f, 0.08, 0.1, undefined, t + i * 0.07); }); },
     swing(dir) { const A = syn(); if (!A) return; A.tone('sawtooth', dir > 0 ? 260 : 220, dir > 0 ? 110 : 95, 0.14, 0.06); A.noise(0.12, 0.07, 'bandpass', dir > 0 ? 1600 : 1300); },
     hit(level) { const A = syn(); if (!A) return; A.noise(0.08, 0.2, 'highpass', 2200); A.tone('square', 1400, 500, 0.06, 0.1); const f = A.degF([1, 2, 3, 5][clamp(level, 0, 3)], 1); A.tone('triangle', f, f, 0.1, 0.16); },
-    parry() { const A = syn(); if (!A || !A.ctx) return; const t = A.ctx.currentTime; A.bell(A.degF(5, 1), 0.3, 0.12, t); A.tone('square', 2400, 1800, 0.05, 0.08); A.noise(0.05, 0.12, 'highpass', 3000); },
+    parry() { const A = syn(); if (!A || !A.ctx) return; const t = A.ctx.currentTime; A.bell(A.degF(5, 1), 0.3, 0.12, t, A.out); A.tone('square', 2400, 1800, 0.05, 0.08); A.noise(0.05, 0.12, 'highpass', 3000); },
     cut() { const A = syn(); if (!A) return; A.noise(0.05, 0.1, 'highpass', 2600); A.tone('square', 1800, 1200, 0.03, 0.06); },
     pop() { const A = syn(); if (!A) return; A.noise(0.18, 0.2, 'highpass', 1500); A.tone('sine', 900, 180, 0.25, 0.14); },
     ring() { const A = syn(); if (!A) return; const f = A.degF(5, 1); A.tone('sine', f, f * 1.5, 0.12, 0.1); },
