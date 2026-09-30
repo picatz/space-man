@@ -143,6 +143,33 @@ test('touch chevrons point the way they move, and the guides dim once learned', 
   assert.ok(learned > 0 && learned < fresh, 'guides step back after MOVE + JUMP are learned (' + fresh + ' → ' + learned + ')');
 });
 
+test('a peer ghost never wears the local rig: no local stomp ring, crouch, blink or eye mood on remote runners', async (t) => {
+  const { until } = require('./harness.cjs');
+  const hub = relay(), host = client(hub), guest = client(hub, { width: 390, height: 844 });
+  t.after(() => { host.close(); guest.close(); });
+  await host.net.openRoom({ relayHost: 'relay.test', code: false, adjIdx: 0, nounIdx: 0 });
+  await guest.net.acceptJoin(host.net.info().link.split('#j=')[1], { adjIdx: 1, nounIdx: 1 });
+  await until(() => guest.net.roster().length === 2, 'complete roster');
+  host.run(`startRun({sync:true}); G.mode = 'play'; G.freeze = 0; update();
+    window.__g = ghostFor(2); Object.assign(__g, { x0: 400, x1: 400, y0: 230, y1: 230, rx: 400, ry: 230, t0: netClock() - 100, t1: netClock(), lastSeen: netClock(), alpha: 1, runId: NET.info().runId, onGround: true, vx: 0, facing: 1 });
+    window.__log = []; const r2 = (v) => Math.round(v * 100) / 100;
+    for (const m of ['ellipse', 'arc', 'moveTo', 'lineTo', 'drawImage', 'translate', 'scale', 'rotate']) ctx[m] = (...a) => __log.push(m + ':' + a.filter((v) => typeof v === 'number').map(r2).join(','));
+    window.__draw = (fn) => { __log.length = 0; fn(); return __log.join('|'); };`);
+  host.run('__draw(() => drawGhostActor(__g))');   // warm the ghost's badge cache (the harness shares one mock context)
+  const ghostAtRest = host.run('__draw(() => drawGhostActor(__g))');
+  const localAtRest = host.run('__draw(() => drawPlayer(1))');
+  // a real local stomp through the rig's explicit signal, plus a hard-landing crouch, a blink and ^^ eyes
+  host.run('rigStomps++; rigTick(); rig.crouch.x = 1; rig.blink = 0.065; rig.happy = 1; rig.launch = 1;');
+  assert.ok(host.run('rig.stomp > 0.9 && rig.stompX !== undefined'), 'the local rig is mid-stomp');
+  const localLive = host.run('__draw(() => drawPlayer(1))');
+  assert.notEqual(localLive, localAtRest, 'the local hero shows the effects');
+  assert.match(localLive, /ellipse:[^|]*,0,0,6\.28/, 'the local stomp ring is drawn');
+  const ghostLive = host.run('__draw(() => drawGhostActor(__g))');
+  assert.equal(ghostLive, ghostAtRest, 'the ghost draws exactly as it does with the local rig at rest');
+  const ring = host.run('`ellipse:${Math.round(rig.stompX * 100) / 100},${Math.round(rig.stompY * 100) / 100}`');
+  assert.ok(!ghostLive.includes(ring), 'no second stomp ring painted at the local stomp spot');
+});
+
 function liveGame(t) {
   const hub = relay(), c = client(hub);
   t.after(() => c.close());

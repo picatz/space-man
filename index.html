@@ -1335,6 +1335,7 @@ const _rigIn = { onGround: true, vx: 0, vy: 0, dead: false, stomps: 0, hang: fal
 // Explicit stomp signal for the rig: bumped only by killEnemy(…, 'stomp') — shots
 // (and any other kill method) never read as a stomp. Presentation-only counter.
 let rigStomps = 0, rigPlayer = null;
+const RIG_NEUTRAL = ANIM.createRig();   // presentation state for borrowed draws (ghosts): at rest, eyes open
 const _legIn = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 0, hipY: 0, hipX: 4, len: 6.4 };
 const _leg = new Float32Array(12), _pt = new Float32Array(2);
 function rigRead(p) {
@@ -5003,6 +5004,10 @@ function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
 
 function drawPlayer(alpha) {
   const p = G.player;
+  // The rig belongs to the LOCAL player. drawGhostActor (and anything else that
+  // borrows drawPlayer by swapping G.player) gets a neutral, never-stepped rig:
+  // no local crouch, stomp pop/ring, launch, blink or eye mood leaks onto peers.
+  const R = p === rigPlayer ? rig : RIG_NEUTRAL;
   const PAL = PALETTES[G.cosmetics.suit] || PALETTES.classic;
   const x = lerp(p.px, p.x, alpha) + p.w / 2;
   const y = lerp(p.py, p.y, alpha) + p.h / 2 + p.landDip;
@@ -5093,13 +5098,13 @@ function drawPlayer(alpha) {
   }
   // Presentation rig (src/anim.js): landing crouch, stomp pop, launch extension.
   const calm = lessMotion();
-  if (rig.stomp > 0 && !calm && rig.stompX !== undefined) {   // stomp impact: a flat shock ring where the boots hit
-    const k = 1 - rig.stomp, rr = 6 + ART.ease.outCubic(k) * 26;
-    ctx.save(); ctx.globalAlpha = rig.stomp * 0.8; ctx.strokeStyle = '#FFE59A'; ctx.lineWidth = 2.2 * rig.stomp + 0.4;
-    ctx.beginPath(); ctx.ellipse(rig.stompX, rig.stompY, rr, rr * 0.32, 0, 0, TAU); ctx.stroke(); ctx.restore();
+  if (R.stomp > 0 && !calm && R.stompX !== undefined) {   // stomp impact: a flat shock ring where the boots hit
+    const k = 1 - R.stomp, rr = 6 + ART.ease.outCubic(k) * 26;
+    ctx.save(); ctx.globalAlpha = R.stomp * 0.8; ctx.strokeStyle = '#FFE59A'; ctx.lineWidth = 2.2 * R.stomp + 0.4;
+    ctx.beginPath(); ctx.ellipse(R.stompX, R.stompY, rr, rr * 0.32, 0, 0, TAU); ctx.stroke(); ctx.restore();
   }
-  const crouch = clamp(rig.crouch.x, 0, 1.2) * (calm ? 0.5 : 1);
-  const pop = calm ? 0 : rig.stomp;                          // stomp: stretch tall, then settle
+  const crouch = clamp(R.crouch.x, 0, 1.2) * (calm ? 0.5 : 1);
+  const pop = calm ? 0 : R.stomp;                          // stomp: stretch tall, then settle
   const sxR = 1 - pop * 0.1, syR = 1 + pop * 0.14;
   ctx.save();
   if (V && V.a < 1) ctx.globalAlpha = V.a;
@@ -5130,7 +5135,7 @@ function drawPlayer(alpha) {
   const L = _legIn;
   L.runCycle = p.runCycle; L.speed = p.onGround ? Math.min(Math.abs(p.vx) / CFG.maxRun, 1) : 0;
   L.onGround = !!p.onGround; L.pose = p.pose; L.hang = !!p.hang; L.hangT = p.hang ? p.hang.t : 0;
-  L.launch = calm ? 0 : rig.launch; L.stomp = pop; L.groundY = hh - 1; L.hipY = hh - 13 + crouch * 2.6; L.hipX = 4;
+  L.launch = calm ? 0 : R.launch; L.stomp = pop; L.groundY = hh - 1; L.hipY = hh - 13 + crouch * 2.6; L.hipX = 4;
   ANIM.legPose(L, _leg);
   ctx.lineWidth = 4.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (let k = 0; k < 2; k++) {
@@ -5215,7 +5220,7 @@ function drawPlayer(alpha) {
   // banked chain, wide on the hit, sleepy after a long stargaze. Two tiny
   // rounded strokes — the whole face budget.
   {
-    const mood = ANIM.eyeMood(rig, p.idle || 0), lid = ANIM.lidAmount(rig);
+    const mood = ANIM.eyeMood(R, p.idle || 0), lid = ANIM.lidAmount(R);
     const ex = 1.6 + lookLocal * 3 + (p.onGround ? 0 : 0.4), ey = -hh + 8.4 + (p.onGround ? 0 : (p.vy < 0 ? -0.5 : 0.5));
     ctx.strokeStyle = 'rgba(232,252,255,0.95)'; ctx.lineCap = 'round';
     for (const s of SGN) {
