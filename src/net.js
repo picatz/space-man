@@ -432,8 +432,15 @@
      moves only after a successful open (garbage cannot burn counters).
      ------------------------------------------------------------------------- */
   function makePair(aesKey, roomId8, epoch, sendDir) {
-    return { key: aesKey, roomId: roomId8, epoch, dir: sendDir, sendCtr: 0, highSeen: -1, mask: 0 };
+    return { key: aesKey, roomId: roomId8, epoch, dir: sendDir, sendCtr: 0, highSeen: -1, mask: 0, strictHigh: -1 };
   }
+  // Only frames whose effect does not depend on arrival order may be taken out of send order:
+  // presence and snapshot rows carry the sender's own frame clock (receivers keep the newest
+  // per runner), and PING/PONG are matched by id. Every other frame — ROSTER, ROLE, WELCOME,
+  // ROUND/control, KILL/KILLB/KILLS, BYE, EMOTE, HELLO, and anything unknown — mutates state,
+  // so it must arrive after every earlier state frame: one whose counter is not above the last
+  // accepted state frame is dropped as 'late' (never struck — that is reordering, not an attack).
+  const REORDER_SAFE = new Set([A_PRES, A_SNAP, A_PING, A_PONG]);
   // Anti-replay with a small window (the DTLS/IPsec rule): every counter opens at most once; one
   // that arrives a little late (reordered on a lossy path) is still accepted, one from beyond the
   // window is dropped as stale. `mask` bit i = counter highSeen−1−i already opened.
@@ -498,7 +505,11 @@
     try {
       const pt = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, pair.key, wire.subarray(11)));
       if (replayCheck(pair, ctr)) return { err: 'replay' };   // a twin opened while we awaited decrypt
-      markSeen(pair, ctr);
+      markSeen(pair, ctr);                                     // opened once, either way: a later copy is a replay
+      if (!(pt.length && REORDER_SAFE.has(pt[0]))) {
+        if (ctr <= pair.strictHigh) return { err: 'late' };
+        pair.strictHigh = ctr;
+      }
       return { pt };
     } catch (e) { return { err: 'aead' }; }
   }
@@ -1451,7 +1462,7 @@
       const row = S.roster.get(key);
       if (!row) return joinAttempt(srcPub, key, wire);
       const res = await openApp(row.pair, wire);
-      if (res.err === 'stale') return;                           // reordered past the window: dropped, never a strike (a slow path is not an attack)
+      if (res.err === 'stale' || res.err === 'late') return;     // reordered past the window, or a state frame overtaken by a newer one: dropped, never a strike (a slow path is not an attack)
       if (res.err) return strike(row, res.err);
       S.rxTicks = 0;                                             // life on our socket (dead-link detection)
       const pt = res.pt;
@@ -1807,9 +1818,12 @@
       if (!S.relay || S.relay.state !== 'established') return;
       const nowTick = performance.now();
       const rows = S.role === ROLE_SPECTATOR || nowTick - (S.selfSeen || 0) > PRES_STALE ? [] : [{ p: 1, pres: S.self }];
-      for (const r of liveRows(nowTick)) if (r !== row && rows.length < SNAP_MAX) rows.push({ p: r.p, pres: r.pres });
-      if (!rows.length) return;
-      S.relay.send(row.pub, await sealApp(row.pair, encSnap(S.outSnap, (((nowTick - S.started) | 0) >> 4) & 0xffff, rows).slice()));
+      for (const r of liveRows(nowTick)) if (r !== row) rows.push({ p: r.p, pres: r.pres });
+      // Everyone, in SNAP_MAX-sized frames: a 32-runner room needs three.
+      const tick = (((nowTick - S.started) | 0) >> 4) & 0xffff;
+      for (let i = 0; i < rows.length; i += SNAP_MAX) {
+        S.relay.send(row.pub, await sealApp(row.pair, encSnap(S.outSnap, tick, rows.slice(i, i + SNAP_MAX)).slice()));
+      }
     }
     async function snapTick() {
       if (S.relay.state !== 'established') return;
@@ -2104,7 +2118,7 @@
       const q = { n: 1, rtt: med('rttMs'), loss: med('lossPct') / 100, jit: med('jitterMs') };
       return { level: linkLevel(q), rttMs: q.rtt, lossPct: Math.round(q.loss * 100), jitterMs: q.jit, peers };
     };
-    S._onPacket = onPacket; S._onCodePacket = onCodePacket; S._onPeerGone = hostPeerGone; S._snapTick = snapTick;   // harness seam (offline drive; underscore = not a contract)
+    S._onPacket = onPacket; S._onCodePacket = onCodePacket; S._onPeerGone = hostPeerGone; S._snapTick = snapTick; S._snapTo = snapTo;   // harness seam (offline drive; underscore = not a contract)
     // Leaving tells every member (BYE closed) before the socket goes, so no
     // guest sits in a dead room. Seals are async; close once they are sent.
     S.close = () => {
@@ -2274,7 +2288,10 @@
         const at = performance.now();
         for (const row of snap.rows) {
           const prev = S.peers.get(row.p);                       // carry the transient emote across position updates
-          if (prev && prev.x != null && presStale(prev, row)) { if (prev.t === row.t) prev.receivedAt = at; continue; }   // older (reordered) or a heartbeat copy: keep ours, refresh its age
+          // Older (reordered) or a heartbeat copy: keep ours, refresh its age — unless the runner
+          // restarted (a dead sample followed by a live in-run one): its frame clock went back.
+          const restart = prev && (prev.state & 4) && (row.state & 8) && !(row.state & 4);
+          if (prev && prev.x != null && !restart && presStale(prev, row)) { if (prev.t === row.t) prev.receivedAt = at; continue; }
           if (prev) { row.emoteId = prev.emoteId; row.emoteSeq = prev.emoteSeq; row.hist = prev.hist; }
           row.receivedAt = at;
           pushHist(row, row, at);

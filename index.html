@@ -6602,7 +6602,7 @@ function ghostFor(p) {
   for (const c of ghosts) if (!c.active) {
     c.active = true; c.p = p; c.alpha = 0; c.rx = 0; c.x0 = c.x1 = c.t0 = c.t1 = 0;
     c.emoteId = -1; c.emoteSeq = 0; c.emoteT = 0; c.badgeKey = '';
-    c.dead = false; c.aliveSeen = false; c.track = null; c.histAt = 0;
+    c.dead = false; c.aliveSeen = false; c.track = null; c.histAt = 0; c.trackRun = -1; c.trackState = 0;
     ghostByP.set(p, c); return c;
   }
   return null;
@@ -6641,6 +6641,10 @@ function netSampleGhosts(now) {
       if (!g.track) g.track = new window.SpaceManSmooth.Track();
       for (const h of s.hist) if (h.at > g.histAt && h.runId === s.runId) {
         g.histAt = h.at;
+        // A new trace (a live sample after a dead one, or a new round) starts its frame clock
+        // over and may reuse stamps still buffered from the last run: start the buffer over too.
+        if (g.trackRun !== h.runId || ((g.trackState & 4) && (h.state & 8) && !(h.state & 4))) g.track.reset();
+        g.trackRun = h.runId; g.trackState = h.state;
         g.track.push({ t16: h.t, x: h.x, y: h.y, vx: h.vx / 10, vy: h.vy, ground: !!(h.state & 2) }, h.at);
       }
       g.x1 = s.x; g.y1 = s.y; g.t1 = now; g.vx = s.vx;         // latest known spot (spectator camera / world cursor)

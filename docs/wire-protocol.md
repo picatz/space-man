@@ -317,12 +317,23 @@ The receiver keeps `highSeen` per (pair, dir), initialized to `-1`, and (v5) a 3
 
 `highSeen` advances **only** after a successful open, so forged/garbage frames cannot burn
 counter space. Each counter opens **at most once**, so replays are still refused and
-struck; a frame that arrives a little late (reordered by a lossy path — possible across a
-reconnect or a relay mesh even though each relay leg is TCP) is accepted once. Anything
-older than the window is indistinguishable from a replay but also harmless, so it is dropped
-without penalizing an honest peer on a bad path (the DTLS/IPsec rule). Frames whose meaning
-depends on order carry their own ordering: presence/snapshots a sender timestamp
-([§10.4](#104-pres-0x04)), control frames the host-epoch/seq gate ([§10.7](#107-control-frame-envelope-hostepochseq-gate)).
+struck. Anything older than the window is indistinguishable from a replay but also
+harmless, so it is dropped without penalizing an honest peer on a bad path (the DTLS/IPsec
+rule).
+
+**Which frames may be reordered (MUST).** Only frames whose effect does not depend on
+arrival order may be delivered out of send order: **PRES (0x04)**, **SNAP (0x05)** — each
+sample carries the sender's frame clock and receivers keep the newest per runner
+([§10.4](#104-pres-0x04)) — and **PING (0x1a) / PONG (0x1b)**, matched by id. Every other
+frame type (HELLO, WELCOME, ROSTER, ROLE, EMOTE/EMOTEB, BYE, ROUND and any control frame,
+KILL/KILLB/KILLS, and any unknown or reserved type) is a *state* frame and is accepted only
+in send order among state frames: the receiver also keeps `strictHigh` per (pair, dir), and
+a state frame whose counter is **≤ `strictHigh`** (it was overtaken by a newer state frame)
+is dropped as `late` — **no strike**, it is network reordering; otherwise `strictHigh =
+counter`. Its counter is still marked opened, so a later copy is a `replay` (struck). A
+state frame overtaken only by presence/snapshot/ping traffic is still accepted. This is
+what stops a delayed full ROSTER from resurrecting a player whose leave already arrived, or
+an older ROLE request from reverting a newer one.
 
 ### 7.4 NaCl secretbox (relay handshake & code channel)
 
@@ -608,8 +619,8 @@ fan-out; every row is re-sent at least once per second (heartbeat) so receivers 
 fresh, and a tick with nothing new sends **no packet at all** (an idle room costs one SNAP
 per second per member instead of ten — fewer radio wake-ups on every phone). When the
 host's own socket backs up past 4 KiB it fans out every other tick. A newly admitted or
-re-welcomed member is sent one SNAP with every live row right away. A receiver keeps, per
-P, the newest sample by `t` (an older one is ignored; an identical heartbeat copy only
+re-welcomed member is sent every live row right away (as many SNAPs as it takes). A receiver keeps, per
+P, the newest sample by `t` (an older one is ignored unless it is a live sample after a dead one — a restart resets the clock; an identical heartbeat copy only
 refreshes its age) and hands recent samples to its jitter buffer. A sitting-out (spectator)
 host streams no ghost of its own.
 
@@ -697,7 +708,7 @@ anchor (ROUND's `elapsedMs` is corrected by half the app-level RTT, not the rela
 PING is rate-limited per key (burst 4, refill 1/s, over-rate dropped); a guest that sends
 PONG is forging a host frame (strike `host-frame`).
 
-On a re-HELLO the host always re-sends the full roster (`op 0`) and a SNAP of every live row
+On a re-HELLO the host always re-sends the full roster (`op 0`) and every live row as SNAP frames (chunked by `SNAP_MAX`, so a full room arrives complete)
 to that member, as well as the ROUND anchor and `KILLS` — whether or not it saw the member's
 transport drop, because frames sent during even a short blip were lost.
 
@@ -982,7 +993,8 @@ that key are silently dropped and its roster entry is removed. Ban survives reco
 same key. **Strike-able (S) events:**
 
 - AEAD `size` (wire > 256 B, pre-decrypt), `ver` (bad envelope), `dir`, `replay`, `aead`.
-  (`stale` — a counter older than the replay window — is dropped, never struck.)
+  (`stale` — a counter older than the replay window — and `late` — a state frame overtaken
+  by a newer state frame, [§7.3](#73-replay-rule-must) — are dropped, never struck.)
 - A host-only frame from a guest (`host-frame`: WELCOME, ROSTER, SNAP, BYE, ROUND, EMOTEB,
   KILLB, KILLS, PONG).
 - HELLO too short (`short`), HELLO/re-hello proof mismatch (`proof`).
@@ -1060,7 +1072,7 @@ A conforming client MUST uphold these (condensed from the reference security rev
 |---|---|---|
 | envelope `ver` | = PROTO (5) | strike |
 | envelope `dir` | matches sender role (0x01 G→H / 0x02 H→G) | strike |
-| envelope `counter` | not yet opened, within 32 of `highSeen(pair, dir)` | replay: drop + strike; older than the window: drop (`stale`, no strike) |
+| envelope `counter` | not yet opened, within 32 of `highSeen(pair, dir)`; a state frame (not PRES/SNAP/PING/PONG) also `> strictHigh` | replay: drop + strike; older than the window: drop (`stale`, no strike); overtaken state frame: drop (`late`, no strike) |
 | wire size | ≤ 256 B | drop + strike (pre-decrypt) |
 | HELLO `protoMin/Max` | overlap [5,5], `min ≤ max` | refuse join / strike |
 | tag (HELLO/ROSTER) | `[A-Z0-9]{3}` | force `"AAA"` (**W**) |
