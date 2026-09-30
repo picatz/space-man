@@ -6,7 +6,7 @@ const ROOT = path.resolve(__dirname, '..');
 
 // No game/network behavior is mocked. Only browser APIs and the opaque relay
 // transport are replaced; clients exchange the real encrypted wire protocol.
-function client(hub, { game = true, width = 1280, height = 720, storage = new Map(), hash = '', dpr = 1 } = {}) {
+function client(hub, { game = true, width = 1280, height = 720, storage = new Map(), hash = '', dpr = 1, navigator = {} } = {}) {
   const timers = new Set();
   const drawing = new Proxy({}, { get(target, key) {
     if (key in target) return target[key];
@@ -18,7 +18,7 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
     const classes = new Set();
     return { style: { setProperty() {} }, dataset: {}, children: [], width: 1280, height: 720,
       classList: { add: (...v) => v.forEach((x) => classes.add(x)), remove: (...v) => v.forEach((x) => classes.delete(x)), contains: (v) => classes.has(v), toggle(v, on) { if (on ?? !classes.has(v)) classes.add(v); else classes.delete(v); } },
-      getContext: () => drawing, addEventListener() {}, setAttribute() {}, removeAttribute() {},
+      getContext: () => drawing, listeners: {}, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, setAttribute() {}, removeAttribute() {},
       appendChild(e) { this.children.push(e); return e; }, querySelectorAll() { return []; }, querySelector() { return null; },
       getBoundingClientRect: () => ({ top: 0, left: 0, width, height }), getClientRects: () => [{ top: 0, left: 0, width, height }], closest() { return null; }, toDataURL() { return ''; }, focus() {}, click() { if (this.onclick) this.onclick({}); } };
   }
@@ -28,7 +28,7 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
     addEventListener() {}, body: element(), head: element(), documentElement: element(), hidden: false };
   const sandbox = { console, TextEncoder, TextDecoder, URL, AbortController, Uint8Array, Uint32Array, Int32Array, Float32Array, ArrayBuffer, DataView,
     crypto: webcrypto, performance: { now: () => hub.now() }, document,
-    Image: class {}, navigator: {}, location: { hash, origin: 'https://space.test', href: 'https://space.test/' },
+    Image: class {}, navigator, location: { hash, origin: 'https://space.test', href: 'https://space.test/' },
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
     innerWidth: width, innerHeight: height, devicePixelRatio: dpr, addEventListener() {},
     matchMedia: () => ({ matches: false }), getComputedStyle: () => ({ getPropertyValue: () => '0' }),
@@ -47,7 +47,9 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
     const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
     run(html.match(/<script>\s*([\s\S]*?)<\/script>/)[1]);
   }
-  return { run, context, net: context.SpaceManNet, elements, close() { context.SpaceManNet.leave(); for (const t of timers) { clearTimeout(t); clearInterval(t); } } };
+  // Dispatch a DOM event to the handlers the game registered on an element (by id).
+  const dispatch = (id, type, ev) => { const e = { preventDefault() {}, ...ev }; for (const fn of (elements.get(id)?.listeners[type] || [])) fn(e); };
+  return { run, context, net: context.SpaceManNet, elements, dispatch, close() { context.SpaceManNet.leave(); for (const t of timers) { clearTimeout(t); clearInterval(t); } } };
 }
 function relay() {
   let offset = 1000;

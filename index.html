@@ -1055,7 +1055,7 @@ const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.s
 // OS answer at load: only the DEFAULT for the in-game Reduce Motion switch.
 const osReducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, musicVol: 1, sfxVol: 1, muted: false,
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, hapticsStrength: 1, hapticsSaver: true, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
 // G: default AUTO-RUN (touch) to OFF — touch movement is free left/right, no
@@ -1070,6 +1070,8 @@ if (loadJSON(LS.autorunReset, null) !== 1) { settings.autorun = false; saveJSON(
 settings.netGhosts = Math.min(1, Math.max(0.25, (typeof settings.netGhosts === 'number' && isFinite(settings.netGhosts)) ? settings.netGhosts : 0.85));
 settings.netEmotes = settings.netEmotes !== false;
 settings.netApprove = settings.netApprove === true;
+settings.hapticsStrength = Math.min(1, Math.max(0.3, (typeof settings.hapticsStrength === 'number' && isFinite(settings.hapticsStrength)) ? settings.hapticsStrength : 1));
+settings.hapticsSaver = settings.hapticsSaver !== false;   // on by default: a low, unplugged battery quiets the buzz
 settings.sharp = settings.sharp === true;   // SHARP RENDERING: opt-in lock on full DPR (adaptive resolution off)
 if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
 if (typeof settings.netRelay !== 'string') settings.netRelay = '';
@@ -1867,21 +1869,61 @@ const Audio = (() => {
    8. HAPTICS
    ------------------------------------------------------------------------- */
 const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: [12, 36, 12], celebrate: [14, 40, 14, 40, 22] };
+// Low-battery saver. No browser exposes iOS/Android Low Power Mode itself, but Chromium's Battery Status API tells us
+// when the device is low and unplugged, which is when the motor is worth sparing. Browsers without it never save.
+let batteryLow = false, batteryReady = false;   // batteryReady: the browser actually handed us battery data (it can refuse)
+try {
+  if (navigator.getBattery) navigator.getBattery().then((b) => {
+    const sync = () => { batteryLow = !b.charging && b.level < 0.2; };
+    sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
+    batteryReady = true; syncHapticRows();
+  }).catch(() => {});
+} catch (e) {}
+// Which haptic settings mean something on this device right now? The strength slider only does anything where the motor's
+// length can be set: Android/desktop vibration, or a controller with rumble (iOS's tick is one fixed size). The saver only
+// does anything once the browser has really shown us the battery. Rows are built once and shown or hidden as this changes
+// (a controller plugged in, a battery reading arriving).
+const hapticRows = [];
+// The actuator we can actually rumble, if this pad has one: both the row and the buzz use the same test.
+function rumbleActuator(gp) {
+  const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
+  return act && act.playEffect ? act : null;
+}
+function padRumbles() {
+  try { return !!rumbleActuator(input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null); } catch (e) { return false; }
+}
+// pollGamepad tells us whenever the connected pad could change (plugged in, swapped for another, unplugged): re-sync the
+// rows only when whether it can rumble has actually changed, so a hand-off between controllers never leaves the slider stale.
+let padCanRumble = false;
+function noteRumble(gp) {
+  const now = !!rumbleActuator(gp);
+  if (now !== padCanRumble) { padCanRumble = now; syncHapticRows(); }
+}
+function syncHapticRows() {
+  const phoneMotor = !!navigator.vibrate && matchMedia('(any-pointer: coarse)').matches;   // desktop Chrome has vibrate() but no motor
+  const show = { hapticsStrength: phoneMotor || padRumbles(), hapticsSaver: batteryReady };
+  for (const row of hapticRows) row.style.display = show[row.dataset.settingRow] ? '' : 'none';
+}
+// Is the buzz allowed right now? (switch on, and not saving a nearly flat battery)
+function hapticsOn() { return !!settings.haptics && !SHOT && !(settings.hapticsSaver && batteryLow); }
+// Strength scales how long the motor runs (phones) and how hard it spins (controllers); the rhythm never changes.
+function scaleBuzz(pat, k) { return Array.isArray(pat) ? pat.map((v, i) => (i % 2 === 0 ? Math.max(4, Math.round(v * k)) : v)) : Math.max(4, Math.round(pat * k)); }
 function buzz(kind) {
-  if (!settings.haptics || SHOT) return;
+  if (!hapticsOn()) return;
+  const k = settings.hapticsStrength;
   const pat = HAPTICS[kind] || 10;
-  if (navigator.vibrate) navigator.vibrate(pat);
+  if (navigator.vibrate) navigator.vibrate(scaleBuzz(pat, k));
   try {
     const gp = input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null;
-    const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
-    if (act && act.playEffect) {
+    const act = rumbleActuator(gp);
+    if (act) {
       const heavy = kind === 'heavy' || kind === 'warn' || kind === 'celebrate';
       const duration = Array.isArray(pat) ? pat.reduce((a, b) => a + b, 0) : Math.max(20, pat * 2);
-      act.playEffect('dual-rumble', { duration, strongMagnitude: heavy ? .65 : .24, weakMagnitude: heavy ? .38 : .18 }).catch(() => {});
+      act.playEffect('dual-rumble', { duration, strongMagnitude: (heavy ? .65 : .24) * k, weakMagnitude: (heavy ? .38 : .18) * k }).catch(() => {});
       return;
     }
   } catch (e) {}
-  try { const l = document.getElementById('hapLbl'); if (l) l.click(); } catch (e) {}
+  try { const l = document.getElementById('hapLbl'); if (l) l.click(); } catch (e) {}   // iOS 17.4+: a switch input's tick is the only web haptic
 }
 
 /* ---------------------------------------------------------------------------
@@ -1982,6 +2024,7 @@ function pollGamepad() {
   if (!gp) {
     for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
   }
+  noteRumble(gp);
   if (!gp) {
     if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
     return;
@@ -5174,6 +5217,10 @@ function drawTouchControls() {
   // logical units mixed coordinate systems and pushed the pip ring off-screen.
   ctx.save();
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  // Once the player knows the controls they recede to a quiet outline, and wake up the moment a thumb lands.
+  const learned = flags.taughtRun && flags.taughtJump && flags.taughtShoot;
+  const dim = learned && !input.shootBtn.pressed && !input.stick.active && !input.jumpZone.active ? 0.6 : 1;
+  ctx.globalAlpha = dim;
   const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r;
   ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU);
   ctx.fillStyle = input.shootBtn.pressed ? 'rgba(255,201,60,0.35)' : 'rgba(255,201,60,0.16)'; ctx.fill();
@@ -5190,20 +5237,20 @@ function drawTouchControls() {
     const cssW = window.innerWidth, cssH = window.innerHeight;
     const gx = input.stick.active ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
     const gy = input.stick.active ? input.stick.cy : cssH - safeInset('bottom') - (view.isTablet ? 92 : 76);
-    ctx.globalAlpha = 0.3; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
+    ctx.globalAlpha = dim * (0.3); ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(gx, gy, 34, 0, TAU); ctx.stroke();
     // Inner knob always renders — direction/magnitude feedback is the whole
     // point of a floating stick (rests centered when idle).
     const kx = input.stick.active ? clamp(input.stick.x, gx - 34, gx + 34) : gx;
-    ctx.globalAlpha = input.stick.active ? 0.55 : 0.22;
+    ctx.globalAlpha = dim * (input.stick.active ? 0.55 : 0.22);
     ctx.fillStyle = '#9FF1FF'; ctx.beginPath(); ctx.arc(kx, gy, 12, 0, TAU); ctx.fill();
-    ctx.globalAlpha = input.stick.active ? .7 : .38; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.6;
+    ctx.globalAlpha = dim * (input.stick.active ? .7 : .38); ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.6;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     drawChevron(gx - 44, gy + 50, -1); drawChevron(gx + 44, gy + 50, 1);
     // The jump region is intentionally large; this quiet affordance explains
     // the invisible hit area without covering the action.
     const jx = cssW * (settings.lefty ? .26 : .74), jy = cssH - safeInset('bottom') - 44;
-    ctx.globalAlpha = input.jumpZone.active ? .82 : .32; ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
+    ctx.globalAlpha = dim * (input.jumpZone.active ? .82 : .32); ctx.strokeStyle = '#9FF1FF'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(jx, jy, 25, 0, TAU); ctx.stroke();
     ctx.strokeStyle = '#CFE3FF'; ctx.lineWidth = 1.6; drawChevron(jx, jy + 2, 0);
     ctx.globalAlpha = 1;
@@ -5618,6 +5665,8 @@ const SETTINGS_DEF = [
   { key: 'sfx', type: 'switch', label: 'Sound FX' },
   { key: 'sfxVol', type: 'slider', label: 'SFX volume', dependsOn: 'sfx' },
   { key: 'haptics', type: 'switch', label: 'Haptics' },
+  { key: 'hapticsStrength', type: 'slider', label: 'Haptic strength', dependsOn: 'haptics', min: 0.3, max: 1, noShot: true },
+  { key: 'hapticsSaver', type: 'switch', label: 'Off on low battery', dependsOn: 'haptics', noShot: true },
   { key: 'shake', type: 'switch', label: 'Screen shake' },
   // noShot rows (like net rows) never appear under #shot, so goldens hold.
   { key: 'reduceMotion', type: 'switch', label: 'Reduce motion', noShot: true },
@@ -5650,6 +5699,7 @@ function buildSettings(host) {
     }
     const row = document.createElement('div');
     row.className = 'toggle-row'; row.dataset.settingRow = def.key;
+    if (def.key === 'hapticsStrength' || def.key === 'hapticsSaver') hapticRows.push(row);
     const lbl = document.createElement('span'); lbl.textContent = def.label;
     row.appendChild(lbl);
     if (def.type === 'switch') {
@@ -5674,12 +5724,13 @@ function buildSettings(host) {
       const pct = document.createElement('span'); pct.className = 'pct';
       // input = live (heard while dragging); change = the single LS write per drag
       r.oninput = () => { settings[def.key] = r.valueAsNumber / 100; if (def.key === 'musicVol' || def.key === 'sfxVol') Audio.syncChannels(); syncSettingsUI(); };
-      r.onchange = () => persistAll();
+      r.onchange = () => { persistAll(); if (def.key === 'hapticsStrength') buzz('success'); };   // let go of the slider and feel the new strength
       row.appendChild(r); row.appendChild(pct);
     }
     host.appendChild(row);
   }
   if (!SHOT) buildNetworkSettings(host);   // bespoke net rows off under #shot (golden identity)
+  syncHapticRows();
 }
 function syncSettingsUI() {
   document.querySelectorAll('[data-setting]').forEach((el) => {
@@ -5710,6 +5761,7 @@ function syncSettingsUI() {
 function toggleSetting(key) {
   settings[key] = !settings[key];
   if (key === 'music' || key === 'sfx') Audio.syncChannels();
+  if (key === 'haptics' && settings.haptics) buzz('success');   // feel it the moment it is switched on
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
   if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
   syncSettingsUI(); persistAll();
