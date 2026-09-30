@@ -274,3 +274,31 @@ test('only a stomp drives the stomp reaction: a rising shot kill does not, a rea
   assert.ok(stomp.pop > 0.5, 'stomp stretch fires');
   assert.equal(stomp.mood, 1, 'happy eyes');
 });
+
+test('the battery saver drops the decorative art tiers, even over Sharp Rendering', (t) => {
+  const c = client(relay());
+  t.after(() => c.close());
+  assert.equal(c.run('settings.sharp = false; settings.batterySaver = false; perf.cap = 2; artTier()'), 2, 'a normal session keeps the full art');
+  assert.equal(c.run('settings.batterySaver = true; artTier()'), 1, 'the saver selects the light tier (no motes, one ridge layer)');
+  assert.equal(c.run('settings.sharp = true; artTier()'), 1, 'the saver wins over Sharp, like resize() does');
+  assert.equal(c.run('settings.batterySaver = false; artTier()'), 2, 'Sharp alone still means the full art');
+});
+
+test('a lit saber keeps FIRE at full opacity even once the touch guides have receded', (t) => {
+  const c = client(relay());
+  t.after(() => c.close());
+  const r = JSON.parse(c.run(`JSON.stringify((() => {
+    resetRun(3); G.mode = 'play'; POW.update(); input.usingTouch = true; layoutTouch();
+    flags.taughtRun = true; flags.taughtJump = true;           // the guides recede...
+    input.shootBtn.pressed = false; input.stick.active = false; input.jumpZone.active = false;
+    POW.grant('saber'); POW.update();
+    const seen = []; const real = POW.drawFireButton;
+    POW.drawFireButton = function () { seen.push(ctx.globalAlpha); return real.apply(this, arguments); };
+    drawTouchControls();
+    POW.drawFireButton = real;
+    return { dim: touchDim(), seen };
+  })())`));
+  assert.ok(r.dim < 1, 'the guides really are dimmed in this state');
+  assert.equal(r.seen.length, 1, 'the saber hook ran');
+  assert.equal(r.seen[0], 1, 'but FIRE/SABER starts at full opacity');
+});

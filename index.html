@@ -1264,7 +1264,7 @@ const uiScale = () => clamp(view.w / 560, 0.86, 1);
 const perf = { cap: CFG.dprCap, ema: STEP, slowT: 0, warm: 0 };
 // Quality tier follows the same signal: once a device has had to step its DPR
 // down, the purely decorative layers go too (motes at 1.5, the near skyline at 1).
-const artTier = () => (SHOT || settings.sharp ? 2 : perf.cap);
+const artTier = () => (SHOT ? 2 : powerSaving() ? 1 : settings.sharp ? 2 : perf.cap);   // same precedence as resize(): the battery saver wins over Sharp
 function adaptResolution(dt) {
   if (SHOT || settings.sharp || view.dpr <= 1 || powerSaving()) return;
   if (dt > 0.1) return;   // tab switch / GC hitch: not steady-state cost
@@ -5712,8 +5712,8 @@ function drawTouchControls() {
   const calm = lessMotion(), breath = calm ? 0 : Math.sin(G.time * 2.1) * 0.5 + 0.5;
   const learned = touchDim();
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  // FIRE (a lit saber repaints it as SABER)
-  ctx.globalAlpha = learned;
+  // FIRE (a lit saber repaints it as SABER). It never recedes with the guides: start from full opacity.
+  ctx.globalAlpha = 1;
   if (!POW.drawFireButton(input.shootBtn.cx, input.shootBtn.cy, input.shootBtn.r)) {
     const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r, down = input.shootBtn.pressed, has = G.ammo > 0;
     const rr = r * (down ? 0.93 : 1);
