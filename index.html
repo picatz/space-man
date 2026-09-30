@@ -80,7 +80,8 @@
     align-items: center;
     justify-content: center;
     z-index: 20;
-    padding: calc(env(safe-area-inset-top) + 20px) 20px calc(env(safe-area-inset-bottom) + 20px);
+    --oy: 20px;
+    padding: calc(env(safe-area-inset-top) + var(--oy)) calc(env(safe-area-inset-right) + 20px) calc(env(safe-area-inset-bottom) + var(--oy)) calc(env(safe-area-inset-left) + 20px);
     text-align: center;
   }
   .overlay.show { display: flex; }
@@ -104,7 +105,8 @@
     background: var(--panel);
     border: 1px solid rgba(56, 225, 255, 0.25);
     border-radius: 20px;
-    padding: 22px 26px;
+    --px: 26px; --py: 22px;
+    padding: var(--py) var(--px);
     max-width: 440px;
     width: 100%;
     backdrop-filter: blur(10px);
@@ -115,6 +117,22 @@
     transition: opacity 0.16s cubic-bezier(.2, .9, .3, 1), transform 0.16s cubic-bezier(.2, .9, .3, 1);
   }
   .overlay.in .panel { opacity: 1; transform: translateY(0) scale(1); }
+  /* Every card fits the window it is in: never taller than the space the overlay leaves it (window height minus notch,
+     home bar and margin), scrolling inside itself when a screen is short — a phone on its side, a small desktop window,
+     an iPad with the keyboard up. Nothing is ever cut off with no way to reach it. */
+  .panel {
+    max-height: calc(100dvh - 2 * var(--oy) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .panel::-webkit-scrollbar { display: none; }
+  /* The buttons that matter stay on screen while the rest of the card scrolls under them. */
+  .dock { position: sticky; bottom: calc(-1 * var(--py)); z-index: 2; margin: 0 calc(-1 * var(--px)); padding: 12px var(--px) var(--py);
+    background: rgb(10, 14, 32); border-top: 1px solid rgba(207, 227, 255, 0.08); }
+  .dock.top { bottom: auto; top: calc(-1 * var(--py)); margin-top: calc(-1 * var(--py)); padding: var(--py) var(--px) 12px;
+    border-top: 0; border-bottom: 1px solid rgba(207, 227, 255, 0.08); }
+  .dock .btn:first-child { margin-top: 0; }
+  .dead-cols { display: block; }
   /* Never taller than the viewport: a long panel (Settings/Pause with the Run
      Together rows live, ~1127px) scrolls internally so Resume/Back always stay
      reachable. Gated ≥640px tall so the 980×620 solo #shot goldens — where the
@@ -226,6 +244,15 @@
   }
   /* Dependent rows dim when their parent switch is off — still operable. */
   .settings-list .dim { opacity: 0.45; }
+  /* On a narrow phone the slider gets its own line instead of being squeezed to a nub beside its label. */
+  @media (max-width: 400px) {
+    .slider-row { display: grid; grid-template-columns: 1fr auto; align-items: center; text-align: left; }
+    .slider-row .pct { grid-column: 2; grid-row: 1; }
+    .slider-row input[type='range'] { grid-column: 1 / -1; grid-row: 2; margin: -2px 0 2px; }
+  }
+  .slider-row .pct { order: 2; }
+    .slider-row input[type='range'] { order: 3; flex: 1 1 100%; margin: -4px 0 4px; }
+  }
   .slider-row .pct { flex: 0 0 42px; text-align: right; font-family: var(--font-num); color: var(--cyan); }
   .slider-row input[type='range'] {
     -webkit-appearance: none;
@@ -328,8 +355,8 @@
 
   /* Compact cards for short (phone-landscape) viewports. */
   @media (max-height: 430px) {
-    .overlay { padding: calc(env(safe-area-inset-top) + 10px) 16px calc(env(safe-area-inset-bottom) + 10px); }
-    .panel { padding: 10px 18px; max-height: calc(100vh - 24px); overflow-y: auto; border-radius: 14px; }
+    .overlay { --oy: 10px; }
+    .panel { --px: 18px; --py: 10px; border-radius: 14px; }
     .title-lg { font-size: 18px; margin-bottom: 2px; }
     .panel .btn { padding: 8px 14px; }
     table.scores td, table.scores th { padding: 2px 8px; font-size: 11px; }
@@ -338,6 +365,22 @@
     .swatch-row { gap: 5px; margin: 4px 0 0; }
   }
   table.scores tr.me td { color: var(--gold); }
+
+  /* Landscape on anything short (phone on its side, small desktop window, tablet with a keyboard): cards go wide and
+     two-column instead of tall, so the score and the retry button are on screen together. */
+  @media (orientation: landscape) and (max-height: 560px) {
+    .overlay { --oy: 10px; }
+    .panel { --px: 20px; --py: 12px; border-radius: 16px; }
+    .dead-anchor, .attract-anchor { justify-content: center; }
+    #ovDead .panel, #ovPause .panel, #ovSettings .panel { max-width: min(760px, 100%); }
+    .dead-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 26px; text-align: center; align-items: start; }
+    .dead-side { align-self: stretch; }
+    #deadScore { font-size: 38px !important; margin: 2px 0 !important; }
+    #deadMedal { height: 20px !important; font-size: 17px !important; }
+    #ovPause .settings-list, #ovSettings .settings-list { column-count: 2; column-gap: 28px; }
+    #ovPause .settings-list > *, #ovSettings .settings-list > * { break-inside: avoid; }
+    .control-guide { margin: 8px 0 4px; }
+  }
 
   /* discovery logbook (RECORDS panel): found = full color, unfound = ? + dimmed hint */
   #logbook {
@@ -394,6 +437,7 @@
   .control-guide span { margin-top: 4px; color: var(--cyan); font-size: 8px; letter-spacing: 1px; }
 
   @media (pointer: coarse) {
+    .toggle-row { min-height: 48px; }
     .desktop-guide { display: none; }
     .panel { max-width: 400px; }
     .btn { min-height: 48px; }
@@ -639,7 +683,7 @@
 <div class="overlay" id="ovPause">
   <div class="panel">
     <div class="title-lg">Paused</div>
-    <button class="btn" id="btnResume">Resume</button>
+    <div class="dock top"><button class="btn" id="btnResume">Resume</button></div>
     <div class="control-guide desktop-guide">
       <div><b>A D / ← →</b><span>MOVE</span></div><div><b>SPACE</b><span>JUMP</span></div><div><b>F / CLICK</b><span>FIRE</span></div>
     </div>
@@ -655,6 +699,8 @@
 <!-- Game over -->
 <div class="overlay dead-anchor" id="ovDead">
   <div class="panel">
+    <div class="dead-cols">
+    <div class="dead-main">
     <div class="sub" style="letter-spacing:3px;">RUN OVER</div>
     <div id="deadScore" class="title-lg" style="font-size:44px;margin:4px 0;">0</div>
     <div id="deadMedal" class="sub" style="font-size:20px;letter-spacing:4px;height:24px;"></div>
@@ -664,18 +710,24 @@
     <div id="deadCourse" class="sub" style="font-size:11px;letter-spacing:1.5px;color:var(--gold);margin-top:6px;display:none;"></div>
     <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
     <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
+    </div>
+    <div class="dead-side">
     <table class="scores" id="deadScores"></table>
     <div class="round-head" id="deadRound" style="display:none;"></div>
     <div class="round-standings" id="deadStandings" style="display:none;"></div>
     <div class="sub" id="deadRoundNext" style="font-size:11px;opacity:0.7;display:none;"></div>
     <div class="room-caption" id="deadRoomCaption" style="display:none;">ROOM</div>
     <table class="scores" id="deadRoomScores" style="display:none;"></table>
+    <div class="dock">
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
     <button class="btn ghost" id="btnShare" data-keys="dead" style="display:none;">Share Run</button>
     <button class="btn ghost" id="btnSpectateRound" style="display:none;">Spectate This Round</button>
     <div class="sub" id="deadTapHint">TAP TO RETRY</div>
+    </div>
     <div class="install-chip" id="installChip">Add Space Man to your home screen</div>
     <div class="emote-row" id="deadEmotes" style="display:none;"></div>
+    </div>
+    </div>
   </div>
 </div>
 
@@ -686,7 +738,7 @@
     <div class="settings-list" data-settings-host></div>
     <button class="btn ghost" id="btnWardrobe2" style="margin-top:12px;">Suit Up</button>
     <button class="btn ghost coral" id="btnReset">Reset All Data</button>
-    <button class="btn ghost" id="btnCloseSettings">Back</button>
+    <div class="dock"><button class="btn ghost" id="btnCloseSettings">Back</button></div>
   </div>
 </div>
 
