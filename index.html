@@ -1820,13 +1820,31 @@ const Audio = (() => {
 const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: [12, 36, 12], celebrate: [14, 40, 14, 40, 22] };
 // Low-battery saver. No browser exposes iOS/Android Low Power Mode itself, but Chromium's Battery Status API tells us
 // when the device is low and unplugged, which is when the motor is worth sparing. Browsers without it never save.
-let batteryLow = false;
+let batteryLow = false, batteryReady = false;   // batteryReady: the browser actually handed us battery data (it can refuse)
 try {
   if (navigator.getBattery) navigator.getBattery().then((b) => {
     const sync = () => { batteryLow = !b.charging && b.level <= 0.2; };
     sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
+    batteryReady = true; syncHapticRows();
   }).catch(() => {});
 } catch (e) {}
+// Which haptic settings mean something on this device right now? The strength slider only does anything where the motor's
+// length can be set: Android/desktop vibration, or a controller with rumble (iOS's tick is one fixed size). The saver only
+// does anything once the browser has really shown us the battery. Rows are built once and shown or hidden as this changes
+// (a controller plugged in, a battery reading arriving).
+const hapticRows = [];
+function padRumbles() {
+  try {
+    const gp = input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null;
+    const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
+    return !!(act && act.playEffect);
+  } catch (e) { return false; }
+}
+function syncHapticRows() {
+  const phoneMotor = !!navigator.vibrate && matchMedia('(any-pointer: coarse)').matches;   // desktop Chrome has vibrate() but no motor
+  const show = { hapticsStrength: phoneMotor || padRumbles(), hapticsSaver: batteryReady };
+  for (const row of hapticRows) row.style.display = show[row.dataset.settingRow] ? '' : 'none';
+}
 // Is the buzz allowed right now? (switch on, and not saving a nearly flat battery)
 function hapticsOn() { return !!settings.haptics && !SHOT && !(settings.hapticsSaver && batteryLow); }
 // Strength scales how long the motor runs (phones) and how hard it spins (controllers); the rhythm never changes.
@@ -1948,12 +1966,12 @@ function pollGamepad() {
     for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
   }
   if (!gp) {
-    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); }
+    if (input.pad.connected) { input.pad.connected = false; input.usingGamepad = false; input.gamepadX = 0; input.down = false; document.body.classList.remove('gamepad-active'); queueToast('CONTROLLER DISCONNECTED', 'sys'); syncHapticRows(); }
     return;
   }
   if (!input.pad.connected) {
     input.pad.connected = true; input.pad.prev = []; document.body.classList.add('gamepad-active');
-    queueToast('CONTROLLER READY', 'sys');
+    queueToast('CONTROLLER READY', 'sys'); syncHapticRows();
   }
   const pressed = (i) => gamepadButton(gp, i);
   const just = (i) => pressed(i) && !input.pad.prev[i];
@@ -5588,7 +5606,7 @@ const SETTINGS_DEF = [
   { key: 'sfxVol', type: 'slider', label: 'SFX volume', dependsOn: 'sfx' },
   { key: 'haptics', type: 'switch', label: 'Haptics' },
   { key: 'hapticsStrength', type: 'slider', label: 'Haptic strength', dependsOn: 'haptics', min: 0.3, max: 1, noShot: true },
-  { key: 'hapticsSaver', type: 'switch', label: 'Off on low battery', dependsOn: 'haptics', needsBattery: true, noShot: true },
+  { key: 'hapticsSaver', type: 'switch', label: 'Off on low battery', dependsOn: 'haptics', noShot: true },
   { key: 'shake', type: 'switch', label: 'Screen shake' },
   // noShot rows (like net rows) never appear under #shot, so goldens hold.
   { key: 'reduceMotion', type: 'switch', label: 'Reduce motion', noShot: true },
@@ -5612,7 +5630,6 @@ const SETTINGS_DEF = [
 ];
 function buildSettings(host) {
   for (const def of SETTINGS_DEF) {
-    if (def.needsBattery && !navigator.getBattery) continue;   // only where the browser can tell us the battery is low
     if ((def.net || def.noShot) && SHOT) continue;   // net/a11y rows never bloat a #shot golden
     const keyRow = def.type === 'key' || def.type === 'keyreset';
     if (def.section) {   // a lightweight header before the first row of a group
@@ -5622,6 +5639,7 @@ function buildSettings(host) {
     }
     const row = document.createElement('div');
     row.className = 'toggle-row'; row.dataset.settingRow = def.key;
+    if (def.key === 'hapticsStrength' || def.key === 'hapticsSaver') hapticRows.push(row);
     const lbl = document.createElement('span'); lbl.textContent = def.label;
     row.appendChild(lbl);
     if (def.type === 'switch') {
@@ -5652,6 +5670,7 @@ function buildSettings(host) {
     host.appendChild(row);
   }
   if (!SHOT) buildNetworkSettings(host);   // bespoke net rows off under #shot (golden identity)
+  syncHapticRows();
 }
 function syncSettingsUI() {
   document.querySelectorAll('[data-setting]').forEach((el) => {
