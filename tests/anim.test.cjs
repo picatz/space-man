@@ -120,3 +120,25 @@ test('the rig is presentation only: stepping and drawing it never changes the ru
   };
   assert.equal(run(true), run(false));
 });
+
+test('touch chevrons point the way they move, and the guides dim once learned', (t) => {
+  const hub = relay(), c = client(hub, { width: 390, height: 844 });
+  t.after(() => c.close());
+  const ctx = c.run('ctx'), pts = [];
+  ctx.moveTo = (x, y) => pts.push([x, y]); ctx.lineTo = (x, y) => pts.push([x, y]);
+  c.run('drawChevron(100, 50, -1)');
+  assert.ok(pts[1][0] < pts[0][0], 'left chevron apex is on the left');
+  pts.length = 0; c.run('drawChevron(100, 50, 1)');
+  assert.ok(pts[1][0] > pts[0][0], 'right chevron apex is on the right');
+  const peakGuide = () => {
+    const a = [];
+    Object.defineProperty(ctx, 'globalAlpha', { configurable: true, get: () => 1, set: (v) => a.push(v) });
+    c.run('drawTouchControls()');
+    return a.slice(3).reduce((m, v) => (v < 1 && v > m ? v : m), 0);   // skip the FIRE disc (never dims)
+  };
+  c.run('startRun(); G.mode = "play"; flags.taughtRun = false; flags.taughtJump = false;');
+  const fresh = peakGuide();
+  c.run('flags.taughtRun = true; flags.taughtJump = true;');
+  const learned = peakGuide();
+  assert.ok(learned > 0 && learned < fresh, 'guides step back after MOVE + JUMP are learned (' + fresh + ' → ' + learned + ')');
+});

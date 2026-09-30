@@ -144,7 +144,8 @@
   .panel::-webkit-scrollbar { display: none; }
   /* The buttons that matter stay on screen while the rest of the card scrolls under them. */
   .dock { position: sticky; bottom: calc(-1 * var(--py)); z-index: 2; margin: 0 calc(-1 * var(--px)); padding: 12px var(--px) var(--py);
-    background: rgb(10, 14, 32); border-top: 1px solid rgba(207, 227, 255, 0.08); }
+    /* same glass as the card (not a solid slab), so a docked row never reads as a darker box */
+    background: rgba(10, 14, 32, 0.9); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-top: 1px solid var(--line); }
   .dock.top { bottom: auto; top: calc(-1 * var(--py)); margin-top: calc(-1 * var(--py)); padding: var(--py) var(--px) 12px;
     border-top: 0; border-bottom: 1px solid rgba(207, 227, 255, 0.08); }
   /* A top dock under a title (Pause) must not ride up over it: only a first-child dock pulls into the padding. */
@@ -180,6 +181,7 @@
     margin-bottom: 6px;
   }
   .title-lg.t-md { font-size: var(--fs-lg); }
+  #attractBest { font-size: 17px; letter-spacing: 2px; color: var(--gold); margin-bottom: 4px; }
   /* Eyebrow: the small tracked caption above a hero value (RUN OVER, section heads). */
   .eyebrow { font-size: var(--fs-cap); font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan-lt); opacity: 0.85; }
   .sub {
@@ -386,7 +388,7 @@
   .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); margin: 12px 0 4px; }
   .stat-grid .stat { padding: 7px 4px 6px; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); }
   .stat-grid b { display: block; font: 800 15px var(--font-num); color: var(--suit); letter-spacing: 0.5px; }
-  .stat-grid span { display: block; margin-top: 2px; font-size: 8.5px; letter-spacing: 1.5px; color: var(--cyan); opacity: 0.9; }
+  .stat-grid span { display: block; margin-top: 2px; font-size: 9px; letter-spacing: 1.5px; color: var(--cyan); opacity: 0.9; }
   .stat-grid .stat.done b { color: var(--green); }
   .next-goal { font-size: 11px; letter-spacing: 1px; margin-top: 6px; color: var(--cyan-lt); opacity: 0.85; }
   .next-goal::before { content: '▸ '; color: var(--gold); }
@@ -433,6 +435,7 @@
     #ovDead .panel, #ovPause .panel, #ovSettings .panel { max-width: min(760px, 100%); }
     .dead-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 26px; text-align: center; align-items: start; }
     .dead-side { align-self: stretch; }
+    .dead-cols .dock { margin-left: 0; margin-right: 0; padding-left: 0; padding-right: 0; border-top: 0; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
     #deadScore { font-size: 38px; margin: 2px 0; }
     #deadMedal { font-size: 16px; }
     #deadMedal.has { height: 20px; }
@@ -454,10 +457,8 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0 12px;
-    margin-top: 10px;
+    margin-top: 2px;
     text-align: left;
-    border-top: 1px solid rgba(207, 227, 255, 0.08);
-    padding-top: 4px;
   }
   .log-row {
     display: flex;
@@ -591,6 +592,12 @@
     border-radius: 10px; padding: 8px 10px; margin: 0 0 8px;
   }
 
+  /* Section heads inside a card (Settings groups): the eyebrow style, left-aligned on a hairline. */
+  .section-head { font-size: var(--fs-cap); font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan-lt); opacity: 0.8;
+    text-align: left; margin: 16px 4px 2px; padding-bottom: 6px; border-bottom: 1px solid var(--line-2); }
+  /* Key binds read as keycaps. */
+  .key-row .mini-chip { min-width: 44px; font: 700 12px var(--font-num); color: var(--suit); background: rgba(207, 227, 255, 0.06);
+    border: 1px solid var(--line-2); border-bottom-width: 3px; border-radius: var(--r-xs); }
   .net-sub { font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; margin: 2px 0 10px; }
   .net-sub .num { font-family: var(--font-num); }
 
@@ -717,7 +724,7 @@
 <div class="overlay attract-anchor" id="ovAttract">
   <div class="panel">
     <div class="attract-main">
-    <div id="attractBest" class="title-lg" style="font-size:17px;letter-spacing:2px;color:var(--gold);margin-bottom:4px;">BEST 0</div>
+    <div id="attractBest" class="title-lg">BEST 0</div>
     <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
     <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
     <button class="btn pulse" id="btnPlay">Tap to Start</button>
@@ -830,11 +837,13 @@
 <div class="overlay" id="ovTrophy">
   <div class="panel">
     <div class="title-lg t-md">Records</div>
+    <div class="section-head">Top Runs</div>
     <table class="scores" id="trophyScores"></table>
     <div id="trophyStats" class="stats-line"></div>
+    <div class="section-head">Logbook</div>
     <div id="logbook"></div>
     <div id="logCount" class="stats-line"></div>
-    <button class="btn ghost" id="btnCloseTrophy" style="margin-top:12px;">Back</button>
+    <div class="dock"><button class="btn ghost" id="btnCloseTrophy">Back</button></div>
   </div>
 </div>
 
@@ -895,7 +904,7 @@
     </details>
     <div class="roster" id="roomRoster"></div>
     <p class="room-relay" id="roomStatus" role="status"></p>
-    <button class="btn" id="btnRoomPlay">Start Together</button>
+    <div class="dock"><button class="btn" id="btnRoomPlay">Start Together</button></div>
     <div class="toggle-row" id="roomApproveRow">
       <span>Approve Joins</span>
       <button class="switch" id="roomApprove" role="switch" aria-label="Approve joins"></button>
@@ -1235,6 +1244,9 @@ const uiScale = () => clamp(view.w / 560, 0.86, 1);
 // the sim and #shot goldens (fixed DPR) are untouched. Per launch only: a new
 // session starts sharp again. SHARP RENDERING (settings.sharp) opts out.
 const perf = { cap: CFG.dprCap, ema: STEP, slowT: 0, warm: 0 };
+// Quality tier follows the same signal: once a device has had to step its DPR
+// down, the purely decorative layers go too (motes at 1.5, the near skyline at 1).
+const artTier = () => (SHOT || settings.sharp ? 2 : perf.cap);
 function adaptResolution(dt) {
   if (SHOT || settings.sharp || view.dpr <= 1) return;
   if (dt > 0.1) return;   // tab switch / GC hitch: not steady-state cost
@@ -4219,18 +4231,25 @@ function buildStars() {
    and the action. Atmospheric perspective: the far range is lighter and softer.
    Built from ART.ridgeProfile (integer-frequency sines) — no rng anywhere. ---- */
 const RIDGE_W = 1024, RIDGE_H = 300;
-let ridgeTiles = null, ridgePrev = null, ridgeHue = -1;
+let ridgeTiles = null, ridgePrev = null, ridgeHue = -1, ridgeScale = 0;
 const _ridgeProf = new Float32Array(RIDGE_W + 1);
-function buildRidgeTile(hue, near) {
-  const B = ART.biome(hue), c = makeCanvas(RIDGE_W, RIDGE_H), g = c.getContext('2d');
+function buildRidgeTile(hue, near, sc) {
   const base = near ? 176 : 150, amp = near ? 48 : 72;
   ART.ridgeProfile(RIDGE_W, near ? 7 : 3, near ? 1.4 : 1, _ridgeProf);
-  const grd = g.createLinearGradient(0, base - amp, 0, RIDGE_H);
+  // Trimmed to the pixels that paint (crest − spires … a short haze fade under
+  // the base): fill cost is the whole budget for a full-width layer.
+  let crest = base;
+  for (let x = 0; x <= RIDGE_W; x += 4) crest = Math.min(crest, base - _ridgeProf[x] * amp);
+  const top0 = Math.max(0, Math.floor(crest - (near ? 52 : 4))), bottom = Math.min(RIDGE_H, base + 48);
+  // Baked at device resolution so the per-frame blit is a 1:1 copy (no resample).
+  const B = ART.biome(hue), c = makeCanvas(RIDGE_W * sc, (bottom - top0) * sc), g = c.getContext('2d');
+  c.offY = top0; g.scale(sc, sc); g.translate(0, -top0);
+  const grd = g.createLinearGradient(0, base - amp, 0, bottom);
   grd.addColorStop(0, near ? B.ridgeNear : B.ridgeFar); grd.addColorStop(0.3, near ? B.ridgeNear : B.ridgeFar);
   grd.addColorStop(1, 'rgba(6,8,24,0)');
-  g.fillStyle = grd; g.beginPath(); g.moveTo(0, RIDGE_H);
+  g.fillStyle = grd; g.beginPath(); g.moveTo(0, bottom);
   for (let x = 0; x <= RIDGE_W; x += 4) g.lineTo(x, base - _ridgeProf[x] * amp);
-  g.lineTo(RIDGE_W, RIDGE_H); g.closePath(); g.fill();
+  g.lineTo(RIDGE_W, bottom); g.closePath(); g.fill();
   // crystal spires on the near range (deterministic spots, lit on one face)
   if (near) {
     for (let i = 0; i < 9; i++) {
@@ -4258,26 +4277,31 @@ function buildRidgeTile(hue, near) {
 }
 function drawRidges(camX, camY) {
   const hue = BAND_HUE[G.band] || 218;
-  if (hue !== ridgeHue) {
-    ridgePrev = (ridgeTiles && G.sectorFadeT < 1.5) ? ridgeTiles : null;   // crossfade with the sky
-    ridgeTiles = [buildRidgeTile(hue, false), buildRidgeTile(hue, true)]; ridgeHue = hue;
+  if (hue !== ridgeHue || ridgeScale !== view.scale) {
+    // crossfade with the sky on a sector change; a resize just rebuilds sharp
+    ridgePrev = (ridgeTiles && G.sectorFadeT < 1.5 && ridgeScale === view.scale) ? ridgeTiles : null;
+    ridgeTiles = [buildRidgeTile(hue, false, view.scale), buildRidgeTile(hue, true, view.scale)]; ridgeHue = hue; ridgeScale = view.scale;
   }
+  const sc = view.scale;
+  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   const px = lessMotion() ? 0.5 : 1, gs = G.groundY - camY;
   const fade = ridgePrev && G.sectorFadeT < 1.5 ? 1 - easeOutQuad(clamp(G.sectorFadeT / 1.5, 0, 1)) : 0;
-  for (let layer = 0; layer < 2; layer++) {
+  const layers = artTier() <= 1 ? 1 : 2;
+  for (let layer = 0; layer < layers; layer++) {
     const par = layer ? 0.16 : 0.07, vpar = layer ? 0.4 : 0.22;
     const ty = view.h * 0.6 + (gs - view.h * 0.6) * vpar + (layer ? 36 : 6) - 160;
     const x0 = -(((camX * par * px) % RIDGE_W) + RIDGE_W) % RIDGE_W;
     const la = layer ? 0.9 : 0.62;   // haze: the far range sits back in the sky
     ctx.globalAlpha = la;
-    for (let x = x0; x < view.w; x += RIDGE_W) ctx.drawImage(ridgeTiles[layer], x, ty);
+    for (let x = x0; x < view.w; x += RIDGE_W) ctx.drawImage(ridgeTiles[layer], Math.round(x * sc), Math.round((ty + ridgeTiles[layer].offY) * sc));
     ctx.globalAlpha = 1;
     if (fade > 0) {
       ctx.globalAlpha = fade * la;
-      for (let x = x0; x < view.w; x += RIDGE_W) ctx.drawImage(ridgePrev[layer], x, ty);
+      for (let x = x0; x < view.w; x += RIDGE_W) ctx.drawImage(ridgePrev[layer], Math.round(x * sc), Math.round((ty + ridgePrev[layer].offY) * sc));
       ctx.globalAlpha = 1;
     }
   }
+  ctx.restore();
 }
 function drawBackground(camX, camY) {
   const hue = BAND_HUE[G.band] || 218;
@@ -4492,6 +4516,7 @@ for (let i = 0; i < 22; i++) MOTES.push({ x: ANIM.hash01(i * 4.1) * 1200, y: ANI
 for (let i = 0; i < 3; i++) MOTES.push({ x: 150 + i * 420, y: 0.2 + i * 0.3, par: 1.9, r: 7 + i * 3, ph: i * 2, bokeh: true });
 let moteSpr = null, moteHue = -1;
 function drawForeground(camX) {
+  if (artTier() < 2) return;
   const hue = BAND_HUE[G.band] || 218;
   if (hue !== moteHue) { moteSpr = ART.glow(16, ART.biome(hue).mote.replace(/, 1\)$/, ', 0.9)'), 0.2); moteHue = hue; }
   const spr = moteSpr, calm = lessMotion(), W = 1200, H = view.h + 40;
@@ -5272,18 +5297,21 @@ function fontStr(weight, size, family) {
 const MISSION_SHORT = { stomp: 'STOMP 3', shoot: 'BLAST 3', shard: '5 SHARDS', graze: 'DODGE 2', distance: 'REACH 350m', airchain: '3 IN 1 LEAP', trail: '2 FULL TRAILS', bigair: '3 BIG AIRS' };
 // Top scrim: a soft dark band behind the HUD so white numerals hold contrast over
 // bright sky, the flare and passing shards. One cached 1px strip, stretched.
+// Only behind the left cluster (odometer/score/mission), fading right and down —
+// a full-width band cost a whole-screen-width fill every frame for no extra read.
 let hudScrim = null;
-function drawHudScrim(h) {
+function drawHudScrim(h, w) {
   if (!hudScrim) {
-    hudScrim = makeCanvas(1, 64); const g = hudScrim.getContext('2d'), grd = g.createLinearGradient(0, 0, 0, 64);
-    grd.addColorStop(0, 'rgba(4,5,16,0.55)'); grd.addColorStop(0.55, 'rgba(4,5,16,0.22)'); grd.addColorStop(1, 'rgba(4,5,16,0)');
-    g.fillStyle = grd; g.fillRect(0, 0, 1, 64);
+    hudScrim = makeCanvas(64, 32); const g = hudScrim.getContext('2d');
+    const grd = g.createRadialGradient(0, 0, 0, 0, 0, 64);
+    grd.addColorStop(0, 'rgba(4,5,16,0.55)'); grd.addColorStop(0.5, 'rgba(4,5,16,0.28)'); grd.addColorStop(1, 'rgba(4,5,16,0)');
+    g.setTransform(1, 0, 0, 0.5, 0, 0); g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
   }
-  ctx.drawImage(hudScrim, 0, 0, 1, 64, 0, 0, view.w, h);
+  ctx.drawImage(hudScrim, 0, 0, w, h);
 }
 function drawHUD() {
   const us = uiScale();
-  drawHudScrim((netInRun() ? 32 : 0) + safeInset('top') + 96 * us);
+  drawHudScrim((netInRun() ? 32 : 0) + safeInset('top') + 110 * us, Math.min(view.w * 0.8, 330 * us) + safeInset('left'));
   // Run Together: the race strip owns the topmost band, so the run HUD shifts
   // down by (strip 26 + 6 gap) while in a room (§10.1). Solo: netInRun() false → 0.
   const netBand = netInRun() ? 32 : 0;
@@ -5505,9 +5533,8 @@ function drawTouchControls() {
   {
     const sx = input.shootBtn.cx, sy = input.shootBtn.cy, r = input.shootBtn.r, down = input.shootBtn.pressed, has = G.ammo > 0;
     const rr = r * (down ? 0.93 : 1);
-    ctx.globalAlpha = has ? (down ? 0.55 : 0.18 + breath * 0.1) : 0.08;
-    ctx.drawImage(GLOW.gold, sx - rr * 1.7, sy - rr * 1.7, rr * 3.4, rr * 3.4);
-    ctx.globalAlpha = down ? 1 : 0.85;
+    if (down && has) { ctx.globalAlpha = 0.55; ctx.drawImage(GLOW.gold, sx - rr * 1.7, sy - rr * 1.7, rr * 3.4, rr * 3.4); }   // bloom on press only (fill budget)
+    ctx.globalAlpha = down ? 1 : 0.78 + breath * 0.12;
     const disc = has ? touchDisc('fire', r, 'rgba(255,214,110,0.38)', 'rgba(120,70,0,0.28)') : touchDisc('fire0', r, 'rgba(200,210,230,0.18)', 'rgba(20,24,40,0.3)');
     ctx.drawImage(disc, sx - rr - 2, sy - rr - 2, rr * 2 + 4, rr * 2 + 4);
     ctx.strokeStyle = has ? (down ? '#FFE59A' : 'rgba(255,201,60,0.8)') : 'rgba(207,227,255,0.3)'; ctx.lineWidth = 2;
@@ -6006,7 +6033,7 @@ function buildSettings(host) {
     const keyRow = def.type === 'key' || def.type === 'keyreset';
     if (def.section) {   // a lightweight header before the first row of a group
       const h = document.createElement('div');
-      h.className = 'net-sub' + (keyRow ? ' key-row' : ''); h.style.margin = '12px 0 2px'; h.textContent = def.section;
+      h.className = 'section-head' + (keyRow ? ' key-row' : ''); h.textContent = def.section;
       host.appendChild(h);
     }
     const row = document.createElement('div');

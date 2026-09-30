@@ -48,3 +48,42 @@ test('the stylesheet is balanced, with no orphaned fragments', () => {
   const slider = css.slice(css.indexOf('/* On a narrow phone the slider'), css.indexOf(".slider-row input[type='range'] {\n    -webkit"));
   assert.doesNotMatch(slider, /order:/, 'no flex ordering left behind from the grid layout');
 });
+
+test('one design language: shared tokens drive cards, buttons and motion', () => {
+  const root = rule(':root');
+  for (const t of ['--r-sm', '--r-lg', '--sp-2', '--fs-cap', '--fs-hero', '--ease-out', '--dur-2', '--line']) assert.match(root, new RegExp(t + ':'), t);
+  assert.match(css, /\n\s*\.panel\s*\{[^}]*border-radius:\s*var\(--r-lg\)/);
+  assert.match(css, /\.btn:active\s*\{[^}]*transform/);
+  assert.match(css, /\.btn:disabled\s*\{/);
+  assert.match(css, /@media \(hover: hover\) and \(pointer: fine\)\s*\{\s*\.btn:hover/);
+  // every card heading uses the shared type scale, not an inline size
+  assert.doesNotMatch(html, /class="title-lg"[^>]*style="font-size/);
+});
+
+test('Pause keeps its title visible above the docked Resume button', () => {
+  const r = css.match(/\.panel > \* \+ \.dock\.top\s*\{([^}]*)\}/);
+  assert.ok(r, 'a dock under a title gets its own rule');
+  assert.match(r[1], /top:\s*0/);
+  assert.doesNotMatch(r[1], /margin-top:\s*calc\(-1/);
+});
+
+test('reduce motion switches off the card cascade as well as the slide', () => {
+  assert.match(css, /body\.reduce-motion \.overlay\.in \.panel > \*\s*\{\s*animation:\s*none/);
+});
+
+test('phone on its side: the title card goes two-column and sits low, clear of the wordmark', () => {
+  const land = css.slice(css.indexOf('@media (orientation: landscape) and (max-height: 560px)'));
+  assert.match(land, /#ovAttract\s*\{\s*justify-content:\s*flex-end/);
+  assert.match(land, /#ovAttract \.panel\s*\{[^}]*grid-template-columns/);
+  assert.match(html, /<div class="attract-main">[\s\S]*id="btnPlay"[\s\S]*<div class="attract-side">[\s\S]*id="attractRow"/);
+});
+
+test('death card: eyebrow, hero score, stat tiles in the shared scale; Records and Room keep their key button docked', () => {
+  const dead = html.slice(html.indexOf('id="ovDead"'), html.indexOf('id="ovSettings"'));
+  assert.match(dead, /class="eyebrow">Run Over/);
+  assert.match(dead, /id="deadStats" class="stat-grid"/);
+  assert.match(css, /#deadScore\s*\{[^}]*font-size:\s*var\(--fs-hero\)/);
+  assert.match(css, /\.stat-grid\s*\{[^}]*grid-template-columns/);
+  assert.match(html, /<div class="dock"><button class="btn ghost" id="btnCloseTrophy">/);
+  assert.match(html, /<div class="dock"><button class="btn" id="btnRoomPlay">/);
+});
