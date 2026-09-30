@@ -17,7 +17,7 @@ function load() {
 const { A, Art } = load();
 const STEP = 1 / 60;
 const pose = (o) => Object.assign({ runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 16, hipY: 4, hipX: 4, len: 6.4 }, o);
-const player = (o) => Object.assign({ onGround: true, vx: 0, vy: 0, dead: false, kills: 0, hang: false, idle: 0 }, o);
+const player = (o) => Object.assign({ onGround: true, vx: 0, vy: 0, dead: false, stomps: 0, hang: false, idle: 0 }, o);
 
 test('landing compresses the knees, then the spring settles back to standing', () => {
   const r = A.createRig();
@@ -42,11 +42,11 @@ test('jump, stomp and the fatal hit are edge-detected events that decay', () => 
   A.stepRig(r, player(), STEP);
   A.stepRig(r, player({ onGround: false, vy: -13 }), STEP);
   assert.equal(r.events.jump, 1); assert.ok(r.launch > 0.9);
-  A.stepRig(r, player({ onGround: false, vy: -11, kills: 1 }), STEP);
+  A.stepRig(r, player({ onGround: false, vy: -11, stomps: 1 }), STEP);
   assert.equal(r.events.stomp, 1); assert.ok(r.stomp > 0.9); assert.equal(A.eyeMood(r, 0), 1, 'happy eyes after a stomp');
-  for (let i = 0; i < 40; i++) A.stepRig(r, player({ onGround: false, vy: 3, kills: 1 }), STEP);
-  assert.equal(r.stomp, 0); assert.equal(r.launch, 0); assert.equal(r.events.stomp, 1, 'holding the kill count is not a new stomp');
-  A.stepRig(r, player({ dead: true, kills: 1 }), STEP);
+  for (let i = 0; i < 40; i++) A.stepRig(r, player({ onGround: false, vy: 3, stomps: 1 }), STEP);
+  assert.equal(r.stomp, 0); assert.equal(r.launch, 0); assert.equal(r.events.stomp, 1, 'holding the stomp count is not a new stomp');
+  A.stepRig(r, player({ dead: true, stomps: 1 }), STEP);
   assert.equal(r.events.hurt, 1); assert.equal(A.eyeMood(r, 0), 2, 'wide eyes on the hit');
   assert.equal(A.eyeMood(A.createRig(), 20), 3, 'a long stargaze gets sleepy');
 });
@@ -141,4 +141,55 @@ test('touch chevrons point the way they move, and the guides dim once learned', 
   c.run('flags.taughtRun = true; flags.taughtJump = true;');
   const learned = peakGuide();
   assert.ok(learned > 0 && learned < fresh, 'guides step back after MOVE + JUMP are learned (' + fresh + ' → ' + learned + ')');
+});
+
+function liveGame(t) {
+  const hub = relay(), c = client(hub);
+  t.after(() => c.close());
+  c.run('startRun(); G.mode = "play"; G.vigHold = false;');
+  return c;
+}
+
+test('a restart after a void death starts the rig clean: no phantom landing or crouch at spawn', (t) => {
+  const c = liveGame(t);
+  // a real void death: airborne, below the kill line, then a few dead ticks
+  c.run('G.player.onGround = false; G.player.vy = 6; G.player.y = G.groundY + 400; G.player.py = G.player.y; for (let i = 0; i < 20; i++) { G.freeze = 0; update(); }');
+  assert.equal(c.run('G.player.dead'), true, 'died in the void');
+  assert.equal(c.run('G.deathCause'), 'void');
+  const landsBefore = c.run('rig.events.land');
+  c.run('rig.happy = 0.5; rig.launch = 0.7; rig.crouch.x = 0.4; rig.tailFill = 5;');   // leftovers a stale rig would carry
+  c.run('startRun(); G.mode = "play"; G.vigHold = false; G.freeze = 0; update();');
+  assert.equal(c.run('G.player.dead'), false);
+  assert.equal(c.run('G.player.onGround'), true, 'standing on the spawn slab');
+  assert.equal(c.run('rig.events.land'), landsBefore, 'the first grounded tick of the new run is not a landing');
+  assert.equal(c.run('rig.crouch.x'), 0, 'no crouch at spawn');
+  assert.equal(c.run('rig.launch + rig.happy + rig.stomp + rig.hurt'), 0, 'transients cleared');
+  assert.equal(c.run('rig.wasDead'), false);
+});
+
+test('only a stomp drives the stomp reaction: a rising shot kill does not, a real stomp does', (t) => {
+  const c = liveGame(t);
+  // run the bot until live aliens are streamed in ahead (seeded, no death)
+  c.run('for (let i = 0; i < 3000 && G.enemies.filter((x) => !x.dead).length < 2; i++) { botInput(); G.freeze = 0; G.timescale = 1; update(); if (G.player.dead) break; }');
+  assert.ok(c.run('G.enemies.filter((x) => !x.dead).length >= 2 && !G.player.dead'), 'two aliens to work with');
+  // rising (mid-jump), a shot kills an alien through the real killEnemy path
+  const shot = c.run(`(() => { const e = G.enemies.find((x) => !x.dead); const s0 = rig.events.stomp, k0 = G.killsRun;
+    const p = G.player; p.onGround = false; p.vy = -10; p.jumping = true;
+    killEnemy(e, 'shoot', false); rigTick();
+    return { stomps: rig.events.stomp - s0, pop: rig.stomp, kills: G.killsRun - k0, mood: ANIM.eyeMood(rig, 0) }; })()`);
+  assert.equal(shot.kills, 1, 'the shot counted as a kill');
+  assert.equal(shot.stomps, 0, 'but not as a stomp');
+  assert.equal(shot.pop, 0, 'no stomp stretch / shock ring');
+  assert.notEqual(shot.mood, 1, 'no happy eyes');
+  // a real stomp: fall onto an alien's head and let collisions() resolve it
+  const stomp = c.run(`(() => { const e = G.enemies.find((x) => !x.dead); const s0 = rig.events.stomp, p = G.player;
+    p.hang = null; p.onGround = false; p.jumping = false; p.vx = 0; p.vy = 4;
+    p.x = e.x - p.w / 2; p.y = e.y - e.h / 2 - p.h + 2; p.px = p.x; p.py = p.y;
+    G.freeze = 0; update();
+    return { dead: e.dead, stomps: rig.events.stomp - s0, pop: rig.stomp, mood: ANIM.eyeMood(rig, 0), alive: !p.dead }; })()`);
+  assert.equal(stomp.dead, true, 'the alien was stomped');
+  assert.equal(stomp.alive, true);
+  assert.equal(stomp.stomps, 1, 'one stomp reaction');
+  assert.ok(stomp.pop > 0.5, 'stomp stretch fires');
+  assert.equal(stomp.mood, 1, 'happy eyes');
 });

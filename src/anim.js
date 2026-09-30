@@ -31,7 +31,7 @@
       stomp: 0,                 // 1 → 0 over ~0.3 s after a stomp (tuck + stretch pop + happy eyes)
       hurt: 0,                  // 1 → 0 over ~0.35 s from the fatal hit (flash + wide eyes)
       happy: 0,                 // eye mood: ^^ while > 0
-      wasGround: true, wasDead: false, kills: 0, prevVy: 0,
+      wasGround: true, wasDead: false, stomps: 0, prevVy: 0,
       // comet companion
       tailX: new Float32Array(TAIL), tailY: new Float32Array(TAIL), tailHead: 0, tailFill: 0,
       comet: { vx: 0, vy: 0, squash: 0, look: 0, happy: 0 },
@@ -39,7 +39,21 @@
     };
   }
 
-  // s: { onGround, vx, vy, dead, kills, hang, idle } — a read of the sim.
+  /* A new run (or any freshly created player) starts the rig clean: edge
+     detection is re-synchronised to the new player's state so the first tick is
+     not read as a landing/jump/stomp/hit, and every transient (springs, timers,
+     moods, comet trail, blink cadence) returns to its creation value. */
+  function resetRig(r, s) {
+    const fresh = createRig();
+    for (const k in fresh) if (k !== 'tailX' && k !== 'tailY' && k !== 'events') r[k] = fresh[k];
+    r.tailX.fill(0); r.tailY.fill(0);
+    if (s) { r.wasGround = !!s.onGround; r.wasDead = !!s.dead; r.stomps = s.stomps | 0; r.prevVy = s.vy || 0; }
+    return r;
+  }
+
+  // s: { onGround, vx, vy, dead, stomps, hang, idle } — a read of the sim.
+  // stomps is an explicit per-run count of STOMP kills (not all kills: a shot or
+  // any other kill while rising must not trigger the stomp reaction).
   function stepRig(r, s, dt, calm) {
     r.t += dt;
     // events (edge-detected so no sim hook is needed)
@@ -51,9 +65,9 @@
         r.events.land++;
       }
       if (!s.onGround && r.wasGround && s.vy < -4) { r.launch = 1; r.events.jump++; }
-      if (s.kills > r.kills && s.vy < -6) { r.stomp = 1; r.happy = Math.max(r.happy, 0.6); r.events.stomp++; }
+      if (s.stomps > r.stomps) { r.stomp = 1; r.happy = Math.max(r.happy, 0.6); r.events.stomp++; }
     }
-    r.kills = s.kills; r.wasGround = s.onGround; r.wasDead = s.dead; r.prevVy = s.vy;
+    r.stomps = s.stomps; r.wasGround = s.onGround; r.wasDead = s.dead; r.prevVy = s.vy;
     spring(r.crouch, 0, 260, 22, dt);
     if (r.crouch.x < 0) r.crouch.x *= 0.5;   // never "hop" above standing height
     if (r.crouch.x > 1.2) { r.crouch.x = 1.2; r.crouch.v = 0; }
@@ -155,5 +169,5 @@
     return out;
   }
 
-  root.SpaceManAnim = { createRig, stepRig, legPose, lidAmount, eyeMood, stepComet, tailPoint, spring, hash01, TAIL };
+  root.SpaceManAnim = { createRig, resetRig, stepRig, legPose, lidAmount, eyeMood, stepComet, tailPoint, spring, hash01, TAIL };
 })(typeof window !== 'undefined' ? window : globalThis);

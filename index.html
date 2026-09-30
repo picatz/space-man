@@ -1331,14 +1331,24 @@ const GLOW = {
 // writes sim state or draws from rng, so runs and #shot frames stay deterministic.
 const ART = window.SpaceManArt, ANIM = window.SpaceManAnim;
 const rig = ANIM.createRig();
-const _rigIn = { onGround: true, vx: 0, vy: 0, dead: false, kills: 0, hang: false, idle: 0 };
+const _rigIn = { onGround: true, vx: 0, vy: 0, dead: false, stomps: 0, hang: false, idle: 0 };
+// Explicit stomp signal for the rig: bumped only by killEnemy(…, 'stomp') — shots
+// (and any other kill method) never read as a stomp. Presentation-only counter.
+let rigStomps = 0, rigPlayer = null;
 const _legIn = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 0, hipY: 0, hipX: 4, len: 6.4 };
 const _leg = new Float32Array(12), _pt = new Float32Array(2);
+function rigRead(p) {
+  const s = _rigIn;
+  s.onGround = !!p.onGround; s.vx = p.vx; s.vy = p.vy; s.dead = !!p.dead; s.stomps = rigStomps; s.hang = !!p.hang; s.idle = p.idle || 0;
+  return s;
+}
+// Called by resetRun; rigTick also re-syncs whenever G.player is a new object
+// (any other place a player gets created), so no path can inherit a stale edge.
+function rigSync() { const p = G.player; if (!p) return; rigPlayer = p; ANIM.resetRig(rig, rigRead(p)); }
 function rigTick() {
   const p = G.player; if (!p) return;
-  const s = _rigIn;
-  s.onGround = !!p.onGround; s.vx = p.vx; s.vy = p.vy; s.dead = !!p.dead; s.kills = G.killsRun | 0; s.hang = !!p.hang; s.idle = p.idle || 0;
-  ANIM.stepRig(rig, s, STEP, lessMotion());
+  if (p !== rigPlayer) rigSync();
+  ANIM.stepRig(rig, rigRead(p), STEP, lessMotion());
   if (rig.stomp > 0.9) { rig.stompX = p.x + p.w / 2; rig.stompY = p.y + p.h + 2; }   // where the shock ring blooms
   if (G.companion) ANIM.stepComet(rig, G.companion.x, G.companion.y, STEP, rig.stomp > 0.9);
   else rig.tailFill = 0;
@@ -2678,6 +2688,7 @@ function resetRun(seed, replayable) {
     // hangCooldown (frames) + hangLastPlat/Side lock out an instant same-edge re-grab.
     hang: null, hangCooldown: 0, hangLastPlat: null, hangLastSide: 0,
   };
+  rigSync();   // presentation rig starts the run clean (no phantom landing at spawn)
   G.camX = G.player.x - view.w * 0.42; G.camXprev = G.camX;
   // Matches updateCamera()'s grounded target exactly so frame 1 never has to
   // ease a mismatch away — portrait needs more headroom above the HUD band.
@@ -2819,6 +2830,7 @@ function seatMidRound(elapsedMs) {
   // replay a stale "1000m" stinger or a "past your flag" pop for ground behind us.
   if (G.dist >= 1000) G.deep1000 = true;
   if (G.pbFlagX !== null && p.x >= G.pbFlagX) G.pbPassed = true;
+  rigSync();   // re-seated player: re-sync the rig to the new pose
   // Far-behind platforms already trimmed by generateAhead's player-relative cull
   // (everything behind the flare); genX is intact so streaming continues correctly.
 }
@@ -3345,6 +3357,7 @@ function killEnemy(e, method, interrupted) {
   e.dead = true; e.squash = 0.01;
   if (G.sharedWorld) { markAlienDead(enemyId(e)); NET.kill(enemyId(e)); }   // stays dead for us after a respawn; everyone else's copy goes too
   G.killsRun++; stats.kills++;
+  if (method === 'stomp') rigStomps++;   // presentation: the rig's stomp reaction reads only this
   const mult = 1 << G.chain;
   const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult;
   G.score += pts;
