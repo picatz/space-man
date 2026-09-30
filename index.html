@@ -588,6 +588,9 @@
   /* ============ DAILY COURSE + CHALLENGE LINKS ============ */
   #btnDaily { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   #btnDaily .daily-info { font-family: var(--font-num); font-size: 11px; letter-spacing: 1px; color: var(--gold); text-transform: none; }
+  /* Today's Daily theme (world gen 2): a name on the button, one line of rules under it. */
+  #btnDaily .daily-theme { display: block; font-size: 10px; letter-spacing: 1.5px; color: var(--gold); opacity: .9; }
+  .daily-blurb { font-size: 11px; line-height: 1.35; opacity: .72; text-align: center; margin: -4px auto 6px; max-width: 300px; text-transform: none; }
   .challenge-banner {
     font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--gold);
     border: 1px solid rgba(255, 201, 60, 0.35); background: rgba(255, 201, 60, 0.08);
@@ -737,7 +740,8 @@
     <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
     <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
     <button class="btn pulse" id="btnPlay">Tap to Start</button>
-    <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course</span><span class="daily-info" id="dailyInfo"></span></button>
+    <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
+    <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
     </div>
     <div class="attract-side">
     <div class="control-guide desktop-guide" aria-label="Keyboard controls">
@@ -984,6 +988,8 @@
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
 <script src="src/course.js"></script>
+<script src="src/worldgen.js"></script>
+<script src="src/enemies.js"></script>
 <script src="src/powerups.js"></script>
 <!-- Presentation only: shared palette + draw helpers, and the character animation rig. -->
 <script src="src/art.js"></script>
@@ -1219,15 +1225,18 @@ function persistAll() {
 }
 
 // Daily Course + challenge links. src/course.js validates; this owns the state.
-// sm2.daily = { day, best, bestDist, runs } for the current UTC day only — a new
+// sm2.daily = { day, best, bestDist, runs, gen } for the current UTC day only — a new
 // day quietly starts fresh (no streaks, nothing to lose by skipping one).
 const COURSE = window.SpaceManCourse;
 const POW = window.SpaceManPowerups;   // power-ups, verbs + joy moments (src/powerups.js)
 function loadDaily() {
+  // `gen` names the generator the record's course was built with: a record from
+  // another generator (no field = gen 1, the pre-theme Daily) is a different
+  // course, so today's themed Daily starts fresh instead of inheriting its best.
   const today = COURSE.dayKey(Date.now()), d = loadJSON(LS.daily, null);
-  if (!d || typeof d !== 'object' || d.day !== today) return { day: today, best: 0, bestDist: 0, runs: 0 };
+  if (!d || typeof d !== 'object' || d.day !== today || (d.gen || 1) !== COURSE.GEN) return { day: today, best: 0, bestDist: 0, runs: 0, gen: COURSE.GEN };
   const n = (v) => Math.max(0, Math.min(1e9, v | 0));
-  return { day: today, best: n(d.best), bestDist: n(d.bestDist), runs: n(d.runs) };
+  return { day: today, best: n(d.best), bestDist: n(d.bestDist), runs: n(d.runs), gen: COURSE.GEN };
 }
 let dailyCardDay = null;   // the UTC day the title's Daily card last rendered
 // A validated #daily= / #seed=&beat= link waits here for the next START.
@@ -1235,12 +1244,18 @@ let challenge = SHOT ? null : COURSE.parse(location.hash, Date.now());
 function takeChallenge() { const c = challenge; challenge = null; return c ? refreshCourse(c) : null; }
 function dailyCourse(day) {
   const d = day || COURSE.dayKey(Date.now());
-  return refreshCourse({ kind: 'daily', day: d, seed: COURSE.daySeed(d), beat: 0 });
+  return refreshCourse({ kind: 'daily', day: d, seed: COURSE.daySeed(d), beat: 0, gen: COURSE.GEN });
+}
+// The generator (and, for a designed daily, the theme) a course is built with.
+// Normal runs and rooms use the current generator; a link names its own.
+function courseWorld(c) {
+  const gen = c ? (c.gen || 1) : COURSE.GEN;
+  return { gen, theme: c && c.kind === 'daily' && gen >= 2 ? COURSE.theme(c.day) : null };
 }
 // target = the score the HUD chases: a friend's score if the link carried one,
 // else today's own daily best (re-read every retry so it tracks new bests).
 function refreshCourse(c) {
-  const d = loadDaily(), mine = c.kind === 'daily' && c.day === d.day ? d.best : 0;
+  const d = loadDaily(), mine = c.kind === 'daily' && c.day === d.day && (c.gen || 1) === COURSE.GEN ? d.best : 0;
   return Object.assign({}, c, { target: c.beat > 0 ? c.beat : mine });
 }
 
@@ -1716,6 +1731,12 @@ const Audio = (() => {
       if (atZero) tone('triangle', ct[0] * 2, ct[0] * 2, 0.08, 0.22, sfxGain, t + 0.18);
     },
     closeCall(pan) { noise(0.2, 0.16, 'bandpass', 900, sfxGain, clamp(pan, -1, 1)); },
+    /* ---- gen 2 roster: each alien's act has its own voice ---- */
+    swoop() { tone('sawtooth', 760, 190, 0.3, 0.06); noise(0.26, 0.06, 'bandpass', 1500); },
+    clink() { tone('square', 1900, 1500, 0.035, 0.09); tone('triangle', 2700, 2500, 0.07, 0.06); },
+    slam() { tone('sine', 95, 36, 0.32, 0.3); noise(0.26, 0.22, 'lowpass', 420); },
+    drop() { tone('square', 540, 250, 0.1, 0.06); },
+    boom() { noise(0.22, 0.2, 'lowpass', 700); tone('sine', 150, 50, 0.18, 0.2); },
     death(newBest, pitch) { deathJingle(!!newBest, pitch || 1); },
     ui(pitch) { const f = degF(pitch >= 3 ? 5 : 1); tone('square', f, f, 0.015, 0.08); },
     medal(n, golden) {   // first n Hop notes; the golden alien takes it 1.5× in bells
@@ -2464,6 +2485,7 @@ const G = {
   toast: '', toastT: 0, toastMax: 2.4, toastStyle: 'sys', toastGlyph: null,
   cosmetics: migratedSave.cosmetics, newCosmetics: [],
   discoveries: migratedSave.discoveries,
+  gen: 2, theme: null, gravMul: 1, flareMul: 1, wg: null, metFoes: 0,
   decorRng: mulberry32(1), whale: null, whalePending: false, sat: null, satPending: false,
   wave: 0, waveIn: 20, silkStreak: 0, quip: null,
   // E12: arms + light pistol. fireT/twirlT/holsterT/inspectIn are render
@@ -2584,7 +2606,12 @@ function generateAhead() {
   rng = G.worldRng;
   try { generateWorldAhead(); } finally { rng = gameplayRng; }
 }
+// World gen 2 (src/worldgen.js): designed segments + pacing director. Gen 1
+// below stays byte-for-byte what it was, for links and dailies shared before.
+const WORLD = window.SpaceManWorld, FOES = window.SpaceManEnemies;
+const WORLD_API = { rng: () => rng(), newPlatform, patrolAt, bandParams, bandFor, CFG };
 function generateWorldAhead() {
+  if (G.gen >= 2) return WORLD.generate(G);
   // Fixed, player-relative lookahead (never view.w). Enemies' fire timers start when they
   // spawn, so spawning must happen at the same player-distance on every viewport or the
   // seeded run diverges. 1400px comfortably covers the widest view without visible pop-in.
@@ -2672,10 +2699,16 @@ const RACE_MIN_SPAN = 1200, RACE_PAD = 0.06;
 const raceView = { anchor: 0, span: RACE_MIN_SPAN, lowPrev: 0, at: -1 };
 function raceReset() { raceView.at = -1; raceView.span = RACE_MIN_SPAN; }
 const emTray = { open: false, at: 0 };            // the emote tray (declared up here so a run reset and leaving a room can close it)
-function resetRun(seed, replayable) {
+// world: { gen, theme } — which generator builds the course (course.js GEN; gen 1
+// is the original scatter, kept for old links) and the Daily's theme, if any.
+function resetRun(seed, replayable, world) {
   raceReset();
   emTray.open = false;                              // a new run never inherits the last one's open tray
   seedRng(seed);
+  const wo = world || {};
+  G.gen = wo.gen || COURSE.GEN; G.theme = G.gen >= 2 ? (wo.theme || null) : null;
+  G.gravMul = G.theme && G.theme.grav ? G.theme.grav : 1;
+  G.flareMul = G.theme && G.theme.flare ? G.theme.flare : 1;
   // A real room (not the #shot mock) shares the course AND its clock: aliens move on the round clock.
   G.sharedWorld = netLive() && !NET.mockActive;
   // Aliens that have died this round (by anyone, including us) stay dead across a restart within the same
@@ -2771,6 +2804,8 @@ function resetRun(seed, replayable) {
       dead: false, squash: 0, walkPhase: 0, minX: tp.x + 14, maxX: tp.x + tp.w - 14, lookX: 0, lookY: 0 });
     G.hints.push({ x: tp.x - 40, y: tp.y - 96, kind: 'stomp', in: 0 });
   }
+  G.wg = null; G.metFoes = 0;
+  if (G.gen >= 2) WORLD.init(G, WORLD_API, G.theme);
   generateAhead();
 }
 
@@ -2792,6 +2827,17 @@ function platAtX(px) {
 // the shared flare, on the SAME seeded ground the team already runs. Gated by the
 // caller to real rooms past pre-roll (netRoundActive + elapsed>0) — solo/#shot/mock
 // never reach it, so seeded goldens are untouched.
+// Is x on slab pl a fair place to drop a late joiner? A walker (patrol, shielder,
+// brute) will reach anyone on its slab, so it rules out the whole slab; a shooter
+// or sentinel only rules out spots within 220px of it. Divers never dip to a
+// grounded player and bombers pace long lanes high above, so neither blocks a seat.
+function seatSafe(pl, x) {
+  for (const e of G.enemies) {
+    if (e.dead || e.type === 'diver' || e.type === 'bomber' || e.x + e.w < pl.x - 40 || e.x > pl.x + pl.w + 40) continue;
+    if (e.type === 'shoot' || e.type === 'turret' ? Math.abs(e.x - x) < 220 : true) return false;
+  }
+  return true;
+}
 function seatMidRound(elapsedMs) {
   const p = G.player, fs = G.flareShared;
   // 1. Shared flare world-x from the round clock — the SAME integration
@@ -2816,19 +2862,21 @@ function seatMidRound(elapsedMs) {
   // Seat on a platform with nothing on it. Aliens are shared world state now (every
   // screen sees the same ones in the same places), so we never delete one to make
   // room: we walk to the nearest clear slab near the crew instead.
-  const clear = (pl) => !G.enemies.some((e) => !e.dead && e.x + e.w >= pl.x - 40 && e.x <= pl.x + pl.w + 40);
+  // Each slab offers the spot nearest the crew and both of its ends; the safe spot
+  // closest to the crew wins (wide slabs make "the slab's centre" land far away).
   const home = platAtX(targetX) || G.platforms[G.platforms.length - 1];
-  let plat = home;
-  if (!clear(home)) {
+  let plat = home, seatX = clamp(targetX, home.x + 4, home.x + home.w - 4);
+  if (!seatSafe(home, seatX)) {
     let best = null, bestD = Infinity;
     for (const pl of G.platforms) {
-      if (pl.w < 120 || pl.crumble || pl.x + pl.w < flare.x + 250 || !clear(pl)) continue;
-      const d = Math.abs(pl.x + pl.w / 2 - targetX);
-      if (d < bestD) { bestD = d; best = pl; }
+      if ((pl !== home && (pl.w < 120 || pl.crumble)) || pl.x + pl.w < flare.x + 250) continue;
+      for (const x of [clamp(targetX, pl.x + 24, pl.x + pl.w - 24), pl.x + 24, pl.x + pl.w - 24]) {
+        const d = Math.abs(x - targetX);
+        if (d < bestD && seatSafe(pl, x)) { bestD = d; best = pl; seatX = x; }
+      }
     }
-    if (best) plat = best;
+    if (best) plat = best; else seatX = clamp(targetX, home.x + 4, home.x + home.w - 4);
   }
-  const seatX = plat === home ? targetX : plat.x + plat.w / 2;
   p.x = clamp(seatX, plat.x + 4, plat.x + plat.w - 4);   // keep feet on the slab
   p.y = plat.y - CFG.ph; p.px = p.x; p.py = p.y; p.vx = 0; p.vy = 0;
   p.onGround = true; p.jumping = false; p.airFrames = 0; p.coyote = 0; p.buffer = 0;
@@ -2894,8 +2942,9 @@ function startRun(options) {
   // Drop any buffered jump/held keys from the restart keypress itself, or the
   // astronaut performs an involuntary full jump on frame 1 of every run.
   clearInput();
-  resetRun(seed, !!course || (solo && !stats.mercy));
+  resetRun(seed, !!course || (solo && !stats.mercy), courseWorld(course));
   G.course = course; G.runSeed = seed; G.targetBeaten = false;
+  if (G.theme && !SHOT) queueToast('DAILY · ' + G.theme.title, 'sys');   // the rules are on the Daily card
   Audio.musicReset(seed);
   // Explicit Watch preserves spectator role across rounds. Join Run waits for
   // the host-confirmed player role before starting a local simulation.
@@ -3004,7 +3053,7 @@ function updatePlayer() {
 
   const rising = p.vy < 0;
   const grav = (rising && input.jumpHeld && p.jumping) ? CFG.gravRise : CFG.gravFall;
-  p.vy += grav;
+  p.vy += grav * G.gravMul;   // 1 except on a low-gravity Daily (×1 is exact: other courses unchanged)
   if (p.vy > CFG.maxFall) p.vy = CFG.maxFall;
   if (p.vy >= 0) p.jumping = false;
   POW.jet(p);   // jetpack thrust (no-op without one)
@@ -3243,7 +3292,8 @@ function tryShoot() {
 // an alien is seen, before anything has moved it; nothing here draws from any rng.
 // An alien's identity on the wire: its spawn x in 1/8 px. Spawn comes from the shared seed, so every
 // screen computes the same number for the same alien; `rs.x0` is that spawn x once the round clock drives it.
-function enemyId(e) { return Math.max(0, Math.round((e.rs ? e.rs.x0 : e.x) * 8)); }
+// Gen 2's moving aliens keep their spawn x in `x0` from birth.
+function enemyId(e) { return Math.max(0, Math.round((e.rs ? e.rs.x0 : e.x0 !== undefined ? e.x0 : e.x) * 8)); }
 // Remember an alien as dead for the rest of this round (oldest forgotten first, never all at once).
 function markAlienDead(id) {
   if (G.deadAliens.has(id)) return;
@@ -3298,6 +3348,62 @@ function syncEnemyToRound(e, T, fire) {
   if (s.shots < 0) s.shots = n;                       // first sight: never a burst of missed shots
   else if (n > s.shots) { s.shots = n; if (fire) enemyFire(e); }
 }
+// Gen 2 roster (src/enemies.js). One pure clock function drives each alien: its
+// own age solo, the shared round clock in a room (§10.8.1) — so, like the
+// originals, every screen agrees on where it is and when it acts. Effects that
+// are only this player's (its own shots, bombs, sfx, tips) stay here.
+const FOE_NEAR = 700;   // fixed, never view.w: effects must not depend on the viewport
+function stepFoe(e, T, fire) {
+  if (G.sharedWorld && !e.seen) {
+    e.seen = true;
+    if (G.deadAliens.size && G.deadAliens.has(enemyId(e))) { e.dead = true; e.squash = 2.1; return true; }   // killed earlier this round
+  }
+  const p = G.player, ev = FOES.step(e, G.sharedWorld ? T : e.age++, p.x + p.w / 2, p.y + p.h / 2);
+  const play = G.mode === 'play' && fire, near = Math.abs(e.x - p.x) < FOE_NEAR;
+  if (play && !e.met && e.x - p.x < 300 && e.x - p.x > -60) {   // first sighting on this profile (on screen, just ahead): a one-line counter tip
+    e.met = true;
+    const bit = 1 << FOES.TYPES.indexOf(e.type);
+    if (!SHOT && !((flags.foesMet | 0) & bit)) { flags.foesMet = (flags.foesMet | 0) | bit; queueToast(FOES.TIPS[e.type], 'sys'); }
+  }
+  if (!ev) return false;
+  if ((ev & FOES.EV.TEL) && play && near) Audio.sfx.telegraph();
+  if ((ev & FOES.EV.SWOOP) && play && near) Audio.sfx.swoop();
+  if ((ev & FOES.EV.SLAM) && play && near) {
+    Audio.sfx.slam(); G.trauma = Math.min(1, G.trauma + 0.2);
+    for (let i = -1; i <= 1; i += 2) spawnP(e.x + i * 16, e.platY - 2, i * 1.4, -1.2, 22, 3, 'rgba(255,201,60,.85)', 0.08, false, 0);
+  }
+  if ((ev & FOES.EV.FIRE) && fire) foeFire(e);
+  return false;
+}
+function foeFire(e) {
+  const p = G.player;
+  if (e.type === 'bomber') {
+    G.ebullets.push({ x: e.x, y: e.y + 8, px: e.x, py: e.y + 8, vx: 0, vy: 0.6, g: 0.16, bomb: true, life: 260, grazed: false });
+    if (G.mode === 'play' && Math.abs(e.x - p.x) < FOE_NEAR) Audio.sfx.drop();
+  } else if (e.type === 'turret') {
+    if (Math.abs(p.x - e.x) > FOES.TURRET.range) return;          // holds fire until you're in range
+    const sp = bandParams(G.band, G.dist).ebSpeed * 1.1, ca = Math.cos(e.aim), sa = Math.sin(e.aim);
+    const x = e.x + ca * 14, y = e.y - 4 + sa * 14;
+    G.ebullets.push({ x, y, px: x, py: y, vx: ca * sp, vy: sa * sp, life: 220, grazed: false });
+    if (G.mode === 'play') Audio.sfx.shoot(false);
+  }
+}
+// A player shot a gen-2 alien shrugged off: a shield front, or armor with hp left.
+function foeDeflect(e, b, result) {
+  e.hurt = 10;
+  const d = -(Math.sign(b.vx) || 1);
+  spawnP(b.x, b.y, 0, 0, 12, 3, 'rgba(255,255,255,.9)', 0, false, 3);
+  spawnP(b.x, b.y, d * 2.2, -1.6, 14, 2, 'rgba(159,241,255,.9)', 0.1, false, 0);
+  spawnP(b.x, b.y, d * 2.2, 1.2, 14, 2, 'rgba(159,241,255,.9)', 0.1, false, 0);
+  if (G.mode === 'play') Audio.sfx.clink();
+  popup(e.x, e.y - 18, result === 'block' ? 'BLOCKED' : 'ARMOR ' + e.hp, result === 'block' ? '#9FF1FF' : '#FFE59A');
+}
+// Topmost live slab under x below height y (bomb reticles), NaN over a gap.
+function slabBelow(x, y) {
+  let best = NaN;
+  for (const pl of G.platforms) if (!pl.fallen && x >= pl.x && x <= pl.x + pl.w && pl.y > y && !(best <= pl.y)) best = pl.y;
+  return best;
+}
 function enemyFire(e) {
   const p = G.player, B = bandParams(G.band, G.dist);
   let dx = p.x - e.x, dy = (p.y + p.h / 2) - e.y;
@@ -3310,7 +3416,8 @@ function updateEnemies(spectating) {
   for (const e of G.enemies) {
     e.px = e.x; e.py = e.y;
     if (e.dead) { e.squash += 0.25; continue; }
-    if (G.sharedWorld) syncEnemyToRound(e, T, !spectating);
+    if (e.v2) { if (stepFoe(e, T, !spectating)) continue; }
+    else if (G.sharedWorld) syncEnemyToRound(e, T, !spectating);
     else if (e.type === 'patrol') {
       e.x += e.dir * e.speed;
       if (e.x <= e.minX) { e.x = e.minX; e.dir = 1; }
@@ -3345,7 +3452,8 @@ function updateBullets() {
     for (const e of G.enemies) {
       if (e.dead) continue;
       if (Math.abs(b.x - e.x) < e.w * 0.6 && Math.abs(b.y - e.y) < e.h * 0.7) {
-        killEnemy(e, 'shoot', e.type === 'shoot' && e.telegraph > 0);
+        if (e.v2) { const r = FOES.shotResult(e, b.vx); if (r !== 'kill') { foeDeflect(e, b, r); G.bullets.splice(i, 1); break; } }
+        killEnemy(e, 'shoot', (e.type === 'shoot' || e.v2) && e.telegraph > 0);
         // E12: lance impact — ring + three fixed-fan sparks in the suit trail
         // color. spawnP only: burst() draws from the shared worldgen rng stream.
         const P = palNow(), fan = Math.sign(b.vx) || 1;
@@ -3367,8 +3475,11 @@ function updateBullets() {
   }
   const p = G.player;
   for (let i = G.ebullets.length - 1; i >= 0; i--) {
-    const b = G.ebullets[i]; b.px = b.x; b.py = b.y; b.x += b.vx; b.y += b.vy; b.life--;
+    const b = G.ebullets[i]; b.px = b.x; b.py = b.y;
+    if (b.g) b.vy = Math.min(b.vy + b.g, 7);                            // bombs fall
+    b.x += b.vx; b.y += b.vy; b.life--;
     if (b.life <= 0 || Math.abs(b.x - p.x) > 1400) { G.ebullets.splice(i, 1); continue; }
+    if (b.bomb && bombLands(b)) { G.ebullets.splice(i, 1); if (p.dead) return; continue; }
     const dx = b.x - (p.x + p.w / 2), dy = b.y - (p.y + p.h / 2), dist = Math.hypot(dx, dy);
     if (!p.dead && dist < 9) { if (POW.guard(null)) { G.ebullets.splice(i, 1); continue; } die('bullet'); return; }
     if (!b.grazed && dist < 16) {
@@ -3388,13 +3499,27 @@ function updateBullets() {
   }
 }
 
+// A falling bomb that reaches a slab bursts there; a player standing within the
+// blast goes with it. Returns true when the bomb is spent.
+function bombLands(b) {
+  for (const pl of G.platforms) {
+    if (pl.fallen || b.x < pl.x || b.x > pl.x + pl.w || b.py > pl.y || b.y < pl.y - 4) continue;
+    for (let k = 0; k < 6; k++) spawnP(b.x, pl.y - 3, Math.cos(k * 0.52 + 0.3) * 2.4 * (k & 1 ? 1 : -1), -1.4 - (k % 3) * 0.6, 20, 2.6, 'rgba(255,150,80,.9)', 0.1, false, 0);
+    spawnP(b.x, pl.y - 6, 0, 0, 14, 5, 'rgba(255,201,60,.9)', 0, false, 3);
+    const p = G.player;
+    if (G.mode === 'play' && Math.abs(b.x - p.x) < FOE_NEAR) Audio.sfx.boom();
+    if (!p.dead && Math.abs(p.x + p.w / 2 - b.x) < 20 && Math.abs(p.y + p.h - pl.y) < 30 && !POW.guard(null)) die('bullet');   // a shield absorbs the blast like any other hit
+    return true;
+  }
+  return false;
+}
 function killEnemy(e, method, interrupted) {
   e.dead = true; e.squash = 0.01;
   if (G.sharedWorld) { markAlienDead(enemyId(e)); NET.kill(enemyId(e)); }   // stays dead for us after a respawn; everyone else's copy goes too
   G.killsRun++; stats.kills++;
   if (method === 'stomp') rigStomps++;   // presentation: the rig's stomp reaction reads only this
   const mult = 1 << G.chain;
-  const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult;
+  const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult * (e.type === 'brute' ? 3 : e.v2 ? 2 : 1);
   G.score += pts;
   missionProgress(method === 'slash' ? 'shoot' : method, 1);
   if (e.golden) {
@@ -3443,6 +3568,8 @@ function collisions() {
       break;
     } else { if (POW.guard(e)) break; die('contact'); return; }
   }
+  // A brute's shockwave rolls along its slab: only feet on that slab can meet it.
+  if (p.onGround) for (const e of G.enemies) if (e.type === 'brute' && !e.dead && FOES.waveHits(e, pcx, pfeet)) { if (POW.guard(null)) break; die('contact'); return; }   // the shield takes the wave (passing the brute would kill it)
   if (p.y > G.groundY + 340) { die('void'); return; }   // fixed threshold → view-independent
   if (p.x <= G.flare.x + 6) { die('flare'); return; }
 
@@ -3485,6 +3612,7 @@ function updateFlare() {
   G.flare.prevX = G.flare.x;
   let target = B.flare;
   if (G.mercyLvl > 0 && (G.time - G.runStart) < 30) target *= (0.94 - 0.02 * G.mercyLvl);
+  if (G.flareMul !== 1) target = Math.min(target * G.flareMul, CFG.maxRun - 0.6);   // AFTERBURNER Daily
   G.flare.speed += (target - G.flare.speed) * 0.01;
   // Rubber-band: the flare is the game's forward pressure. A player at max run
   // speed (6.8) outruns every band speed, so without catch-up the chase stops
@@ -3822,7 +3950,7 @@ function finalizeDeath() {
   G.dailyPrev = null;
   if (G.course && G.course.kind === 'daily' && !SHOT) {
     const d = loadDaily();
-    if (d.day === G.course.day) {
+    if (d.day === G.course.day && (G.course.gen || 1) === COURSE.GEN) {
       G.dailyPrev = d.runs ? d.best : -1;   // -1: first attempt today
       d.runs++; d.best = Math.max(d.best, fs); d.bestDist = Math.max(d.bestDist, G.dist);
       saveJSON(LS.daily, d);
@@ -4898,6 +5026,13 @@ const SGN = [-1, 1];
 function drawEnemies(camX, alpha) {
   for (const e of G.enemies) {
     if (e.x < camX - 80 || e.x > camX + view.w + 80) continue;
+    if (e.v2) {   // gen 2 roster: telegraph overlays in world space, then the body (src/enemies.js)
+      FOES.drawFx(ctx, e, G.time, slabBelow);
+      ctx.save(); ctx.translate(lerp(e.px, e.x, alpha), lerp(e.py, e.y, alpha));
+      if (e.dead) { const s = clamp(1 - e.squash, 0, 1); ctx.scale(1 + e.squash, s); }
+      FOES.draw(ctx, e, G.time, GLOW); ctx.restore();
+      continue;
+    }
     const ex = lerp(e.px, e.x, alpha), ey = lerp(e.py, e.y, alpha);
     if (e.type === 'patrol' && !e.dead) {   // shadow on the slab it walks, as the hero's is (never mid-air above it)
       const gp = shadowPlatform(ex, ey + e.h / 2, 60);
@@ -4967,6 +5102,7 @@ function drawBullets(camX, alpha) {
   for (const b of G.ebullets) {
     if (b.x < camX - 80 || b.x > camX + view.w + 80) continue;
     const bx = lerp(b.px, b.x, alpha), by = lerp(b.py, b.y, alpha);
+    if (b.bomb) { FOES.drawBomb(ctx, bx, by, G.time); continue; }
     ctx.drawImage(GLOW.coral, bx - 20, by - 20, 40, 40);
     ctx.fillStyle = '#FF4F66'; ctx.beginPath(); ctx.arc(bx, by, 4, 0, TAU); ctx.fill();
     ctx.fillStyle = '#FFB0BC'; ctx.beginPath(); ctx.arc(bx - 1, by - 1, 1.5, 0, TAU); ctx.fill();
@@ -5827,7 +5963,9 @@ function renderDailyCard() {
   dailyCardDay = d.day;
   b.style.display = solo ? '' : 'none';
   $('dailyInfo').textContent = d.runs ? 'BEST ' + d.best.toLocaleString() + ' · ' + d.runs + (d.runs === 1 ? ' RUN' : ' RUNS') : 'NEW TODAY';
-  b.setAttribute('aria-label', 'Daily Course for ' + d.day + (d.runs ? ', today’s best ' + d.best : '') + '. Same course for everyone today.');
+  const th = COURSE.theme(d.day);
+  $('dailyTheme').textContent = th.title; $('dailyBlurb').textContent = th.blurb; $('dailyBlurb').style.display = solo ? '' : 'none';
+  b.setAttribute('aria-label', 'Daily Course for ' + d.day + ': ' + th.title.toLowerCase() + '. ' + th.blurb + (d.runs ? ' Today’s best ' + d.best + '.' : '') + ' Same course for everyone today.');
   const cb = $('challengeBanner'), c = solo ? challenge : null;
   // A link without a real score (beat=0) names the course but never a target of 0.
   if (c) cb.textContent = c.beat > 0 ? 'Beat ' + c.beat.toLocaleString() + (c.kind === 'daily' ? ' on the ' + c.day + ' Daily Course' : ' on this course')
@@ -5991,7 +6129,7 @@ function deathCourseLine(fs) {
 // SHARE: spoiler-free result + a link that races the exact same course.
 function shareRun() {
   const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
-  const c = G.course && G.course.kind === 'daily' ? G.course : { kind: 'seed', seed: G.runSeed };
+  const c = G.course && G.course.kind === 'daily' ? G.course : { kind: 'seed', seed: G.runSeed, gen: G.gen };
   const text = 'SPACE MAN · ' + (c.kind === 'daily' ? 'Daily ' + c.day + ' · ' : '') + fs.toLocaleString() + ' pts · ' + G.dist.toLocaleString() + ' m 🚀';
   // A mercy-assisted course can't be rebuilt from its seed — share the game, not a race.
   const url = G.worldRng ? COURSE.link(c, fs) : COURSE.SITE, b = $('btnShare');

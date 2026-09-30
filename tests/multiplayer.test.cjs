@@ -230,7 +230,9 @@ test('invite Play and Watch lead directly into a live round and late players spa
   await host.net._n1.session()._snapTick();
   await until(() => late.net.presence().some((p) => p.x === 6000));
   late.run('startRun()');
-  assert.ok(Math.abs(late.run('G.player.x') - 6000) < 500);
+  // Near the crew: the nearest safe ground. World gen 2's opening slabs are wide (a patrol bridge
+  // is 440-520px of walkers), so that can be one slab over; 300 room seeds all seat within 600px.
+  assert.ok(Math.abs(late.run('G.player.x') - 6000) < 700, 'seated at ' + late.run('G.player.x'));
   tick(late); assert.equal(late.run('G.player.dead'), false);
   assert.equal(watcher.run('netSpectating()'), true);
 });
@@ -243,6 +245,8 @@ test('old course versions are rejected before opening a socket', async (t) => {
   const before = hub.packetCount;
   await assert.rejects(guest.net.acceptJoin(bytes.b64uEnc(invite)), /update/);
   invite[0] = 3;                       // v3.4 clients: same terrain, but aliens still moved per-frame and kills weren't shared
+  await assert.rejects(guest.net.acceptJoin(bytes.b64uEnc(invite)), /update/);
+  invite[0] = 4;                       // v4 clients: shared aliens, but the original scatter terrain (world gen 1)
   await assert.rejects(guest.net.acceptJoin(bytes.b64uEnc(invite)), /update/);
   assert.equal(hub.packetCount, before); assert.equal(guest.net.active, false);
 });

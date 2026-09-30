@@ -48,7 +48,7 @@ test('pickups are a pure function of the course: same seed → same pickups on a
 test('scanning for power-ups leaves existing seeds, fingerprints and the rng stream untouched', (t) => {
   const c = solo(t);
   const run = (withPow) => c.run(`JSON.stringify((() => {
-    stats.mercy=false; stats.deadStreak=0; resetRun(1); G.mode = 'play';
+    stats.mercy=false; stats.deadStreak=0; resetRun(1, false, { gen: 1 }); G.mode = 'play';
     const plats = new Map(), ents = new Map(), picks = new Map(); const lim = G.startX + 25000;
     const r = (v) => typeof v === 'number' ? Math.round(v * 1000) / 1000 : v;
     for (let x = 30; G.genX < lim + 2000; x += 400) {

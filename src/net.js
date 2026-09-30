@@ -12,7 +12,7 @@
   /* -------------------------------------------------------------------------
      0. WIRE CONSTANTS — relay frame types, app frame types, hard caps
      ------------------------------------------------------------------------- */
-  const PROTO = 5;                       // app protocol version (envelope ver) — 5: timestamped/quantized presence, PING/PONG, reorder window
+  const PROTO = 6;                       // app protocol version (envelope ver) — 5: timestamped/quantized presence, PING/PONG, reorder window; 6: world gen 2 rooms
   const ROOM_CAP = 32;
   const WIRE_MAX = 256;                  // hard cap per encrypted app packet (pre-decrypt gate)
   const RELAY_FRAME_MAX = 65536;         // declared relay frame length above this = protocol violation

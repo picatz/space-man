@@ -175,7 +175,7 @@ test('an idle room costs about one packet a second per member instead of ten', a
 test('presence and snapshot codecs round-trip the v5 layout (timestamps, quantized y/vy)', async (t) => {
   const c = client(relay(), { game: false }); t.after(() => c.close());
   const F = c.net._n1.frames, s = F.makeScratch();
-  assert.equal(c.net._n1.PROTO, 5);
+  assert.equal(c.net._n1.PROTO, 6);
   const pres = F.encPres(s, { t: 65530, x: 12345.5, y: -250.375, vx: -40, vy: -13.2, state: 11, chain: 3, score: 900, dist: 1234, runId: 7 });
   assert.equal(pres.length, F.PRES_LEN);
   const d = F.decPres(pres.slice(), null);

@@ -1,6 +1,6 @@
 // Space Man 2.0 service worker.
 // Bump VERSION in the same commit as any asset change or clients keep the old build.
-const VERSION = 'v3.15.1';
+const VERSION = 'v3.16.1';
 // 'sm2-app-' marks a complete, versioned app shell. Workers before v3.3 used
 // 'sm2-shell-' and served ./src/ cache-first next to a network-first page, which
 // paired a fresh index.html with stale scripts after a deploy.
@@ -16,6 +16,8 @@ const SHELL = [
   './src/save-schema.js',
   './src/input-snapshot.js',
   './src/course.js',
+  './src/worldgen.js',
+  './src/enemies.js',
   './src/powerups.js',
   './src/art.js',
   './src/anim.js',

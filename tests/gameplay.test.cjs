@@ -69,11 +69,13 @@ test('endgame ramp is gentle, capped, monotonic and keyed only on distance', (t)
 // DEBRIS FIELD landed. Every platform, enemy and pickup generated before 2500m —
 // and the seeded mission — must stay byte-identical for existing seeds (#shot
 // goldens, shared seeds). If you intentionally change early worldgen, update these.
+// World gen 2 replaced the scatter for NEW courses; gen 1 must stay reachable and
+// byte-identical so every link and daily shared before it still means the same course.
 const EARLY = { 1: '09780bf9c2d6709b', 123456: '6ee88a2e931006a8', 12648430: '6ecf9e0734886187' };
 const EARLY_ROOM = 'db8264476b48282d';
 function earlyCourse(c, seed) {
   return c.run(`JSON.stringify((() => {
-    stats.mercy=false; stats.deadStreak=0; resetRun(${seed});
+    stats.mercy=false; stats.deadStreak=0; resetRun(${seed}, false, { gen: 1 });
     const plats = new Map(), ents = new Map(), picks = new Map(); const lim = G.startX + 25000;
     const r = (v) => typeof v === 'number' ? Math.round(v * 1000) / 1000 : v;
     for (let x = 30; G.genX < lim + 2000; x += 400) {
@@ -97,7 +99,7 @@ test('courses before 2500m are unchanged from main for fixed seeds (room world s
   const c = solo(t);
   await c.net.openRoom({ relayHost: 'relay.test', code: false });
   const s = c.run(`JSON.stringify((() => {
-    resetRun(123456); const all = new Map(); const lim = G.startX + 25000;
+    resetRun(123456, false, { gen: 1 }); const all = new Map(); const lim = G.startX + 25000;
     for (let x = 30; G.genX < lim + 2000; x += 400) { G.player.x = x; generateAhead(); for (const p of G.platforms) all.set(p.x, [p.x,p.y,p.w,p.boost,p.boostX ?? null]); }
     return [...all.values()].filter((p) => p[0] < lim);
   })())`);
@@ -324,6 +326,7 @@ test('deep runs announce each ramp notch and render DEBRIS FIELD slabs without e
       const pl = G.platforms.find((q) => q.x + q.w > G.startX + m * 10) || G.platforms.at(-1);
       Object.assign(G.player, { x: pl.x + 20, y: pl.y - G.player.h, vx: 0, vy: 0, onGround: true, groundPlat: pl, hang: null });
       G.maxX = G.player.x - 1; G.flare.x = G.player.x - 600; G.stingerText = '';
+      G.band = bandFor(m);   // the teleport skipped the sector crossings themselves
       for (let f = 0; f < 3; f++) update();
       render(1);
       seen.push([G.rampStep, G.stingerText]);
