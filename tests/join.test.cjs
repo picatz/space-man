@@ -58,7 +58,7 @@ async function hostWithCode(t, opts = {}) {
   const hub = relay(), host = client(hub, { game: false }), guest = client(hub, { game: false });
   t.after(() => { host.close(); guest.close(); });
   const live = new Promise((resolve) => host.net.onEvent((e) => { if (e === 'code-live') resolve(); }));
-  await host.net.openRoom({ relayHost: 'derp1f.tailscale.com', region: 'nyc', ...opts });
+  await host.net.openRoom({ region: 'nyc', ...opts });
   await live;
   return { hub, host, guest };
 }
@@ -124,6 +124,7 @@ test('invite links point at the site the app is served from, and only ever at a 
     return host.net.info().link;
   };
   assert.match(await pick('https://spacemangame.online/'), /^https:\/\/spacemangame\.online\/#j=/);
+  assert.match(await pick('https:games.test/'), /^https:\/\/games\.test\/#j=/, 'a scheme-only-then-host form is written out in full');
   assert.match(await pick('http://192.168.1.20:8080/space-man/'), /^http:\/\/192\.168\.1\.20:8080\/space-man\/#j=/);
   for (const bad of [undefined, '', 'javascript:alert(1)', 'file:///home/x/index.html', 'https://x.test/#already', 'https://x.test/?q=1', 'https:///', 'https://user:pw@x.test/', 'http://', 'https://x .test/', 'x'.repeat(300), 42]) {
     assert.match(await pick(bad), /^https:\/\/picatz\.github\.io\/space-man\/#j=/, String(bad).slice(0, 30));
@@ -145,7 +146,7 @@ test('a code is only offered when a guest could look it up on the host\'s own re
 test('enterCode sends a bare code to the region it is given, however far away', async (t) => {
   const near = probe.net._n1.map.nearRegions(5).map((r) => r.code);
   const far = probe.net.relayDirectory().regions.map((r) => r.code).find((c) => !near.includes(c));
-  const { host, guest } = await hostWithCode(t, { region: far, relayHost: undefined });
+  const { host, guest } = await hostWithCode(t, { region: far });
   await assert.rejects(guest.net.lookupCode(host.net.info().code, { timeoutMs: 400 }), /no answer/);
   const ok = await guest.net.lookupCode(host.net.info().code, { region: far });
   assert.equal(ok.region, far);

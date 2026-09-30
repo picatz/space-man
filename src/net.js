@@ -558,7 +558,7 @@
     try {
       const x = new URL(u);
       if ((x.protocol !== 'https:' && x.protocol !== 'http:') || !x.hostname || x.username || x.password || x.search || x.hash || u.indexOf('#') >= 0 || u.indexOf('?') >= 0) return DEFAULT_LINK_BASE;
-      return u;
+      return x.href;   // normalized: `https:games.test/` would otherwise resolve relative to the page it is pasted into
     } catch (e) { return DEFAULT_LINK_BASE; }
   }
   const joinCodeText = (region, code) => (region && code ? String(region).toUpperCase() + '-' + code : code || '');
