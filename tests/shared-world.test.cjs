@@ -41,7 +41,7 @@ test('aliens are in the same place for everyone, even when one screen simulates 
   // Position must follow the shared round clock, not each screen's own age.
   // Both screens have generated the same stretch of course by now (one lookahead
   // step, exactly as running there would); only their own frame counts differ.
-  for (const c of [host, guest]) c.run('G.player.x = 30000; generateAhead(); G.player.x = 30;');
+  for (const c of [host, guest]) c.run('G.player.x = 60000; generateAhead(); G.player.x = 30;');
   host.run('for (let i = 0; i < 600; i++) updateEnemies()');
   hub.advance(10000);
   host.run('updateEnemies()'); guest.run('updateEnemies()');
@@ -56,7 +56,7 @@ async function started(t) {
   r.host.run('startRun()'); r.guest.run('startRun({ sync: true })');
   await until(() => r.guest.net.roundClock()?.active, 'shared round');
   r.hub.advance(3100);
-  for (const c of [r.host, r.guest]) c.run('G.player.x = 30000; generateAhead(); G.player.x = 30;');
+  for (const c of [r.host, r.guest]) c.run('G.player.x = 60000; generateAhead(); G.player.x = 30;');
   return r;
 }
 // Count real shots, not the schedule index: wrap enemyFire so every bullet an alien emits is tallied by alien.
@@ -109,13 +109,14 @@ test('a real spectator sees aliens in their round-clock places and its stand-in 
   // The host runs somewhere with a good cluster of aliens; the spectator follows it, so its world (and
   // aliens) generate there. Pick the spot from the aliens themselves so the test doesn't depend on the seed.
   const X = JSON.parse(host.run(`JSON.stringify((() => {
-    G.player.x = 30000; generateAhead(); G.player.x = 30;
-    const xs = G.enemies.filter((e) => e.x > 4000 && e.x < 16000).map((e) => e.x);
-    const shooters = G.enemies.filter((e) => e.type === 'shoot' && e.x > 4000 && e.x < 16000).map((e) => e.x);
+    G.player.x = 60000; generateAhead(); G.player.x = 30;
+    const xs = G.enemies.filter((e) => e.x > 4000 && e.x < 45000).map((e) => e.x);
+    const shooters = G.enemies.filter((e) => e.type === 'shoot' && e.x > 4000 && e.x < 45000).map((e) => e.x);
     let best = shooters[0], bestN = -1;   // centre on a shooter (one is always in view) with the most company: the spectator sees [X-900, X+1400]
     for (const x of shooters) { const n = xs.filter((y) => y > x - 800 && y < x + 1300).length; if (n > bestN) { best = x; bestN = n; } }
-    return Math.round(best);
+    return best === undefined ? null : Math.round(best);
   })())`));
+  assert.ok(X !== null, 'the generated course has a shooter to follow');
   const showHost = async () => {
     for (let k = 0; ; k++) {
       host.net.sendPresence(X, 240, 0, 11, 0, 900, 797);
