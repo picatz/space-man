@@ -6893,6 +6893,8 @@ function netPointerDown(e) {
   if (emoteAvailable()) {
     const hit = emoteHit(p);
     if (hit) {
+      // Same hand-off the canvas handler does for any press: which input the HUD follows, and unlock suspended sound.
+      if (e.pointerType === 'mouse') input.usingTouch = false; else { input.usingTouch = true; input.usingKeys = false; Audio.ensure(); Audio.resume(); }
       if (hit.kind === 'btn') { emTray.open = !emTray.open; emTray.at = performance.now(); }
       else if (hit.kind === 'item') { sendEmote(hit.i); emTray.open = false; }
       return true;                                  // a press on the button, the tray or one of its emotes is never also a jump
@@ -6919,7 +6921,9 @@ function emoteLayout() {
   const item = Math.max(36 / k, Math.min(EMOTE_ITEM / k, (room - 2 * pad - 5 * gap) / 6));
   const trayW = 6 * item + 5 * gap + 2 * pad, trayH = item + 2 * pad;
   const button = { x: right - btn, y: top, w: btn, h: btn };
-  const tray = { x: right - trayW, y: top + btn + gap, w: trayW, h: trayH };
+  // A room in trouble shows the UNSTABLE ROOM banner with a LEAVE target; the tray sits below it so an emote can never leave the room.
+  const below = _unstableHit ? Math.max(top + btn + gap, _unstableHit.y1 / k + gap) : top + btn + gap;
+  const tray = { x: right - trayW, y: below, w: trayW, h: trayH };
   const items = [];
   for (let i = 0; i < 6; i++) items.push({ i, x: tray.x + pad + i * (item + gap), y: tray.y + pad, w: item, h: item });
   return { k, button, tray, items };

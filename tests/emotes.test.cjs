@@ -22,14 +22,17 @@ const down = (c, x, y, id = 1, pointerType = 'touch') => c.dispatch('game', 'poi
 const centre = (c, r) => { const k = c.run('emoteLayout().k'); return [(r.x + r.w / 2) * k, (r.y + r.h / 2) * k]; };
 
 test('holding the jump button never opens anything and never sends an emote', async (t) => {
-  const { guest, sent } = await playing(t);
+  const { hub, guest, sent } = await playing(t);
   const jumpX = 390 * 0.74, jumpY = 780;                          // the jump zone: right half, low
   down(guest, jumpX, jumpY);
   assert.equal(guest.run('input.jumpHeld'), true, 'the press is a jump');
-  for (let i = 0; i < 120; i++) guest.run('netTick(STEP)');       // two seconds of holding, longer than the old 400 ms long-press
-  guest.run('G.player.onGround = false; G.player.vy = -3');       // airborne, the moment the old wheel used to flash in
-  for (let i = 0; i < 60; i++) guest.run('netTick(STEP)');
-  assert.equal(guest.run('emTray.open'), false);
+  const t0 = guest.run('performance.now()');
+  for (let i = 0; i < 30; i++) { hub.advance(100); guest.run('netTick(STEP)'); }   // 3 s on the real clock, far past the old 400 ms long-press
+  assert.ok(guest.run('performance.now()') - t0 >= 3000, 'the clock really advanced');
+  assert.equal(guest.run('emTray.open'), false, 'grounded, still holding');
+  guest.run('G.player.onGround = false; G.player.vy = -3');       // airborne: the moment the old wheel used to flash in
+  for (let i = 0; i < 30; i++) { hub.advance(100); guest.run('netTick(STEP)'); }
+  assert.equal(guest.run('emTray.open'), false, 'airborne, still holding');
   assert.deepEqual(sent, []);
   assert.equal(guest.run('input.jumpHeld'), true, 'and the jump is still held');
 });
@@ -130,4 +133,31 @@ test('the layout keeps every emote on screen and finger-sized, clear of the stri
     assert.ok(b.x >= a.x + a.w, tag + ": emotes don't overlap");
     if (w >= 390) assert.ok(L.items[0].w * k >= 44 - 1e-6, tag + ': full 44 CSS px targets when there is room');
   }
+});
+
+test('a first touch on the emote button still hands the HUD to touch and unlocks sound, without jumping', async (t) => {
+  const { guest } = await playing(t);
+  guest.run('input.usingTouch = false; input.usingKeys = true; globalThis.__resumed = 0; Audio.resume = () => { __resumed++; }');
+  down(guest, ...centre(guest, guest.run('emoteLayout()').button), 1);
+  assert.equal(guest.run('input.usingTouch'), true, 'touch controls follow the finger');
+  assert.equal(guest.run('input.usingKeys'), false);
+  assert.equal(guest.run('__resumed'), 1, 'suspended audio is resumed by the tap');
+  assert.equal(guest.run('input.jumpHeld || input.jumpPressed'), false, 'and it was not a jump');
+  down(guest, ...centre(guest, guest.run('emoteLayout()').button), 2, 'mouse');
+  assert.equal(guest.run('input.usingTouch'), false, 'a mouse click on it hands the HUD back to the mouse');
+});
+
+test('in an unstable room the tray sits below the LEAVE banner, so an emote never leaves the room', async (t) => {
+  const { guest, sent } = await playing(t);
+  guest.net._n1.session().unstable = true;
+  guest.run('drawUnstableBanner()');                               // the frame draws the banner, which publishes its hit area
+  const hit = guest.run('_unstableHit');
+  assert.ok(hit, 'the banner is up');
+  const L = guest.run('emoteLayout()');
+  assert.ok(L.tray.y * L.k >= hit.y1, 'the tray starts below the banner target');
+  const before = guest.net.active;
+  down(guest, ...centre(guest, L.button), 1);                      // open the tray
+  down(guest, ...centre(guest, L.items[0]), 2);                    // its first emote, the one nearest the banner
+  assert.deepEqual(sent, [0], 'the emote went out');
+  assert.equal(guest.net.active, before, 'and the room was not left');
 });
