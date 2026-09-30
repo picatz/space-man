@@ -1063,7 +1063,7 @@ const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.s
 // OS answer at load: only the DEFAULT for the in-game Reduce Motion switch.
 const osReducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
-let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, musicVol: 1, sfxVol: 1, muted: false,
+let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, batterySaver: false, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
 // G: default AUTO-RUN (touch) to OFF — touch movement is free left/right, no
@@ -1079,6 +1079,7 @@ settings.netGhosts = Math.min(1, Math.max(0.25, (typeof settings.netGhosts === '
 settings.netEmotes = settings.netEmotes !== false;
 settings.netApprove = settings.netApprove === true;
 settings.sharp = settings.sharp === true;   // SHARP RENDERING: opt-in lock on full DPR (adaptive resolution off)
+settings.batterySaver = settings.batterySaver === true;   // BATTERY SAVER: 30fps, 1× resolution, lighter effects (off unless chosen)
 if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
 if (typeof settings.netRelay !== 'string') settings.netRelay = '';
 if (typeof settings.netRelayUrl !== 'string') settings.netRelayUrl = '';
@@ -1167,7 +1168,7 @@ const uiScale = () => clamp(view.w / 560, 0.72, 1);
 // session starts sharp again. SHARP RENDERING (settings.sharp) opts out.
 const perf = { cap: CFG.dprCap, ema: STEP, slowT: 0, warm: 0 };
 function adaptResolution(dt) {
-  if (SHOT || settings.sharp || view.dpr <= 1) return;
+  if (SHOT || settings.sharp || view.dpr <= 1 || powerSaving()) return;
   if (dt > 0.1) return;   // tab switch / GC hitch: not steady-state cost
   if ((perf.warm += dt) < 1) { perf.ema = STEP; return; }   // let a fresh canvas settle
   perf.ema += (dt - perf.ema) * 0.05;
@@ -1181,7 +1182,7 @@ function adaptResolution(dt) {
 }
 function resize() {
   const cssW = window.innerWidth, cssH = window.innerHeight;
-  const dpr = Math.min(window.devicePixelRatio || 1, SHOT || settings.sharp ? CFG.dprCap : perf.cap);
+  const dpr = Math.min(window.devicePixelRatio || 1, SHOT ? CFG.dprCap : powerSaving() ? 1 : settings.sharp ? CFG.dprCap : perf.cap);
   perf.slowT = 0; perf.warm = 0;
   view.dpr = dpr;
   view.isTablet = Math.min(cssW, cssH) >= 700;
@@ -2166,12 +2167,16 @@ window.addEventListener('blur', () => { clearInput(); if (G.mode === 'play' && !
    10. PARTICLE POOL (~160 cap, no allocation in the hot loop)
    ------------------------------------------------------------------------- */
 const PCAP = 160, particles = [];
+let pCapLive = PCAP;   // 80 under battery saver (applyPower)
 for (let i = 0; i < PCAP; i++) particles.push({ live: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 2, color: '#fff', grav: 0, bounce: false, kind: 0 });
 let pHead = 0;
 function spawnP(x, y, vx, vy, life, size, color, grav, bounce, kind) {
   let p = null;
-  for (let i = 0; i < PCAP; i++) { const idx = (pHead + i) % PCAP; if (!particles[idx].live) { p = particles[idx]; pHead = (idx + 1) % PCAP; break; } }
-  if (!p) { p = particles[pHead]; pHead = (pHead + 1) % PCAP; }
+  // Battery saver keeps half the pool: purely visual (callers draw their rng before spawning,
+  // so the simulation is identical either way).
+  const cap = pCapLive;
+  for (let i = 0; i < cap; i++) { const idx = (pHead + i) % cap; if (!particles[idx].live) { p = particles[idx]; pHead = (idx + 1) % cap; break; } }
+  if (!p) { pHead %= cap; p = particles[pHead]; pHead = (pHead + 1) % cap; }
   p.live = true; p.x = x; p.y = y; p.vx = vx; p.vy = vy; p.life = life; p.max = life;
   p.size = size; p.color = color; p.grav = grav || 0; p.bounce = !!bounce; p.kind = kind || 0;
   return p;
@@ -3821,6 +3826,11 @@ function frame(now) {
   rafId = requestAnimationFrame(frame);
   pollGamepad();
   if (shotFrozen) { render(1); return; }   // QA: re-render frozen state (survives post-load resizes)
+  // Pacing: skip whole callbacks (before any work) to hold 30fps under battery saver or
+  // 15fps behind a pause / run-over card. The fixed-step accumulator absorbs the longer dt,
+  // so the simulation advances exactly as it would at 60fps.
+  const gap = frameGapMs();
+  if (gap && lastT && now - lastT < gap - 1.5) return;
   if (!lastT) lastT = now;
   let dt = (now - lastT) / 1000; lastT = now;
   if (dt > 0.25) dt = 0.25;
@@ -3877,9 +3887,60 @@ function frame(now) {
   render(stepping ? clamp(acc / STEP, 0, 1) : 1);
   tickAudio();
 }
+/* ---------------------------------------------------------------------------
+   21b. POWER — battery saver, idle pacing, hidden-tab stop, idle audio
+   ------------------------------------------------------------------------- */
+// Saving when the player asked (Settings → Battery saver) or when the Battery Status API
+// says the battery is low and unplugged (Chromium; other browsers never report, so never
+// switch on by themselves). Never under #shot: goldens render at full rate and DPR.
+var power = { lowBattery: false, batteryKnown: false, audioIdleAt: 0, looping: false };   // var: resize() may run before this line at boot
+function powerSaving() { return !SHOT && (settings.batterySaver || !!(power && power.lowBattery)); }
+function frameGapMs() {
+  if (SHOT) return 0;
+  if (G.mode === 'pause' || (G.mode === 'dead' && G.deathCardShown)) return 1000 / 15;   // a still scene behind a card
+  return powerSaving() ? 1000 / 30 : 0;
+}
+var powerWas = null;
+function applyPower() {
+  const on = powerSaving();
+  if (on === powerWas) return;
+  powerWas = on;
+  pCapLive = on ? 80 : PCAP;
+  for (let i = pCapLive; i < PCAP; i++) particles[i].live = false;
+  if (!on && !settings.sharp) perf.cap = CFG.dprCap;   // leaving saver: adaptive resolution starts sharp again
+  resize();
+}
+if (settings.batterySaver) { pCapLive = 80; powerWas = true; }   // a saved choice applies from the first frame (resize() already capped DPR)
+if (!SHOT && navigator.getBattery) {
+  try {
+    navigator.getBattery().then((b) => {
+      const sync = () => { power.lowBattery = !b.charging && b.level < 0.2; power.batteryKnown = true; applyPower(); };
+      sync();
+      b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
+    }).catch(() => {});
+  } catch (e) {}
+}
+// Hidden tab: no simulation, no rendering, no audio. Browsers already throttle rAF in the
+// background; stopping the loop outright also stops every per-frame timer and poll.
+function stopLoop() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
+function startLoop() { if (!rafId) { lastT = 0; rafId = requestAnimationFrame(frame); } }
+// Idle audio: with music off (or muted) and nothing played for 8 s outside a run, the
+// AudioContext is suspended — its render thread otherwise mixes silence all day. Any sound
+// or a run resumes it.
+function tickAudioPower() {
+  const musicOn = settings.music && !settings.muted;
+  if (G.mode === 'play' || G.mode === 'resume' || musicOn) { power.audioIdleAt = performance.now(); return; }
+  if (performance.now() - power.audioIdleAt > 8000) Audio.suspend();
+}
+if (Audio && Audio.sfx) for (const k of Object.keys(Audio.sfx)) {
+  const f = Audio.sfx[k];
+  if (typeof f === 'function') Audio.sfx[k] = function () { power.audioIdleAt = performance.now(); Audio.resume(); return f.apply(this, arguments); };
+}
+
 // Music conductor: once per rAF, wall-clock — hitstop and 6-step catch-up can't stall it.
 // Danger (0..1) is flare proximity; the arrangement thins under pressure, never darkens.
 function tickAudio() {
+  tickAudioPower();
   const dead = G.player && G.player.dead;
   const danger = (G.mode === 'play' && !dead && G.player)
     ? clamp(1 - (G.player.x - G.flare.x - 260) / 420, 0, 1) : 0;
@@ -5635,6 +5696,8 @@ const SETTINGS_DEF = [
   // Device-dependent (adaptive resolution never runs under #shot): noShot keeps
   // the row out of the pause/settings goldens like the net rows below.
   { key: 'sharp', type: 'switch', label: 'Sharp rendering', noShot: true },
+  // Battery saver: 30fps, 1× resolution, lighter effects. Device-dependent like Sharp, so noShot.
+  { key: 'batterySaver', type: 'switch', label: 'Battery saver', noShot: true },
   { key: 'key:left', bind: 'left', type: 'key', label: 'Move left', section: 'Keyboard', noShot: true },
   { key: 'key:right', bind: 'right', type: 'key', label: 'Move right', noShot: true },
   { key: 'key:jump', bind: 'jump', type: 'key', label: 'Jump', noShot: true },
@@ -5721,6 +5784,7 @@ function toggleSetting(key) {
   if (key === 'music' || key === 'sfx') Audio.syncChannels();
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
   if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
+  if (key === 'batterySaver') { applyPower(); announce(settings.batterySaver ? 'Battery saver on: 30 frames a second, lighter effects.' : 'Battery saver off.'); }
   syncSettingsUI(); persistAll();
 }
 // Mirrors the live switch onto the CSS motion rules; render/sim read lessMotion() per frame.
@@ -7157,7 +7221,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); }
     Audio.suspend();   // kills the background drone on Android after an app switch
+    if (!SHOT) { power.looping = !!rafId; stopLoop(); }
   } else {
+    if (!SHOT && power.looping) startLoop();
+    if (NET && NET.nudge) NET.nudge();   // a socket that died while we were away reconnects now
     Audio.resume();
     SEASON = computeSeason();   // E13: the date can roll over mid-session
     if (G.mode === 'attract') renderDailyCard();   // …and so can the Daily Course
@@ -7443,7 +7510,7 @@ function setupAnimatedFavicon() {
       tinted = tc; tintFor = id;
     };
     const paint = () => {
-      if (broken || document.hidden) return;
+      if (broken || document.hidden || powerSaving()) return;   // no PNG encode every 0.9 s on a saving device
       if (lessMotion()) { if (String(link.href).indexOf('data:') === 0) link.href = 'favicon.png'; return; }
       if (G.mode === 'play' || G.mode === 'resume') return;   // toDataURL hitches the run; identity motion belongs to attract/pause/dead
       try {
