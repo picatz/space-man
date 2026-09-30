@@ -1,7 +1,7 @@
 # Space Man — Run Together Wire Protocol
 
 **Status:** public, versioned interoperability specification.
-**Protocol version:** `3` (the app-envelope version byte; see [§13](#13-protocol-version--compatibility)).
+**Protocol version:** `4` (the app-envelope version byte; see [§13](#13-protocol-version--compatibility)).
 **Audience:** an engineer building a third-party client (TUI, native mobile, bot, test
 harness) that must interoperate with Space Man rooms without access to the reference
 implementation.
@@ -294,7 +294,7 @@ Header overhead = **11 bytes**; AES-GCM tag = **16 bytes**. Total per-frame over
 The receiver keeps `highSeen` per (pair, dir), initialized to `-1`. Decode order:
 
 1. `wire.length > 256` → error `size` (**strike**), before any decryption.
-2. `wire.length < 27` or byte 0 ≠ `0x53` or byte 1 ≠ `3` → error `ver` (**strike**).
+2. `wire.length < 27` or byte 0 ≠ `0x53` or byte 1 ≠ `4` → error `ver` (**strike**).
 3. byte 2 ≠ the peer's expected direction → error `dir` (**strike**).
 4. `counter ≤ highSeen` → error `replay` (**strike**).
 5. AES-GCM open with the derived nonce/AAD; failure → error `aead` (**strike**).
@@ -317,7 +317,7 @@ the code channel are **random 24-byte** values (no counter state exists pre-join
 ```
 offset  size  field
 0       1     0x43                 ('C')
-1       1     0x03                 version = 3
+1       1     0x04                 version = 4
 2       24    nonce                random
 26      ...   NaCl box(payload)    crypto_box(payload, nonce, theirPub, myPriv) = tag(16)||ct
 ```
@@ -336,7 +336,7 @@ An invite is a fixed-order binary payload, base64url-encoded (alphabet
 
 | offset | size | field | notes |
 |---|---|---|---|
-| 0 | 1 | `ver` | = `3`; unknown → refuse ("update to play together") |
+| 0 | 1 | `ver` | = `4`; unknown → refuse ("update to play together") |
 | 1 | 1 | `flags` | bit0 = approve-joins hint; bit1 = custom relay present |
 | 2 | 8 | `roomId` | random; room namespace + HKDF salt |
 | 10 | 1 | `epoch` | current epoch at issue time |
@@ -630,6 +630,7 @@ client SHOULD handle them; all are core-range and are validated (not ignored).
 | EMOTEB | `0x16` | H→all | `P u8 || emoteId u8 || seq u8` |
 | KILL | `0x0d` | G→H | `runId u8 || id u32 LE` — the reporter killed the alien whose spawn x is `id / 8` px |
 | KILLB | `0x18` | H→all but the reporter | `P u8 || runId u8 || id u32 LE` |
+| KILLS | `0x19` | H→G | `runId u8 || count u8 (≤ 48) || id u32 LE × count` — the round's kills so far |
 
 `KILL` is host-validated and never struck for being unbelievable: a spectator sending one is a
 strike (`spectator-kill`, like `spectator-pres`); a `KILL` whose `runId` is not the host's current
@@ -638,7 +639,10 @@ believed only when the alien's spawn x is within 1800 px of the reporter's own l
 PRES `x` (so a guest cannot remove aliens across the whole course); and a `(runId, id)` is
 fanned out once. `id` is identical on every screen because spawn comes from the shared seed.
 The host applies the kill to its own game and fans out `KILLB` to every other member; a guest
-emitting `KILLB` is forging host authority (strike `host-frame`). Kill *results* (score, mission
+emitting `KILLB` or `KILLS` is forging host authority (strike `host-frame`). The host keeps the round's
+kills (oldest forgotten first past 20 000) and replays them with `KILLS` to a member right after it
+admits or re-welcomes it, so a player who joins or reconnects mid-round sees the same surviving aliens;
+a client remembers a round's dead aliens across a restart within that round and clears them on a new one. Kill *results* (score, mission
 progress, chain) stay with the killer.
 
 Receipt rules a conforming host/guest MUST honor: `emoteId` is clamped to `0–5` **at receipt**
@@ -817,7 +821,7 @@ algorithms would put peers on different courses.
 Refresh both clients and create a fresh room after upgrading.
 
 - **The protocol version is the app-envelope version byte = `4`** ([§7.1](#71-app-envelope-s--0x53)).
-  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 3` is
+  It is the single number that gates compatibility. A frame whose envelope `ver ≠ 4` is
   dropped + struck.
 - **HELLO version negotiation.** HELLO carries `protoMin`/`protoMax`. The host requires
   overlap with its own supported range (`[4,4]` today). No overlap → the join is refused
@@ -1050,7 +1054,7 @@ offset  bytes                                            field
 Full 43-byte plaintext, contiguous:
 
 ```
-01 02 02 4B 41 47 03 01 00 00 00 00 00 00 00 00
+01 04 04 4B 41 47 03 01 00 00 00 00 00 00 00 00
 00 00 00 00 9F 12 4C A8 03 E1 55 7B BD 2A 66 90
 DF 04 C8 31 00 1F 00 00 00 05 11
 ```
@@ -1059,21 +1063,21 @@ DF 04 C8 31 00 1F 00 00 00 05 11
 envelope. The 11-byte cleartext header is:
 
 ```
-53 03 01 00 00 00 00 00 00 00 00
+53 04 01 00 00 00 00 00 00 00 00
 │  │  │  └──────────────────────┘ counter = 0  (u64 LE)
 │  │  └ dir = 0x01 (guest→host)
-│  └ envelope version = 3
+│  └ envelope version = 4
 └ 'S' (0x53)
 ```
 
 followed by the AES-GCM ciphertext of the 43-byte plaintext plus a 16-byte tag (opaque,
 non-deterministic — depends on the pair key and the random-free counter nonce
-`01 00 00 00 00 00 00 00 00 00 00 00`, AAD `01 <roomId·8> <epoch> 01`). Total sealed wire:
+`01 00 00 00 00 00 00 00 00 00 00 00`, AAD `04 <roomId·8> <epoch> 01`). Total sealed wire:
 11 + 43 + 16 = **70 bytes**. This whole envelope becomes the `SendPacket` payload prefixed
 by the 32-byte host public key, itself wrapped in the 5-byte relay frame header:
 
 ```
-04 00 00 00 66  <hostPub·32>  53 03 01 00 00 00 00 00 00 00 00  <ct+tag·59>
+04 00 00 00 66  <hostPub·32>  53 04 01 00 00 00 00 00 00 00 00  <ct+tag·59>
 │  └─────────┘  └──────────┘  └───── 'S' envelope (70 B) ───────────────────┘
 │  len=0x66=102 relay dst key
 └ relay frameType = SendPacket (0x04)
@@ -1117,6 +1121,6 @@ envelope is little-endian.
 **Frame type values.** Relay: `01` ServerKey, `02` ClientInfo, `03` ServerInfo, `04`
 SendPacket, `05` RecvPacket, `06` KeepAlive, `07` NotePreferred, `08` PeerGone, `12` Ping,
 `13` Pong, `14` Health, `15` Restarting. App (implemented): `01` HELLO, `02` WELCOME, `03`
-ROSTER, `04` PRES, `05` SNAP, `0c` ROLE. App (also implemented): `0d` KILL, `18` KILLB. App (specified, not in this snapshot): `06` EMOTE,
+ROSTER, `04` PRES, `05` SNAP, `0c` ROLE. App (also implemented): `0d` KILL, `18` KILLB, `19` KILLS. App (specified, not in this snapshot): `06` EMOTE,
 `07` MOMENT, `08` LEAVE, `09` BYE, `0a` ROUND, `0b` MIGRATE, `16` EMOTEB. Code channel: `01`
 CODEREQ, `02` CODERESP.

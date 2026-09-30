@@ -202,7 +202,7 @@ test('a kill for an alien this screen has not generated yet is remembered, never
   // The guest's copy doesn't exist yet: take it out, deliver the kill, then let it "spawn".
   guest.run(`window.__copy = G.enemies.find((e) => enemyId(e) === ${id}); G.enemies = G.enemies.filter((e) => enemyId(e) !== ${id});`);
   host.run(`killEnemy(G.enemies.find((e) => enemyId(e) === ${id}), 'stomp', false)`);
-  await until(() => guest.run(`G.remoteKilled.has(${id})`), 'remembered');
+  await until(() => guest.run(`G.deadAliens.has(${id})`), 'remembered');
   guest.run('const c = window.__copy; delete c.rs; c.dead = false; G.enemies.push(c); updateEnemies();');
   assert.equal(guest.run(`G.enemies.some((e) => enemyId(e) === ${id} && !(e.dead && e.squash > 2))`), false, 'it must not appear');
 });
@@ -238,4 +238,95 @@ test('a spectator that reports a kill is struck', async (t) => {
   [...hs.roster.values()][0].role = 1;                                        // the host has this guest as a spectator
   gs.relay.send(gs.inv.hostPub, await sealApp(gs.pair, kill.encKill(gs.out, host.net.info().runId, 8000).slice()));
   await until(() => [...hs.roster.values()][0].strikes === 1, 'spectator-kill strike');
+});
+
+// ---- the round's kills follow people (late joiners, reconnects, respawns) ---------------------
+test('kill frames round-trip and reject anything malformed', async (t) => {
+  const c = client(relay(), { game: false });
+  const { kill } = c.net._room, sc = c.net._n1.frames.makeScratch();
+  const back = JSON.parse(JSON.stringify(kill.decKills(kill.encKills(sc, 7, [1, 80000, 4294967295]).slice())));
+  assert.deepEqual(back, { runId: 7, ids: [1, 80000, 4294967295] });
+  assert.equal(kill.decKills(new Uint8Array([kill.A_KILLS, 1])), null, 'too short');
+  assert.equal(kill.decKills(new Uint8Array([kill.A_KILLS, 1, 5, 0, 0, 0, 0])), null, 'count larger than the body');
+  assert.equal(kill.decKills(new Uint8Array([kill.A_KILLS, 1, kill.KILLS_MAX + 1])), null, 'count over the cap');
+  const full = Array.from({ length: kill.KILLS_MAX }, (_, i) => i * 8);
+  assert.ok(kill.encKills(sc, 1, full).length + 29 <= 256, 'a full batch fits one wire packet');
+});
+
+test('a player who joins mid-round is shown every alien the room has already killed', async (t) => {
+  const r = await killable(t), { hub, host, guest, ids } = r;
+  // The guest can only be believed near where it says it is, and can't hop across the course in a
+  // millisecond (the host's teleport check), so it kills a cluster of nearby aliens; the host kills another.
+  const sorted = [...ids].sort((a, b) => a - b);
+  const clusterAt = (a) => sorted.filter((id) => Math.abs(id - a) / 8 <= 1200).slice(0, 3);
+  const dead = sorted.map(clusterAt).sort((a, b) => b.length - a.length)[0];
+  const hostKill = sorted.find((id) => !dead.includes(id));
+  assert.ok(dead.length >= 2 && hostKill !== undefined, 'a cluster to kill (' + dead.length + ')');
+  for (const id of dead) { await standAt(r, guest, id); guest.run(`killEnemy(G.enemies.find((e) => enemyId(e) === ${id}), 'shoot', false)`); }
+  host.run(`killEnemy(G.enemies.find((e) => enemyId(e) === ${hostKill}), 'stomp', false)`);
+  await until(() => dead.every((id) => isDead(host, id)), 'the host has the guest\'s kills');
+  // Someone joins late: the host replays the round's kills as soon as it welcomes them.
+  const late = client(hub);
+  t.after(() => late.close());
+  await late.net.acceptJoin(host.net.info().link.split('#j=')[1], { adjIdx: 2, nounIdx: 2 });
+  const all = [...dead, hostKill];
+  await until(() => late.run('G.deadAliens && G.deadAliens.size') === all.length, 'the late joiner learns every kill (' + all.length + ')');
+  // …and their own game, started afterwards, never shows those aliens.
+  late.run('startRun({ sync: true })');
+  late.run('G.player.x = 60000; generateAhead(); G.player.x = 30; updateEnemies()');
+  assert.equal(late.run(`G.enemies.filter((e) => [${all}].includes(enemyId(e)) && !(e.dead && e.squash > 2)).length`), 0);
+});
+
+test('a reconnecting player is told what they missed, and a respawn in the same round keeps the kills', async (t) => {
+  const r = await killable(t), { host, guest, ids } = r;
+  host.run(`killEnemy(G.enemies.find((e) => enemyId(e) === ${ids[0]}), 'stomp', false)`);
+  await until(() => isDead(guest, ids[0]), 'guest sees the first kill');
+  // The guest's own game restarts inside the same round (a respawn / Play Again): the room's kills stay.
+  guest.run('startRun({ sync: true })');
+  assert.equal(guest.run(`G.deadAliens.has(${ids[0]})`), true, 'a restart in the same round keeps the kills');
+  // Its link drops while the host kills another; on reconnect the host replays what it missed.
+  const gs = guest.net._n1.session();
+  gs.relay.ws.close(); gs.relay.ws.onclose();
+  await until(() => [...host.net._n1.session().roster.values()][0].absent === true, 'host notices the drop');
+  host.run(`killEnemy(G.enemies.find((e) => enemyId(e) === ${ids[1]}), 'stomp', false)`);
+  await until(() => guest.run(`G.deadAliens.has(${ids[1]})`), 'the reconnected guest is told about the kill it missed', 9000);
+  // A genuinely new round starts clean.
+  host.net.newWorld();
+  await until(() => guest.run('G.netRunId') === host.net.info().runId, 'new round reached the guest');
+  assert.equal(guest.run('G.deadAliens.size'), 0, 'new round: nothing is dead yet');
+});
+
+test('the memory of dead aliens drops the oldest, never everything at once', async (t) => {
+  const r = await started(t);
+  r.guest.run('for (let i = 0; i < 20005; i++) markAlienDead(1000 + i)');
+  assert.equal(r.guest.run('G.deadAliens.size'), 20000);
+  assert.equal(r.guest.run('G.deadAliens.has(1000)'), false, 'the oldest went');
+  assert.equal(r.guest.run('G.deadAliens.has(1000 + 20004) && G.deadAliens.has(1000 + 5)'), true, 'the rest stay');
+});
+
+test('a kill reaches a second guest too, and the guest who made it is not sent its own back', async (t) => {
+  const r = await killable(t), { hub, host, guest, ids } = r;
+  const other = client(hub);
+  t.after(() => other.close());
+  await other.net.acceptJoin(host.net.info().link.split('#j=')[1], { adjIdx: 3, nounIdx: 3 });
+  other.run('G.cosmetics.callsign = [0, 0]; startRun({ sync: true })');
+  await until(() => other.net.roundClock()?.active, 'second guest in the round');
+  other.run('G.player.x = 60000; generateAhead(); G.player.x = 30; updateEnemies()');
+  const id = ids[2];
+  const heard = [];
+  guest.net.onEvent((e, d) => { if (e === 'kill') heard.push(d.id); });
+  other.net.onEvent(() => {});
+  await standAt(r, guest, id);
+  guest.run(`killEnemy(G.enemies.find((e) => enemyId(e) === ${id}), 'shoot', false)`);
+  await until(() => isDead(other, id), 'the other guest sees it');
+  await new Promise((res) => setTimeout(res, 150));
+  assert.deepEqual(heard, [], 'the reporter is not sent its own kill back');
+});
+
+test('a guest may not send the host\'s replay frame', async (t) => {
+  const r = await killable(t), { host, guest } = r;
+  const hs = host.net._n1.session(), gs = guest.net._n1.session();
+  const { kill } = guest.net._room, { sealApp } = guest.net._n1.env;
+  gs.relay.send(gs.inv.hostPub, await sealApp(gs.pair, kill.encKills(gs.out, host.net.info().runId, [8000]).slice()));
+  await until(() => [...hs.roster.values()][0].strikes === 1, 'forged replay is a host-frame strike');
 });

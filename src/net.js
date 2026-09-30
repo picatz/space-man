@@ -35,7 +35,7 @@
   const A_EMOTE = 0x06, A_EMOTEB = 0x16, A_BYE = 0x09, A_ROUND = 0x0a;
   // Shared kills: a guest reports an alien it killed (KILL, G→H); the host fans it out
   // to everyone else (KILLB, H→all) so it disappears on every screen.
-  const A_KILL = 0x0d, A_KILLB = 0x18;
+  const A_KILL = 0x0d, A_KILLB = 0x18, A_KILLS = 0x19;   // KILLS (H→G): the round's kills so far, for a late joiner or a reconnect
   const KILL_REACH = 1800;   // px: a kill is only believed within this of the reporter's own last position
   const EMOTE_MAX = 5;                     // shipped emote id ceiling (clamp 0..5 at RECEIPT)
   // Frame-type space partition (Addendum D headroom): 0x00-0x3F core (specced),
@@ -963,6 +963,16 @@
   function decKill(pt) { return pt.length < 6 ? null : { runId: pt[1], id: new DataView(pt.buffer, pt.byteOffset).getUint32(2, true) }; }
   function encKillB(s, p, runId, id) { const u = s.u8; u[0] = A_KILLB; u[1] = p & 0xff; u[2] = runId & 0xff; new DataView(u.buffer, u.byteOffset).setUint32(3, id >>> 0, true); return u.subarray(0, 7); }
   function decKillB(pt) { return pt.length < 7 ? null : { p: pt[1], runId: pt[2], id: new DataView(pt.buffer, pt.byteOffset).getUint32(3, true) }; }
+  // KILLS (0x19 H→G) body {runId u8, count u8 ≤ KILLS_MAX, id u32 LE × count}: a batch of ids, so replaying a round's
+  // kills to someone who was not there costs a handful of frames, not one per alien.
+  const KILLS_MAX = 48;
+  function encKills(s, runId, ids) { const u = s.u8, dv = new DataView(u.buffer, u.byteOffset); u[0] = A_KILLS; u[1] = runId & 0xff; u[2] = ids.length; for (let i = 0; i < ids.length; i++) dv.setUint32(3 + i * 4, ids[i] >>> 0, true); return u.subarray(0, 3 + ids.length * 4); }
+  function decKills(pt) {
+    if (pt.length < 3 || pt[2] > KILLS_MAX || pt.length < 3 + pt[2] * 4) return null;
+    const dv = new DataView(pt.buffer, pt.byteOffset), ids = [];
+    for (let i = 0; i < pt[2]; i++) ids.push(dv.getUint32(3 + i * 4, true));
+    return { runId: pt[1], ids };
+  }
   // BYE (0x09 H→G) — body {reason u8, detail u8}. reason: 0 kicked, 1 closed,
   // 2 rotated, 3 version, 4 full, 5 banned, 6 not approved.
   function encBye(s, reason, detail) { const u = s.u8; u[0] = A_BYE; u[1] = reason & 0xff; u[2] = (detail || 0) & 0xff; return u.subarray(0, 3); }
@@ -1292,7 +1302,7 @@
       // new-world / roster / snap / emote-broadcast) → strike. The pair AEAD
       // already proved WHICH guest sent it; this refuses the forged ROLE.
       if (pt[0] === A_WELCOME || pt[0] === A_ROSTER || pt[0] === A_SNAP ||
-          pt[0] === A_BYE || pt[0] === A_ROUND || pt[0] === A_EMOTEB || pt[0] === A_KILLB) return strike(row, 'host-frame');
+          pt[0] === A_BYE || pt[0] === A_ROUND || pt[0] === A_EMOTEB || pt[0] === A_KILLB || pt[0] === A_KILLS) return strike(row, 'host-frame');
       if (pt[0] === A_EMOTE) {                                   // guest emote (spectators MAY emote, §4.6/Addendum A)
         const em = decEmote(pt);
         if (!em) return;
@@ -1424,6 +1434,7 @@
           sendRoster(1, [row], null, row).catch(() => {});      // everyone else just sees them return
         }
         if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});
+        replayKills(row).catch(() => {});
         return;
       }
       /* unknown core app type: ignore silently (forward compat) */
@@ -1508,6 +1519,7 @@
       S.ev.emit('join', { p, tag: row.tag, role: row.role });
       sendRoster(0).catch(() => {});                           // newcomers need the existing players too
       if (S.roundRunId === S.runId && S.roundT0) broadcastRound(0, row).catch(() => {});   // anchor the joiner to the live shared round
+      replayKills(row).catch(() => {});                          // …and show it which aliens are already gone
       return true;
     }
     function prelimSet(key, pre) {                                 // bounded: evict oldest under key spray
@@ -1566,16 +1578,26 @@
     }
     // A believed kill: dedupe per (runId, alien), tell the host's own game, and fan it out to
     // everyone except the reporter (whose game already applied it).
-    const KILLED_CAP = 8192;
+    const KILLED_CAP = 20000;
     function acceptKill(p, runId, id, except) {
       const key = runId * 4294967296 + id;
       if (S.killed.has(key)) return;
-      if (S.killed.size >= KILLED_CAP) S.killed.clear();
+      if (S.killed.size >= KILLED_CAP) S.killed.delete(S.killed.values().next().value);   // oldest first: never forget the whole round at once
       S.killed.add(key);
       S.ev.emit('kill', { p, id, runId });
       if (!S.relay || S.relay.state !== 'established') return;
       const pt = encKillB(S.out, p, runId, id).slice();
       (async () => { for (const r of members()) if (r !== except) S.relay.send(r.pub, await sealApp(r.pair, pt)); })().catch(() => {});
+    }
+    // Tell one member which aliens this round has already lost (a late joiner, or a reconnect that missed KILLBs).
+    async function replayKills(row) {
+      if (!S.relay || S.relay.state !== 'established') return;
+      const ids = [];
+      for (const key of S.killed) if (Math.floor(key / 4294967296) === S.runId) ids.push(key % 4294967296);
+      for (let i = 0; i < ids.length; i += KILLS_MAX) {
+        const pt = encKills(S.out, S.runId, ids.slice(i, i + KILLS_MAX)).slice();
+        S.relay.send(row.pub, await sealApp(row.pair, pt));
+      }
     }
     // ROUND (new-world) broadcast — rides the host-epoch/seq control envelope so
     // a guest CANNOT forge or replay it: encCtrl binds {roomId, hostEpoch, seq}
@@ -1982,6 +2004,12 @@
           S.peers.set(row.p, row);
         }
         S.ev.emit('snap', { tick: snap.tick, n: snap.rows.length });
+        return;
+      }
+      if (pt[0] === A_KILLS) {                                   // host replay: the aliens this round has already lost
+        const ks = decKills(pt);
+        if (!ks || !S.welcomed || ks.runId !== S.welcomed.runId) return;
+        for (const id of ks.ids) S.ev.emit('kill', { p: 0, id, runId: ks.runId });
         return;
       }
       if (pt[0] === A_KILLB) {                                   // host fan-out: another player killed this alien
@@ -2491,7 +2519,7 @@
       roster: { encRoster, decRoster, ROSTER_ENTRY, ROSTER_MAX },
       role: { encRole, decRole },
       emote: { encEmote, decEmote, encEmoteB, decEmoteB, EMOTE_MAX, A_EMOTE, A_EMOTEB },
-      kill: { encKill, decKill, encKillB, decKillB, A_KILL, A_KILLB, KILL_REACH },
+      kill: { encKill, decKill, encKillB, decKillB, encKills, decKills, A_KILL, A_KILLB, A_KILLS, KILL_REACH, KILLS_MAX },
       bye: { encBye, decBye, A_BYE },
       round: { encRoundBody, decRoundBody, A_ROUND },
       ctrl: { encCtrl, decCtrl, makeCtrlGate, ctrlGate },
