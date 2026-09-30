@@ -131,14 +131,13 @@ test('a real spectator sees aliens in their round-clock places and its stand-in 
   const shooters = () => JSON.parse(guest.run(`JSON.stringify(G.enemies.filter((e) => e.type === 'shoot' && e.rs).map((e) => e.rs.shots))`));
   const before = shooters();
   assert.ok(before.length >= 1, 'the spectator has shooters (' + before.length + ')');
-  hub.advance(20000); await showHost();
-  host.run('updateEnemies()'); guest.run('update()');
-  hub.advance(3000); await showHost();
-  host.run('updateEnemies()'); guest.run('update()');
+  // Round time passes in small steps (a single huge jump of the fake clock trips the relay's keepalive
+  // watchdog and briefly drops the guest); several steps cross real shot boundaries.
+  for (let i = 0; i < 6; i++) { hub.advance(2500); await showHost(); host.run('updateEnemies()'); guest.run('update()'); }
   assert.ok(shooters().some((n, i) => n > before[i]), 'shot schedules advanced on the spectator, so the test crossed real shot boundaries');
   assert.equal(guest.run('G.ebullets.length'), 0, 'a spectator\'s stand-in never draws fire');
   const { shared, bad } = drifts(snapshot(host), snapshot(guest));
-  assert.ok(shared.length >= 2, 'aliens present on both (' + shared.length + ')');
+  assert.ok(shared.some((e) => e.k[0] === 's'), 'the shooter the spectator is following is on both screens (' + shared.length + ' shared)');
   assert.deepEqual(bad, [], 'the spectator\'s aliens sit where the host\'s do');
 });
 
