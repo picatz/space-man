@@ -185,6 +185,12 @@ test('swapping or unplugging controllers keeps the strength row honest, without 
   assert.equal(shown(), true, 'a rumbling controller');
   pads = [pad(plain)]; c.run('pollGamepad()');
   assert.equal(shown(), false, 'swapped for one that cannot rumble, with no disconnect in between');
+  pads = [pad({ vibrationActuator: { pulse() {} } })]; c.run('pollGamepad()');
+  assert.equal(shown(), false, 'an actuator that cannot play effects does not count as rumble');
+  pads = [pad({ hapticActuators: [{ playEffect: () => Promise.resolve() }] })]; c.run('pollGamepad()');
+  assert.equal(shown(), true, 'swapped for a pad whose rumble is the older hapticActuators kind');
+  pads = [pad({ vibrationActuator: { pulse() {} } })]; c.run('pollGamepad()');
+  assert.equal(shown(), false, 'and back to one without effects');
   pads = [pad(rumble)]; c.run('pollGamepad()');
   assert.equal(shown(), true, 'and back');
   pads = []; c.run('input.pad.index = -1; pollGamepad()');

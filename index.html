@@ -1884,18 +1884,19 @@ try {
 // does anything once the browser has really shown us the battery. Rows are built once and shown or hidden as this changes
 // (a controller plugged in, a battery reading arriving).
 const hapticRows = [];
+// The actuator we can actually rumble, if this pad has one: both the row and the buzz use the same test.
+function rumbleActuator(gp) {
+  const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
+  return act && act.playEffect ? act : null;
+}
 function padRumbles() {
-  try {
-    const gp = input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null;
-    const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
-    return !!(act && act.playEffect);
-  } catch (e) { return false; }
+  try { return !!rumbleActuator(input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null); } catch (e) { return false; }
 }
 // pollGamepad tells us whenever the connected pad could change (plugged in, swapped for another, unplugged): re-sync the
 // rows only when whether it can rumble has actually changed, so a hand-off between controllers never leaves the slider stale.
 let padCanRumble = false;
 function noteRumble(gp) {
-  const now = !!(gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0])));
+  const now = !!rumbleActuator(gp);
   if (now !== padCanRumble) { padCanRumble = now; syncHapticRows(); }
 }
 function syncHapticRows() {
@@ -1914,8 +1915,8 @@ function buzz(kind) {
   if (navigator.vibrate) navigator.vibrate(scaleBuzz(pat, k));
   try {
     const gp = input.pad.index >= 0 && navigator.getGamepads ? navigator.getGamepads()[input.pad.index] : null;
-    const act = gp && (gp.vibrationActuator || (gp.hapticActuators && gp.hapticActuators[0]));
-    if (act && act.playEffect) {
+    const act = rumbleActuator(gp);
+    if (act) {
       const heavy = kind === 'heavy' || kind === 'warn' || kind === 'celebrate';
       const duration = Array.isArray(pat) ? pat.reduce((a, b) => a + b, 0) : Math.max(20, pat * 2);
       act.playEffect('dual-rumble', { duration, strongMagnitude: (heavy ? .65 : .24) * k, weakMagnitude: (heavy ? .38 : .18) * k }).catch(() => {});
