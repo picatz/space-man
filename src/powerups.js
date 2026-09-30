@@ -209,8 +209,9 @@
       const dx = it.x - cx, dy = it.y - cy;
       if (dx * dx + dy * dy < R * R) { it.taken = true; it.t = 0; grant(it.type); }
     }
-    if (S.jet > 0) for (const rg of S.rings) {
-      if (rg.taken) { rg.t++; continue; }
+    for (const rg of S.rings) {
+      if (rg.taken) { rg.t++; continue; }   // a collected ring finishes its animation even if the pack has since run out
+      if (S.jet <= 0) continue;              // only collecting needs a jetpack
       if (Math.abs(rg.x - cx) < 16 && Math.abs(rg.y - cy) < 24) {
         rg.taken = true; rg.t = 0;
         S.fuel = Math.min(1, S.fuel + TUNE.jet.refillRing);

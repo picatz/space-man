@@ -479,3 +479,19 @@ test('the parry bell rings on the SFX bus, so the Music setting cannot silence o
   assert.ok(r.n >= 1, 'the parry rang a bell');
   assert.equal(r.onSfx, true, 'and every bell went to the SFX bus');
 });
+
+test('a collected sky ring finishes its animation even when the jetpack runs out mid-way', (t) => {
+  const c = solo(t);
+  const r = json(c, `${STAGE}
+    S.jet = 600; S.fuel = 0.5;
+    const cx = G.player.x + G.player.w / 2, cy = G.player.y + G.player.h / 2;
+    const rg = { x: cx, y: cy, taken: false, t: 0 };
+    S.rings.length = 0; S.rings.push(rg);
+    POW.update(); const took = rg.taken;
+    S.jet = 0;                                   // the pack expires during the 16-frame collection animation
+    const t0 = rg.t;
+    for (let i = 0; i < 5; i++) POW.update();
+    return { took, t0, t1: rg.t };`);
+  assert.equal(r.took, true, 'the ring was collected while the jetpack was on');
+  assert.ok(r.t1 >= r.t0 + 5, `the taken ring keeps ageing after burn-out (${r.t0} → ${r.t1})`);
+});
