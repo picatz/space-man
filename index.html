@@ -572,6 +572,12 @@
   .mini-chip:active { transform: scale(0.96); }
 
   .room-relay { font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; text-align: left; margin: 2px 0; }
+  /* Link quality (Run Together): one dot + a word + the round trip, never louder than the relay line. */
+  .q { font-weight: 700; white-space: nowrap; }
+  .q::before { content: '●'; margin-right: 3px; }
+  .q-good { color: #5CF2A4; } .q-fair { color: #FFC93C; } .q-poor, .q-reconnecting { color: var(--coral); } .q-unknown, .q-connecting { color: var(--ui); opacity: 0.8; }
+  .roster-row .q { font-size: 10px; margin-left: auto; padding-left: 6px; }
+  .offline-note { margin-top: 8px; font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.75; }
   .room-relay .num { font-family: var(--font-num); }
   .room-log { text-align: left; margin: 2px 0 6px; }
   .room-log summary { font-size: 10px; letter-spacing: 1px; color: var(--cyan); cursor: pointer; opacity: 0.8; list-style: none; }
@@ -675,6 +681,7 @@
       <button class="btn ghost" id="btnTogether">Run Together</button>
     </div>
     <div id="attractStats" class="stats-line"></div>
+    <div id="offlineNote" class="offline-note" role="status" style="display:none">Offline · single player ready</div>
   </div>
 </div>
 
@@ -5246,6 +5253,7 @@ function showAttract() {
   $('attractStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m · BEST CHAIN ×${stats.bestChain}` + (logN ? ` · LOG ${logN}/${DISCOVERIES.length}` : '');
   updateWardrobeBadge();
   renderDailyCard();
+  syncOffline();
   showOverlay('ovAttract');
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
   G.mode = 'attract';
@@ -5947,6 +5955,9 @@ function renderRoster(roster, isHost) {
     const rname = (r.callsign && r.callsign !== ('P' + r.p)) ? r.callsign : ('PLAYER ' + r.p);
     who.textContent = rname + suffix;   // textContent: raw tags never reach DOM (I7)
     row.appendChild(who);
+    // Host view: each member's own measured link (reported in its PING), as a small dot.
+    const pq = isHost && !r.you && NET.quality ? (NET.quality().peers || []).find((q) => q.p === r.p) : null;
+    if (pq) { const d = document.createElement('span'); d.className = 'q q-' + pq.level; d.textContent = pq.rttMs + 'ms'; d.title = LINK_WORD[pq.level] + ' link · ' + pq.rttMs + ' ms'; row.appendChild(d); }
     if (isHost && !r.you) {
       const k = document.createElement('button'); k.className = 'mini-chip coral'; k.textContent = 'Kick';
       k.onclick = () => kickPlayer(r);
@@ -5979,7 +5990,7 @@ function renderRoomCard() {
     $('roomApprove').classList.toggle('on', !!settings.netApprove);
     $('roomApprove').setAttribute('aria-checked', String(!!settings.netApprove));
   }
-  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · <span class="num">' + (info.rttMs | 0) + 'ms</span>';
+  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(NET.quality ? NET.quality() : null, isHost);
   renderMobilityLog();
   renderRoster(roster, isHost);
   $('btnRoomPlay').textContent = netRoundActive() ? (info.role === 1 ? 'Watch Round' : 'Join Round') : (isHost ? 'Start Together' : 'Ready to Run');
@@ -6033,20 +6044,57 @@ async function openRoomFlow() {
   if (!netEnabled()) return;
   Audio.ensure();
   if (!hasCallsign()) { showCallsign(openRoomFlow); return; }   // first-run callsign step (§13.4)
-  hideAllOverlays();
+  if (isOffline()) { openTogether(); return; }                  // the front door explains it, with the buttons off
+  // Stay on the front door while the relay is found (probing + connecting can take a while on
+  // a slow link): a live status line and a working Back, never a blank screen.
+  const req = ++joinReq;
+  if (!$('ovTogether').classList.contains('show')) { hideAllOverlays(); showOverlay('ovTogether'); }
+  setTogetherBusy(true);
+  roomOpening = true;
+  setTogetherHint('Opening a room… finding the nearest relay.');
   try {
     const relayDir = { mode: settings.netRelayMode };
     if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
     else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
     await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove, baseUrl: appBaseUrl() });
+    roomOpening = false;
+    if (req !== joinReq) { try { NET.leave(); } catch (x) {} return; }   // they went Back meanwhile
+    setTogetherBusy(false);
     applyCallsignToNet();
     renderRoomCard();
     announce('Room created. Invite link ready.');
+    hideAllOverlays();
     showOverlay('ovRoom');
   } catch (e) {
-    queueToast('relay unreachable — try a custom relay in Settings', 'sys');
-    showAttract();
+    roomOpening = false;
+    if (req !== joinReq) return;
+    setTogetherBusy(false);
+    setTogetherHint(isOffline() ? OFFLINE_TOGETHER : 'Couldn\'t reach a relay. Check your connection and try again, or set a custom relay in Settings.', true);
   }
+}
+// ---- offline awareness: single player never needs the network; Run Together says so plainly ----
+let roomOpening = false;
+const OFFLINE_TOGETHER = 'You\'re offline. Run Together needs a connection; single player works fully offline.';
+function isOffline() { return typeof navigator !== 'undefined' && navigator.onLine === false; }
+function syncOffline() {
+  const off = isOffline() && !netLive();
+  const note = $('offlineNote'); if (note) note.style.display = off && !SHOT ? '' : 'none';
+  if ($('ovTogether').classList.contains('show') && !joinLookup) {
+    for (const id of ['btnCreateRoom', 'btnJoinGo']) $(id).disabled = off;
+    if (off) setTogetherHint(OFFLINE_TOGETHER, true);
+    else if ($('joinHint').textContent === OFFLINE_TOGETHER) setTogetherHint('Type the code your friend sees, or paste their invite link.');
+  }
+}
+window.addEventListener('offline', () => { syncOffline(); if (netLive() && !NET.mockActive) queueToast('Connection lost · reconnecting when it\'s back', 'net'); });
+window.addEventListener('online', () => { syncOffline(); if (NET && NET.nudge) NET.nudge(); });
+// Words for the link levels (net.js quality()): honest and short.
+const LINK_WORD = { good: 'Good', fair: 'Fair', poor: 'Poor', unknown: 'Measuring', connecting: 'Connecting', reconnecting: 'Reconnecting', offline: 'Offline' };
+function linkLabelHtml(q, isHost) {
+  if (!q) return '';
+  if (q.level === 'unknown') return '<span class="q q-unknown">' + (isHost ? 'Connected' : 'Measuring…') + '</span>';
+  if (q.level === 'reconnecting' || q.level === 'connecting') return '<span class="q q-' + q.level + '">' + LINK_WORD[q.level] + '…</span>';
+  return '<span class="q q-' + q.level + '">' + LINK_WORD[q.level] + '</span> · <span class="num">' + (q.rttMs | 0) + ' ms</span>' +
+    (q.lossPct >= 2 ? ' · <span class="num">' + q.lossPct + '%</span> lost' : '');
 }
 /* ---- Run Together front door: Create a Room, or Join with a code / link ---------------------------
    One box takes whatever a friend sends: the code ("NYC-COMET-42", however typed), the invite link, or a
@@ -6069,6 +6117,7 @@ function openTogether() {
   $('joinInput').value = '';
   setTogetherHint('Type the code your friend sees, or paste their invite link.');
   showOverlay('ovTogether');
+  syncOffline();
   // Desktop: land in the box so they can just type or paste. Phones keep the keyboard down until they tap it.
   if (!input.pad.connected && !FORCE_TOUCH && !matchMedia('(pointer: coarse)').matches) { try { $('joinInput').focus(); } catch (e) {} }
 }
@@ -6092,6 +6141,7 @@ function beginJoin(payload) {
 }
 async function submitJoin() {
   if (joinLookup) return;
+  if (isOffline()) { setTogetherHint(OFFLINE_TOGETHER, true); return; }
   const p = NET.parseJoin($('joinInput').value);
   if (p.kind === 'empty') { setTogetherHint('Type the room code, or paste the invite link.', true); return; }
   if (p.kind === 'bad') { setTogetherHint(badJoinMessage(p), true); return; }
@@ -6165,22 +6215,44 @@ async function acceptInvite(role) {
     hideAllOverlays(); showOverlay('ovBlockedHost'); return;
   }
   joinOverride = false;                                    // override consumed (single-use)
+  if (isOffline()) { setJoinState(OFFLINE_TOGETHER); return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
   $('joinChoices').style.display = 'none';
-  $('btnJoinNotNow').style.display = 'none';
-  setJoinState('Joining…');
+  // Cancel stays reachable the whole time: a slow relay or a host who never answers must not
+  // strand anyone on a spinner. Each stage says what it is waiting for.
+  $('btnJoinNotNow').textContent = 'Cancel';
+  const req = ++joinReq;
+  joining = true;
+  setJoinState('Connecting to the relay…');
+  const off = NET.onEvent ? netProgress((e, d) => {
+    if (req !== joinReq) return;
+    if (e === 'join-progress' && d.stage === 'hello') setJoinState('Connected. Waiting for the host to let you in…');
+    if (e === 'join-progress' && d.stage === 'relay') setJoinState('Connecting to the relay…');
+  }) : null;
   try {
     await NET.acceptJoin(joinPayload, { ...netIdentity(), role });
-    const info = NET.info();
-    if (info.city) setJoinState('Joining… relay ' + info.city);
+    if (req !== joinReq) return;
     announce('Joined the room.');
     renderRoomCard();
     startRun({ watch: role === 1, sync: true });
   } catch (e) {
+    if (req !== joinReq) return;                           // cancelled or superseded: that screen is gone
     $('joinChoices').style.display = '';
-    $('btnJoinNotNow').style.display = '';
-    setJoinState(rejectMessage(e));
+    setJoinState(isOffline() ? OFFLINE_TOGETHER : rejectMessage(e));
+  } finally {
+    if (off) off();
+    if (req === joinReq) { joining = false; $('btnJoinNotNow').textContent = 'Not Now'; }
   }
+}
+let joining = false;
+// A scoped listener for the join screen (NET.onEvent has no unsubscribe of its own).
+const netProgressSubs = new Set();
+function netProgress(fn) { netProgressSubs.add(fn); return () => netProgressSubs.delete(fn); }
+if (NET && NET.onEvent) NET.onEvent((e, d) => { for (const fn of netProgressSubs) { try { fn(e, d); } catch (x) {} } });
+function cancelJoinFlow() {
+  joinReq++;
+  if (joining) { joining = false; try { NET.leave(); } catch (e) {} $('btnJoinNotNow').textContent = 'Not Now'; announce('Join cancelled.'); }
+  showAttract();
 }
 
 // --- Settings → Network (bespoke rows below the generic switch/slider loop) --
@@ -6280,7 +6352,7 @@ function syncNetworkSettings() {
   document.querySelectorAll('.net-relayurl').forEach((e) => { e.style.display = settings.netRelayMode === 'custom' ? '' : 'none'; });
   document.querySelectorAll('.net-relaylist').forEach((e) => { e.style.display = settings.netRelayMode === 'list' ? '' : 'none'; });
   document.querySelectorAll('.net-status-row').forEach((e) => {
-    if (active && info) { e.style.display = ''; e.innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · <span class="num">' + (info.rttMs | 0) + 'ms</span>'; }
+    if (active && info) { e.style.display = ''; e.innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(NET.quality ? NET.quality() : null, info.isHost); }
     else e.style.display = 'none';
   });
   const nb = NET.blocklist().length;
@@ -6698,6 +6770,21 @@ function drawNetHUD() {
   if (!netSpectating()) drawCrewDirections();
   if (emWheel.open) drawEmoteWheel();
   if (netLive() && NET.info().unstable) drawUnstableBanner(); else _unstableHit = null;
+  drawLinkPill();
+}
+// In a run the link only speaks up when it matters: reconnecting, or a poor link (so a jumpy
+// ghost has an honest reason on screen). Good/fair stay silent — the room card has the detail.
+function drawLinkPill() {
+  if (NET.mockActive || !NET.quality) return;
+  const q = NET.quality();
+  if (q.level !== 'reconnecting' && q.level !== 'poor') return;
+  const us = uiScale(), text = q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
+  ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
+  const w = ctx.measureText(text).width + 22 * us, h = 18 * us, x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
+  ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
+  ctx.fillStyle = '#FF8A6B'; ctx.beginPath(); ctx.arc(x + 9 * us, y + h / 2, 3 * us, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#F4F7FF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + 16 * us, y + h / 2 + 0.5);
+  ctx.textBaseline = 'alphabetic';
 }
 function raceRunners() {
   const out = [];
@@ -6964,7 +7051,7 @@ $('btnInitialsOk').onclick = () => commitInitials();
 $('btnTogether').onclick = () => openTogether();
 $('btnCreateRoom').onclick = () => openRoomFlow();
 $('btnJoinGo').onclick = () => submitJoin();
-$('btnTogetherBack').onclick = () => { joinReq++; setTogetherBusy(false); showAttract(); };
+$('btnTogetherBack').onclick = () => { joinReq++; if (roomOpening) { roomOpening = false; try { NET.leave(); } catch (e) {} } setTogetherBusy(false); showAttract(); };
 $('joinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitJoin(); } });
 $('joinInput').addEventListener('input', () => { if ($('joinHint').classList.contains('err')) setTogetherHint(''); });
 // Pasting a link is the whole request: go straight to the join prompt, no extra tap.
@@ -6981,14 +7068,16 @@ $('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} rend
 $('roomApprove').onclick = () => { settings.netApprove = !settings.netApprove; try { NET.setApprove(settings.netApprove); } catch (e) {} persistAll(); renderRoomCard(); syncSettingsUI(); announce(settings.netApprove ? 'Approve joins on.' : 'Approve joins off.'); };
 $('btnJoinPlay').onclick = () => acceptInvite(0);
 $('btnJoinWatch').onclick = () => acceptInvite(1);
-$('btnJoinNotNow').onclick = () => showAttract();
+$('btnJoinNotNow').onclick = () => cancelJoinFlow();
 $('btnBlockedNotNow').onclick = () => showAttract();
 $('btnJoinAnyway').onclick = () => { joinOverride = true; resetJoinPrompt(); hideAllOverlays(); showOverlay('ovJoin'); };   // deliberate one-time override past the block (§6)
 $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
-  if (e === 'reconnecting') announce('Reconnecting.');
+  if (e === 'reconnecting') { announce('Connection lost. Reconnecting.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
+  else if (e === 'reconnected') { announce('Reconnected.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
+  else if (e === 'quality') { if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'bye' && netLive()) { leaveRoom(); queueToast(d && d.reason === 1 ? 'The host closed the room.' : 'The host ended your room connection.', 'net'); }
   else if (e === 'approve-wait') {   // a held join is waiting for the host (§4.6)
     if (d && d.pubHex) { pendingJoins.set(d.pubHex, { pubHex: d.pubHex, role: d.role }); queueToast('Someone wants to join', 'net'); announce('Someone wants to join.'); }
