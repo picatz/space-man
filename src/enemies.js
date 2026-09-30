@@ -186,7 +186,10 @@
       const x0 = e.x + ca * 14, y0 = e.y - 4 + sa * 14;
       ctx.strokeStyle = 'rgba(255,79,102,' + (0.25 + 0.6 * k).toFixed(3) + ')'; ctx.lineWidth = 1 + k;
       ctx.setLineDash(k > 0.7 ? NODASH : DASH);
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + ca * 420, y0 + sa * 420); ctx.stroke();
+      // Long enough to span the whole firing range sideways (the sim fires while the
+      // player is within TURRET.range horizontally), so the warning always reaches its target.
+      const len = TURRET.range / Math.max(0.3, Math.abs(ca));
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0 + ca * len, y0 + sa * len); ctx.stroke();
       ctx.setLineDash(NODASH);
     } else if (e.type === 'brute' && e.slamT >= 0) {
       const life = 1 - clamp(e.slamT / 70, 0, 1);

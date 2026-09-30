@@ -472,7 +472,24 @@ test('the new aliens and their effects draw without error', (t) => {
     G.ebullets.push({ x: G.camX + 100, y: 100, px: G.camX + 100, py: 100, vx: 0, vy: 1, g: 0.16, bomb: true, life: 10, grazed: false }); render(1);
     return { errs: window.__errors, types: [...types].sort() };`);
   assert.deepEqual(errs.errs, []);
-  assert.ok(errs.types.length >= 4, errs.types.join());
+  // All five are introduced before 3 km, so every drawing branch runs.
+  assert.deepEqual(errs.types, ['bomber', 'brute', 'diver', 'shield', 'turret']);
+});
+
+test('a sentinel’s warning laser reaches as far as it will fire', (t) => {
+  const c = solo(t);
+  // Draw the telegraph on a recording canvas and measure how far the laser reaches sideways.
+  const r = json(c, `
+    const reach = [];
+    for (const aim of [Math.PI, Math.PI - 0.3, Math.PI + 0.5, 0, 0.9]) {
+      const e = { type: 'turret', v2: true, x: 1000, y: 200, aim, telegraph: 0.3, dead: false };
+      let x0 = null, far = 0;
+      const rec = new Proxy({}, { get: (o, k) => k === 'moveTo' ? (x) => { x0 = x; } : k === 'lineTo' ? (x) => { far = Math.max(far, Math.abs(x - e.x)); } : typeof k === 'string' && k.endsWith('Style') ? '' : () => {}, set: () => true });
+      FOES.drawFx(rec, e, 0, () => NaN);
+      reach.push(far);
+    }
+    return { reach, range: FOES.TURRET.range };`);
+  for (const f of r.reach) assert.ok(f >= r.range, `laser reaches ${Math.round(f)}px sideways but the sentinel fires out to ${r.range}px`);
 });
 
 /* ---------------------------------------------------------------------------
