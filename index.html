@@ -1631,7 +1631,10 @@ const Audio = (() => {
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
-      ac = new AC();
+      // iOS: the default audio session category is 'ambient', which the ring/silent switch mutes. A game's sound is
+      // playback; the in-game mute (icon, M key, settings) is the control that stays in the player's hands.
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+      ac = new AC({ latencyHint: 'interactive' });
       master = ac.createGain(); master.gain.value = 0.9;
       comp = ac.createDynamicsCompressor();
       // Safety limiter, not glue: defaults (-24/30/12/.003/.25) were a 12:1 squash
@@ -4291,6 +4294,21 @@ function startLoop() { if (!rafId) { lastT = 0; rafId = requestAnimationFrame(fr
 // Idle audio: with music off (or muted) and nothing played for 8 s outside a run, the
 // AudioContext is suspended — its render thread otherwise mixes silence all day. Any sound
 // or a run resumes it.
+// Screen Wake Lock: a phone that dims mid-run loses the run. Held only while a run is live and the tab is visible; the
+// browser drops it on hide, and the next live frame asks again. Feature-detected; any refusal just means the screen may dim.
+const wake = { lock: null, pending: false };
+function tickWakeLock() {
+  if (SHOT || !navigator.wakeLock) return;
+  const want = (G.mode === 'play' || G.mode === 'resume') && !document.hidden;
+  if (want && !wake.lock && !wake.pending) {
+    wake.pending = true;
+    navigator.wakeLock.request('screen').then((l) => {
+      wake.pending = false; wake.lock = l;
+      l.addEventListener('release', () => { if (wake.lock === l) wake.lock = null; });
+      if (!((G.mode === 'play' || G.mode === 'resume') && !document.hidden)) { l.release().catch(() => {}); wake.lock = null; }
+    }, () => { wake.pending = false; });
+  } else if (!want && wake.lock) { const l = wake.lock; wake.lock = null; l.release().catch(() => {}); }
+}
 function tickAudioPower() {
   const musicOn = settings.music && !settings.muted;
   if (G.mode === 'play' || G.mode === 'resume' || musicOn) {
@@ -4308,7 +4326,7 @@ if (Audio && Audio.sfx) for (const k of Object.keys(Audio.sfx)) {
 // Music conductor: once per rAF, wall-clock — hitstop and 6-step catch-up can't stall it.
 // Danger (0..1) is flare proximity; the arrangement thins under pressure, never darkens.
 function tickAudio() {
-  tickAudioPower();
+  tickAudioPower(); tickWakeLock();
   const dead = G.player && G.player.dead;
   const danger = (G.mode === 'play' && !dead && G.player)
     ? clamp(1 - (G.player.x - G.flare.x - 260) / 420, 0, 1) : 0;
