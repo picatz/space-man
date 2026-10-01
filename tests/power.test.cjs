@@ -60,7 +60,7 @@ test('battery saver: 1× resolution and half the particle pool, restored when sw
   c.run('toggleSetting("batterySaver")');
   assert.equal(c.run('view.dpr'), 2);
   assert.equal(c.run('pCapLive'), 160);
-  assert.equal(c.run('frameGapMs()'), 0);
+  c.run("G.mode = 'play'"); assert.equal(c.run('frameGapMs()'), 0, 'a live run on a desktop is paced by the display alone');
   // A saved true comes back on; garbage sanitizes to off.
   const again = client(relay(), { dpr: 3, storage: new Map([[c.run('LS.settings'), JSON.stringify({ batterySaver: true })]]) });
   t.after(() => again.close());
@@ -123,4 +123,39 @@ test('idle audio suspends after 8 s with music off outside a run, and any sound 
   assert.ok(resumes >= 1, 'a sound resumes the context');
   c.run('settings.music = true; power.audioIdleAt = 0; tickAudioPower();');
   assert.equal(suspends, 1, 'music on: never suspended');
+});
+
+test('the title screen idles down: 30 fps, then 15 after a minute, then a crawl after five, and any input wakes it', () => {
+  const { client, relay } = require('./harness.cjs');
+  const c = client(relay());
+  try {
+    const gap = () => Math.round(1000 / c.run('frameGapMs()'));
+    c.run("G.mode = 'attract'; settings.batterySaver = false; batteryLow = false; settings.music = false; power.lastInputAt = performance.now()");
+    c.context.document.hasFocus = () => true;
+    assert.equal(gap(), 30, 'a calm title screen needs no more than 30 fps');
+    c.context.performance.now = ((n) => () => n() + 61000)(c.context.performance.now);
+    assert.equal(gap(), 15, 'a minute of nobody there');
+    c.context.performance.now = ((n) => () => n() + 300000)(c.context.performance.now);
+    assert.equal(gap(), 5, 'five minutes: a crawl (silent)');
+    c.run('settings.music = true; settings.muted = false');
+    assert.equal(gap(), 10, 'with music playing the conductor still needs a frame every 100 ms');
+    c.run('noteInput()');
+    assert.equal(gap(), 30, 'any input wakes it at once');
+    c.context.document.hasFocus = () => false;
+    assert.equal(gap(), 15, 'visible but behind another window');
+  } finally { c.close(); }
+});
+
+test('a live run is capped at 60 fps on a phone off the charger, and free on a desktop or a plugged-in phone', () => {
+  const { client, relay } = require('./harness.cjs');
+  const c = client(relay());
+  try {
+    c.run("G.mode = 'play'; settings.batterySaver = false; batteryLow = false");
+    c.run('touchPrimary = false; batteryCharging = false');
+    assert.equal(c.run('frameGapMs()'), 0, 'desktop: every refresh');
+    c.run('touchPrimary = true; batteryCharging = false');
+    assert.equal(Math.round(1000 / c.run('frameGapMs()')), 60, 'phone on battery: 60 at most');
+    c.run('batteryCharging = true');
+    assert.equal(c.run('frameGapMs()'), 0, 'plugged in: the panel decides');
+  } finally { c.close(); }
 });

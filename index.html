@@ -249,15 +249,18 @@
   /* attract card sits low so the canvas wordmark + idle astronaut own the upper scene */
   .attract-anchor { justify-content: flex-end; }
 
-  @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 4px 14px rgba(56, 225, 255, 0.35); transform: scale(1); }
-    50% { box-shadow: 0 6px 26px rgba(56, 225, 255, 0.7); transform: scale(1.02); }
-  }
-  .btn.pulse { animation: pulseGlow 1.6s ease-in-out infinite; }
+  /* The idle pulse only animates transform and opacity (compositor-only): animating box-shadow itself repaints the
+     button every frame for as long as the title screen is open. The bright glow is a static shadow on a pseudo-element
+     whose opacity breathes. */
+  @keyframes pulseGlow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+  @keyframes pulseHalo { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+  .btn.pulse { animation: pulseGlow 1.6s ease-in-out infinite; position: relative; }
+  .btn.pulse::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: 0 6px 26px rgba(56, 225, 255, 0.7); animation: pulseHalo 1.6s ease-in-out infinite; }
+  body.idle-deep .btn.pulse, body.idle-deep .btn.pulse::after { animation: none; }
   /* Reduce Motion: body.reduce-motion follows the in-game switch, which
      defaults to prefers-reduced-motion (and is the OS answer under #shot), so
      turning the switch OFF really restores motion. */
-  body.reduce-motion .btn.pulse { animation: none; }
+  body.reduce-motion .btn.pulse, body.reduce-motion .btn.pulse::after { animation: none; }
   /* E9.1: panels appear, they don't slide/scale in; still dim the backdrop. */
   body.reduce-motion .btn, body.reduce-motion .overlay, body.reduce-motion .panel { transition: none; }
   body.reduce-motion .panel { opacity: 1; transform: none; }
@@ -1332,7 +1335,10 @@ function adaptResolution(dt) {
   if (dt > 0.1) return;   // tab switch / GC hitch: not steady-state cost
   if ((perf.warm += dt) < 1) { perf.ema = STEP; return; }   // let a fresh canvas settle
   perf.ema += (dt - perf.ema) * 0.05;
-  perf.slowT = perf.ema > 0.022 ? perf.slowT + dt : 0;
+  // Slow is judged against the pace the scene asks for: a title screen paced to 30 fps or a card paced to 15 is not a slow
+  // device. (32% over the 60 fps frame is the old 22 ms line; it scales with the intended gap.)
+  const target = Math.max(STEP, frameGapMs() / 1000);
+  perf.slowT = perf.ema > target * 1.32 ? perf.slowT + dt : 0;
   if (perf.slowT < 2) return;
   // Mid-run a DPR switch pops mid-jump; wait for attract/pause/dead unless the
   // device is badly behind (<25fps), where the pop beats a stuttering run.
@@ -2091,7 +2097,7 @@ const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: 
 let batteryLow = false, batteryReady = false;   // batteryReady: the browser actually handed us battery data (it can refuse)
 try {
   if (navigator.getBattery) navigator.getBattery().then((b) => {
-    const sync = () => { batteryLow = !b.charging && b.level < 0.2; if (typeof applyPower === 'function') applyPower(); };   // the frame loop's saver follows too
+    const sync = () => { batteryCharging = !!b.charging; batteryLow = !b.charging && b.level < 0.2; if (typeof applyPower === 'function') applyPower(); };   // the frame loop's saver follows too
     batteryReady = true;
     sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
     syncHapticRows();
@@ -2291,7 +2297,8 @@ function pollGamepad() {
     else if (G.mode === 'pause') togglePause();
   }
   const btns = gp.buttons, prev = input.pad.prev;   // in place: no per-poll array allocation
-  for (let i = 0; i < btns.length; i++) prev[i] = !!btns[i].pressed;
+  for (let i = 0; i < btns.length; i++) { prev[i] = !!btns[i].pressed; if (prev[i]) power.lastInputAt = performance.now(); }
+  if (axis) power.lastInputAt = performance.now();
 }
 
 window.addEventListener('gamepadconnected', (e) => { input.pad.index = e.gamepad.index; pollGamepad(); });
@@ -4301,12 +4308,36 @@ function frame(now) {
 // says the battery is low and unplugged (Chromium; other browsers never report, so never
 // switch on by themselves). Never under #shot: goldens render at full rate and DPR.
 // One battery watcher serves both the haptics saver and this (see batteryLow / batteryReady near the haptics table).
-var power = { get lowBattery() { return batteryLow; }, set lowBattery(v) { batteryLow = !!v; }, get batteryKnown() { return batteryReady; }, audioIdleAt: 0, looping: false };   // var: resize() may run before this line at boot
+var power = { get lowBattery() { return batteryLow; }, set lowBattery(v) { batteryLow = !!v; }, get batteryKnown() { return batteryReady; }, audioIdleAt: 0, looping: false, lastInputAt: 0 };   // var: resize() may run before this line at boot
 function powerSaving() { return !SHOT && (settings.batterySaver || !!(power && power.lowBattery)); }
+// Frame pacing: render only as often as the scene earns. A callback skipped before any work costs nothing, and the
+// fixed-step accumulator keeps the simulation exact whatever the gap.
+//   run, plugged in or on a desktop ... every refresh (60/120/144 Hz)
+//   run, on a phone/tablet off the charger ... 60 at most (a 120 Hz panel doubles the GPU and battery cost for a sim that steps at 60)
+//   title screen ... 30; a minute without input 15; five minutes 5 (10 while music plays: the conductor schedules 350 ms ahead per frame)
+//   behind a card (pause, run over) ... 15
+//   battery saver / low battery ... 30
+let touchPrimary = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+let batteryCharging = true;   // until the browser says otherwise
+let idleDeep = false;
+function noteInput() { power.lastInputAt = performance.now(); if (idleDeep) { idleDeep = false; document.body.classList.remove('idle-deep'); } }
+['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach((t) => window.addEventListener(t, noteInput, { passive: true, capture: true }));
+function attractGapMs() {
+  const idle = performance.now() - power.lastInputAt;
+  let gap = 1000 / 30;
+  if (typeof document.hasFocus === 'function' && !document.hasFocus()) gap = 1000 / 15;   // visible but behind another window
+  if (idle > 60000 && !idleDeep) { idleDeep = true; document.body.classList.add('idle-deep'); }   // even the button's glow stops breathing
+  if (idle > 300000) gap = (settings.music && !settings.muted) ? 100 : 200;
+  else if (idle > 60000) gap = Math.max(gap, 1000 / 15);
+  if (netLive()) gap = Math.min(gap, 1000 / 15);   // a lobby keeps its roster and ghosts fresh
+  return gap;
+}
 function frameGapMs() {
   if (SHOT) return 0;
   if (G.mode === 'pause' || (G.mode === 'dead' && G.deathCardShown)) return 1000 / 15;   // a still scene behind a card
-  return powerSaving() ? 1000 / 30 : 0;
+  if (powerSaving()) return 1000 / 30;
+  if (G.mode === 'attract') return attractGapMs();
+  return touchPrimary && !batteryCharging ? 1000 / 60 : 0;
 }
 var powerWas = null;
 function applyPower() {
@@ -8618,7 +8649,7 @@ function setupAnimatedFavicon() {
       tinted = tc; tintFor = id;
     };
     const paint = () => {
-      if (broken || document.hidden || powerSaving()) return;   // no PNG encode every 0.9 s on a saving device
+      if (broken || document.hidden || powerSaving() || idleDeep) return;   // no PNG encode every 0.9 s on a saving device, or while nobody is there
       if (lessMotion()) { if (String(link.href).indexOf('data:') === 0) link.href = 'favicon.png'; return; }
       if (G.mode === 'play' || G.mode === 'resume') return;   // toDataURL hitches the run; identity motion belongs to attract/pause/dead
       try {
