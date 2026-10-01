@@ -240,3 +240,41 @@ test('the iPhone settings get a test tick that does not exist on other devices',
     assert.equal(host2.children.some((r) => /haptic-test/.test(r.className)), true);
   } finally { c.close(); }
 });
+
+test('death, a new sector, an unlock and a finished mission each have a haptic; every control gives a light tap', (t) => {
+  const { c, buzzes } = solo(t);
+  c.run('settings.haptics = true; settings.hapticsStrength = 1; settings.hapticsSaver = false; iosTapHaptics = false; batteryLow = false;');
+  c.run("startRun(); die('flare')");
+  assert.ok(buzzes.some((b) => Array.isArray(b) && b[0] >= 30), 'the hit you feel');
+  buzzes.length = 0;
+  c.run("unlockCosmetic('catears')");
+  assert.deepEqual(buzzes, [[15, 28, 15]]);
+  buzzes.length = 0;
+  c.run("buzz('sector'); buzz('tap')");
+  assert.equal(buzzes.length, 2);
+  buzzes.length = 0;
+  c.run('settings.haptics = false');
+  c.run("buzz('death'); buzz('tap')");
+  assert.deepEqual(buzzes, [], 'off means off, for all of them');
+});
+
+test('on an iPhone every control is armed with a tap-haptic overlay that never double-fires its click, and the setting turns it off', () => {
+  const c = client(relay());
+  try {
+    c.run('iosTapHaptics = true');
+    const btn = c.context.document.createElement('button'); c.context.__b = btn;
+    btn.tagName = 'BUTTON'; btn.closest = () => null; btn.querySelector = () => btn.children.find((x) => /hapt/.test(x.className)) || null;
+    btn.className = 'btn';
+    c.run('armTapHaptic(__b)');
+    const lab = btn.children.find((x) => /hapt/.test(x.className));
+    assert.ok(lab, 'overlay added');
+    const inp = lab.children[0];
+    assert.equal(inp.type, 'checkbox'); assert.ok('switch' in (inp.attrs || {}), 'a real switch');
+    let stopped = false; inp.listeners.click[0]({ stopPropagation() { stopped = true; } });
+    assert.equal(stopped, true, "the label's second click is stopped so the control's own handler runs once");
+    c.run('armTapHaptic(__b)');
+    assert.equal(btn.children.filter((x) => /hapt/.test(x.className)).length, 1, 'idempotent');
+    c.run('settings.haptics = false; syncSettingsUI()');
+    assert.equal(c.run("document.body.classList.contains('no-haptics')"), true);
+  } finally { c.close(); }
+});

@@ -591,6 +591,10 @@
   #errlog.show { display: block; }
 
   .hap-touch { position: fixed; top: 0; bottom: 0; display: none; z-index: 4; opacity: 0; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .hapt-host { position: relative; }
+  .hapt { position: absolute; inset: 0; z-index: 3; opacity: 0; border-radius: inherit; -webkit-tap-highlight-color: transparent; }
+  .hapt input { position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }   /* the tap must land on the label: it is the label's click that reaches the control's handler */
+  body.no-haptics .hapt { display: none; }
   .hap-touch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
   .hap { position: fixed; left: -9999px; top: -9999px; opacity: 0; pointer-events: none; }
   /* Screen-reader live region: visually hidden, never display:none (that silences it). */
@@ -2108,7 +2112,7 @@ const Audio = (() => {
 /* ---------------------------------------------------------------------------
    8. HAPTICS
    ------------------------------------------------------------------------- */
-const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: [12, 36, 12], celebrate: [14, 40, 14, 40, 22] };
+const HAPTICS = { select: 7, tap: 10, light: 12, heavy: 18, success: [10, 28, 10], warn: [12, 36, 12], celebrate: [14, 40, 14, 40, 22], death: [40, 30, 70], sector: [12, 30, 12, 30, 24] };
 // Low-battery saver. No browser exposes iOS/Android Low Power Mode itself, but Chromium's Battery Status API tells us
 // when the device is low and unplugged, which is when the motor is worth sparing. Browsers without it never save.
 let batteryLow = false, batteryCritical = false, batteryReady = false;   // low <20% (haptics sit out); critical <10% (the whole game saves power)
@@ -2455,6 +2459,37 @@ canvas.addEventListener('pointermove', onTapMove, { passive: false });
    iOS versions where it still works. */
 let touchPrimary = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);   // a phone or tablet is the main pointer (also read by the frame pacing)
 let iosTapHaptics = !('vibrate' in navigator) && touchPrimary;
+/* ---- tap feedback on every control ----
+   Wherever the device can buzz on demand (Android, controllers), a click on any button, row or chip gives a light tap. On an
+   iPhone the tick has to come from the finger's own tap on a real switch, so each control is armed with a transparent switch
+   label laid over it: the tap lands on the label, iOS ticks, and the click still reaches the control's own handler exactly once
+   (the label's second, synthetic click on its switch is stopped). All of it follows the Haptics switch. */
+const TAP_SELECTOR = 'button, .btn, .mini-chip, .toggle-row, .switch, .swatch';
+document.addEventListener('click', (e) => {
+  if (iosTapHaptics || SHOT || !settings.haptics) return;
+  const t = e.target && e.target.closest ? e.target.closest(TAP_SELECTOR) : null;
+  if (t && !t.disabled && !(t.closest && t.closest('#hapTouch'))) buzz('tap');
+}, true);
+function armTapHaptic(el) {
+  // Controls that rewrite their own text drop the overlay with it, so "armed" means "has its overlay right now".
+  if (!iosTapHaptics || el.tagName === 'INPUT' || el.closest('.hap-touch') || el.closest('.hapt') || el.querySelector(':scope > .hapt')) return;
+  const lab = document.createElement('label'); lab.className = 'hapt'; lab.setAttribute('aria-hidden', 'true');
+  const inp = document.createElement('input'); inp.type = 'checkbox'; inp.setAttribute('switch', ''); inp.tabIndex = -1;
+  inp.addEventListener('click', (ev) => ev.stopPropagation());   // the label's second click: the real one already reached the control
+  lab.appendChild(inp); el.appendChild(lab);
+  try { if (getComputedStyle(el).position === 'static') el.classList.add('hapt-host'); } catch (e) {}   // never turn an absolute/sticky control relative
+}
+function armAllTapHaptics(root) {
+  if (!iosTapHaptics || SHOT) return;
+  const list = (root || document).querySelectorAll ? (root || document).querySelectorAll(TAP_SELECTOR) : [];
+  for (const el of list) armTapHaptic(el);
+}
+(function watchTapHaptics() {
+  if (!iosTapHaptics || SHOT || typeof MutationObserver !== 'function') return;
+  let queued = false;
+  new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; armAllTapHaptics(); }); }).observe(document.body, { childList: true, subtree: true });
+  armAllTapHaptics();
+})();
 let hapticOverlayKey = '';
 function tickTouchHaptic() {
   const el = document.getElementById('hapTouch'); if (!el) return;
@@ -2680,7 +2715,7 @@ function missionProgress(kind, amount) {
   G.companion = { x: G.player.x - 30, y: G.player.y - 10, phase: 0 };
   popup(G.player.x, G.player.y - 34, '+' + CFG.missionReward + ' MISSION', '#FFE59A');
   burst(G.player.x + G.player.w / 2, G.player.y, 30, 4, 46, 3, 'rgba(159,241,255,.95)', 0.04, 2);
-  celebrate('MISSION COMPLETE!');
+  celebrate('MISSION COMPLETE!'); buzz('celebrate');
   announceMoment('Mission complete: ' + m.label.toLowerCase() + '. Plus ' + CFG.missionReward + ' points.');
 }
 
@@ -4033,7 +4068,7 @@ function die(cause) {
                vx: Math.sign(K.bvx || 1) * 1.1, vy: -6.5, rot: 0, vr: f * 0.45 };
   // words of comfort: 1-in-6 non-best deaths, decor stream — the delta line never shares its card space with a lie
   G.quip = (DELIGHT && !G.newBest && G.decorRng() < 1 / 6) ? QUIPS[(G.decorRng() * QUIPS.length) | 0] : null;
-  Audio.sfx.death(G.newBest, K.pitch);
+  Audio.sfx.death(G.newBest, K.pitch); buzz('death');   // the hit you feel (Android, controllers; iOS only plays haptics from a tap)
   // Run Together (D5): send one final presence with the dead bit (value 4) set
   // and inRun cleared — a dead player otherwise stops broadcasting, so peers see
   // a frozen ghost with no signal. net.js already carries all 5 state bits, so
@@ -4152,7 +4187,7 @@ function update() {
       const names = ['ORBITAL DAWN', 'ION DRIFT', 'VIOLET REACH', 'NIGHT BLOOM', 'RED SHIFT', 'EVENT HORIZON', 'THE FAR SIDE', 'LAST LIGHT'];
       G.stinger = 2.4; G.stingerText = names[nextBand] || 'DEEP SPACE';
       announceMoment('Sector ' + (nextBand + 1) + ': ' + G.stingerText.toLowerCase() + '.');
-      Audio.musicEvent('sector', nextBand);   // stinger in the new key; band re-keys at the bar line
+      Audio.musicEvent('sector', nextBand); buzz('sector');   // stinger in the new key; band re-keys at the bar line
       // Sector ceremony (E6): snapshot the outgoing sky/nebula for the 1.5s
       // crossfade and arm the eased theme-color sweep; the actual hue-tinted
       // rebuilds happen lazily on the next draw (drawBackground/drawPlatforms).
@@ -6275,6 +6310,7 @@ function deathTargetLine(fs, distM) {
 
 function showDeathCard() {
   G.deathCardShown = true;
+  if (G.newBest) setTimeout(() => buzz('celebrate'), 250);   // a new best deserves a little fanfare in the hand
   G.trauma = Math.min(G.trauma, 0.3);   // rumble can't outlast the card
   finalizeDeath();
   G.mode = 'dead'; G.deadShownAt = G.time;
@@ -6466,7 +6502,7 @@ function unlockCosmetic(id) {
   G.newCosmetics.push(id);
   // Mid-run/attract unlocks toast at the next calm beat; death-time unlocks are
   // suppressed by the card (which shows its own passive line) by construction.
-  queueToast('✦ UNLOCKED — ' + cosmeticName(id), 'gold');
+  queueToast('✦ UNLOCKED — ' + cosmeticName(id), 'gold'); buzz('success');
   persistAll();
   updateWardrobeBadge();
 }
@@ -6653,6 +6689,7 @@ function buildSettings(host) {
 }
 const AUDIO_ROWS = new Set(['music', 'musicVol', 'sfx', 'sfxVol']);
 function syncSettingsUI() {
+  document.body.classList.toggle('no-haptics', !settings.haptics);   // switches the iPhone tap overlays off with the setting
   document.querySelectorAll('[data-setting]').forEach((el) => {
     const key = el.dataset.setting;
     if (el.classList.contains('switch')) {
