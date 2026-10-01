@@ -4319,15 +4319,29 @@ function startLoop() { if (!rafId) { lastT = 0; rafId = requestAnimationFrame(fr
 // Screen Wake Lock: a phone that dims mid-run loses the run. Held only while a run is live and the tab is visible; the
 // browser drops it on hide, and the next live frame asks again. Feature-detected; any refusal just means the screen may dim.
 const wake = { lock: null, pending: false };
+const liveRun = () => G.mode === 'play' || G.mode === 'resume';
+// A host's screen sleeping suspends the tab and with it the whole room, so an open room keeps the screen on while visible.
+const hostingRoom = () => !!(NET && NET.active && !NET.mockActive && NET.info().isHost);
+// A Web Lock held for as long as a room is hosted: browsers do not freeze or discard a page that holds one, so a hosted
+// tab sent to the background keeps its connection (and, with the Worker timers in the net layer, its beat) alive.
+const roomLock = { release: null };
+function tickRoomLock() {
+  if (!navigator.locks || !navigator.locks.request) return;
+  const want = hostingRoom();
+  if (want && !roomLock.release) {
+    roomLock.release = () => {};   // claimed synchronously so a second frame does not queue another request
+    navigator.locks.request('space-man-room', { mode: 'shared' }, () => new Promise((res) => { roomLock.release = res; })).catch(() => { roomLock.release = null; });
+  } else if (!want && roomLock.release) { const r = roomLock.release; roomLock.release = null; r(); }
+}
 function tickWakeLock() {
   if (SHOT || !navigator.wakeLock) return;
-  const want = (G.mode === 'play' || G.mode === 'resume') && !document.hidden;
+  const want = (liveRun() || hostingRoom()) && !document.hidden;
   if (want && !wake.lock && !wake.pending) {
     wake.pending = true;
     navigator.wakeLock.request('screen').then((l) => {
       wake.pending = false; wake.lock = l;
       l.addEventListener('release', () => { if (wake.lock === l) wake.lock = null; });
-      if (!((G.mode === 'play' || G.mode === 'resume') && !document.hidden)) { l.release().catch(() => {}); wake.lock = null; }
+      if (!((liveRun() || hostingRoom()) && !document.hidden)) { l.release().catch(() => {}); wake.lock = null; }
     }, () => { wake.pending = false; });
   } else if (!want && wake.lock) { const l = wake.lock; wake.lock = null; l.release().catch(() => {}); }
 }
@@ -4348,7 +4362,7 @@ if (Audio && Audio.sfx) for (const k of Object.keys(Audio.sfx)) {
 // Music conductor: once per rAF, wall-clock — hitstop and 6-step catch-up can't stall it.
 // Danger (0..1) is flare proximity; the arrangement thins under pressure, never darkens.
 function tickAudio() {
-  tickAudioPower(); tickWakeLock();
+  tickAudioPower(); tickWakeLock(); tickRoomLock();
   const dead = G.player && G.player.dead;
   const danger = (G.mode === 'play' && !dead && G.player)
     ? clamp(1 - (G.player.x - G.flare.x - 260) / 420, 0, 1) : 0;
@@ -6805,7 +6819,8 @@ function renderRoomCard() {
   renderMobilityLog();
   renderRoster(roster, isHost);
   $('btnRoomPlay').textContent = netRoundActive() ? (info.role === 1 ? 'Watch Round' : 'Join Round') : (isHost ? 'Start Together' : 'Ready to Run');
-  $('roomStatus').textContent = netRoundActive() ? 'A round is in progress. Jump in with the crew.' : (isHost ? 'Invite your crew, then start a shared countdown.' : 'You’re connected. Ready up and wait for the host to start.');
+  if (info.hostAway) { $('roomStatus').textContent = 'The host has gone quiet — probably a backgrounded tab or a locked phone. Your seat is held; stay here.'; }
+  else $('roomStatus').textContent = netRoundActive() ? 'A round is in progress. Jump in with the crew.' : (isHost ? 'Invite your crew, then start a shared countdown.' : 'You’re connected. Ready up and wait for the host to start.');
   if (isHost) renderPendingJoins();
 }
 // Copy text and say so only when it worked; without a clipboard (plain-HTTP LAN origins) offer a selectable prompt.
@@ -6871,7 +6886,7 @@ async function openRoomFlow() {
     roomOpening = false;
     if (req !== joinReq) { try { NET.leave(); } catch (x) {} return; }   // they went Back meanwhile
     setTogetherBusy(false);
-    applyCallsignToNet();
+    applyCallsignToNet(); saveResume();
     renderRoomCard();
     announce('Room created. Invite link ready.');
     hideAllOverlays();
@@ -6898,6 +6913,9 @@ function syncOffline() {
 }
 window.addEventListener('offline', () => { syncOffline(); if (netLive() && !NET.mockActive) queueToast('Connection lost · reconnecting when it\'s back', 'net'); });
 window.addEventListener('online', () => { syncOffline(); if (NET && NET.nudge) NET.nudge(); });
+// Coming back from a frozen tab, a bfcache restore, or a long sleep: don't wait out a backoff, reconnect now.
+document.addEventListener('resume', () => { if (NET && NET.nudge) NET.nudge(); });
+window.addEventListener('pageshow', () => { if (NET && NET.nudge) NET.nudge(); });
 // Words for the link levels (net.js quality()): honest and short.
 const LINK_WORD = { good: 'Good', fair: 'Fair', poor: 'Poor', unknown: 'Measuring', connecting: 'Connecting', reconnecting: 'Reconnecting', offline: 'Offline' };
 function linkLabelHtml(q, isHost) {
@@ -6973,6 +6991,7 @@ async function submitJoin() {
   }
 }
 function leaveRoom() {
+  clearResume();
   raceReset();
   emTray.open = false; toggleCrew(false);
   crewLog.wins = {}; crewLog.history.length = 0; crewLog.settled = 0;
@@ -7015,11 +7034,14 @@ function rejectMessage(e) {
   if (/expired/i.test(m)) return 'This invite has expired.';
   if (/scan|right/i.test(m)) return "This link doesn't look right.";
   if (/full/i.test(m)) return 'This room is full.';
+  if (/did not admit/i.test(m)) return "The host didn't answer. If they refreshed or closed the tab the room has ended, so ask for a fresh link. If joins need approval, ask them to let you in.";
   if (/admit|declined|cancelled/i.test(m)) return m;
   return 'relay unreachable — the room may have ended, or your network blocks it. A host can supply a custom relay in Settings.';
 }
+let joinResumeKey = null;   // set when this join is a return to a seat we already held (page reload)
 async function acceptInvite(role) {
   if (!joinPayload) return;
+  const resuming = !!joinResumeKey, resumeKey = joinResumeKey; joinResumeKey = null;
   if (!hasCallsign()) { showCallsign(() => { resetJoinPrompt(); showOverlay('ovJoin'); acceptInvite(role); }); return; }
   // Consent gate (§6 / F.1): peek the host key WITHOUT connecting. A blocked host
   // needs a deliberate one-time override (default-safe = Not Now); a custom relay
@@ -7037,34 +7059,108 @@ async function acceptInvite(role) {
   $('btnJoinNotNow').textContent = 'Cancel';
   const req = ++joinReq;
   joining = true;
-  setJoinState('Connecting to the relay…');
+  setJoinState(resuming ? 'Getting your seat back…' : 'Connecting to the relay…');
+  let waitHint = 0;
   const off = NET.onEvent ? netProgress((e, d) => {
     if (req !== joinReq) return;
-    if (e === 'join-progress' && d.stage === 'hello') setJoinState('Connected. Waiting for the host to let you in…');
+    if (e === 'join-progress' && d.stage === 'hello') {
+      setJoinState(resuming ? 'Connected. Asking the host for your seat…' : 'Connected. Waiting for the host to let you in…');
+      clearTimeout(waitHint);   // a quiet host is the common case (a backgrounded tab): say so, and say what to do
+      waitHint = setTimeout(() => { if (req === joinReq && joining) setJoinState('Still waiting for the host… they may be away. You can keep waiting, or cancel and try again.'); }, 8000);
+    }
     if (e === 'join-progress' && d.stage === 'relay') setJoinState('Connecting to the relay…');
   }) : null;
   try {
-    await NET.acceptJoin(joinPayload, { ...netIdentity(), role });
+    await NET.acceptJoin(joinPayload, { ...netIdentity(), role, resumeKey: resumeKey || undefined });
     if (req !== joinReq) return;
-    announce('Joined the room.');
+    saveResume(); stripInviteHash();
+    announce(resuming ? 'Back in the room.' : 'Joined the room.');
+    if (resuming) queueToast('Back in the room', 'net');
     renderRoomCard();
     startRun({ watch: role === 1, sync: true });
   } catch (e) {
     if (req !== joinReq) return;                           // cancelled or superseded: that screen is gone
     $('joinChoices').style.display = '';
-    setJoinState(isOffline() ? OFFLINE_TOGETHER : rejectMessage(e));
+    if (resuming) { clearResume(); $('joinTitle').textContent = 'Join This Run Together?'; }
+    setJoinState(isOffline() ? OFFLINE_TOGETHER : (resuming ? 'Your room is no longer there — the host may have closed it. You can try the invite again.' : rejectMessage(e)));
   } finally {
+    clearTimeout(waitHint);
     if (off) off();
     if (req === joinReq) { joining = false; $('btnJoinNotNow').textContent = 'Not Now'; }
   }
 }
+/* ---- room resume: a reload, a crash or an accidental swipe must not cost anyone their room or seat ----
+   The live session's token lives in this tab's sessionStorage only (it holds the room's private key): it survives a
+   reload, dies with the tab, and is cleared the moment the room is left on purpose. */
+const RESUME_KEY = 'sm2.resume';
+function saveResume() {
+  if (SHOT || !NET || !netLive() || NET.mockActive) return;
+  try { const t = NET.resumeToken(); if (t) sessionStorage.setItem(RESUME_KEY, JSON.stringify(t)); } catch (e) {}
+}
+function clearResume() { try { sessionStorage.removeItem(RESUME_KEY); } catch (e) {} }
+function loadResume() { try { const t = JSON.parse(sessionStorage.getItem(RESUME_KEY) || 'null'); return t && t.v === 1 ? t : null; } catch (e) { return null; } }
+// A stale #j= left in the address bar would re-run a dead join on every reload.
+function stripInviteHash() { try { if (/[#&]j=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
+// Returns true when a saved room is being brought back (the caller then skips the plain join prompt).
+async function resumeRoomOnLoad() {
+  if (SHOT || !NET || !netEnabled()) return false;
+  const tok = loadResume(); if (!tok) return false;
+  const peek = HASH.j && NET.peekInvite ? NET.peekInvite(HASH.j) : null;
+  if (tok.host) {
+    if (peek && peek.hostHex !== tok.pub) { clearResume(); return false; }   // an invite to somebody else's room wins
+    if (tok.expiryMin && tok.expiryMin < Math.floor(Date.now() / 60000)) { clearResume(); return false; }
+    return resumeHosting(tok);
+  }
+  if (!tok.invite || (HASH.j && HASH.j !== tok.invite) || (NET.peekInvite && NET.peekInvite(tok.invite).err)) { clearResume(); return false; }
+  joinPayload = tok.invite; joinResumeKey = tok.priv;
+  $('joinTitle').textContent = 'Rejoining Your Room…';
+  hideAllOverlays(); showOverlay('ovJoin');
+  acceptInvite(tok.role | 0);
+  return true;
+}
+async function resumeHosting(tok) {
+  const req = ++joinReq;
+  joining = true;
+  $('joinTitle').textContent = 'Restoring Your Room…';
+  $('joinChoices').style.display = 'none'; $('btnJoinNotNow').style.display = ''; $('btnJoinNotNow').textContent = 'Cancel';
+  setJoinState('Reconnecting to the relay…');
+  hideAllOverlays(); showOverlay('ovJoin');
+  try {
+    await NET.openRoom({ ...netIdentity(), resume: tok, region: tok.region || undefined, relayHost: tok.relayHost || undefined, approve: !!tok.approve, baseUrl: appBaseUrl() });
+    if (req !== joinReq) { try { NET.leave(); } catch (x) {} return true; }
+    stripInviteHash(); applyCallsignToNet(); saveResume();
+    renderRoomCard(); hideAllOverlays(); showOverlay('ovRoom');
+    queueToast('Room restored · same invite link', 'net'); announce('Your room is back. Friends can reconnect with the same link.');
+  } catch (e) {
+    if (req !== joinReq) return true;
+    clearResume(); stripInviteHash();
+    setJoinState("Couldn't bring your room back — the relay may be unreachable. Start a new room from Run Together.");
+    $('btnJoinNotNow').textContent = 'Not Now';
+  } finally {
+    if (req === joinReq) { joining = false; $('joinTitle').textContent = 'Join This Run Together?'; $('btnJoinNotNow').textContent = 'Not Now'; }
+  }
+  return true;
+}
+// Closing the room on a crowd by accident is the one mistake a host cannot take back.
+function otherMembers() { try { const i = NET.info(); return Math.max(0, i.players + i.spectators - 1); } catch (e) { return 0; } }
+function requestLeaveRoom() {
+  const n = netLive() && NET.info().isHost ? otherMembers() : 0;
+  if (n > 0) {
+    let ok = true; try { ok = window.confirm('Leave and close the room? ' + n + (n === 1 ? ' player is' : ' players are') + ' in it, and it ends for them too.'); } catch (e) {}
+    if (!ok) return;
+  }
+  leaveRoom();
+}
+window.addEventListener('beforeunload', (e) => {
+  if (!SHOT && NET && netLive() && NET.info().isHost && otherMembers() > 0) { e.preventDefault(); e.returnValue = ''; }
+});
 let joining = false;
 // A scoped listener for the join screen (NET.onEvent has no unsubscribe of its own).
 const netProgressSubs = new Set();
 function netProgress(fn) { netProgressSubs.add(fn); return () => netProgressSubs.delete(fn); }
 if (NET && NET.onEvent) NET.onEvent((e, d) => { for (const fn of netProgressSubs) { try { fn(e, d); } catch (x) {} } });
 function cancelJoinFlow() {
-  joinReq++;
+  joinReq++; stripInviteHash();
   if (joining) { joining = false; try { NET.leave(); } catch (e) {} $('btnJoinNotNow').textContent = 'Not Now'; announce('Join cancelled.'); }
   showAttract();
 }
@@ -7138,7 +7234,7 @@ function buildNetworkSettings(host) {
   // Leave room — only while in a room (mirrors the room card; pause reachability
   // per Addendum G "LEAVE lives in room card AND the pause sheet").
   const lv = document.createElement('button'); lv.className = 'btn ghost coral net-leave-btn'; lv.textContent = 'Leave Room'; lv.style.display = 'none';
-  lv.onclick = () => leaveRoom();
+  lv.onclick = () => requestLeaveRoom();
   host.appendChild(lv);
 }
 function renderBlockedList(el) {
@@ -7633,9 +7729,9 @@ function drawNetHUD() {
 // ghost has an honest reason on screen). Good/fair stay silent — the room card has the detail.
 function drawLinkPill() {
   if (NET.mockActive || !NET.quality) return;
-  const q = NET.quality();
-  if (q.level !== 'reconnecting' && q.level !== 'poor') return;
-  const us = uiScale(), text = q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
+  const q = NET.quality(), away = !!NET.info().hostAway;
+  if (!away && q.level !== 'reconnecting' && q.level !== 'poor') return;
+  const us = uiScale(), text = away ? 'HOST AWAY · HOLDING YOUR SEAT' : q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
   ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
   const w = ctx.measureText(text).width + 22 * us, h = 18 * us;
   let x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
@@ -8109,7 +8205,7 @@ $('btnRoomCopy').onclick = () => copyRoomLink();
 $('btnRoomShare').onclick = () => shareRoomLink();
 $('btnRoomPlay').onclick = () => startRun({ watch: netSpectating() });
 $('btnRoomBack').onclick = () => showAttract();               // Back keeps the session alive
-$('btnRoomLeave').onclick = () => leaveRoom();
+$('btnRoomLeave').onclick = () => requestLeaveRoom();
 $('btnRoomNewLink').onclick = () => { try { NET.rotateLink(); } catch (e) {} renderRoomCard(); queueToast('New invite link ready', 'net'); announce('New invite link ready.'); };   // rotate bumps the epoch → prior invites go stale (I16); card re-reads the fresh link/code/QR
 $('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} renderRoomCard(); };   // fresh seed + runId + a synchronized pre-roll; the 'round-begin' handler toasts the countdown, and ROUND anchors every screen's shared flare clock
 $('roomApprove').onclick = () => { settings.netApprove = !settings.netApprove; try { NET.setApprove(settings.netApprove); } catch (e) {} persistAll(); renderRoomCard(); syncSettingsUI(); announce(settings.netApprove ? 'Approve joins on.' : 'Approve joins off.'); };
@@ -8122,10 +8218,13 @@ $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
+  if (e === 'rotated' || e === 'round' || e === 'join' || e === 'rejoin' || e === 'ok') saveResume();   // keep the token current
   if (e === 'reconnecting') { announce('Connection lost. Reconnecting.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'reconnected') { announce('Reconnected.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'quality') { if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
-  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast(d && d.reason === 1 ? 'The host closed the room.' : 'The host ended your room connection.', 'net'); }
+  else if (e === 'hostaway') { announce('The host has gone quiet. Holding your seat.'); queueToast('Host is away · holding your seat', 'net'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
+  else if (e === 'hostback') { announce('The host is back.'); queueToast('Host is back', 'net'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
+  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast(d && d.away ? 'The host stayed away too long, so the room ended.' : d && d.reason === 1 ? 'The host closed the room.' : 'The host ended your room connection.', 'net'); }
   else if (e === 'approve-wait') {   // a held join is waiting for the host (§4.6)
     if (d && d.pubHex) { pendingJoins.set(d.pubHex, { pubHex: d.pubHex, role: d.role }); queueToast('Someone wants to join', 'net'); announce('Someone wants to join.'); }
     if (netLive()) renderRoomCard();
@@ -8896,7 +8995,7 @@ function boot() {
   setupAnimatedFavicon();
   if (SHOT) { runShot(); return; }
   showAttract();
-  maybeShowJoinPrompt();   // a #j= invite in the URL raises the join prompt over attract
+  resumeRoomOnLoad().then((resumed) => { if (!resumed) maybeShowJoinPrompt(); }, () => maybeShowJoinPrompt());   // a saved room comes back first; else a #j= invite raises the join prompt
   lastT = 0; rafId = requestAnimationFrame(frame);
 }
 try {
