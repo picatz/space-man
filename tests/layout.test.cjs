@@ -119,3 +119,26 @@ test('the wordmark always fits the sky above the hero, whatever the window or ho
     } finally { c.close(); }
   }
 });
+
+test('safe-area insets are remembered per orientation, so an app resume that reports zero cannot drop the HUD under the clock', () => {
+  const { client, relay } = require('./harness.cjs');
+  const storage = new Map();
+  const c = client(relay(), { width: 393, height: 852, storage });
+  try {
+    const probe = (vals) => { c.context.getComputedStyle = () => ({ paddingTop: vals[0] + 'px', paddingRight: vals[1] + 'px', paddingBottom: vals[2] + 'px', paddingLeft: vals[3] + 'px', getPropertyValue: () => '0' }); c.run('readSafeInsets()'); };
+    probe([47, 0, 34, 0]);
+    assert.deepEqual(JSON.parse(c.run('JSON.stringify([safeInset("top"), safeInset("bottom")])')), [47, 34]);
+    probe([0, 0, 0, 0]);   // the app comes back from the background and iOS says nothing
+    assert.deepEqual(JSON.parse(c.run('JSON.stringify([safeInset("top"), safeInset("bottom")])')), [47, 34], 'zero after a real reading is not believed');
+    probe([59, 0, 34, 0]);
+    assert.equal(c.run('safeInset("top")'), 59, 'a new real reading wins');
+    assert.ok(storage.get('sm2.insets'), 'and it is kept for the next launch');
+    // A fresh launch whose first reading is zero starts from the remembered value.
+    const again = client(relay(), { width: 393, height: 852, storage });
+    try {
+      again.context.getComputedStyle = () => ({ paddingTop: '0px', paddingRight: '0px', paddingBottom: '0px', paddingLeft: '0px', getPropertyValue: () => '0' });
+      again.run('readSafeInsets()');
+      assert.equal(again.run('safeInset("top")'), 59);
+    } finally { again.close(); }
+  } finally { c.close(); }
+});

@@ -5992,9 +5992,19 @@ function readSafeInsets() {
       const rs = getComputedStyle(document.documentElement);
       t = parseFloat(rs.getPropertyValue('--sa-top')); r = parseFloat(rs.getPropertyValue('--sa-right')); b = parseFloat(rs.getPropertyValue('--sa-bottom')); l = parseFloat(rs.getPropertyValue('--sa-left'));
     }
-    _safeInsets.top = t || 0; _safeInsets.right = r || 0; _safeInsets.bottom = b || 0; _safeInsets.left = l || 0;
+    t = t || 0; r = r || 0; b = b || 0; l = l || 0;
+    // A device's safe areas do not change while the phone is held one way, but iOS can report 0 after the app returns from the
+    // background (and keep doing so). So a real reading is remembered per orientation, and an all-zero reading is believed only
+    // when nothing else is known. The memory also survives a relaunch.
+    const key = vpW() > vpH() ? 'l' : 'p';
+    if (t || r || b || l) { _insetMemo[key] = { top: t, right: r, bottom: b, left: l }; saveInsetMemo(); }
+    else if (_insetMemo[key]) { const m = _insetMemo[key]; t = m.top; r = m.right; b = m.bottom; l = m.left; }
+    _safeInsets.top = t; _safeInsets.right = r; _safeInsets.bottom = b; _safeInsets.left = l;
   } catch (e) {}
 }
+let _insetMemo = {};
+try { _insetMemo = JSON.parse(localStorage.getItem('sm2.insets') || '{}') || {}; } catch (e) { _insetMemo = {}; }
+function saveInsetMemo() { try { localStorage.setItem('sm2.insets', JSON.stringify(_insetMemo)); } catch (e) {} }
 ['pageshow', 'orientationchange', 'visibilitychange'].forEach((ev) => window.addEventListener(ev, () => setTimeout(readSafeInsets, 50)));
 if (window.visualViewport) window.visualViewport.addEventListener('resize', readSafeInsets);
 function safeInset(side) { return _safeInsets[side] || 0; }
