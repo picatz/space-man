@@ -51,14 +51,14 @@ test('battery saver: 1× resolution and half the particle pool, restored when sw
   const storage = new Map();
   const c = client(relay(), { dpr: 3, storage });
   t.after(() => c.close());
-  assert.equal(c.run('view.dpr'), 2);
+  assert.equal(c.run('view.dpr'), 3, 'a 3× phone starts at its full density');
   c.run('toggleSetting("batterySaver")');
   assert.equal(c.run('view.dpr'), 1);
   assert.equal(c.run('pCapLive'), 80);
   assert.equal(c.run('frameGapMs()').toFixed(1), (1000 / 30).toFixed(1));
   assert.ok(JSON.parse(storage.get(c.run('LS.settings'))).batterySaver === true, 'persisted');
   c.run('toggleSetting("batterySaver")');
-  assert.equal(c.run('view.dpr'), 2);
+  assert.equal(c.run('view.dpr'), 3);
   assert.equal(c.run('pCapLive'), 160);
   c.run("G.mode = 'play'"); assert.equal(c.run('frameGapMs()'), 0, 'a live run on a desktop is paced by the display alone');
   // A saved true comes back on; garbage sanitizes to off.
@@ -82,9 +82,15 @@ test('a low, unplugged battery turns the saver on by itself; charging turns it o
   await new Promise((r) => setImmediate(r));
   assert.equal(c.run('powerSaving()'), false);
   battery.level = 0.15; listeners.levelchange();
+  assert.equal(c.run('powerSaving()'), false, '15% is not an emergency: the game stays smooth and sharp');
+  battery.level = 0.09; listeners.levelchange();
   assert.equal(c.run('powerSaving()'), true); assert.equal(c.run('view.dpr'), 1);
   battery.charging = true; listeners.chargingchange();
   assert.equal(c.run('powerSaving()'), false); assert.equal(c.run('view.dpr'), 2);
+  battery.charging = false; listeners.chargingchange();
+  assert.equal(c.run('powerSaving()'), true);
+  c.run('settings.autoSaver = false');
+  assert.equal(c.run('powerSaving()'), false, 'the player can opt out of automatic saving');
 });
 
 test('behind a pause or the run-over card the loop idles at 15 fps, and a hidden tab stops it entirely', (t) => {
@@ -146,16 +152,16 @@ test('the title screen idles down: 30 fps, then 15 after a minute, then a crawl 
   } finally { c.close(); }
 });
 
-test('a live run is capped at 60 fps on a phone off the charger, and free on a desktop or a plugged-in phone', () => {
+test('a live run draws every refresh by default (120 Hz where the screen has it), and 60 only if smooth motion is switched off', () => {
   const { client, relay } = require('./harness.cjs');
   const c = client(relay());
   try {
-    c.run("G.mode = 'play'; settings.batterySaver = false; batteryLow = false");
-    c.run('touchPrimary = false; batteryCharging = false');
-    assert.equal(c.run('frameGapMs()'), 0, 'desktop: every refresh');
-    c.run('touchPrimary = true; batteryCharging = false');
-    assert.equal(Math.round(1000 / c.run('frameGapMs()')), 60, 'phone on battery: 60 at most');
-    c.run('batteryCharging = true');
-    assert.equal(c.run('frameGapMs()'), 0, 'plugged in: the panel decides');
+    c.run("G.mode = 'play'; settings.batterySaver = false; batteryLow = false; batteryCritical = false");
+    assert.equal(c.run('settings.smooth'), true, 'on by default');
+    assert.equal(c.run('frameGapMs()'), 0);
+    c.run('settings.smooth = false');
+    assert.equal(Math.round(1000 / c.run('frameGapMs()')), 60);
+    c.run('settings.smooth = true; settings.batterySaver = true');
+    assert.equal(Math.round(1000 / c.run('frameGapMs()')), 30, 'the battery saver still wins');
   } finally { c.close(); }
 });

@@ -76,6 +76,8 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    width: 100%;
+    height: 100%;
     touch-action: none;
     background: var(--void);
   }
@@ -1109,7 +1111,7 @@ if (SHOT && typeof WebSocket !== 'undefined') {
    ------------------------------------------------------------------------- */
 const STEP = 1 / 60;
 const CFG = {
-  logicalH: 360, tabletH: 400, portraitW: 420, dprCap: 2,
+  logicalH: 360, tabletH: 400, portraitW: 420, dprCap: 2, dprMax: 3,   // dprCap: the golden/#shot size; dprMax: where a live screen starts (3× phones), stepping down only if it cannot keep up
   accelGround: 0.85, accelAir: 0.5, maxRun: 6.8,
   fricGround: 0.8, fricAir: 0.95, turnMult: 2,
   jumpVel: -13.2, gravRise: 0.5, gravFall: 0.8, varJumpCut: 0.45, maxFall: 14,
@@ -1230,6 +1232,8 @@ settings.netApprove = settings.netApprove === true;
 settings.hapticsStrength = Math.min(1, Math.max(0.3, (typeof settings.hapticsStrength === 'number' && isFinite(settings.hapticsStrength)) ? settings.hapticsStrength : 1));
 settings.hapticsSaver = settings.hapticsSaver !== false;   // on by default: a low, unplugged battery quiets the buzz
 settings.sharp = settings.sharp === true;   // SHARP RENDERING: opt-in lock on full DPR (adaptive resolution off)
+settings.smooth = settings.smooth !== false;   // SMOOTH MOTION: draw every refresh (120 Hz where the screen has it); off = 60 at most
+settings.autoSaver = settings.autoSaver !== false;   // AUTO POWER SAVING: switch to the battery saver on a nearly flat, unplugged battery
 settings.batterySaver = settings.batterySaver === true;   // BATTERY SAVER: 30fps, 1× resolution, lighter effects (off unless chosen)
 if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
 if (typeof settings.netRelay !== 'string') settings.netRelay = '';
@@ -1329,7 +1333,7 @@ const uiScale = () => clamp(view.w / 560, 0.86, 1);
 // DPR down (2 → 1.5 → 1) at a calm moment. Render-only — logical view size,
 // the sim and #shot goldens (fixed DPR) are untouched. Per launch only: a new
 // session starts sharp again. SHARP RENDERING (settings.sharp) opts out.
-const perf = { cap: CFG.dprCap, ema: STEP, slowT: 0, warm: 0 };
+const perf = { cap: CFG.dprMax, ema: STEP, slowT: 0, warm: 0 };
 // Quality tier follows the same signal: once a device has had to step its DPR
 // down, the purely decorative layers go too (motes at 1.5, the near skyline at 1).
 const artTier = () => (SHOT ? 2 : powerSaving() ? 1 : settings.sharp ? 2 : perf.cap);   // same precedence as resize(): the battery saver wins over Sharp
@@ -1346,20 +1350,29 @@ function adaptResolution(dt) {
   // Mid-run a DPR switch pops mid-jump; wait for attract/pause/dead unless the
   // device is badly behind (<25fps), where the pop beats a stuttering run.
   if (G.mode === 'play' && !(G.player && G.player.dead) && perf.ema < 0.04) return;
-  perf.cap = view.dpr > 1.5 ? 1.5 : 1;
+  perf.cap = view.dpr > 2.01 ? 2 : view.dpr > 1.5 ? 1.5 : 1;
   resize();
 }
+// The page is sized by CSS (the canvas fills it), so the canvas's own box is the truth about how much screen there is. In an
+// iPhone home-screen app window.innerHeight can come up short of the real screen, which left a dead strip along the bottom.
+let _vpW = 0, _vpH = 0;
+function vpW() { return _vpW || window.innerWidth; }
+function vpH() { return _vpH || window.innerHeight; }
+function measureViewport() {
+  let w = 0, h = 0;
+  try { const r = canvas.getBoundingClientRect(); w = Math.round(r.width); h = Math.round(r.height); } catch (e) {}
+  _vpW = w >= 100 ? w : 0; _vpH = h >= 100 ? h : 0;
+}
 function resize() {
-  const cssW = window.innerWidth, cssH = window.innerHeight;
-  const dpr = Math.min(window.devicePixelRatio || 1, SHOT ? CFG.dprCap : powerSaving() ? 1 : settings.sharp ? CFG.dprCap : perf.cap);
+  measureViewport();
+  const cssW = vpW(), cssH = vpH();
+  const dpr = Math.min(window.devicePixelRatio || 1, SHOT ? CFG.dprCap : powerSaving() ? 1 : settings.sharp ? CFG.dprMax : perf.cap);
   perf.slowT = 0; perf.warm = 0;
   view.dpr = dpr;
   view.isTablet = Math.min(cssW, cssH) >= 700;
   const logicalH = view.isTablet ? CFG.tabletH : CFG.logicalH;
   canvas.width = Math.round(cssW * dpr);
   canvas.height = Math.round(cssH * dpr);
-  canvas.style.width = cssW + 'px';
-  canvas.style.height = cssH + 'px';
   if (cssH > cssW) {
     // Portrait: scale from WIDTH (420 logical px shows a full max-jump arc plus
     // lookahead). Canvas drawing uses backing-store coordinates, so scale must
@@ -1387,6 +1400,7 @@ function resize() {
   if (booted && (SHOT || G.mode)) { try { render(1); } catch (e) {} }
 }
 window.addEventListener('resize', resize);
+try { if (window.ResizeObserver) new ResizeObserver(() => { const r = canvas.getBoundingClientRect(); if (Math.round(r.width) !== _vpW || Math.round(r.height) !== _vpH) resize(); }).observe(canvas); } catch (e) {}
 window.addEventListener('orientationchange', resize);
 let booted = false;
 
@@ -2097,10 +2111,11 @@ const Audio = (() => {
 const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: [12, 36, 12], celebrate: [14, 40, 14, 40, 22] };
 // Low-battery saver. No browser exposes iOS/Android Low Power Mode itself, but Chromium's Battery Status API tells us
 // when the device is low and unplugged, which is when the motor is worth sparing. Browsers without it never save.
-let batteryLow = false, batteryReady = false;   // batteryReady: the browser actually handed us battery data (it can refuse)
+let batteryLow = false, batteryCritical = false, batteryReady = false;   // low <20% (haptics sit out); critical <10% (the whole game saves power)
+let _bl = 0;   // batteryReady: the browser actually handed us battery data (it can refuse)
 try {
   if (navigator.getBattery) navigator.getBattery().then((b) => {
-    const sync = () => { batteryCharging = !!b.charging; batteryLow = !b.charging && b.level < 0.2; if (typeof applyPower === 'function') applyPower(); };   // the frame loop's saver follows too
+    const sync = () => { batteryCharging = !!b.charging; batteryLow = !b.charging && b.level < 0.2; batteryCritical = !b.charging && b.level < 0.1; if (typeof applyPower === 'function') applyPower(); };   // the frame loop's saver follows too
     batteryReady = true;
     sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
     syncHapticRows();
@@ -2363,7 +2378,7 @@ window.addEventListener('keydown', (e) => onKey(e, true));
 window.addEventListener('keyup', (e) => onKey(e, false));
 
 function layoutTouch() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const w = vpW(), h = vpH();
   const inset = 16 + safeInset('left');
   const sbR = view.isTablet ? 40 : 32;
   input.shootBtn.r = sbR;
@@ -2376,7 +2391,7 @@ function layoutTouch() {
 }
 function pointerPos(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function inShoot(p) { const dx = p.x - input.shootBtn.cx, dy = p.y - input.shootBtn.cy, r = input.shootBtn.r + 14; return dx * dx + dy * dy <= r * r; }
-function isMoveHalf(p) { const half = window.innerWidth * 0.45; return settings.lefty ? p.x > window.innerWidth - half : p.x < half; }
+function isMoveHalf(p) { const half = vpW() * 0.45; return settings.lefty ? p.x > vpW() - half : p.x < half; }
 
 function onTapDown(e) {
   // The haptic overlay (iPhone) hands us the real event: it must keep its own implicit capture and its native click, which
@@ -4183,7 +4198,7 @@ function update() {
       if (card) {
         const topCss = card.getBoundingClientRect().top;
         if (topCss > 0) {
-          const topView = topCss * (view.h / window.innerHeight);
+          const topView = topCss * (view.h / vpH());
           G.attractCardTop = topView;   // the wordmark reads this to stay clear on tight screens
           // keep the hero (drawn above the platform line) fully clear of the card
           platformScreenY = Math.min(platformScreenY, topView - 14);
@@ -4340,8 +4355,8 @@ function frame(now) {
 // says the battery is low and unplugged (Chromium; other browsers never report, so never
 // switch on by themselves). Never under #shot: goldens render at full rate and DPR.
 // One battery watcher serves both the haptics saver and this (see batteryLow / batteryReady near the haptics table).
-var power = { get lowBattery() { return batteryLow; }, set lowBattery(v) { batteryLow = !!v; }, get batteryKnown() { return batteryReady; }, audioIdleAt: 0, looping: false, lastInputAt: 0 };   // var: resize() may run before this line at boot
-function powerSaving() { return !SHOT && (settings.batterySaver || !!(power && power.lowBattery)); }
+var power = { get lowBattery() { return batteryCritical; }, set lowBattery(v) { batteryCritical = !!v; }, get batteryKnown() { return batteryReady; }, audioIdleAt: 0, looping: false, lastInputAt: 0 };   // var: resize() may run before this line at boot
+function powerSaving() { return !SHOT && (settings.batterySaver || !!(settings.autoSaver && power && power.lowBattery)); }
 // Frame pacing: render only as often as the scene earns. A callback skipped before any work costs nothing, and the
 // fixed-step accumulator keeps the simulation exact whatever the gap.
 //   run, plugged in or on a desktop ... every refresh (60/120/144 Hz)
@@ -4368,7 +4383,7 @@ function frameGapMs() {
   if (G.mode === 'pause' || (G.mode === 'dead' && G.deathCardShown)) return 1000 / 15;   // a still scene behind a card
   if (powerSaving()) return 1000 / 30;
   if (G.mode === 'attract') return attractGapMs();
-  return touchPrimary && !batteryCharging ? 1000 / 60 : 0;
+  return settings.smooth ? 0 : 1000 / 60;   // smooth = every refresh the screen offers; the sim steps at 60 and the render interpolates
 }
 var powerWas = null;
 function applyPower() {
@@ -4377,7 +4392,7 @@ function applyPower() {
   powerWas = on;
   pCapLive = on ? 80 : PCAP;
   for (let i = pCapLive; i < PCAP; i++) particles[i].live = false;
-  if (!on && !settings.sharp) perf.cap = CFG.dprCap;   // leaving saver: adaptive resolution starts sharp again
+  if (!on && !settings.sharp) perf.cap = CFG.dprMax;   // leaving saver: adaptive resolution starts sharp again
   resize();
 }
 if (settings.batterySaver) { pCapLive = 80; powerWas = true; }   // a saved choice applies from the first frame (resize() already capped DPR)
@@ -4491,7 +4506,7 @@ function render(alpha) {
     let want = view.h * 0.3;
     if (G.deathCardShown && !SHOT) {
       const card = $('ovDead').firstElementChild;
-      const top = card ? card.getBoundingClientRect().top * (view.h / window.innerHeight) : 0;
+      const top = card ? card.getBoundingClientRect().top * (view.h / vpH()) : 0;
       if (top > 0) want = Math.min(want, top - 40);
     }
     // Reduce Motion takes the framed shot as a cut: the aim snaps, never glides.
@@ -4547,7 +4562,7 @@ function render(alpha) {
     // Anchored just above the measured panel top so it clears the card.
     if (G.wardrobeOpen && G.player) {
       const p = G.player;
-      const panelTop = (G.wardrobePanelTop || window.innerHeight * 0.5) * (view.h / window.innerHeight);
+      const panelTop = (G.wardrobePanelTop || vpH() * 0.5) * (view.h / vpH());
       const sc = clamp((panelTop - 10) / 48, 2, 3);   // 3× with headroom, easing down on short viewports
       ctx.save();
       ctx.translate(view.w / 2, clamp(panelTop - 6 - 17 * sc, 60, view.h - 40));
@@ -4622,7 +4637,7 @@ function wordmarkMetrics() {
   const ct = G.mode === 'attract' ? G.attractCardTop : undefined;
   let tight = false;
   if (ct !== undefined) {
-    const k = view.h / window.innerHeight;                 // CSS px → logical units
+    const k = view.h / vpH();                 // CSS px → logical units
     const top = 8 + safeInset('top') * k;
     const heroTop = ct - 14 - WORDMARK_HERO_H;
     const room = heroTop - top;
@@ -5817,23 +5832,23 @@ function drawHUD() {
   // not as part of the odometer; hidden once the player is dead (the death
   // sequence and restart tap own the screen).
   const dead = G.player && G.player.dead;
-  const ps = 30 * us;
-  const pitch = Math.max(48 * view.w / window.innerWidth, ps + 10 * us);   // ≥48 CSS px between square origins
+  const ps = Math.max(30 * us, 40 * view.w / vpW());   // never smaller than 40 CSS px on screen
+  const pitch = Math.max(48 * view.w / vpW(), ps + 10 * us);   // ≥48 CSS px between square origins
   const bt = top - 4 * us;
   if (!dead) {
     ctx.fillStyle = 'rgba(10,14,32,0.72)';
     roundRect(left, bt, ps, ps, 8 * us); ctx.fill();
     ctx.strokeStyle = 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
-    const bw = 3.5 * us, bh = 13 * us, bx = left + ps / 2 - bw - 2 * us, by = bt + (ps - bh) / 2;
+    const ik = ps / (30 * us), bw = 3.5 * us * ik, bh = 13 * us * ik, bx = left + ps / 2 - bw - 2 * us * ik, by = bt + (ps - bh) / 2;
     ctx.fillStyle = '#CFE3FF';
-    ctx.fillRect(bx, by, bw, bh); ctx.fillRect(bx + bw + 4 * us, by, bw, bh);
-    drawMuteButton(left + pitch, bt, ps, us);
+    ctx.fillRect(bx, by, bw, bh); ctx.fillRect(bx + bw + 4 * us * ik, by, bw, bh);
+    drawMuteButton(left + pitch, bt, ps, us * ik);
   }
   // Hit rects in CSS px, padded to ≥44×44 and clamped at the midline between
   // the two squares — the nearest button always wins, neither steals a tap.
   if (dead) { G._pauseHit = null; G._muteHit = null; }
   else {
-    const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+    const kx = vpW() / view.w, ky = vpH() / view.h;
     const half = Math.max(ps * kx / 2 + 8, 22), yh = Math.max(ps * ky / 2 + 8, 22);
     const cy = (bt + ps / 2) * ky, mid = (left + (pitch + ps) / 2) * kx;
     const pc = (left + ps / 2) * kx, mc = (left + pitch + ps / 2) * kx;
@@ -6067,7 +6082,7 @@ function drawTouchControls() {
     ctx.globalAlpha = 1;
   }
   {
-    const cssW = window.innerWidth, cssH = window.innerHeight, R = 34;
+    const cssW = vpW(), cssH = vpH(), R = 34;
     const act = input.stick.active;
     const gx = act ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
     const gy = act ? input.stick.cy : cssH - safeInset('bottom') - (view.isTablet ? 92 : 76);
@@ -6532,7 +6547,9 @@ const SETTINGS_DEF = [
   // the row out of the pause/settings goldens like the net rows below.
   { key: 'sharp', type: 'switch', label: 'Sharp rendering', noShot: true },
   // Battery saver: 30fps, 1× resolution, lighter effects. Device-dependent like Sharp, so noShot.
+  { key: 'smooth', type: 'switch', label: 'Smooth motion (120 fps)', noShot: true },
   { key: 'batterySaver', type: 'switch', label: 'Battery saver', noShot: true },
+  { key: 'autoSaver', type: 'switch', label: 'Save power when battery is very low', noShot: true },
   { key: 'key:left', bind: 'left', type: 'key', label: 'Move left', section: 'Keyboard', noShot: true },
   { key: 'key:right', bind: 'right', type: 'key', label: 'Move right', noShot: true },
   { key: 'key:jump', bind: 'jump', type: 'key', label: 'Jump', noShot: true },
@@ -6637,7 +6654,7 @@ function toggleSetting(key) {
   if (key === 'music' || key === 'sfx') { Audio.syncChannels(); if (settings[key] && !settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); } }
   if (key === 'haptics') { if (settings.haptics) buzz('success'); else stopBuzz(); }   // feel it the moment it is switched on; off cuts any pulse in flight
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
-  if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
+  if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprMax) { perf.cap = CFG.dprMax; resize(); }   // settings only opens over attract/pause: no mid-jump pop
   if (key === 'batterySaver') {
     applyPower();
     // Say what is really happening: with the manual switch off, a low, unplugged battery keeps saving on.
@@ -7837,7 +7854,7 @@ function drawLinkPill() {
   const w = ctx.measureText(text).width + 22 * us, h = 18 * us;
   let x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
   if (emoteAvailable()) { const b = emoteLayout().button; x = b.x - 8 - w; y = b.y + (b.h - h) / 2; }   // beside the emote button, never on it
-  if (_crewHit) { const k = view.w ? window.innerWidth / view.w : 1; x = Math.min(x, _crewHit.x0 / k - 8 - w); y = _crewHit.y0 / k + (_crewHit.y1 - _crewHit.y0) / k / 2 - h / 2; }   // and never on the crew chip
+  if (_crewHit) { const k = view.w ? vpW() / view.w : 1; x = Math.min(x, _crewHit.x0 / k - 8 - w); y = _crewHit.y0 / k + (_crewHit.y1 - _crewHit.y0) / k / 2 - h / 2; }   // and never on the crew chip
   ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
   ctx.fillStyle = '#FF8A6B'; ctx.beginPath(); ctx.arc(x + 9 * us, y + h / 2, 3 * us, 0, TAU); ctx.fill();
   ctx.fillStyle = '#F4F7FF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + 16 * us, y + h / 2 + 0.5);
@@ -7899,7 +7916,7 @@ function drawRaceStrip() {
   // runner dots: you are larger and ringed so you never have to hunt for yourself
   const showLabels = w > 260;
   _raceHits.length = 0;
-  const hk = view.w ? window.innerWidth / view.w : 1;
+  const hk = view.w ? vpW() / view.w : 1;
   for (const r of runners.slice().sort((a, b) => (a.you ? 1 : 0) - (b.you ? 1 : 0))) {
     const dx = sx(r.x), dy = y + h / 2, pal = PALETTES[r.suit] || PALETTES.classic, rad = r.you ? 7 : 6;
     if (netSpectating() && r.p === spec.watchP) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(dx, dy, rad + 2.5, 0, TAU); ctx.stroke(); }
@@ -8052,7 +8069,7 @@ function drawSpectatorHUD() {
   ctx.fillText(head, view.w / 2, y, view.w - 2 * left);
   ctx.font = '600 ' + 11 * us + 'px ' + FONT_NUM;
   ctx.fillText(sub, view.w / 2, y + 18 * us, view.w - 2 * left);
-  const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+  const kx = vpW() / view.w, ky = vpH() / view.h;
   const labels = [['prev', '‹ PREV'], ['next', 'NEXT ›'], ['tour', spec.tour ? 'TOUR ON' : 'TOUR'], ['play', G.rolePending ? 'JOINING…' : 'JOIN RUN']];
   const w = (view.w - 2 * left - 18) / 4, h = Math.max(32 * us, 44 / ky), by = view.h - safeInset('bottom') - h - 12;
   _specHits = {};
@@ -8075,7 +8092,7 @@ function unstableBannerGeom() {
 }
 function unstableHitRect() {   // CSS px, or null when the room is fine
   if (!netLive() || !NET.info().unstable) return null;
-  const g = unstableBannerGeom(), kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+  const g = unstableBannerGeom(), kx = vpW() / view.w, ky = vpH() / view.h;
   return { x0: g.lx * kx - 8, x1: (g.bx + g.bw) * kx + 8, y0: g.y * ky - 6, y1: (g.y + g.bh) * ky + 6 };
 }
 function drawUnstableBanner() {
@@ -8135,7 +8152,7 @@ function emoteAvailable() { return netInRun() && settings.netEmotes && !netSpect
 // Everything in view px, sized from CSS px so the targets stay finger-sized at any canvas scale. Top-right, under the race
 // strip: out of the thumbs' way (stick, jump and fire live at the bottom) so it can't be hit by accident.
 function emoteLayout() {
-  const k = window.innerWidth / view.w;
+  const k = vpW() / view.w;
   const btn = EMOTE_BTN / k, gap = EMOTE_GAP / k, pad = 6 / k;
   const right = view.w - 12 - safeInset('right') / k, top = 12 + safeInset('top') + 26 + 8;   // top matches the race strip; side insets are CSS px
   const room = view.w - 24 - (safeInset('right') + safeInset('left')) / k;
@@ -8393,8 +8410,8 @@ $('ovDead').addEventListener('pointerdown', (e) => {
 // attract card's buttons sit in the panel, so this can never steal one.
 $('ovAttract').addEventListener('pointerdown', (e) => {
   if (!DELIGHT || G.mode !== 'attract' || !G.player || e.target.closest('.panel')) return;
-  const dx = e.clientX - (G.player.x + G.player.w / 2 - G.camX) * (window.innerWidth / view.w);
-  const dy = e.clientY - (G.player.y + G.player.h / 2 - G.camY) * (window.innerHeight / view.h);
+  const dx = e.clientX - (G.player.x + G.player.w / 2 - G.camX) * (vpW() / view.w);
+  const dy = e.clientY - (G.player.y + G.player.h / 2 - G.camY) * (vpH() / view.h);
   if (dx * dx + dy * dy > 22 * 22) return;
   Audio.ensure(); Audio.resume();
   G.wave = 2; G.waveIn = 14 + G.decorRng() * 8;
