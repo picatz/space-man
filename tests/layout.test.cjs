@@ -99,3 +99,23 @@ test('rows rise in and are then released, and hover never overrides the pressed 
     assert.ok(css.includes(sel + ':not(:disabled):not(:active)'), sel + ' is limited to enabled, un-pressed buttons');
   }
 });
+
+test('the wordmark always fits the sky above the hero, whatever the window or however tall the card', () => {
+  const { client, relay } = require('./harness.cjs');
+  for (const [w, h] of [[1000, 450], [1280, 720], [1366, 768], [1920, 1080], [2560, 1080], [844, 390], [700, 420], [390, 844], [360, 640], [800, 1200]]) {
+    const c = client(relay(), { width: w, height: h });
+    try {
+      c.run("G.mode = 'attract'");
+      const k = c.run('view.h / window.innerHeight');
+      // The card's top edge anywhere from "most of the screen" down to "barely any card" (CSS px).
+      for (const frac of [0.3, 0.45, 0.6, 0.75, 0.9]) {
+        c.run(`G.attractCardTop = ${h * frac * k}`);
+        const m = JSON.parse(c.run('JSON.stringify(wordmarkMetrics())'));
+        const ct = h * frac * k, top = m.cy - m.size * 0.55, bottom = m.cy + m.size * 0.55;
+        assert.ok(top >= -0.5, `${w}x${h} card@${frac}: the mark is cut off the top (${top.toFixed(1)})`);
+        if (m.size > 14.01) assert.ok(bottom <= ct - 14 - 62 + 0.5, `${w}x${h} card@${frac}: the mark runs into the hero (${bottom.toFixed(1)} > ${(ct - 76).toFixed(1)})`);
+        assert.ok(m.size <= 68.01 && m.size >= 14);
+      }
+    } finally { c.close(); }
+  }
+});

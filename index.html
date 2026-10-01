@@ -454,6 +454,16 @@
     .control-guide { margin: 8px 0 4px; }
   }
 
+  /* Laptop-sized windows (1280×720, 1366×768, a browser with its toolbars): the single-column title card would climb over
+     the hero and squeeze the wordmark, so it goes two-column here too. Phones on their side already do (rule above). */
+  @media (orientation: landscape) and (min-height: 561px) and (max-height: 860px) and (min-width: 880px) {
+    #ovAttract { justify-content: flex-end; }
+    #ovAttract .panel { max-width: min(760px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 24px; align-items: center; --py: 14px; }
+    #ovAttract #attractMedals { margin: 2px 0 8px !important; }
+    #ovAttract .control-guide { margin: 4px 0; }
+    #ovAttract .stats-line { margin-top: 6px; }
+  }
+
   /* discovery logbook (RECORDS panel): found = full color, unfound = ? + dimmed hint */
   #logbook {
     display: grid;
@@ -4533,6 +4543,7 @@ function drawToast() {
    slight skew, chromatic offset shadows (cyan left, coral right). ---- */
 // Shared with the attract camera setup (E7) so the platform frame and the
 // drawn wordmark can never drift apart — one measurement, two consumers.
+const WORDMARK_HERO_H = 62;   // logical units from the platform line to the top of the hero's head (antenna and all)
 function wordmarkMetrics() {
   const text = 'SPACE MAN';
   let cy = Math.max(52, view.h * 0.19);
@@ -4541,11 +4552,26 @@ function wordmarkMetrics() {
   const w = ctx.measureText(text).width;
   const maxW = view.w * (view.h > view.w ? 0.78 : 0.86);   // portrait: keep chroma fringe off the edge
   if (w > maxW) { size = Math.max(14, size * maxW / w); ctx.font = '900 ' + size + 'px ' + FONT; }
-  // Tight title (phone on its side: the card rises to ~⅓ height): lift the mark so
-  // the hero standing above the card never overlaps it, and drop the taglines.
+  // Fit the wordmark into the sky that is actually left. The menu card is DOM (its height is set by CSS pixels), the hero
+  // stands on a platform just above the card, and the mark lives above the hero, so the room for it is whatever is between
+  // the top safe edge and the hero's head. Wide-and-short windows, phones on their side and a tall card (a long stats line,
+  // a challenge banner) all just mean less room: first the taglines go, then the mark itself shrinks. It is never shoved
+  // up off the top edge, and never lets the hero stand in front of it.
   const ct = G.mode === 'attract' ? G.attractCardTop : undefined;
-  const tight = ct !== undefined && ct - (cy + size * 0.62) < 70;
-  if (tight) cy = Math.max(size * 0.55 + 6, Math.min(cy, ct - 64 - size * 0.55));
+  let tight = false;
+  if (ct !== undefined) {
+    const k = view.h / window.innerHeight;                 // CSS px → logical units
+    const top = 8 + safeInset('top') * k;
+    const heroTop = ct - 14 - WORDMARK_HERO_H;
+    const room = heroTop - top;
+    const full = size * 1.17 + 20;                         // mark + both taglines
+    if (room >= full) cy = clamp(cy, top + size * 0.55, heroTop - (size * 0.62 + 20));
+    else {
+      tight = true;
+      if (room < size * 1.1) { size = Math.max(14, room / 1.1); ctx.font = '900 ' + size + 'px ' + FONT; }
+      cy = top + size * 0.55 + Math.max(0, (room - size * 1.1) / 2);
+    }
+  }
   return { text, cy, size, tight };
 }
 function drawWordmark() {
