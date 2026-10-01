@@ -4449,6 +4449,7 @@ if (Audio && Audio.sfx) for (const k of Object.keys(Audio.sfx)) {
 // Music conductor: once per rAF, wall-clock — hitstop and 6-step catch-up can't stall it.
 // Danger (0..1) is flare proximity; the arrangement thins under pressure, never darkens.
 function tickAudio() {
+  if ((power.saTick = (power.saTick | 0) + 1) % 64 === 0) readSafeInsets();
   tickAudioPower(); tickWakeLock(); tickRoomLock(); tickTouchHaptic();
   const dead = G.player && G.player.dead;
   const danger = (G.mode === 'play' && !dead && G.player)
@@ -5972,10 +5973,30 @@ function drawGlowText(text, x, y, size, glow, fill) {
 // Safe-area insets are cached on resize/orientation — reading getComputedStyle on
 // the hot render path (5×/frame) forces a style flush on the low-end phones we target.
 const _safeInsets = { top: 0, left: 0, right: 0, bottom: 0 };
+// Read through a hidden probe whose padding IS the env() value: a computed padding is always a resolved length, where a custom
+// property holding env() can read back empty (0) early in an iPhone home-screen launch, which put the HUD under the clock and
+// the thumb controls on the home bar. The insets are re-read whenever the page could have changed shape, and about once a
+// second as a backstop, because iOS can report them late.
+let _saProbe = null;
 function readSafeInsets() {
-  const cs = getComputedStyle(document.documentElement);
-  for (const s of ['top', 'left', 'right', 'bottom']) _safeInsets[s] = parseFloat(cs.getPropertyValue('--sa-' + s)) || 0;
+  try {
+    if (!_saProbe) {
+      _saProbe = document.createElement('div');
+      _saProbe.setAttribute('aria-hidden', 'true');
+      _saProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)';
+      document.body.appendChild(_saProbe);
+    }
+    const cs = getComputedStyle(_saProbe);
+    let t = parseFloat(cs.paddingTop), r = parseFloat(cs.paddingRight), b = parseFloat(cs.paddingBottom), l = parseFloat(cs.paddingLeft);
+    if (!(t || r || b || l)) {   // a browser that does not resolve the probe: fall back to the custom properties
+      const rs = getComputedStyle(document.documentElement);
+      t = parseFloat(rs.getPropertyValue('--sa-top')); r = parseFloat(rs.getPropertyValue('--sa-right')); b = parseFloat(rs.getPropertyValue('--sa-bottom')); l = parseFloat(rs.getPropertyValue('--sa-left'));
+    }
+    _safeInsets.top = t || 0; _safeInsets.right = r || 0; _safeInsets.bottom = b || 0; _safeInsets.left = l || 0;
+  } catch (e) {}
 }
+['pageshow', 'orientationchange', 'visibilitychange'].forEach((ev) => window.addEventListener(ev, () => setTimeout(readSafeInsets, 50)));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', readSafeInsets);
 function safeInset(side) { return _safeInsets[side] || 0; }
 
 /* ---- vignette / stingers ---- */
