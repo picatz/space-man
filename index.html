@@ -588,6 +588,8 @@
   }
   #errlog.show { display: block; }
 
+  .hap-touch { position: fixed; top: 0; bottom: 0; display: none; z-index: 4; opacity: 0; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .hap-touch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
   .hap { position: fixed; left: -9999px; top: -9999px; opacity: 0; pointer-events: none; }
   /* Screen-reader live region: visually hidden, never display:none (that silences it). */
   #srAnnounce { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1029,6 +1031,7 @@
 </div>
 
 <pre id="errlog"></pre>
+<label class="hap-touch" id="hapTouch" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
 <label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
 <div id="crewPanel" class="crew" role="region" aria-label="Crew standings"></div>
 <div id="srAnnounce" aria-live="polite"></div>
@@ -2375,11 +2378,14 @@ function pointerPos(e) { const r = canvas.getBoundingClientRect(); return { x: e
 function inShoot(p) { const dx = p.x - input.shootBtn.cx, dy = p.y - input.shootBtn.cy, r = input.shootBtn.r + 14; return dx * dx + dy * dy <= r * r; }
 function isMoveHalf(p) { const half = window.innerWidth * 0.45; return settings.lefty ? p.x > window.innerWidth - half : p.x < half; }
 
-canvas.addEventListener('pointerdown', (e) => {
-  e.preventDefault();
+function onTapDown(e) {
+  // The haptic overlay (iPhone) hands us the real event: it must keep its own implicit capture and its native click, which
+  // is what lets iOS play the tap's haptic, so only the canvas path prevents default and captures.
+  const onCanvas = e.currentTarget === canvas;
+  if (onCanvas) e.preventDefault();
   // Capture so pointerup always reaches us even if the pointer is released
   // over an overlay or outside the window — otherwise inputs stick.
-  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (onCanvas) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
   input.downIds.add(e.pointerId);
   if (netInRun() && netPointerDown(e)) return;   // Run Together: spectator chrome / LEAVE / emote-wheel arm (solo: no-op)
   // A mouse is a direct fire input; don't switch the HUD into touch mode or
@@ -2414,15 +2420,41 @@ canvas.addEventListener('pointerdown', (e) => {
     if (!input.jumpHeld) input.jumpPressed = true;
     input.jumpHeld = true;
   }
-}, { passive: false });
-canvas.addEventListener('pointermove', (e) => {
+}
+function onTapMove(e) {
   if (input.stick.active && e.pointerId === input.stick.id) {
     const p = pointerPos(e); input.stick.x = p.x; input.stick.y = p.y;
     const dx = p.x - input.stick.cx, dead = 12, full = 48, mag = Math.abs(dx);
     const s = mag < dead ? 0 : clamp((mag - dead) / (full - dead), 0, 1);
     input.stickX = dx < 0 ? -s : s;
   }
-}, { passive: false });
+}
+canvas.addEventListener('pointerdown', onTapDown, { passive: false });
+canvas.addEventListener('pointermove', onTapMove, { passive: false });
+/* ---- iPhone haptics ----
+   iOS has no Vibration API. Its one web haptic is the tick of a native switch, and since iOS 26.5 only a REAL finger tap on
+   that switch (or its label) plays it: a script clicking it, from a timer or a frame, is silent. So on iOS the jump/fire side
+   of the screen is covered, while a run is live, by an invisible label wrapping a real switch. The finger lands on it, the
+   same handlers run on the same real events, and the tap's own click ticks the switch: a tick for every tap on that side
+   (jump, fire, emotes). Drags (the stick) never click, so they stay silent. The old programmatic path stays too, for the
+   iOS versions where it still works. */
+let touchPrimary = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);   // a phone or tablet is the main pointer (also read by the frame pacing)
+let iosTapHaptics = !('vibrate' in navigator) && touchPrimary;
+let hapticOverlayKey = '';
+function tickTouchHaptic() {
+  const el = document.getElementById('hapTouch'); if (!el) return;
+  const on = iosTapHaptics && !SHOT && settings.haptics && (G.mode === 'play' || G.mode === 'resume') && !(netLive() && netSpectating());
+  const key = on ? (settings.lefty ? 'L' : 'R') : '';
+  if (key === hapticOverlayKey) return;
+  hapticOverlayKey = key;
+  el.style.display = on ? 'block' : 'none';
+  if (on) { el.style.left = settings.lefty ? '0' : '45%'; el.style.right = settings.lefty ? '45%' : '0'; }
+}
+(function () {
+  const el = document.getElementById('hapTouch'); if (!el) return;
+  el.addEventListener('pointerdown', onTapDown, { passive: true });
+  el.addEventListener('pointermove', onTapMove, { passive: true });
+})();
 function endPointer(e) {
   input.downIds.delete(e.pointerId);
   if (e.pointerType === 'mouse') input.fireMouse = false;
@@ -4317,7 +4349,6 @@ function powerSaving() { return !SHOT && (settings.batterySaver || !!(power && p
 //   title screen ... 30; a minute without input 15; five minutes 5 (10 while music plays: the conductor schedules 350 ms ahead per frame)
 //   behind a card (pause, run over) ... 15
 //   battery saver / low battery ... 30
-let touchPrimary = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
 let batteryCharging = true;   // until the browser says otherwise
 let idleDeep = false;
 function noteInput() { power.lastInputAt = performance.now(); if (idleDeep) { idleDeep = false; document.body.classList.remove('idle-deep'); } }
@@ -4403,7 +4434,7 @@ if (Audio && Audio.sfx) for (const k of Object.keys(Audio.sfx)) {
 // Music conductor: once per rAF, wall-clock — hitstop and 6-step catch-up can't stall it.
 // Danger (0..1) is flare proximity; the arrangement thins under pressure, never darkens.
 function tickAudio() {
-  tickAudioPower(); tickWakeLock(); tickRoomLock();
+  tickAudioPower(); tickWakeLock(); tickRoomLock(); tickTouchHaptic();
   const dead = G.player && G.player.dead;
   const danger = (G.mode === 'play' && !dead && G.player)
     ? clamp(1 - (G.player.x - G.flare.x - 260) / 420, 0, 1) : 0;
@@ -6515,6 +6546,18 @@ const SETTINGS_DEF = [
   { key: 'netEmotes', type: 'switch', label: 'Emotes', net: true },
   { key: 'netApprove', type: 'switch', label: 'Approve joins', net: true },
 ];
+// iPhone only: a real switch under a real finger, so it ticks whenever the phone's haptics are on. If this ticks but the game does
+// not, the game is at fault; if this is silent too, iOS has System Haptics off (Settings > Sounds & Haptics).
+function hapticTestRow() {
+  const row = document.createElement('div'); row.className = 'toggle-row haptic-test';
+  const lbl = document.createElement('span'); lbl.textContent = 'Feel a tick';
+  const chip = document.createElement('label'); chip.className = 'mini-chip'; chip.style.position = 'relative'; chip.textContent = 'Test';
+  const inp = document.createElement('input'); inp.type = 'checkbox'; inp.setAttribute('switch', ''); inp.tabIndex = -1; inp.setAttribute('aria-label', 'Test haptic');
+  inp.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0';
+  inp.onchange = () => queueToast('Tick sent. Felt nothing? Turn on Settings › Sounds & Haptics › System Haptics.', 'sys');
+  chip.appendChild(inp); row.appendChild(lbl); row.appendChild(chip);
+  return row;
+}
 function buildSettings(host) {
   for (const def of SETTINGS_DEF) {
     if ((def.net || def.noShot) && SHOT) continue;   // net/a11y rows never bloat a #shot golden
@@ -6555,6 +6598,7 @@ function buildSettings(host) {
       row.appendChild(r); row.appendChild(pct);
     }
     host.appendChild(row);
+    if (def.key === 'haptics' && iosTapHaptics && !SHOT) host.appendChild(hapticTestRow());
   }
   if (!SHOT) buildNetworkSettings(host);   // bespoke net rows off under #shot (golden identity)
   syncHapticRows();
