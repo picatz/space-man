@@ -76,6 +76,8 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    width: 100%;
+    height: 100%;
     touch-action: none;
     background: var(--void);
   }
@@ -249,15 +251,18 @@
   /* attract card sits low so the canvas wordmark + idle astronaut own the upper scene */
   .attract-anchor { justify-content: flex-end; }
 
-  @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 4px 14px rgba(56, 225, 255, 0.35); transform: scale(1); }
-    50% { box-shadow: 0 6px 26px rgba(56, 225, 255, 0.7); transform: scale(1.02); }
-  }
-  .btn.pulse { animation: pulseGlow 1.6s ease-in-out infinite; }
+  /* The idle pulse only animates transform and opacity (compositor-only): animating box-shadow itself repaints the
+     button every frame for as long as the title screen is open. The bright glow is a static shadow on a pseudo-element
+     whose opacity breathes. */
+  @keyframes pulseGlow { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+  @keyframes pulseHalo { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+  .btn.pulse { animation: pulseGlow 1.6s ease-in-out infinite; position: relative; }
+  .btn.pulse::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: 0 6px 26px rgba(56, 225, 255, 0.7); animation: pulseHalo 1.6s ease-in-out infinite; }
+  body.idle-deep .btn.pulse, body.idle-deep .btn.pulse::after { animation: none; }
   /* Reduce Motion: body.reduce-motion follows the in-game switch, which
      defaults to prefers-reduced-motion (and is the OS answer under #shot), so
      turning the switch OFF really restores motion. */
-  body.reduce-motion .btn.pulse { animation: none; }
+  body.reduce-motion .btn.pulse, body.reduce-motion .btn.pulse::after { animation: none; }
   /* E9.1: panels appear, they don't slide/scale in; still dim the backdrop. */
   body.reduce-motion .btn, body.reduce-motion .overlay, body.reduce-motion .panel { transition: none; }
   body.reduce-motion .panel { opacity: 1; transform: none; }
@@ -454,6 +459,16 @@
     .control-guide { margin: 8px 0 4px; }
   }
 
+  /* Laptop-sized windows (1280×720, 1366×768, a browser with its toolbars): the single-column title card would climb over
+     the hero and squeeze the wordmark, so it goes two-column here too. Phones on their side already do (rule above). */
+  @media (orientation: landscape) and (min-height: 561px) and (max-height: 860px) and (min-width: 880px) {
+    #ovAttract { justify-content: flex-end; }
+    #ovAttract .panel { max-width: min(760px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 24px; align-items: center; --py: 14px; }
+    #ovAttract #attractMedals { margin: 2px 0 8px !important; }
+    #ovAttract .control-guide { margin: 4px 0; }
+    #ovAttract .stats-line { margin-top: 6px; }
+  }
+
   /* discovery logbook (RECORDS panel): found = full color, unfound = ? + dimmed hint */
   #logbook {
     display: grid;
@@ -575,6 +590,8 @@
   }
   #errlog.show { display: block; }
 
+  .hap-touch { position: fixed; top: 0; bottom: 0; display: none; z-index: 4; opacity: 0; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .hap-touch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
   .hap { position: fixed; left: -9999px; top: -9999px; opacity: 0; pointer-events: none; }
   /* Screen-reader live region: visually hidden, never display:none (that silences it). */
   #srAnnounce { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -713,6 +730,35 @@
   #blockedList .log-row .mini-chip { margin-left: auto; }
 
   /* Run Together — in-run surfaces (N3) */
+  /* Crew standings: one renderer, three homes (floating panel in a run, pause card, death card). */
+  .crew { text-align: left; font-family: var(--font-num); }
+  .crew-sum { font-size: 11px; letter-spacing: 1.5px; color: var(--cyan-lt); font-weight: 700; margin: 2px 0 6px; text-transform: uppercase; }
+  .crew-head { display: flex; align-items: baseline; gap: 6px; font-size: 10px; letter-spacing: 2.5px; color: var(--ui); opacity: 0.8; margin: 10px 0 2px; text-transform: uppercase; }
+  .crew-head .n { color: var(--cyan); font-weight: 800; }
+  .crew-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 12px; border-bottom: 1px solid rgba(207,227,255,0.08); }
+  .crew-row .pl { flex: 0 0 26px; color: var(--cyan); font-weight: 800; }
+  .crew-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suit); font-weight: 700; text-transform: uppercase; }
+  .crew-row .nm .tag { color: var(--ui); opacity: 0.7; font-weight: 500; text-transform: none; }
+  .crew-row .fig { flex: 0 0 auto; font-weight: 700; text-align: right; }
+  .crew-row .fig small { display: block; font-size: 9px; opacity: 0.6; font-weight: 500; letter-spacing: 0.5px; }
+  .crew-row.you { background: rgba(56,225,255,0.10); border-radius: 6px; }
+  .crew-row.out { opacity: 0.6; }
+  .crew-row.unverified { opacity: 0.45; }
+  /* The pause card stays a pause card: settings fold away until asked for. */
+  .pause-settings { margin: 10px 0 4px; }
+  .pause-settings > summary { list-style: none; cursor: pointer; text-align: center; padding: 11px 14px; min-height: 44px; box-sizing: border-box;
+    border: 1px solid rgba(207,227,255,0.18); border-radius: 12px; font-size: 12px; letter-spacing: 3px; font-weight: 700; color: var(--ui); text-transform: uppercase; }
+  .pause-settings > summary::-webkit-details-marker { display: none; }
+  .pause-settings[open] > summary { border-color: rgba(56,225,255,0.4); color: var(--cyan); margin-bottom: 6px; }
+  .crew-win { font-size: 12px; letter-spacing: 1.5px; font-weight: 800; color: var(--gold); margin: 2px 0 6px; }
+  .crew-row .nm .wins { color: var(--gold); font-weight: 800; }
+  .crew-empty { font-size: 11px; opacity: 0.6; padding: 4px; }
+  #crewPanel { position: fixed; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 84px); width: min(330px, calc(100vw - 24px)); max-height: calc(100vh - 150px);
+    overflow-y: auto; padding: 10px 12px 12px; border-radius: 14px; background: rgba(6,12,30,0.88); border: 1px solid rgba(56,225,255,0.22);
+    box-shadow: 0 10px 40px rgba(0,0,0,.45); pointer-events: none; z-index: 7; display: none; }
+  #crewPanel.show { display: block; }
+  #crewPanel .crew-title { font-size: 11px; letter-spacing: 3px; font-weight: 800; color: var(--cyan); }
+  #crewPanel .crew-hint { font-size: 9px; letter-spacing: 1px; opacity: 0.55; margin-top: 8px; }
   .room-caption { font-size: 10px; letter-spacing: 3px; color: var(--ui); opacity: 0.7; margin: 12px 0 2px; }
   table.scores tr.unverified { opacity: 0.5; }
   .round-head { font-size: 12px; letter-spacing: 3px; font-weight: 700; color: var(--cyan); margin: 12px 0 2px; }
@@ -782,7 +828,11 @@
     <div class="control-guide gamepad-guide">
       <div><b>LEFT STICK</b><span>MOVE</span></div><div><b>A / ✕</b><span>JUMP</span></div><div><b>X / □ / R2</b><span>FIRE</span></div>
     </div>
-    <div class="settings-list" data-settings-host></div>
+    <div class="crew" id="pauseCrew" style="display:none;"></div>
+    <details class="pause-settings" id="pauseSettings">
+      <summary>Settings</summary>
+      <div class="settings-list" data-settings-host></div>
+    </details>
     <button class="btn ghost" id="btnPauseSpectate" style="display:none;">Spectate This Round</button>
     <button class="btn ghost" id="btnQuit">Quit to Title</button>
   </div>
@@ -810,6 +860,7 @@
     <div class="sub" id="deadRoundNext" style="font-size:11px;opacity:0.7;display:none;"></div>
     <div class="room-caption" id="deadRoomCaption" style="display:none;">ROOM</div>
     <table class="scores" id="deadRoomScores" style="display:none;"></table>
+    <div class="crew" id="deadCrew" style="display:none;"></div>
     <div class="dock">
     <button class="btn coral" id="btnAgain" style="margin-top:14px;">Play Again</button>
     <button class="btn ghost" id="btnShare" data-keys="dead" style="display:none;">Share Run</button>
@@ -911,6 +962,7 @@
         </div>
       </div>
     </div>
+    <div class="crew-sum" id="roomCrew" role="status"></div>
     <div class="room-relay" id="roomRelay"></div>
     <details class="room-log" id="roomLog" style="display:none;">
       <summary id="roomLogSummary"></summary>
@@ -981,7 +1033,9 @@
 </div>
 
 <pre id="errlog"></pre>
-<label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" tabindex="-1" /></label>
+<label class="hap-touch" id="hapTouch" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
+<label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
+<div id="crewPanel" class="crew" role="region" aria-label="Crew standings"></div>
 <div id="srAnnounce" aria-live="polite"></div>
 
 <script src="src/contracts.js"></script>
@@ -998,6 +1052,7 @@
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
      #j= invite is accepted (net-spec §4.1 lazy gate). -->
 <script src="src/callsigns.js"></script>
+<script src="src/crew.js"></script>
 <script src="src/relay-directory.js"></script>
 <script src="src/qr.js"></script>
 <script src="src/netsmooth.js"></script>
@@ -1056,7 +1111,7 @@ if (SHOT && typeof WebSocket !== 'undefined') {
    ------------------------------------------------------------------------- */
 const STEP = 1 / 60;
 const CFG = {
-  logicalH: 360, tabletH: 400, portraitW: 420, dprCap: 2,
+  logicalH: 360, tabletH: 400, portraitW: 420, dprCap: 2, dprMax: 3,   // dprCap: the golden/#shot size; dprMax: where a live screen starts (3× phones), stepping down only if it cannot keep up
   accelGround: 0.85, accelAir: 0.5, maxRun: 6.8,
   fricGround: 0.8, fricAir: 0.95, turnMult: 2,
   jumpVel: -13.2, gravRise: 0.5, gravFall: 0.8, varJumpCut: 0.45, maxFall: 14,
@@ -1177,6 +1232,8 @@ settings.netApprove = settings.netApprove === true;
 settings.hapticsStrength = Math.min(1, Math.max(0.3, (typeof settings.hapticsStrength === 'number' && isFinite(settings.hapticsStrength)) ? settings.hapticsStrength : 1));
 settings.hapticsSaver = settings.hapticsSaver !== false;   // on by default: a low, unplugged battery quiets the buzz
 settings.sharp = settings.sharp === true;   // SHARP RENDERING: opt-in lock on full DPR (adaptive resolution off)
+settings.smooth = settings.smooth !== false;   // SMOOTH MOTION: draw every refresh (120 Hz where the screen has it); off = 60 at most
+settings.autoSaver = settings.autoSaver !== false;   // AUTO POWER SAVING: switch to the battery saver on a nearly flat, unplugged battery
 settings.batterySaver = settings.batterySaver === true;   // BATTERY SAVER: 30fps, 1× resolution, lighter effects (off unless chosen)
 if (['default', 'custom', 'list'].indexOf(settings.netRelayMode) < 0) settings.netRelayMode = 'default';
 if (typeof settings.netRelay !== 'string') settings.netRelay = '';
@@ -1276,7 +1333,7 @@ const uiScale = () => clamp(view.w / 560, 0.86, 1);
 // DPR down (2 → 1.5 → 1) at a calm moment. Render-only — logical view size,
 // the sim and #shot goldens (fixed DPR) are untouched. Per launch only: a new
 // session starts sharp again. SHARP RENDERING (settings.sharp) opts out.
-const perf = { cap: CFG.dprCap, ema: STEP, slowT: 0, warm: 0 };
+const perf = { cap: CFG.dprMax, ema: STEP, slowT: 0, warm: 0 };
 // Quality tier follows the same signal: once a device has had to step its DPR
 // down, the purely decorative layers go too (motes at 1.5, the near skyline at 1).
 const artTier = () => (SHOT ? 2 : powerSaving() ? 1 : settings.sharp ? 2 : perf.cap);   // same precedence as resize(): the battery saver wins over Sharp
@@ -1285,25 +1342,37 @@ function adaptResolution(dt) {
   if (dt > 0.1) return;   // tab switch / GC hitch: not steady-state cost
   if ((perf.warm += dt) < 1) { perf.ema = STEP; return; }   // let a fresh canvas settle
   perf.ema += (dt - perf.ema) * 0.05;
-  perf.slowT = perf.ema > 0.022 ? perf.slowT + dt : 0;
+  // Slow is judged against the pace the scene asks for: a title screen paced to 30 fps or a card paced to 15 is not a slow
+  // device. (32% over the 60 fps frame is the old 22 ms line; it scales with the intended gap.)
+  const target = Math.max(STEP, frameGapMs() / 1000);
+  perf.slowT = perf.ema > target * 1.32 ? perf.slowT + dt : 0;
   if (perf.slowT < 2) return;
   // Mid-run a DPR switch pops mid-jump; wait for attract/pause/dead unless the
   // device is badly behind (<25fps), where the pop beats a stuttering run.
   if (G.mode === 'play' && !(G.player && G.player.dead) && perf.ema < 0.04) return;
-  perf.cap = view.dpr > 1.5 ? 1.5 : 1;
+  perf.cap = view.dpr > 2.01 ? 2 : view.dpr > 1.5 ? 1.5 : 1;
   resize();
 }
+// The page is sized by CSS (the canvas fills it), so the canvas's own box is the truth about how much screen there is. In an
+// iPhone home-screen app window.innerHeight can come up short of the real screen, which left a dead strip along the bottom.
+let _vpW = 0, _vpH = 0;
+function vpW() { return _vpW || window.innerWidth; }
+function vpH() { return _vpH || window.innerHeight; }
+function measureViewport() {
+  let w = 0, h = 0;
+  try { const r = canvas.getBoundingClientRect(); w = Math.round(r.width); h = Math.round(r.height); } catch (e) {}
+  _vpW = w >= 100 ? w : 0; _vpH = h >= 100 ? h : 0;
+}
 function resize() {
-  const cssW = window.innerWidth, cssH = window.innerHeight;
-  const dpr = Math.min(window.devicePixelRatio || 1, SHOT ? CFG.dprCap : powerSaving() ? 1 : settings.sharp ? CFG.dprCap : perf.cap);
+  measureViewport();
+  const cssW = vpW(), cssH = vpH();
+  const dpr = Math.min(window.devicePixelRatio || 1, SHOT ? CFG.dprCap : powerSaving() ? 1 : settings.sharp ? CFG.dprMax : perf.cap);
   perf.slowT = 0; perf.warm = 0;
   view.dpr = dpr;
   view.isTablet = Math.min(cssW, cssH) >= 700;
   const logicalH = view.isTablet ? CFG.tabletH : CFG.logicalH;
   canvas.width = Math.round(cssW * dpr);
   canvas.height = Math.round(cssH * dpr);
-  canvas.style.width = cssW + 'px';
-  canvas.style.height = cssH + 'px';
   if (cssH > cssW) {
     // Portrait: scale from WIDTH (420 logical px shows a full max-jump arc plus
     // lookahead). Canvas drawing uses backing-store coordinates, so scale must
@@ -1331,6 +1400,7 @@ function resize() {
   if (booted && (SHOT || G.mode)) { try { render(1); } catch (e) {} }
 }
 window.addEventListener('resize', resize);
+try { if (window.ResizeObserver) new ResizeObserver(() => { const r = canvas.getBoundingClientRect(); if (Math.round(r.width) !== _vpW || Math.round(r.height) !== _vpH) resize(); }).observe(canvas); } catch (e) {}
 window.addEventListener('orientationchange', resize);
 let booted = false;
 
@@ -1500,7 +1570,7 @@ const FLARE_GLOW_HUE = 'hsla(12,90%,55%,';
    ------------------------------------------------------------------------- */
 const Audio = (() => {
   let ac = null, master = null, comp = null, musicGain = null, sfxGain = null, started = false;
-  let musicLP = null, padGain = null, stingGain = null, echoSend = null, noiseBuf = null;
+  let musicLP = null, padGain = null, stingGain = null, musicStingGain = null, echoSend = null, noiseBuf = null;
   const padOscs = [], padF = [0, 0, 0];
   const WAVES = {};   // duty12/duty25/duty50 pulse approximations + soft-chip celesta stack
 
@@ -1592,13 +1662,21 @@ const Audio = (() => {
   // volume sliders must win at ALL write sites (pause duck, resume sweep, reset).
   const musLvl = (base) => (settings.music && !settings.muted ? (base || 0.42) * settings.musicVol : 0);
   const sfxLvl = () => (settings.sfx && !settings.muted ? settings.sfxVol * 0.8 : 0);   // static headroom pull, not compressor makeup
+  // Jingle buses. The SFX jingles (sector bells, death, chain bank) are Sound FX: the switch, the slider and the master mute
+  // all win. The song's own bells (relief fill, resume pickup) are Music: the same three rules, with the music slider.
+  const stingLvl = () => (settings.sfx && !settings.muted ? settings.sfxVol : 0);
+  const mstLvl = () => (settings.music && !settings.muted ? settings.musicVol : 0);
+  const sfxOpen = () => !!(settings.sfx && !settings.muted && settings.sfxVol > 0);   // nothing is even scheduled when closed
 
   function ensure() {
     if (started || SHOT) return false;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
-      ac = new AC();
+      // iOS: the default audio session category is 'ambient', which the ring/silent switch mutes. A game's sound is
+      // playback; the in-game mute (icon, M key, settings) is the control that stays in the player's hands.
+      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+      ac = new AC({ latencyHint: 'interactive' });
       master = ac.createGain(); master.gain.value = 0.9;
       comp = ac.createDynamicsCompressor();
       // Safety limiter, not glue: defaults (-24/30/12/.003/.25) were a 12:1 squash
@@ -1609,11 +1687,11 @@ const Audio = (() => {
       musicGain = ac.createGain(); musicGain.gain.value = musLvl();
       sfxGain.connect(master); musicGain.connect(master); master.connect(comp); comp.connect(ac.destination);
       // Persistent music graph: voices → musicLP (state filter) → musicGain. Jingles skip the
-      // filter AND both sliders via stingGain → master — sfx-off or music-off listeners still
-      // get sector bells and the death jingle, gated only by mute — and can be killed.
+      // state filter via stingGain / musicStingGain → master, gated by their channel and the mute, and can be killed.
       musicLP = ac.createBiquadFilter(); musicLP.type = 'lowpass'; musicLP.frequency.value = 12000;
       musicLP.connect(musicGain);
-      stingGain = ac.createGain(); stingGain.gain.value = 1; stingGain.connect(master);
+      stingGain = ac.createGain(); stingGain.gain.value = stingLvl(); stingGain.connect(master);
+      musicStingGain = ac.createGain(); musicStingGain.gain.value = mstLvl(); musicStingGain.connect(master);
       const dly = ac.createDelay(1); dly.delayTime.value = 0.402;   // dotted-8th at 112
       const fb = ac.createGain(); fb.gain.value = 0.22;
       const elp = ac.createBiquadFilter(); elp.type = 'lowpass'; elp.frequency.value = 2400;
@@ -1651,7 +1729,7 @@ const Audio = (() => {
     return out;
   }
   function tone(type, f0, f1, dur, gain, dest, when) {
-    if (!ac) return;
+    if (!ac || ((!dest || dest === sfxGain) && !sfxOpen())) return;
     const t = when || now(), o = ac.createOscillator(), g = ac.createGain();
     o.type = type; o.frequency.setValueAtTime(f0, t);
     if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
@@ -1660,7 +1738,7 @@ const Audio = (() => {
     o.connect(g); g.connect(dest || sfxGain); o.start(t); o.stop(t + dur + 0.02);
   }
   function noise(dur, gain, filterType, cutoff, dest, pan, when) {
-    if (!ac) return;
+    if (!ac || ((!dest || dest === sfxGain) && !sfxOpen())) return;
     const t = when || now(), src = ac.createBufferSource(); src.buffer = noiseBuf;
     const g = ac.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     let node = src;
@@ -1771,6 +1849,10 @@ const Audio = (() => {
     zip() { tone('sine', 900, 1500, 0.25, 0.08); },              // tickled saucer wheee
     beep(t0) { const t = t0 || now(); tone('square', 1250, 1250, 0.03, 0.06, sfxGain, t); tone('square', 1250, 1250, 0.03, 0.06, sfxGain, t + 0.25); },
   };
+  for (const k of Object.keys(SFX)) {   // a closed Sound FX channel schedules nothing at all
+    const f = SFX[k];
+    SFX[k] = function () { if (!sfxOpen()) return; return f.apply(this, arguments); };
+  }
   function deathJingle(newBest, pitch) {
     if (!ac) return;
     const t = now();
@@ -1942,7 +2024,7 @@ const Audio = (() => {
       if (dngS > 0.6) dngPeak = true;
       else if (dngPeak && dngS < 0.25) {   // relief fill — still major, still in key
         dngPeak = false;
-        bell(degF(5), 0.25, 0.06, tN, stingGain); bell(degF(6), 0.3, 0.06, tN + 0.09, stingGain);
+        bell(degF(5), 0.25, 0.06, tN, musicStingGain); bell(degF(6), 0.3, 0.06, tN + 0.09, musicStingGain);
       }
     }
     if (mode === 'attract') {
@@ -1986,7 +2068,7 @@ const Audio = (() => {
       musicGain.gain.setTargetAtTime(musLvl(), t, secs / 3);
       if (settings.music && !settings.muted && anchored) {   // pickup: two 8ths leading into the next bar line
         let bt = barT; while (bt - BEAT < t + secs) bt += 4 * BEAT;
-        bell(degF(5), 0.2, 0.07, bt - BEAT, stingGain); bell(degF(7), 0.2, 0.07, bt - BEAT * 0.5, stingGain);
+        bell(degF(5), 0.2, 0.07, bt - BEAT, musicStingGain); bell(degF(7), 0.2, 0.07, bt - BEAT * 0.5, musicStingGain);
       }
     } else if (name === 'death') deathJingle(!!arg, 1);
   }
@@ -1996,7 +2078,7 @@ const Audio = (() => {
     stingGain.gain.cancelScheduledValues(t);
     stingGain.gain.setValueAtTime(stingGain.gain.value, t);
     stingGain.gain.linearRampToValueAtTime(0, t + 0.08);
-    stingGain.gain.setValueAtTime(1, t + 0.23);
+    stingGain.gain.setValueAtTime(stingLvl(), t + 0.23);   // back to the player's level — never past a mute
   }
   return {
     // state !== 'running' also covers WebKit's 'interrupted' (call/Siri/background)
@@ -2012,10 +2094,12 @@ const Audio = (() => {
       if (sfxGain) sfxGain.gain.setTargetAtTime(sfxLvl(), now(), .025);
       // Pause keeps the music bus at next-room level even if MUSIC gets re-toggled mid-pause.
       if (musicGain) musicGain.gain.setTargetAtTime(G.mode === 'pause' ? musLvl(0.15) : musLvl(), now(), .04);
-      // Sting bus bypasses both sliders (E5.3) — gated only by mute, audible to sfx-only or music-only players.
-      if (stingGain) stingGain.gain.setTargetAtTime((!settings.muted && (settings.sfx || settings.music)) ? 1 : 0, now(), .03);
+      // Jingle buses follow their own channel's switch, slider and the master mute (no bypass).
+      if (stingGain) stingGain.gain.setTargetAtTime(stingLvl(), now(), .03);
+      if (musicStingGain) musicStingGain.gain.setTargetAtTime(mstLvl(), now(), .03);
     },
     get on() { return started; },
+    get jingleLevels() { return stingGain ? { sfx: stingGain.gain.value, music: musicStingGain.gain.value } : null; },   // read by the mute tests
     get loopsCompleted() { return loopsN; },
     get onLoop() { return onLoopCb; }, set onLoop(fn) { onLoopCb = fn; },
   };
@@ -2027,10 +2111,11 @@ const Audio = (() => {
 const HAPTICS = { select: 7, light: 12, heavy: 18, success: [10, 28, 10], warn: [12, 36, 12], celebrate: [14, 40, 14, 40, 22] };
 // Low-battery saver. No browser exposes iOS/Android Low Power Mode itself, but Chromium's Battery Status API tells us
 // when the device is low and unplugged, which is when the motor is worth sparing. Browsers without it never save.
-let batteryLow = false, batteryReady = false;   // batteryReady: the browser actually handed us battery data (it can refuse)
+let batteryLow = false, batteryCritical = false, batteryReady = false;   // low <20% (haptics sit out); critical <10% (the whole game saves power)
+let _bl = 0;   // batteryReady: the browser actually handed us battery data (it can refuse)
 try {
   if (navigator.getBattery) navigator.getBattery().then((b) => {
-    const sync = () => { batteryLow = !b.charging && b.level < 0.2; if (typeof applyPower === 'function') applyPower(); };   // the frame loop's saver follows too
+    const sync = () => { batteryCharging = !!b.charging; batteryLow = !b.charging && b.level < 0.2; batteryCritical = !b.charging && b.level < 0.1; if (typeof applyPower === 'function') applyPower(); };   // the frame loop's saver follows too
     batteryReady = true;
     sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
     syncHapticRows();
@@ -2064,7 +2149,9 @@ function syncHapticRows() {
 // Is the buzz allowed right now? (switch on, and not saving a nearly flat battery)
 function hapticsOn() { return !!settings.haptics && !SHOT && !(settings.hapticsSaver && batteryLow); }
 // Strength scales how long the motor runs (phones) and how hard it spins (controllers); the rhythm never changes.
-function scaleBuzz(pat, k) { return Array.isArray(pat) ? pat.map((v, i) => (i % 2 === 0 ? Math.max(4, Math.round(v * k)) : v)) : Math.max(4, Math.round(pat * k)); }
+const HAPTIC_FLOOR = 15;   // ms: shorter pulses are below what most phone motors can render
+function scaleBuzz(pat, k) { return Array.isArray(pat) ? pat.map((v, i) => (i % 2 === 0 ? Math.max(HAPTIC_FLOOR, Math.round(v * k)) : v)) : Math.max(HAPTIC_FLOOR, Math.round(pat * k)); }
+function stopBuzz() { try { if (navigator.vibrate) navigator.vibrate(0); } catch (e) {} }
 function buzz(kind) {
   if (!hapticsOn()) return;
   const k = settings.hapticsStrength;
@@ -2174,6 +2261,15 @@ function pollMenuNav(gp, just) {
 }
 
 function gamepadButton(gp, index) { return !!(gp && gp.buttons[index] && gp.buttons[index].pressed); }
+// What kind of pad is this? Browsers differ in how they word the id, so match the vendor id and the well-known names.
+function padFamily(gp) {
+  const id = String((gp && gp.id) || '').toLowerCase();
+  if (/045e|xbox|xinput/.test(id)) return 'xbox';   // first: Xbox pads are also called "Wireless Controller"
+  if (/057e|nintendo|switch|pro controller/.test(id)) return 'nintendo';
+  if (/054c|dualsense|dualshock|wireless controller|playstation/.test(id)) return 'playstation';
+  return 'generic';
+}
+function padName(gp) { return { playstation: 'DUALSENSE', xbox: 'XBOX CONTROLLER', nintendo: 'PRO CONTROLLER', generic: 'CONTROLLER' }[padFamily(gp)]; }
 function pollGamepad() {
   if (!navigator.getGamepads) return;
   const pads = navigator.getGamepads();
@@ -2189,7 +2285,8 @@ function pollGamepad() {
   }
   if (!input.pad.connected) {
     input.pad.connected = true; input.pad.prev = []; document.body.classList.add('gamepad-active');
-    queueToast('CONTROLLER READY', 'sys');
+    document.body.dataset.pad = padFamily(gp);
+    queueToast(padName(gp) + ' READY', 'sys');
   }
   const pressed = (i) => gamepadButton(gp, i);
   const just = (i) => pressed(i) && !input.pad.prev[i];
@@ -2203,6 +2300,7 @@ function pollGamepad() {
   input.down = pressed(13) || (gp.axes[1] || 0) > 0.5;   // dpad-down / left-stick-down → let go of a ledge
   input.firePad = !!padState.fire && (pressed(2) || pressed(5) || pressed(7));
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
+  if (just(8) && netInRun() && G.mode === 'play') { crew.peek = false; toggleCrew(); }   // Share / Select / View: the crew standings
   const menuTook = pollMenuNav(gp, just);
   if (padState.pause && just(9)) {
     if (menuSubOpen()) menuBack();   // Start closes a sub-menu like B (no-op for the initials picker)
@@ -2217,7 +2315,8 @@ function pollGamepad() {
     else if (G.mode === 'pause') togglePause();
   }
   const btns = gp.buttons, prev = input.pad.prev;   // in place: no per-poll array allocation
-  for (let i = 0; i < btns.length; i++) prev[i] = !!btns[i].pressed;
+  for (let i = 0; i < btns.length; i++) { prev[i] = !!btns[i].pressed; if (prev[i]) power.lastInputAt = performance.now(); }
+  if (axis) power.lastInputAt = performance.now();
 }
 
 window.addEventListener('gamepadconnected', (e) => { input.pad.index = e.gamepad.index; pollGamepad(); });
@@ -2243,6 +2342,9 @@ function onKey(e, down) {
   if (down && (k === 'enter' || k === ' ') && G.mode !== 'play' && focusInOverlay()) return;   // native button activation — never a second startRun/restart
   if (down && k === 'escape' && menuBack()) { e.preventDefault(); return; }   // Escape closes a sub-menu before it pauses
   const act = keyAction(k);
+  // Crew standings: hold Tab to peek (the scoreboard convention), or tap C to pin it open. In a room only.
+  if (k === 'tab' && netInRun()) { e.preventDefault(); if (down) { if (!e.repeat) { crew.peek = !crew.open; toggleCrew(true); } } else if (crew.peek) { crew.peek = false; toggleCrew(false); } return; }
+  if (down && k === 'c' && !act && !e.repeat && netInRun() && !e.metaKey && !e.ctrlKey) { crew.peek = false; toggleCrew(); return; }
   if (act === 'left' || act === 'right' || act === 'down') input[act] = down;
   if (act === 'jump') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
   if (act === 'fire') input.fireKey = down;
@@ -2255,8 +2357,10 @@ function onKey(e, down) {
     if (netSpectating() && netInRun()) {
       if (act === 'left') { cycleWatch(-1); return; }
       if (act === 'right') { cycleWatch(1); return; }
+      if (k === 'l' && down) { const g = leaderGhost(); if (g) watchByP(g.p); return; }
       if (k === 'enter') { startRun(); return; }
     }
+    if (k === 'escape' && crew.open) { toggleCrew(false); return; }
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) { if (!menuSubOpen()) startRun(); }
@@ -2274,7 +2378,7 @@ window.addEventListener('keydown', (e) => onKey(e, true));
 window.addEventListener('keyup', (e) => onKey(e, false));
 
 function layoutTouch() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const w = vpW(), h = vpH();
   const inset = 16 + safeInset('left');
   const sbR = view.isTablet ? 40 : 32;
   input.shootBtn.r = sbR;
@@ -2287,13 +2391,16 @@ function layoutTouch() {
 }
 function pointerPos(e) { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function inShoot(p) { const dx = p.x - input.shootBtn.cx, dy = p.y - input.shootBtn.cy, r = input.shootBtn.r + 14; return dx * dx + dy * dy <= r * r; }
-function isMoveHalf(p) { const half = window.innerWidth * 0.45; return settings.lefty ? p.x > window.innerWidth - half : p.x < half; }
+function isMoveHalf(p) { const half = vpW() * 0.45; return settings.lefty ? p.x > vpW() - half : p.x < half; }
 
-canvas.addEventListener('pointerdown', (e) => {
-  e.preventDefault();
+function onTapDown(e) {
+  // The haptic overlay (iPhone) hands us the real event: it must keep its own implicit capture and its native click, which
+  // is what lets iOS play the tap's haptic, so only the canvas path prevents default and captures.
+  const onCanvas = e.currentTarget === canvas;
+  if (onCanvas) e.preventDefault();
   // Capture so pointerup always reaches us even if the pointer is released
   // over an overlay or outside the window — otherwise inputs stick.
-  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (onCanvas) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
   input.downIds.add(e.pointerId);
   if (netInRun() && netPointerDown(e)) return;   // Run Together: spectator chrome / LEAVE / emote-wheel arm (solo: no-op)
   // A mouse is a direct fire input; don't switch the HUD into touch mode or
@@ -2328,15 +2435,41 @@ canvas.addEventListener('pointerdown', (e) => {
     if (!input.jumpHeld) input.jumpPressed = true;
     input.jumpHeld = true;
   }
-}, { passive: false });
-canvas.addEventListener('pointermove', (e) => {
+}
+function onTapMove(e) {
   if (input.stick.active && e.pointerId === input.stick.id) {
     const p = pointerPos(e); input.stick.x = p.x; input.stick.y = p.y;
     const dx = p.x - input.stick.cx, dead = 12, full = 48, mag = Math.abs(dx);
     const s = mag < dead ? 0 : clamp((mag - dead) / (full - dead), 0, 1);
     input.stickX = dx < 0 ? -s : s;
   }
-}, { passive: false });
+}
+canvas.addEventListener('pointerdown', onTapDown, { passive: false });
+canvas.addEventListener('pointermove', onTapMove, { passive: false });
+/* ---- iPhone haptics ----
+   iOS has no Vibration API. Its one web haptic is the tick of a native switch, and since iOS 26.5 only a REAL finger tap on
+   that switch (or its label) plays it: a script clicking it, from a timer or a frame, is silent. So on iOS the jump/fire side
+   of the screen is covered, while a run is live, by an invisible label wrapping a real switch. The finger lands on it, the
+   same handlers run on the same real events, and the tap's own click ticks the switch: a tick for every tap on that side
+   (jump, fire, emotes). Drags (the stick) never click, so they stay silent. The old programmatic path stays too, for the
+   iOS versions where it still works. */
+let touchPrimary = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);   // a phone or tablet is the main pointer (also read by the frame pacing)
+let iosTapHaptics = !('vibrate' in navigator) && touchPrimary;
+let hapticOverlayKey = '';
+function tickTouchHaptic() {
+  const el = document.getElementById('hapTouch'); if (!el) return;
+  const on = iosTapHaptics && !SHOT && settings.haptics && (G.mode === 'play' || G.mode === 'resume') && !(netLive() && netSpectating());
+  const key = on ? (settings.lefty ? 'L' : 'R') : '';
+  if (key === hapticOverlayKey) return;
+  hapticOverlayKey = key;
+  el.style.display = on ? 'block' : 'none';
+  if (on) { el.style.left = settings.lefty ? '0' : '45%'; el.style.right = settings.lefty ? '45%' : '0'; }
+}
+(function () {
+  const el = document.getElementById('hapTouch'); if (!el) return;
+  el.addEventListener('pointerdown', onTapDown, { passive: true });
+  el.addEventListener('pointermove', onTapMove, { passive: true });
+})();
 function endPointer(e) {
   input.downIds.delete(e.pointerId);
   if (e.pointerType === 'mouse') input.fireMouse = false;
@@ -2351,7 +2484,8 @@ function endPointer(e) {
 window.addEventListener('pointerup', endPointer);
 window.addEventListener('pointercancel', endPointer);
 // Held keys latch across focus loss (keyup is delivered elsewhere) — clear and pause.
-window.addEventListener('blur', () => { clearInput(); if (G.mode === 'play' && !(G.player && G.player.dead)) togglePause(); });
+// A spectator has no run to protect, so losing focus never throws a pause card over the view they are watching.
+window.addEventListener('blur', () => { clearInput(); if (G.mode === 'play' && !(G.player && G.player.dead) && !(netLive() && netSpectating())) togglePause(); });
 
 /* ---------------------------------------------------------------------------
    10. PARTICLE POOL (~160 cap, no allocation in the hot loop)
@@ -4064,7 +4198,7 @@ function update() {
       if (card) {
         const topCss = card.getBoundingClientRect().top;
         if (topCss > 0) {
-          const topView = topCss * (view.h / window.innerHeight);
+          const topView = topCss * (view.h / vpH());
           G.attractCardTop = topView;   // the wordmark reads this to stay clear on tight screens
           // keep the hero (drawn above the platform line) fully clear of the card
           platformScreenY = Math.min(platformScreenY, topView - 14);
@@ -4221,12 +4355,35 @@ function frame(now) {
 // says the battery is low and unplugged (Chromium; other browsers never report, so never
 // switch on by themselves). Never under #shot: goldens render at full rate and DPR.
 // One battery watcher serves both the haptics saver and this (see batteryLow / batteryReady near the haptics table).
-var power = { get lowBattery() { return batteryLow; }, set lowBattery(v) { batteryLow = !!v; }, get batteryKnown() { return batteryReady; }, audioIdleAt: 0, looping: false };   // var: resize() may run before this line at boot
-function powerSaving() { return !SHOT && (settings.batterySaver || !!(power && power.lowBattery)); }
+var power = { get lowBattery() { return batteryCritical; }, set lowBattery(v) { batteryCritical = !!v; }, get batteryKnown() { return batteryReady; }, audioIdleAt: 0, looping: false, lastInputAt: 0 };   // var: resize() may run before this line at boot
+function powerSaving() { return !SHOT && (settings.batterySaver || !!(settings.autoSaver && power && power.lowBattery)); }
+// Frame pacing: render only as often as the scene earns. A callback skipped before any work costs nothing, and the
+// fixed-step accumulator keeps the simulation exact whatever the gap.
+//   run, plugged in or on a desktop ... every refresh (60/120/144 Hz)
+//   run, on a phone/tablet off the charger ... 60 at most (a 120 Hz panel doubles the GPU and battery cost for a sim that steps at 60)
+//   title screen ... 30; a minute without input 15; five minutes 5 (10 while music plays: the conductor schedules 350 ms ahead per frame)
+//   behind a card (pause, run over) ... 15
+//   battery saver / low battery ... 30
+let batteryCharging = true;   // until the browser says otherwise
+let idleDeep = false;
+function noteInput() { power.lastInputAt = performance.now(); if (idleDeep) { idleDeep = false; document.body.classList.remove('idle-deep'); } }
+['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach((t) => window.addEventListener(t, noteInput, { passive: true, capture: true }));
+function attractGapMs() {
+  const idle = performance.now() - power.lastInputAt;
+  let gap = 1000 / 30;
+  if (typeof document.hasFocus === 'function' && !document.hasFocus()) gap = 1000 / 15;   // visible but behind another window
+  if (idle > 60000 && !idleDeep) { idleDeep = true; document.body.classList.add('idle-deep'); }   // even the button's glow stops breathing
+  if (idle > 300000) gap = (settings.music && !settings.muted) ? 100 : 200;
+  else if (idle > 60000) gap = Math.max(gap, 1000 / 15);
+  if (netLive()) gap = Math.min(gap, 1000 / 15);   // a lobby keeps its roster and ghosts fresh
+  return gap;
+}
 function frameGapMs() {
   if (SHOT) return 0;
   if (G.mode === 'pause' || (G.mode === 'dead' && G.deathCardShown)) return 1000 / 15;   // a still scene behind a card
-  return powerSaving() ? 1000 / 30 : 0;
+  if (powerSaving()) return 1000 / 30;
+  if (G.mode === 'attract') return attractGapMs();
+  return settings.smooth ? 0 : 1000 / 60;   // smooth = every refresh the screen offers; the sim steps at 60 and the render interpolates
 }
 var powerWas = null;
 function applyPower() {
@@ -4235,7 +4392,7 @@ function applyPower() {
   powerWas = on;
   pCapLive = on ? 80 : PCAP;
   for (let i = pCapLive; i < PCAP; i++) particles[i].live = false;
-  if (!on && !settings.sharp) perf.cap = CFG.dprCap;   // leaving saver: adaptive resolution starts sharp again
+  if (!on && !settings.sharp) perf.cap = CFG.dprMax;   // leaving saver: adaptive resolution starts sharp again
   resize();
 }
 if (settings.batterySaver) { pCapLive = 80; powerWas = true; }   // a saved choice applies from the first frame (resize() already capped DPR)
@@ -4246,6 +4403,35 @@ function startLoop() { if (!rafId) { lastT = 0; rafId = requestAnimationFrame(fr
 // Idle audio: with music off (or muted) and nothing played for 8 s outside a run, the
 // AudioContext is suspended — its render thread otherwise mixes silence all day. Any sound
 // or a run resumes it.
+// Screen Wake Lock: a phone that dims mid-run loses the run. Held only while a run is live and the tab is visible; the
+// browser drops it on hide, and the next live frame asks again. Feature-detected; any refusal just means the screen may dim.
+const wake = { lock: null, pending: false };
+const liveRun = () => G.mode === 'play' || G.mode === 'resume';
+// A host's screen sleeping suspends the tab and with it the whole room, so an open room keeps the screen on while visible.
+const hostingRoom = () => !!(NET && NET.active && !NET.mockActive && NET.info().isHost);
+// A Web Lock held for as long as a room is hosted: browsers do not freeze or discard a page that holds one, so a hosted
+// tab sent to the background keeps its connection (and, with the Worker timers in the net layer, its beat) alive.
+const roomLock = { release: null };
+function tickRoomLock() {
+  if (!navigator.locks || !navigator.locks.request) return;
+  const want = hostingRoom();
+  if (want && !roomLock.release) {
+    roomLock.release = () => {};   // claimed synchronously so a second frame does not queue another request
+    navigator.locks.request('space-man-room', { mode: 'shared' }, () => new Promise((res) => { roomLock.release = res; })).catch(() => { roomLock.release = null; });
+  } else if (!want && roomLock.release) { const r = roomLock.release; roomLock.release = null; r(); }
+}
+function tickWakeLock() {
+  if (SHOT || !navigator.wakeLock) return;
+  const want = (liveRun() || hostingRoom()) && !document.hidden;
+  if (want && !wake.lock && !wake.pending) {
+    wake.pending = true;
+    navigator.wakeLock.request('screen').then((l) => {
+      wake.pending = false; wake.lock = l;
+      l.addEventListener('release', () => { if (wake.lock === l) wake.lock = null; });
+      if (!((liveRun() || hostingRoom()) && !document.hidden)) { l.release().catch(() => {}); wake.lock = null; }
+    }, () => { wake.pending = false; });
+  } else if (!want && wake.lock) { const l = wake.lock; wake.lock = null; l.release().catch(() => {}); }
+}
 function tickAudioPower() {
   const musicOn = settings.music && !settings.muted;
   if (G.mode === 'play' || G.mode === 'resume' || musicOn) {
@@ -4263,7 +4449,7 @@ if (Audio && Audio.sfx) for (const k of Object.keys(Audio.sfx)) {
 // Music conductor: once per rAF, wall-clock — hitstop and 6-step catch-up can't stall it.
 // Danger (0..1) is flare proximity; the arrangement thins under pressure, never darkens.
 function tickAudio() {
-  tickAudioPower();
+  tickAudioPower(); tickWakeLock(); tickRoomLock(); tickTouchHaptic();
   const dead = G.player && G.player.dead;
   const danger = (G.mode === 'play' && !dead && G.player)
     ? clamp(1 - (G.player.x - G.flare.x - 260) / 420, 0, 1) : 0;
@@ -4320,7 +4506,7 @@ function render(alpha) {
     let want = view.h * 0.3;
     if (G.deathCardShown && !SHOT) {
       const card = $('ovDead').firstElementChild;
-      const top = card ? card.getBoundingClientRect().top * (view.h / window.innerHeight) : 0;
+      const top = card ? card.getBoundingClientRect().top * (view.h / vpH()) : 0;
       if (top > 0) want = Math.min(want, top - 40);
     }
     // Reduce Motion takes the framed shot as a cut: the aim snaps, never glides.
@@ -4376,7 +4562,7 @@ function render(alpha) {
     // Anchored just above the measured panel top so it clears the card.
     if (G.wardrobeOpen && G.player) {
       const p = G.player;
-      const panelTop = (G.wardrobePanelTop || window.innerHeight * 0.5) * (view.h / window.innerHeight);
+      const panelTop = (G.wardrobePanelTop || vpH() * 0.5) * (view.h / vpH());
       const sc = clamp((panelTop - 10) / 48, 2, 3);   // 3× with headroom, easing down on short viewports
       ctx.save();
       ctx.translate(view.w / 2, clamp(panelTop - 6 - 17 * sc, 60, view.h - 40));
@@ -4434,6 +4620,7 @@ function drawToast() {
    slight skew, chromatic offset shadows (cyan left, coral right). ---- */
 // Shared with the attract camera setup (E7) so the platform frame and the
 // drawn wordmark can never drift apart — one measurement, two consumers.
+const WORDMARK_HERO_H = 62;   // logical units from the platform line to the top of the hero's head (antenna and all)
 function wordmarkMetrics() {
   const text = 'SPACE MAN';
   let cy = Math.max(52, view.h * 0.19);
@@ -4442,11 +4629,26 @@ function wordmarkMetrics() {
   const w = ctx.measureText(text).width;
   const maxW = view.w * (view.h > view.w ? 0.78 : 0.86);   // portrait: keep chroma fringe off the edge
   if (w > maxW) { size = Math.max(14, size * maxW / w); ctx.font = '900 ' + size + 'px ' + FONT; }
-  // Tight title (phone on its side: the card rises to ~⅓ height): lift the mark so
-  // the hero standing above the card never overlaps it, and drop the taglines.
+  // Fit the wordmark into the sky that is actually left. The menu card is DOM (its height is set by CSS pixels), the hero
+  // stands on a platform just above the card, and the mark lives above the hero, so the room for it is whatever is between
+  // the top safe edge and the hero's head. Wide-and-short windows, phones on their side and a tall card (a long stats line,
+  // a challenge banner) all just mean less room: first the taglines go, then the mark itself shrinks. It is never shoved
+  // up off the top edge, and never lets the hero stand in front of it.
   const ct = G.mode === 'attract' ? G.attractCardTop : undefined;
-  const tight = ct !== undefined && ct - (cy + size * 0.62) < 70;
-  if (tight) cy = Math.max(size * 0.55 + 6, Math.min(cy, ct - 64 - size * 0.55));
+  let tight = false;
+  if (ct !== undefined) {
+    const k = view.h / vpH();                 // CSS px → logical units
+    const top = 8 + safeInset('top') * k;
+    const heroTop = ct - 14 - WORDMARK_HERO_H;
+    const room = heroTop - top;
+    const full = size * 1.17 + 20;                         // mark + both taglines
+    if (room >= full) cy = clamp(cy, top + size * 0.55, heroTop - (size * 0.62 + 20));
+    else {
+      tight = true;
+      if (room < size * 1.1) { size = Math.max(14, room / 1.1); ctx.font = '900 ' + size + 'px ' + FONT; }
+      cy = top + size * 0.55 + Math.max(0, (room - size * 1.1) / 2);
+    }
+  }
   return { text, cy, size, tight };
 }
 function drawWordmark() {
@@ -5630,23 +5832,23 @@ function drawHUD() {
   // not as part of the odometer; hidden once the player is dead (the death
   // sequence and restart tap own the screen).
   const dead = G.player && G.player.dead;
-  const ps = 30 * us;
-  const pitch = Math.max(48 * view.w / window.innerWidth, ps + 10 * us);   // ≥48 CSS px between square origins
+  const ps = Math.max(30 * us, 40 * view.w / vpW());   // never smaller than 40 CSS px on screen
+  const pitch = Math.max(48 * view.w / vpW(), ps + 10 * us);   // ≥48 CSS px between square origins
   const bt = top - 4 * us;
   if (!dead) {
     ctx.fillStyle = 'rgba(10,14,32,0.72)';
     roundRect(left, bt, ps, ps, 8 * us); ctx.fill();
     ctx.strokeStyle = 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
-    const bw = 3.5 * us, bh = 13 * us, bx = left + ps / 2 - bw - 2 * us, by = bt + (ps - bh) / 2;
+    const ik = ps / (30 * us), bw = 3.5 * us * ik, bh = 13 * us * ik, bx = left + ps / 2 - bw - 2 * us * ik, by = bt + (ps - bh) / 2;
     ctx.fillStyle = '#CFE3FF';
-    ctx.fillRect(bx, by, bw, bh); ctx.fillRect(bx + bw + 4 * us, by, bw, bh);
-    drawMuteButton(left + pitch, bt, ps, us);
+    ctx.fillRect(bx, by, bw, bh); ctx.fillRect(bx + bw + 4 * us * ik, by, bw, bh);
+    drawMuteButton(left + pitch, bt, ps, us * ik);
   }
   // Hit rects in CSS px, padded to ≥44×44 and clamped at the midline between
   // the two squares — the nearest button always wins, neither steals a tap.
   if (dead) { G._pauseHit = null; G._muteHit = null; }
   else {
-    const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+    const kx = vpW() / view.w, ky = vpH() / view.h;
     const half = Math.max(ps * kx / 2 + 8, 22), yh = Math.max(ps * ky / 2 + 8, 22);
     const cy = (bt + ps / 2) * ky, mid = (left + (pitch + ps) / 2) * kx;
     const pc = (left + ps / 2) * kx, mc = (left + pitch + ps / 2) * kx;
@@ -5880,7 +6082,7 @@ function drawTouchControls() {
     ctx.globalAlpha = 1;
   }
   {
-    const cssW = window.innerWidth, cssH = window.innerHeight, R = 34;
+    const cssW = vpW(), cssH = vpH(), R = 34;
     const act = input.stick.active;
     const gx = act ? input.stick.cx : cssW * (settings.lefty ? 0.78 : 0.22);
     const gy = act ? input.stick.cy : cssH - safeInset('bottom') - (view.isTablet ? 92 : 76);
@@ -5980,6 +6182,7 @@ function togglePause() {
     clearInput();
     G.mode = 'pause'; syncSettingsUI(); showOverlay('ovPause');
     $('btnPauseSpectate').style.display = (netLive() && NET.info().role !== 1 && anyLiveRunner()) ? '' : 'none';
+    renderCrewEmbed($('pauseCrew')); $('pauseSettings').open = false;
     Audio.musicEvent('pause');
   } else if (G.mode === 'pause') {
     hideAllOverlays(); Audio.resume(); clearInput();
@@ -6327,6 +6530,7 @@ function ensureWardrobeCallsign() {
 /* ---- settings ---- */
 // One definition, two hosts (ovPause + ovSettings): rows can never drift apart.
 const SETTINGS_DEF = [
+  { key: 'muted', type: 'switch', label: 'Mute all audio' },
   { key: 'music', type: 'switch', label: 'Music' },
   { key: 'musicVol', type: 'slider', label: 'Music volume', dependsOn: 'music' },
   { key: 'sfx', type: 'switch', label: 'Sound FX' },
@@ -6343,7 +6547,9 @@ const SETTINGS_DEF = [
   // the row out of the pause/settings goldens like the net rows below.
   { key: 'sharp', type: 'switch', label: 'Sharp rendering', noShot: true },
   // Battery saver: 30fps, 1× resolution, lighter effects. Device-dependent like Sharp, so noShot.
+  { key: 'smooth', type: 'switch', label: 'Smooth motion (120 fps)', noShot: true },
   { key: 'batterySaver', type: 'switch', label: 'Battery saver', noShot: true },
+  { key: 'autoSaver', type: 'switch', label: 'Save power when battery is very low', noShot: true },
   { key: 'key:left', bind: 'left', type: 'key', label: 'Move left', section: 'Keyboard', noShot: true },
   { key: 'key:right', bind: 'right', type: 'key', label: 'Move right', noShot: true },
   { key: 'key:jump', bind: 'jump', type: 'key', label: 'Jump', noShot: true },
@@ -6357,6 +6563,18 @@ const SETTINGS_DEF = [
   { key: 'netEmotes', type: 'switch', label: 'Emotes', net: true },
   { key: 'netApprove', type: 'switch', label: 'Approve joins', net: true },
 ];
+// iPhone only: a real switch under a real finger, so it ticks whenever the phone's haptics are on. If this ticks but the game does
+// not, the game is at fault; if this is silent too, iOS has System Haptics off (Settings > Sounds & Haptics).
+function hapticTestRow() {
+  const row = document.createElement('div'); row.className = 'toggle-row haptic-test';
+  const lbl = document.createElement('span'); lbl.textContent = 'Feel a tick';
+  const chip = document.createElement('label'); chip.className = 'mini-chip'; chip.style.position = 'relative'; chip.textContent = 'Test';
+  const inp = document.createElement('input'); inp.type = 'checkbox'; inp.setAttribute('switch', ''); inp.tabIndex = -1; inp.setAttribute('aria-label', 'Test haptic');
+  inp.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;opacity:0;margin:0';
+  inp.onchange = () => queueToast('Tick sent. Felt nothing? Turn on Settings › Sounds & Haptics › System Haptics.', 'sys');
+  chip.appendChild(inp); row.appendChild(lbl); row.appendChild(chip);
+  return row;
+}
 function buildSettings(host) {
   for (const def of SETTINGS_DEF) {
     if ((def.net || def.noShot) && SHOT) continue;   // net/a11y rows never bloat a #shot golden
@@ -6397,10 +6615,12 @@ function buildSettings(host) {
       row.appendChild(r); row.appendChild(pct);
     }
     host.appendChild(row);
+    if (def.key === 'haptics' && iosTapHaptics && !SHOT) host.appendChild(hapticTestRow());
   }
   if (!SHOT) buildNetworkSettings(host);   // bespoke net rows off under #shot (golden identity)
   syncHapticRows();
 }
+const AUDIO_ROWS = new Set(['music', 'musicVol', 'sfx', 'sfxVol']);
 function syncSettingsUI() {
   document.querySelectorAll('[data-setting]').forEach((el) => {
     const key = el.dataset.setting;
@@ -6425,14 +6645,16 @@ function syncSettingsUI() {
   document.querySelectorAll('[data-setting-row]').forEach((row) => {
     const def = SETTINGS_DEF.find((d) => d.key === row.dataset.settingRow);
     if (def && def.dependsOn) row.classList.toggle('dim', !settings[def.dependsOn]);
+    if (def && AUDIO_ROWS.has(def.key)) row.classList.toggle('dim', row.classList.contains('dim') || settings.muted);   // muted: the mix below is not being heard
   });
 }
 function toggleSetting(key) {
+  if (key === 'muted') { toggleMute(); syncSettingsUI(); return; }   // one code path for the icon, the M key and this switch
   settings[key] = !settings[key];
   if (key === 'music' || key === 'sfx') { Audio.syncChannels(); if (settings[key] && !settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); } }
-  if (key === 'haptics' && settings.haptics) buzz('success');   // feel it the moment it is switched on
+  if (key === 'haptics') { if (settings.haptics) buzz('success'); else stopBuzz(); }   // feel it the moment it is switched on; off cuts any pulse in flight
   if (key === 'reduceMotion') { applyMotionPref(); announce(settings.reduceMotion ? 'Reduce motion on' : 'Reduce motion off'); }
-  if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprCap) { perf.cap = CFG.dprCap; resize(); }   // settings only opens over attract/pause: no mid-jump pop
+  if (key === 'sharp' && settings.sharp && perf.cap < CFG.dprMax) { perf.cap = CFG.dprMax; resize(); }   // settings only opens over attract/pause: no mid-jump pop
   if (key === 'batterySaver') {
     applyPower();
     // Say what is really happening: with the manual switch off, a low, unplugged battery keeps saving on.
@@ -6480,7 +6702,7 @@ function syncKeyGuide() {
 // Deliberately NOT a panel switch — the panel shows the underlying mix instead.
 function toggleMute() {
   settings.muted = !settings.muted;
-  Audio.syncChannels(); persistAll();
+  Audio.syncChannels(); persistAll(); syncSettingsUI();
   if (!settings.muted) { power.audioIdleAt = performance.now(); Audio.resume(); }   // an idle-suspended context wakes with the sound
   announce(settings.muted ? 'Audio muted' : 'Audio on');
 }
@@ -6710,11 +6932,13 @@ function renderRoomCard() {
     $('roomApprove').classList.toggle('on', !!settings.netApprove);
     $('roomApprove').setAttribute('aria-checked', String(!!settings.netApprove));
   }
+  $('roomCrew').textContent = window.SpaceManCrew.summary(crewStandings());
   $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(NET.quality ? NET.quality() : null, isHost);
   renderMobilityLog();
   renderRoster(roster, isHost);
   $('btnRoomPlay').textContent = netRoundActive() ? (info.role === 1 ? 'Watch Round' : 'Join Round') : (isHost ? 'Start Together' : 'Ready to Run');
-  $('roomStatus').textContent = netRoundActive() ? 'A round is in progress. Jump in with the crew.' : (isHost ? 'Invite your crew, then start a shared countdown.' : 'You’re connected. Ready up and wait for the host to start.');
+  if (info.hostAway) { $('roomStatus').textContent = 'The host has gone quiet — probably a backgrounded tab or a locked phone. Your seat is held; stay here.'; }
+  else $('roomStatus').textContent = netRoundActive() ? 'A round is in progress. Jump in with the crew.' : (isHost ? 'Invite your crew, then start a shared countdown.' : 'You’re connected. Ready up and wait for the host to start.');
   if (isHost) renderPendingJoins();
 }
 // Copy text and say so only when it worked; without a clipboard (plain-HTTP LAN origins) offer a selectable prompt.
@@ -6780,7 +7004,7 @@ async function openRoomFlow() {
     roomOpening = false;
     if (req !== joinReq) { try { NET.leave(); } catch (x) {} return; }   // they went Back meanwhile
     setTogetherBusy(false);
-    applyCallsignToNet();
+    applyCallsignToNet(); saveResume();
     renderRoomCard();
     announce('Room created. Invite link ready.');
     hideAllOverlays();
@@ -6807,6 +7031,9 @@ function syncOffline() {
 }
 window.addEventListener('offline', () => { syncOffline(); if (netLive() && !NET.mockActive) queueToast('Connection lost · reconnecting when it\'s back', 'net'); });
 window.addEventListener('online', () => { syncOffline(); if (NET && NET.nudge) NET.nudge(); });
+// Coming back from a frozen tab, a bfcache restore, or a long sleep: don't wait out a backoff, reconnect now.
+document.addEventListener('resume', () => { if (NET && NET.nudge) NET.nudge(); });
+window.addEventListener('pageshow', () => { if (NET && NET.nudge) NET.nudge(); });
 // Words for the link levels (net.js quality()): honest and short.
 const LINK_WORD = { good: 'Good', fair: 'Fair', poor: 'Poor', unknown: 'Measuring', connecting: 'Connecting', reconnecting: 'Reconnecting', offline: 'Offline' };
 function linkLabelHtml(q, isHost) {
@@ -6882,8 +7109,10 @@ async function submitJoin() {
   }
 }
 function leaveRoom() {
+  clearResume();
   raceReset();
-  emTray.open = false;
+  emTray.open = false; toggleCrew(false);
+  crewLog.wins = {}; crewLog.history.length = 0; crewLog.settled = 0;
   try { NET.leave(); } catch (e) {}
   for (const g of ghosts) freeGhost(g);
   pendingJoins.clear();                                     // held joins belong to the room we just left
@@ -6923,11 +7152,14 @@ function rejectMessage(e) {
   if (/expired/i.test(m)) return 'This invite has expired.';
   if (/scan|right/i.test(m)) return "This link doesn't look right.";
   if (/full/i.test(m)) return 'This room is full.';
+  if (/did not admit/i.test(m)) return "The host didn't answer. If they refreshed or closed the tab the room has ended, so ask for a fresh link. If joins need approval, ask them to let you in.";
   if (/admit|declined|cancelled/i.test(m)) return m;
   return 'relay unreachable — the room may have ended, or your network blocks it. A host can supply a custom relay in Settings.';
 }
+let joinResumeKey = null;   // set when this join is a return to a seat we already held (page reload)
 async function acceptInvite(role) {
   if (!joinPayload) return;
+  const resuming = !!joinResumeKey, resumeKey = joinResumeKey; joinResumeKey = null;
   if (!hasCallsign()) { showCallsign(() => { resetJoinPrompt(); showOverlay('ovJoin'); acceptInvite(role); }); return; }
   // Consent gate (§6 / F.1): peek the host key WITHOUT connecting. A blocked host
   // needs a deliberate one-time override (default-safe = Not Now); a custom relay
@@ -6945,34 +7177,108 @@ async function acceptInvite(role) {
   $('btnJoinNotNow').textContent = 'Cancel';
   const req = ++joinReq;
   joining = true;
-  setJoinState('Connecting to the relay…');
+  setJoinState(resuming ? 'Getting your seat back…' : 'Connecting to the relay…');
+  let waitHint = 0;
   const off = NET.onEvent ? netProgress((e, d) => {
     if (req !== joinReq) return;
-    if (e === 'join-progress' && d.stage === 'hello') setJoinState('Connected. Waiting for the host to let you in…');
+    if (e === 'join-progress' && d.stage === 'hello') {
+      setJoinState(resuming ? 'Connected. Asking the host for your seat…' : 'Connected. Waiting for the host to let you in…');
+      clearTimeout(waitHint);   // a quiet host is the common case (a backgrounded tab): say so, and say what to do
+      waitHint = setTimeout(() => { if (req === joinReq && joining) setJoinState('Still waiting for the host… they may be away. You can keep waiting, or cancel and try again.'); }, 8000);
+    }
     if (e === 'join-progress' && d.stage === 'relay') setJoinState('Connecting to the relay…');
   }) : null;
   try {
-    await NET.acceptJoin(joinPayload, { ...netIdentity(), role });
+    await NET.acceptJoin(joinPayload, { ...netIdentity(), role, resumeKey: resumeKey || undefined });
     if (req !== joinReq) return;
-    announce('Joined the room.');
+    saveResume(); stripInviteHash();
+    announce(resuming ? 'Back in the room.' : 'Joined the room.');
+    if (resuming) queueToast('Back in the room', 'net');
     renderRoomCard();
     startRun({ watch: role === 1, sync: true });
   } catch (e) {
     if (req !== joinReq) return;                           // cancelled or superseded: that screen is gone
     $('joinChoices').style.display = '';
-    setJoinState(isOffline() ? OFFLINE_TOGETHER : rejectMessage(e));
+    if (resuming) { clearResume(); $('joinTitle').textContent = 'Join This Run Together?'; }
+    setJoinState(isOffline() ? OFFLINE_TOGETHER : (resuming ? 'Your room is no longer there — the host may have closed it. You can try the invite again.' : rejectMessage(e)));
   } finally {
+    clearTimeout(waitHint);
     if (off) off();
     if (req === joinReq) { joining = false; $('btnJoinNotNow').textContent = 'Not Now'; }
   }
 }
+/* ---- room resume: a reload, a crash or an accidental swipe must not cost anyone their room or seat ----
+   The live session's token lives in this tab's sessionStorage only (it holds the room's private key): it survives a
+   reload, dies with the tab, and is cleared the moment the room is left on purpose. */
+const RESUME_KEY = 'sm2.resume';
+function saveResume() {
+  if (SHOT || !NET || !netLive() || NET.mockActive) return;
+  try { const t = NET.resumeToken(); if (t) sessionStorage.setItem(RESUME_KEY, JSON.stringify(t)); } catch (e) {}
+}
+function clearResume() { try { sessionStorage.removeItem(RESUME_KEY); } catch (e) {} }
+function loadResume() { try { const t = JSON.parse(sessionStorage.getItem(RESUME_KEY) || 'null'); return t && t.v === 1 ? t : null; } catch (e) { return null; } }
+// A stale #j= left in the address bar would re-run a dead join on every reload.
+function stripInviteHash() { try { if (/[#&]j=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); } catch (e) {} }
+// Returns true when a saved room is being brought back (the caller then skips the plain join prompt).
+async function resumeRoomOnLoad() {
+  if (SHOT || !NET || !netEnabled()) return false;
+  const tok = loadResume(); if (!tok) return false;
+  const peek = HASH.j && NET.peekInvite ? NET.peekInvite(HASH.j) : null;
+  if (tok.host) {
+    if (peek && peek.hostHex !== tok.pub) { clearResume(); return false; }   // an invite to somebody else's room wins
+    if (tok.expiryMin && tok.expiryMin < Math.floor(Date.now() / 60000)) { clearResume(); return false; }
+    return resumeHosting(tok);
+  }
+  if (!tok.invite || (HASH.j && HASH.j !== tok.invite) || (NET.peekInvite && NET.peekInvite(tok.invite).err)) { clearResume(); return false; }
+  joinPayload = tok.invite; joinResumeKey = tok.priv;
+  $('joinTitle').textContent = 'Rejoining Your Room…';
+  hideAllOverlays(); showOverlay('ovJoin');
+  acceptInvite(tok.role | 0);
+  return true;
+}
+async function resumeHosting(tok) {
+  const req = ++joinReq;
+  joining = true;
+  $('joinTitle').textContent = 'Restoring Your Room…';
+  $('joinChoices').style.display = 'none'; $('btnJoinNotNow').style.display = ''; $('btnJoinNotNow').textContent = 'Cancel';
+  setJoinState('Reconnecting to the relay…');
+  hideAllOverlays(); showOverlay('ovJoin');
+  try {
+    await NET.openRoom({ ...netIdentity(), resume: tok, region: tok.region || undefined, relayHost: tok.relayHost || undefined, approve: !!tok.approve, baseUrl: appBaseUrl() });
+    if (req !== joinReq) { try { NET.leave(); } catch (x) {} return true; }
+    stripInviteHash(); applyCallsignToNet(); saveResume();
+    renderRoomCard(); hideAllOverlays(); showOverlay('ovRoom');
+    queueToast('Room restored · same invite link', 'net'); announce('Your room is back. Friends can reconnect with the same link.');
+  } catch (e) {
+    if (req !== joinReq) return true;
+    clearResume(); stripInviteHash();
+    setJoinState("Couldn't bring your room back — the relay may be unreachable. Start a new room from Run Together.");
+    $('btnJoinNotNow').textContent = 'Not Now';
+  } finally {
+    if (req === joinReq) { joining = false; $('joinTitle').textContent = 'Join This Run Together?'; $('btnJoinNotNow').textContent = 'Not Now'; }
+  }
+  return true;
+}
+// Closing the room on a crowd by accident is the one mistake a host cannot take back.
+function otherMembers() { try { const i = NET.info(); return Math.max(0, i.players + i.spectators - 1); } catch (e) { return 0; } }
+function requestLeaveRoom() {
+  const n = netLive() && NET.info().isHost ? otherMembers() : 0;
+  if (n > 0) {
+    let ok = true; try { ok = window.confirm('Leave and close the room? ' + n + (n === 1 ? ' player is' : ' players are') + ' in it, and it ends for them too.'); } catch (e) {}
+    if (!ok) return;
+  }
+  leaveRoom();
+}
+window.addEventListener('beforeunload', (e) => {
+  if (!SHOT && NET && netLive() && NET.info().isHost && otherMembers() > 0) { e.preventDefault(); e.returnValue = ''; }
+});
 let joining = false;
 // A scoped listener for the join screen (NET.onEvent has no unsubscribe of its own).
 const netProgressSubs = new Set();
 function netProgress(fn) { netProgressSubs.add(fn); return () => netProgressSubs.delete(fn); }
 if (NET && NET.onEvent) NET.onEvent((e, d) => { for (const fn of netProgressSubs) { try { fn(e, d); } catch (x) {} } });
 function cancelJoinFlow() {
-  joinReq++;
+  joinReq++; stripInviteHash();
   if (joining) { joining = false; try { NET.leave(); } catch (e) {} $('btnJoinNotNow').textContent = 'Not Now'; announce('Join cancelled.'); }
   showAttract();
 }
@@ -7046,7 +7352,7 @@ function buildNetworkSettings(host) {
   // Leave room — only while in a room (mirrors the room card; pause reachability
   // per Addendum G "LEAVE lives in room card AND the pause sheet").
   const lv = document.createElement('button'); lv.className = 'btn ghost coral net-leave-btn'; lv.textContent = 'Leave Room'; lv.style.display = 'none';
-  lv.onclick = () => leaveRoom();
+  lv.onclick = () => requestLeaveRoom();
   host.appendChild(lv);
 }
 function renderBlockedList(el) {
@@ -7098,7 +7404,7 @@ for (let i = 0; i < GHOST_CAP; i++) ghosts.push({
 });
 const ghostByP = new Map();
 const EMOTE_GLYPH = ['👋', '😂', '💀', '❤', 'GG', '😱'];   // 0 wave 1 laugh 2 skull 3 heart 4 GG 5 panic (§4.6)
-const spec = { watchP: 0, tour: false, tourAt: 0 };        // spectator follow/TOUR state
+const spec = { watchP: 0, tour: false, tourAt: 0, cutAt: 0 };        // spectator follow/TOUR state
 let selfEmote = { id: -1, t: 0, seq: 0 };
 let slipT = 0, slipRun = 0;                                // slipstream dwell + per-run bonus cap
 
@@ -7289,6 +7595,8 @@ function netTick(dt) {
   // A co-runner going down (or dropping out) while our card is up can end the
   // round — refresh the card's result + Again/Spectate actions when it changes.
   if (G.mode === 'dead' && G.deathCardShown && roundResultKeyNow() !== roundResultKey) renderRoomBoard();
+  crewSettle(crewGlance());
+  if (crew.open) { if (netInRun() && G.mode !== 'pause') crewRefresh(); else toggleCrew(false); }   // the death and pause cards carry their own standings
   for (const g of ghosts) if (g.emoteT > 0) g.emoteT = Math.max(0, g.emoteT - dt);
   if (selfEmote.t > 0) selfEmote.t = Math.max(0, selfEmote.t - dt);
   if (emTray.open && (performance.now() - emTray.at > EMOTE_TRAY_MS || !emoteAvailable())) emTray.open = false;   // the tray never lingers
@@ -7308,30 +7616,56 @@ function netTick(dt) {
   } else { slipT = 0; }
   // TOUR auto-director (§10.4): 6s minimum shot, cut to leader or nearest-flare.
   if (netSpectating() && spec.tour && now - spec.tourAt >= 6000) directorPick(now);
-  if (netSpectating() && !validWatch()) { const g = firstGhost(); if (g) { spec.watchP = g.p; } }
+  if (netSpectating() && !validWatch()) { const g = spectateTarget(); if (g) spec.watchP = g.p; }
 }
 function watchable(g) { return g && g.active && g.inRun && !g.dead && netClock() - g.lastSeen < 1800 && (NET.mockActive || g.runId === NET.info().runId); }
-function firstGhost() { for (const g of ghosts) if (watchable(g)) return g; return null; }
+// Runners worth watching, in race order: furthest first (ties by seat), so NEXT walks down the field and PREV back up it.
+function spectateOrder() { return ghosts.filter(watchable).sort((a, b) => (b.dist - a.dist) || (a.p - b.p)); }
+function leaderGhost() { return spectateOrder()[0] || null; }
+function firstGhost() { return leaderGhost(); }
+// Who the camera follows. The runner you chose while they run; when they go down, their last moments get a beat before the
+// cut to the leader, so a death is seen instead of the view jumping away the instant it happens.
+const SPEC_LINGER_MS = 2200;
+function spectateTarget() {
+  const w = watchedGhost(); if (w) { spec.cutAt = 0; return w; }
+  const old = ghostByP.get(spec.watchP);
+  if (old && old.active && old.dead && old.runId === NET.info().runId) {
+    if (!spec.cutAt) spec.cutAt = netClock() + SPEC_LINGER_MS;
+    if (netClock() < spec.cutAt) return old;
+  }
+  spec.cutAt = 0;
+  return leaderGhost();
+}
+function watchByP(p) {
+  const g = ghostByP.get(p); if (!watchable(g)) return false;
+  spec.watchP = p; spec.tour = false; spec.cutAt = 0; announceWatch(g); return true;
+}
+function announceWatch(g) {
+  const live = spectateOrder(), i = live.indexOf(g);
+  announce('Watching ' + (g.callsign || 'P' + g.p) + (i >= 0 ? ', ' + ordinal(i + 1) + ' of ' + live.length : '') + '.');
+}
 function watchedGhost() { const g = ghostByP.get(spec.watchP); return watchable(g) ? g : null; }
 function validWatch() { return !!watchedGhost(); }
 function directorPick(now) {
   let best = null, bestKey = -1;
   for (const g of ghosts) if (watchable(g)) {
-    const key = g.dist;                                     // leader = furthest; ties settle by P#
+    // The shot worth cutting to: the leader, unless someone is being run down by the flare, which is the better story.
+    const gap = Math.max(0, g.rx - G.flare.x), key = g.dist + (gap < 220 ? 1500 - gap * 4 : 0);
     if (key > bestKey) { bestKey = key; best = g; }
   }
   if (best && best.p !== spec.watchP) { spec.watchP = best.p; spec.tourAt = now; }
   else spec.tourAt = now;
 }
 function cycleWatch(dir) {
-  const live = ghosts.filter(watchable).sort((a, b) => a.p - b.p);
-  if (!live.length) return;
-  let i = live.findIndex((g) => g.p === spec.watchP);
-  i = (i < 0 ? 0 : i + dir + live.length) % live.length;
-  spec.watchP = live[i].p; spec.tour = false;
+  const live = spectateOrder();
+  if (!live.length) { announce('No one is running right now.'); return; }
+  const at = live.findIndex((g) => g.p === spec.watchP);
+  if (live.length === 1 && at === 0) { queueToast('Only one runner left', 'net'); return; }
+  const i = at < 0 ? (dir > 0 ? 0 : live.length - 1) : (at + dir + live.length) % live.length;   // nobody followed yet: NEXT = leader, PREV = last
+  watchByP(live[i].p);
 }
 function netFollowCamera() {
-  const g = watchedGhost() || firstGhost(); if (!g) return;
+  const g = spectateTarget(); if (!g) return;
   const tx = (g.t1 ? g.x1 : g.rx) - view.w * 0.42, ty = (g.t1 ? g.y1 : g.ry) - view.h * (view.h > view.w ? 0.64 : 0.58);
   G.camX += (tx - G.camX) * 0.10;
   G.camY += (ty - G.camY) * 0.08;
@@ -7347,7 +7681,7 @@ function sendLocalPresence() {
 function updateSpectator() {
   // The local actor is only a world-generation cursor. Never simulate its
   // movement, collisions, pickups, score, or death while watching someone else.
-  const g = watchedGhost() || firstGhost();
+  const g = spectateTarget();
   clearInput();
   if (!g) { G.camXprev = G.camX; G.camYprev = G.camY; return; }
   spec.watchP = g.p;
@@ -7495,9 +7829,11 @@ function drawEmoteBubble(wx, wy, id, t) {
 
 /* ---- screen-space net HUD: race strip (always on), spectator chrome, emote
        wheel, unstable banner. Called every frame netInRun(); view-px coords. */
-let _specHits = null, _unstableHit = null;
+let _specHits = null, _unstableHit = null, _crewHit = null;
+const _raceHits = [];   // runner dots on the strip, CSS px: tap one to watch them
 function drawNetHUD() {
-  if (!netInRun()) return;
+  if (!netInRun()) { _crewHit = null; return; }
+  drawCrewChip();
   if (netSpectating()) drawSpectatorHUD(); else { _specHits = null; }
   drawRoundStatus();
   // The banner goes first: it publishes the LEAVE hit area the emote tray (and the teammate cue that steps around the tray)
@@ -7511,13 +7847,14 @@ function drawNetHUD() {
 // ghost has an honest reason on screen). Good/fair stay silent — the room card has the detail.
 function drawLinkPill() {
   if (NET.mockActive || !NET.quality) return;
-  const q = NET.quality();
-  if (q.level !== 'reconnecting' && q.level !== 'poor') return;
-  const us = uiScale(), text = q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
+  const q = NET.quality(), away = !!NET.info().hostAway;
+  if (!away && q.level !== 'reconnecting' && q.level !== 'poor') return;
+  const us = uiScale(), text = away ? 'HOST AWAY · HOLDING YOUR SEAT' : q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
   ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
   const w = ctx.measureText(text).width + 22 * us, h = 18 * us;
   let x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
   if (emoteAvailable()) { const b = emoteLayout().button; x = b.x - 8 - w; y = b.y + (b.h - h) / 2; }   // beside the emote button, never on it
+  if (_crewHit) { const k = view.w ? vpW() / view.w : 1; x = Math.min(x, _crewHit.x0 / k - 8 - w); y = _crewHit.y0 / k + (_crewHit.y1 - _crewHit.y0) / k / 2 - h / 2; }   // and never on the crew chip
   ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
   ctx.fillStyle = '#FF8A6B'; ctx.beginPath(); ctx.arc(x + 9 * us, y + h / 2, 3 * us, 0, TAU); ctx.fill();
   ctx.fillStyle = '#F4F7FF'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(text, x + 16 * us, y + h / 2 + 0.5);
@@ -7578,9 +7915,12 @@ function drawRaceStrip() {
   ctx.strokeStyle = '#FF8A6B'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(fx, y + 1); ctx.lineTo(fx, y + h - 1); ctx.stroke();
   // runner dots: you are larger and ringed so you never have to hunt for yourself
   const showLabels = w > 260;
+  _raceHits.length = 0;
+  const hk = view.w ? vpW() / view.w : 1;
   for (const r of runners.slice().sort((a, b) => (a.you ? 1 : 0) - (b.you ? 1 : 0))) {
     const dx = sx(r.x), dy = y + h / 2, pal = PALETTES[r.suit] || PALETTES.classic, rad = r.you ? 7 : 6;
     if (netSpectating() && r.p === spec.watchP) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(dx, dy, rad + 2.5, 0, TAU); ctx.stroke(); }
+    if (!r.you) _raceHits.push({ p: r.p, x: dx * hk, y: dy * hk, r: Math.max(rad + 6, 22 / hk) * hk });   // a finger-sized target per runner
     ctx.fillStyle = pal.fill || pal.suit || '#F4F7FF'; ctx.beginPath(); ctx.arc(dx, dy, rad, 0, TAU); ctx.fill();
     if (r.you) { ctx.strokeStyle = '#F4F7FF'; ctx.lineWidth = 1.5; ctx.stroke(); }
     if (showLabels) { ctx.fillStyle = '#0A0E20'; ctx.font = '800 8px ' + FONT_NUM; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(r.p), dx, dy + 0.5); }
@@ -7602,6 +7942,101 @@ function drawRoundStatus() {
   ctx.fillText(waiting ? 'Waiting for the host to start together' : 'GET READY · SAME COURSE, SAME START', x, y + 25 * us);
   ctx.fillText(NET.info().players + ' runners · ' + NET.info().spectators + ' watching', x, y + 43 * us);
 }
+/* ---- crew standings: who is running / out / waiting / watching, in a run, paused, or after ---- */
+const crew = { open: false, peek: false, timer: 0, key: '' };
+// Everything the pure projection needs, read from what the game already tracks. Local figures come from local truth.
+function crewStandings() {
+  const info = NET.info(), myP = info.myP;
+  const playing = G.player && G.netParticipating && G.mode !== 'attract';
+  const self = { p: myP, inRun: !!(playing && !G.player.dead), dead: !!(playing && G.player.dead),
+    dist: playing ? G.dist : 0, score: playing ? (G.player.dead ? (G.finalScore | 0) : Math.floor(G.score)) : 0, chain: playing ? (G.chain | 0) : 0 };
+  return window.SpaceManCrew.build({
+    roster: NET.roster(), presence: NET.presence(), board: NET.board(), self, runId: info.runId,
+    results: info.runId === roundResultsRunId ? [...roundResults.values()] : [],
+    roundActive: netRoundActive(), wins: crewLog.wins,
+  });
+}
+// Session tally of rounds won, and the last few results. Local bookkeeping, like roundResults: every client sees the same
+// presence, so every client settles the same round the same way. Each runId is settled once; leaving the room clears it.
+const crewLog = { wins: {}, history: [], settled: 0 };
+function crewSettle(st) {
+  const runId = NET.info().runId | 0;
+  if (!runId || runId === crewLog.settled || st.phase !== 'over') return;
+  crewLog.settled = runId;
+  const w = window.SpaceManCrew.winnerOf(st);
+  if (!w) return;
+  crewLog.wins[w.p] = (crewLog.wins[w.p] | 0) + 1;
+  crewLog.history.unshift(Object.assign({ runId }, w)); crewLog.history.length = Math.min(crewLog.history.length, 5);
+  crew.key = '';
+}
+// Build the standings into `host`. textContent only: callsigns are remote input.
+function renderCrewInto(host, st) {
+  host.textContent = '';
+  const add = (parent, tag, cls, text) => { const el = document.createElement(tag); if (cls) el.className = cls; if (text != null) el.textContent = text; parent.appendChild(el); return el; };
+  add(host, 'div', 'crew-sum', window.SpaceManCrew.summary(st));
+  if (st.winner) add(host, 'div', 'crew-win', '★ ' + (st.winner.you ? 'YOU WIN' : st.winner.name + ' WINS') + ' · ' + Math.floor(st.winner.dist).toLocaleString() + ' m');
+  for (const g of st.groups) {
+    if (!g.rows.length) continue;
+    const head = add(host, 'div', 'crew-head', g.label + ' '); add(head, 'span', 'n', String(g.rows.length));
+    for (const r of g.rows) {
+      const row = add(host, 'div', 'crew-row ' + r.status + (r.you ? ' you' : '') + (r.unverified ? ' unverified' : ''));
+      add(row, 'span', 'pl', r.place ? ordinal(r.place) : 'P' + r.p);
+      const nm = add(row, 'span', 'nm', r.name); if (r.you || r.host) add(nm, 'span', 'tag', ' ' + (r.you && r.host ? '(you, host)' : r.you ? '(you)' : '(host)'));
+      if (r.wins) add(nm, 'span', 'wins', ' ★' + r.wins);
+      if (r.status === 'running' || r.status === 'out') {
+        const f = add(row, 'span', 'fig', Math.floor(r.dist).toLocaleString() + ' m');
+        add(f, 'small', '', Math.floor(r.score).toLocaleString() + ' pts' + (r.chain > 1 ? ' · ×' + (1 << Math.min(3, r.chain)) : ''));
+      } else if (r.bestScore) {
+        const f = add(row, 'span', 'fig', r.bestScore.toLocaleString()); add(f, 'small', '', 'BEST');
+      } else add(row, 'span', 'fig', g.key === 'waiting' ? (st.phase === 'lobby' ? 'READY' : 'NEXT ROUND') : '◎');
+    }
+  }
+}
+// Death / pause cards: standings under the room column. Hidden outside a room.
+function renderCrewEmbed(host) {
+  if (!host) return;
+  if (!netLive() || NET.mockActive) { host.style.display = 'none'; return; }
+  host.style.display = ''; renderCrewInto(host, crewStandings());
+}
+// The chip redraws every frame; the standings behind it only need to be fresh a few times a second.
+let _crewGlance = null, _crewGlanceAt = -1e9;
+function crewGlance() {
+  const t = performance.now();
+  if (!_crewGlance || t - _crewGlanceAt > 250) { _crewGlance = crewStandings(); _crewGlanceAt = t; }
+  return _crewGlance;
+}
+function crewRefresh() {
+  const panel = $('crewPanel');
+  if (!netLive()) { toggleCrew(false); return; }
+  const st = crewStandings(), key = JSON.stringify([st.winner && st.winner.p, st.rows.map((r) => [r.p, r.status, r.place, r.dist | 0, r.score | 0, r.chain, r.name, r.wins])]);
+  if (key === crew.key) return;   // nothing moved: leave the DOM alone
+  crew.key = key;
+  panel.textContent = '';
+  const t = document.createElement('div'); t.className = 'crew-title'; t.textContent = 'CREW'; panel.appendChild(t);
+  const body = document.createElement('div'); panel.appendChild(body); renderCrewInto(body, st);
+  const h = document.createElement('div'); h.className = 'crew-hint'; h.textContent = 'HOLD TAB TO PEEK · C TO PIN'; panel.appendChild(h);
+}
+function toggleCrew(force) {
+  const want = force === undefined ? !crew.open : !!force;
+  if (want && !netLive()) return;
+  crew.open = want; crew.key = '';
+  $('crewPanel').classList.toggle('show', want);
+  if (want) crewRefresh();
+  else crew.peek = false;
+}
+function drawCrewChip() {
+  const us = uiScale(), L = emoteLayout(), k = L.k, st = crewGlance();
+  const text = 'CREW ' + st.counts.running + '/' + st.players + (st.counts.watching ? ' · ◎' + st.counts.watching : '');
+  ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
+  const h = L.button.h, w = Math.max(64 / k, ctx.measureText(text).width + 20 * us);
+  const withEmote = settings.netEmotes && !netSpectating();
+  const x = withEmote ? L.button.x - 8 / k - w : L.button.x + L.button.w - w, y = L.button.y;
+  ctx.fillStyle = crew.open ? '#38E1FF' : 'rgba(10,14,32,0.78)'; roundRect(x, y, w, h, 8); ctx.fill();
+  ctx.strokeStyle = 'rgba(56,225,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = crew.open ? '#06122A' : '#CFE3FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + w / 2, y + h / 2 + 0.5, w - 6); ctx.textBaseline = 'alphabetic';
+  _crewHit = { x0: x * k, x1: (x + w) * k, y0: y * k, y1: (y + h) * k };
+}
 function drawCrewDirections() {
   const us = uiScale(), y = view.h * 0.38;
   for (const dir of [-1, 1]) {
@@ -7619,13 +8054,22 @@ function drawCrewDirections() {
   }
 }
 function drawSpectatorHUD() {
-  const us = uiScale(), g = watchedGhost(), left = 12 + safeInset('left');
+  const us = uiScale(), t = spectateTarget(), down = !!(t && t.dead), g = t && !down ? t : null, left = 12 + safeInset('left');
   const y = 60 + safeInset('top');
-  ctx.textAlign = 'center'; ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + 13 * us + 'px ' + FONT_NUM;
-  ctx.fillText(g ? 'WATCHING ' + (g.callsign || 'P' + g.p) : 'WAITING FOR A RUNNER', view.w / 2, y, view.w - 2 * left);
+  const st = crewGlance(), name = t ? (t.callsign || 'P' + t.p) : '';
+  let head, sub;
+  if (g) {
+    const row = st.rows.find((r) => r.p === g.p);
+    head = 'WATCHING ' + name;
+    sub = Math.round(g.dist) + 'm · ' + Math.floor(g.score) + ' points' + (row && row.place ? ' · ' + ordinal(row.place) + ' of ' + (st.counts.running + st.counts.out) : '') + (g.chain > 1 ? ' · ×' + (1 << Math.min(3, g.chain)) : '');
+  } else if (down) { head = name + ' WENT DOWN'; sub = Math.round(t.dist) + 'm · ' + Math.floor(t.score) + ' points · cutting to the next runner'; }
+  else if (st.winner) { head = 'ROUND OVER · ' + st.winner.name + ' WINS'; sub = Math.floor(st.winner.dist).toLocaleString() + 'm · the host starts the next round, or join the run'; }
+  else { head = 'WAITING FOR A RUNNER'; sub = 'Stay here for the next round, or join the run'; }
+  ctx.textAlign = 'center'; ctx.fillStyle = down ? '#FF8A6B' : '#9FF1FF'; ctx.font = '700 ' + 13 * us + 'px ' + FONT_NUM;
+  ctx.fillText(head, view.w / 2, y, view.w - 2 * left);
   ctx.font = '600 ' + 11 * us + 'px ' + FONT_NUM;
-  ctx.fillText(g ? Math.round(g.dist) + 'm · ' + Math.floor(g.score) + ' points' : 'Stay here for the next round, or join the run', view.w / 2, y + 18 * us, view.w - 2 * left);
-  const kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+  ctx.fillText(sub, view.w / 2, y + 18 * us, view.w - 2 * left);
+  const kx = vpW() / view.w, ky = vpH() / view.h;
   const labels = [['prev', '‹ PREV'], ['next', 'NEXT ›'], ['tour', spec.tour ? 'TOUR ON' : 'TOUR'], ['play', G.rolePending ? 'JOINING…' : 'JOIN RUN']];
   const w = (view.w - 2 * left - 18) / 4, h = Math.max(32 * us, 44 / ky), by = view.h - safeInset('bottom') - h - 12;
   _specHits = {};
@@ -7648,7 +8092,7 @@ function unstableBannerGeom() {
 }
 function unstableHitRect() {   // CSS px, or null when the room is fine
   if (!netLive() || !NET.info().unstable) return null;
-  const g = unstableBannerGeom(), kx = window.innerWidth / view.w, ky = window.innerHeight / view.h;
+  const g = unstableBannerGeom(), kx = vpW() / view.w, ky = vpH() / view.h;
   return { x0: g.lx * kx - 8, x1: (g.bx + g.bw) * kx + 8, y0: g.y * ky - 6, y1: (g.y + g.bh) * ky + 6 };
 }
 function drawUnstableBanner() {
@@ -7668,9 +8112,13 @@ const EMOTE_TRAY_MS = 4000, EMOTE_BTN = 40, EMOTE_ITEM = 44, EMOTE_GAP = 6;   //
 function inRect(p, r) { return r && p.x >= r.x0 && p.x <= r.x1 && p.y >= r.y0 && p.y <= r.y1; }
 function netPointerDown(e) {
   const p = pointerPos(e);
+  if (_crewHit && inRect(p, _crewHit)) { crew.peek = false; toggleCrew(); return true; }
   const leaveHit = unstableHitRect();
   if (leaveHit && inRect(p, leaveHit)) { leaveRoom(); return true; }
   if (netSpectating()) {
+    let dot = null, dd = 1e9;
+    for (const h of _raceHits) { const d = (p.x - h.x) ** 2 + (p.y - h.y) ** 2; if (d <= h.r * h.r && d < dd) { dd = d; dot = h; } }
+    if (dot && watchByP(dot.p)) return true;      // the strip is the map of the field: tap a runner to ride with them
     if (_specHits) {
       if (inRect(p, _specHits.play)) { startRun(); return true; }
       if (inRect(p, _specHits.prev)) { cycleWatch(-1); return true; }
@@ -7704,7 +8152,7 @@ function emoteAvailable() { return netInRun() && settings.netEmotes && !netSpect
 // Everything in view px, sized from CSS px so the targets stay finger-sized at any canvas scale. Top-right, under the race
 // strip: out of the thumbs' way (stick, jump and fire live at the bottom) so it can't be hit by accident.
 function emoteLayout() {
-  const k = window.innerWidth / view.w;
+  const k = vpW() / view.w;
   const btn = EMOTE_BTN / k, gap = EMOTE_GAP / k, pad = 6 / k;
   const right = view.w - 12 - safeInset('right') / k, top = 12 + safeInset('top') + 26 + 8;   // top matches the race strip; side insets are CSS px
   const room = view.w - 24 - (safeInset('right') + safeInset('left')) / k;
@@ -7798,7 +8246,7 @@ function renderRoomBoard() {
   netLabelAgainButton();
   const cap = $('deadRoomCaption'), tbl = $('deadRoomScores'), sp = $('btnSpectateRound'), em = $('deadEmotes');
   renderRoundResult();
-  if (!netLive()) { cap.style.display = tbl.style.display = 'none'; sp.style.display = em.style.display = 'none'; return; }
+  if (!netLive()) { cap.style.display = tbl.style.display = 'none'; sp.style.display = em.style.display = 'none'; renderCrewEmbed($('deadCrew')); return; }
   const info = NET.info(), board = NET.board(), myP = info.myP;
   // top 5 by bestScore + self always shown
   const sorted = board.slice().sort((a, b) => b.bestScore - a.bestScore);
@@ -7811,6 +8259,7 @@ function renderRoomBoard() {
   }
   tbl.innerHTML = html || '<tr><td colspan="3" class="empty">NO ROOM SCORES YET</td></tr>';
   cap.style.display = ''; tbl.style.display = '';
+  renderCrewEmbed($('deadCrew'));
   // Spectate this round — only for a player, and only when a co-runner is still
   // alive to watch. Everyone dead → round over → hide it (no stalled watch view, D4c).
   sp.style.display = (info.role !== 1 && anyLiveRunner()) ? '' : 'none';
@@ -7874,7 +8323,7 @@ $('btnRoomCopy').onclick = () => copyRoomLink();
 $('btnRoomShare').onclick = () => shareRoomLink();
 $('btnRoomPlay').onclick = () => startRun({ watch: netSpectating() });
 $('btnRoomBack').onclick = () => showAttract();               // Back keeps the session alive
-$('btnRoomLeave').onclick = () => leaveRoom();
+$('btnRoomLeave').onclick = () => requestLeaveRoom();
 $('btnRoomNewLink').onclick = () => { try { NET.rotateLink(); } catch (e) {} renderRoomCard(); queueToast('New invite link ready', 'net'); announce('New invite link ready.'); };   // rotate bumps the epoch → prior invites go stale (I16); card re-reads the fresh link/code/QR
 $('btnRoomNewWorld').onclick = () => { try { NET.newWorld(); } catch (e) {} renderRoomCard(); };   // fresh seed + runId + a synchronized pre-roll; the 'round-begin' handler toasts the countdown, and ROUND anchors every screen's shared flare clock
 $('roomApprove').onclick = () => { settings.netApprove = !settings.netApprove; try { NET.setApprove(settings.netApprove); } catch (e) {} persistAll(); renderRoomCard(); syncSettingsUI(); announce(settings.netApprove ? 'Approve joins on.' : 'Approve joins off.'); };
@@ -7887,10 +8336,13 @@ $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
+  if (e === 'rotated' || e === 'round' || e === 'join' || e === 'rejoin' || e === 'ok') saveResume();   // keep the token current
   if (e === 'reconnecting') { announce('Connection lost. Reconnecting.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'reconnected') { announce('Reconnected.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'quality') { if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
-  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast(d && d.reason === 1 ? 'The host closed the room.' : 'The host ended your room connection.', 'net'); }
+  else if (e === 'hostaway') { announce('The host has gone quiet. Holding your seat.'); queueToast('Host is away · holding your seat', 'net'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
+  else if (e === 'hostback') { announce('The host is back.'); queueToast('Host is back', 'net'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
+  else if (e === 'bye' && netLive()) { leaveRoom(); queueToast(d && d.away ? 'The host stayed away too long, so the room ended.' : d && d.reason === 1 ? 'The host closed the room.' : 'The host ended your room connection.', 'net'); }
   else if (e === 'approve-wait') {   // a held join is waiting for the host (§4.6)
     if (d && d.pubHex) { pendingJoins.set(d.pubHex, { pubHex: d.pubHex, role: d.role }); queueToast('Someone wants to join', 'net'); announce('Someone wants to join.'); }
     if (netLive()) renderRoomCard();
@@ -7958,8 +8410,8 @@ $('ovDead').addEventListener('pointerdown', (e) => {
 // attract card's buttons sit in the panel, so this can never steal one.
 $('ovAttract').addEventListener('pointerdown', (e) => {
   if (!DELIGHT || G.mode !== 'attract' || !G.player || e.target.closest('.panel')) return;
-  const dx = e.clientX - (G.player.x + G.player.w / 2 - G.camX) * (window.innerWidth / view.w);
-  const dy = e.clientY - (G.player.y + G.player.h / 2 - G.camY) * (window.innerHeight / view.h);
+  const dx = e.clientX - (G.player.x + G.player.w / 2 - G.camX) * (vpW() / view.w);
+  const dy = e.clientY - (G.player.y + G.player.h / 2 - G.camY) * (vpH() / view.h);
   if (dx * dx + dy * dy > 22 * 22) return;
   Audio.ensure(); Audio.resume();
   G.wave = 2; G.waveIn = 14 + G.decorRng() * 8;
@@ -7967,7 +8419,7 @@ $('ovAttract').addEventListener('pointerdown', (e) => {
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (G.mode === 'play' || G.mode === 'resume') { G.mode = 'play'; togglePause(); }
+    if ((G.mode === 'play' || G.mode === 'resume') && !(netLive() && netSpectating())) { G.mode = 'play'; togglePause(); }
     Audio.suspend();   // kills the background drone on Android after an app switch
     if (!SHOT) { power.looping = !!rafId; stopLoop(); }
   } else {
@@ -8258,7 +8710,7 @@ function setupAnimatedFavicon() {
       tinted = tc; tintFor = id;
     };
     const paint = () => {
-      if (broken || document.hidden || powerSaving()) return;   // no PNG encode every 0.9 s on a saving device
+      if (broken || document.hidden || powerSaving() || idleDeep) return;   // no PNG encode every 0.9 s on a saving device, or while nobody is there
       if (lessMotion()) { if (String(link.href).indexOf('data:') === 0) link.href = 'favicon.png'; return; }
       if (G.mode === 'play' || G.mode === 'resume') return;   // toDataURL hitches the run; identity motion belongs to attract/pause/dead
       try {
@@ -8661,7 +9113,7 @@ function boot() {
   setupAnimatedFavicon();
   if (SHOT) { runShot(); return; }
   showAttract();
-  maybeShowJoinPrompt();   // a #j= invite in the URL raises the join prompt over attract
+  resumeRoomOnLoad().then((resumed) => { if (!resumed) maybeShowJoinPrompt(); }, () => maybeShowJoinPrompt());   // a saved room comes back first; else a #j= invite raises the join prompt
   lastT = 0; rafId = requestAnimationFrame(frame);
 }
 try {

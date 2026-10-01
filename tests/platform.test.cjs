@@ -139,24 +139,26 @@ test('service worker: replaces a legacy cache-first worker at once and drops old
 
 function slowFrames(c, n, ms) { c.run(`for (let i = 0; i < ${n}; i++) { __t += ${ms}; frame(__t); }`); }
 
-test('adaptive resolution: caps DPR at 2, steps down on a slow device, SHARP RENDERING locks it', (t) => {
+test('adaptive resolution: starts a 3× phone at 3, steps down on a slow device, SHARP RENDERING locks it', (t) => {
   const c = client(relay(), { dpr: 3, width: 390, height: 844 });
   t.after(() => c.close());
   c.run('var __t = 1000; frame(__t);');
-  assert.equal(c.run('view.dpr'), 2);
+  assert.equal(c.run('view.dpr'), 3);
   const w = c.run('view.w');
   slowFrames(c, 120, 16);   // a healthy 60fps device keeps full resolution
-  assert.equal(c.run('view.dpr'), 2);
+  assert.equal(c.run('view.dpr'), 3);
   slowFrames(c, 150, 30);   // ~1s settle + ~2s over budget
+  assert.equal(c.run('view.dpr'), 2);
+  slowFrames(c, 150, 30);
   assert.equal(c.run('view.dpr'), 1.5);
   assert.ok(Math.abs(c.run('view.w') - w) < 1, 'logical view is resolution-independent');
   slowFrames(c, 150, 30);
   assert.equal(c.run('view.dpr'), 1);
   c.run('toggleSetting("sharp")');
   assert.equal(c.run('settings.sharp'), true);
-  assert.equal(c.run('view.dpr'), 2, 'SHARP RENDERING restores full DPR');
+  assert.equal(c.run('view.dpr'), 3, 'SHARP RENDERING restores full DPR');
   slowFrames(c, 400, 30);
-  assert.equal(c.run('view.dpr'), 2, 'and holds it');
+  assert.equal(c.run('view.dpr'), 3, 'and holds it');
 });
 
 test('adaptive resolution waits for a calm moment mid-run unless the device is badly behind', (t) => {

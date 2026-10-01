@@ -74,7 +74,7 @@ test('absent rows free their P# after the reconnect grace period', async (t) => 
     await g.net.acceptJoin(link, { adjIdx: 2, nounIdx: 2 });
     g.close();
     await until(() => hostRows(host).some((r) => r.absent), 'absent row');
-    hub.advance(61000);
+    hub.advance(301000);
     await until(() => !hostRows(host).some((r) => r.absent), 'absent row expires');
   }
   const g = client(hub, { game: false });

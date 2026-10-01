@@ -77,6 +77,27 @@
 
   // Timing (ms). Liveness is app-level: relay drops to absent keys silently.
   const T_CONNECT = 8000, T_HANDSHAKE = 5000, T_DEAD = 90000, T_PING_IDLE = 25000;
+  // Background-proof repeating timer. A hidden tab's setInterval is clamped to 1 Hz and, after a few minutes, to once a
+  // minute — which starves the host's 10 Hz fan-out and heartbeat and reads to everyone else as a dead host. A dedicated
+  // Worker's timers are not throttled with the page, so the beat lives there and just posts a message per tick. Where
+  // Workers or Blob URLs are unavailable (tests, locked-down embeds) it is a plain setInterval. stop() ends either.
+  let tickWorker = null, tickSeq = 0; const tickFns = new Map();
+  function ticker(fn, ms) {
+    try {
+      if (!tickWorker && typeof Worker === 'function' && typeof Blob === 'function' && typeof URL !== 'undefined' && URL.createObjectURL) {
+        const src = 'const t=new Map();onmessage=(e)=>{const d=e.data;if(d.go){t.set(d.id,setInterval(()=>postMessage(d.id),d.ms));}else{clearInterval(t.get(d.id));t.delete(d.id);}};';
+        tickWorker = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+        tickWorker.onmessage = (e) => { const f = tickFns.get(e.data); if (f) f(); };
+      }
+      if (tickWorker) {
+        const id = ++tickSeq; tickFns.set(id, fn); tickWorker.postMessage({ go: 1, id, ms });
+        return { stop() { tickFns.delete(id); try { tickWorker.postMessage({ id }); } catch (e) {} } };
+      }
+    } catch (e) { tickWorker = null; }
+    const h = setInterval(fn, ms);
+    return { stop() { clearInterval(h); } };
+  }
+  const stopTick = (h) => { if (h && h.stop) h.stop(); else if (h) clearInterval(h); };
   // Link tuning (v5). Silence is counted in ticks of real timers, never by diffing clocks, so a
   // suspended laptop or a stepped test clock can't fake an outage.
   const TUNE = {
@@ -104,6 +125,8 @@
     return out;
   };
   const rand = (n) => crypto.getRandomValues(new Uint8Array(n));
+  const unhex = (h) => { const o = new Uint8Array((h.length / 2) | 0); for (let i = 0; i < o.length; i++) o[i] = parseInt(h.substr(i * 2, 2), 16); return o; };
+  const isHex = (h, bytes) => typeof h === 'string' && h.length === bytes * 2 && /^[0-9a-f]+$/i.test(h);
   const B64U = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
   function b64uEnc(u8) {
     let s = '';
@@ -431,8 +454,11 @@
      a 32-counter window behind the newest (reorder-tolerant); the window
      moves only after a successful open (garbage cannot burn counters).
      ------------------------------------------------------------------------- */
-  function makePair(aesKey, roomId8, epoch, sendDir) {
-    return { key: aesKey, roomId: roomId8, epoch, dir: sendDir, sendCtr: 0, highSeen: -1, mask: 0, strictHigh: -1 };
+  // A restored page reuses its old keys, so a counter that restarted at 0 would read as a replay to the peer that already
+  // saw the old page's frames. A restored side therefore opens its counter at the wall clock in ms: always above anything the
+  // previous page sent (it sent far fewer than 1000 frames a second), and the 2^53 counter range has centuries of room.
+  function makePair(aesKey, roomId8, epoch, sendDir, startCtr) {
+    return { key: aesKey, roomId: roomId8, epoch, dir: sendDir, sendCtr: startCtr || 0, highSeen: -1, mask: 0, strictHigh: -1 };
   }
   // Only frames whose effect does not depend on arrival order may be taken out of send order:
   // presence and snapshot rows carry the sender's own frame clock (receivers keep the newest
@@ -479,7 +505,7 @@
     return pending;
   }
   async function sealAppFrame(pair, pt) {
-    if (pair.sendCtr >= 4294967296) throw new Error('pair exhausted');   // ~13y @10Hz; assert anyway
+    if (pair.sendCtr >= Number.MAX_SAFE_INTEGER) throw new Error('pair exhausted');   // the counter is u64 on the wire; JS numbers are exact to 2^53
     const ctr = pair.sendCtr++;
     const { iv, aad } = envHead(pair, pair.dir, ctr);
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, pair.key, pt));
@@ -1394,9 +1420,9 @@
   const STRIKE_LIMIT = 3;
   const PRELIM_CAP = 1024;     // pre-join tracking rows; oldest evicted (key-rotation spray must not grow host memory)
   const ROUND_PREROLL = 3000;  // New-Round pre-roll (ms): a synchronized 3-2-1 so every screen starts together
-  const ABSENT_GRACE = 60000;  // ms an absent (transport-dropped) row keeps its P# for a reconnect
+  const ABSENT_GRACE = 300000; // ms an absent (transport-dropped) row keeps its P# for a reconnect: long enough for a phone call or a closed lid
   const PENDING_TTL = 35000;   // ms a held approve-mode join waits (guest gives up at 30 s)
-  const HOST_GONE_GRACE = 15000; // ms after the relay reports the host gone before a guest leaves
+  const HOST_GONE_GRACE = 120000; // ms after the relay reports the host gone before a guest leaves. A host's tab sent to the background or a phone locked is not a closed room; a host that really leaves says BYE, which ends it at once
   const PRES_STALE = 2500;     // ms without a fresh PRES → stop fanning the row out (paused/backgrounded peers hide promptly)
   function emitter() {
     const subs = new Set();
@@ -1675,7 +1701,7 @@
       pre.lastHello = t; pre.helloN++;
       S.joinTimes = S.joinTimes.filter((x) => t - x < 60000);
       if (S.joinTimes.length >= 10) return;
-      const pair = makePair(await derivePairKey(S.keys, srcPub, S.roomId, S.epoch), S.roomId, S.epoch, DIR_H2G);
+      const pair = makePair(await derivePairKey(S.keys, srcPub, S.roomId, S.epoch), S.roomId, S.epoch, DIR_H2G, S.restored ? Date.now() : 0);
       const res = await openApp(pair, wire);
       if (res.err || !res.pt.length || res.pt[0] !== A_HELLO) { preStrike(key, pre); return; }
       const h = decHello(res.pt);
@@ -1931,10 +1957,20 @@
     }
 
     S.open = async () => {
-      S.keys = await genKeypair();
-      S.roomId = rand(8);
-      S.secret = rand(16);
-      S.seed = new DataView(rand(4).buffer).getUint32(0, true);
+      // A page reload, a crash or a Back swipe must not end the room: the host's identity is kept for the tab's session
+      // (see resumeToken) and handed back here, so the same invite keeps working and guests reconnect to the same host.
+      const rs = opts.resume;
+      if (rs && isHex(rs.priv, 32) && isHex(rs.roomId, 8) && isHex(rs.secret, 16)) {
+        S.keys = keypairFromRaw(unhex(rs.priv)); S.roomId = unhex(rs.roomId); S.secret = unhex(rs.secret);
+        S.epoch = rs.epoch & 0xff; S.seed = rs.seed >>> 0; S.runId = Math.max(1, rs.runId | 0); S.self.runId = S.runId;
+        S.expiryMin = rs.expiryMin | 0; S.restored = true;
+      } else {
+        S.keys = await genKeypair();
+        S.roomId = rand(8);
+        S.secret = rand(16);
+        S.seed = new DataView(rand(4).buffer).getUint32(0, true);
+        S.expiryMin = opts.expiryMin || Math.floor(Date.now() / 60000) + 1440;
+      }
       let region = null, relayHost = opts.relayHost || '';
       if (!relayHost) {
         region = opts.region ? regionOf(opts.region) : await pickRegion();
@@ -1948,7 +1984,7 @@
       S.invite = encodeInvite({
         flags: (opts.relayHost ? 2 : 0), roomId: S.roomId, epoch: S.epoch, hostPub: S.keys.pub,
         region: S.region, relayHost: opts.relayHost || '', secret: S.secret,
-        expiryMin: opts.expiryMin || Math.floor(Date.now() / 60000) + 1440,
+        expiryMin: S.expiryMin,
       });
       S.link = linkBase(opts.baseUrl) + '#j=' + S.invite;
       S.started = performance.now();
@@ -1984,9 +2020,14 @@
         });
         S.codeRelay.connect();
       }
-      S.snapTimer = setInterval(() => { snapTick().catch(() => {}); }, 100);   // 10Hz fan-out
+      S.snapTimer = ticker(() => { snapTick().catch(() => {}); }, 100);   // 10Hz fan-out
       return S;
     };
+    // Everything needed to stand this room back up after a reload. Secret material: the caller keeps it in the tab's own
+    // sessionStorage (gone when the tab closes), never in anything that syncs, and clears it when the room is left.
+    S.resumeToken = () => ({ v: 1, host: true, pub: hex(S.keys.pub), priv: hex(S.keys.priv), roomId: hex(S.roomId), secret: hex(S.secret), epoch: S.epoch, seed: S.seed >>> 0,
+      runId: S.runId, expiryMin: S.expiryMin, region: S.region, relayHost: opts.relayHost || '', approve: !!S.approveJoins,
+      tag: S.tag, suit: S.suit, hat: S.hat, adjIdx: S.adjIdx, nounIdx: S.nounIdx, role: S.role });
     S.setPresence = (x, y, vx, state, chain, score, dist, t, vy) => {
       S.selfSeen = performance.now();
       // A fresh object per sample: the snapshot fan-out compares identities, and the
@@ -2173,7 +2214,7 @@
     S.close = () => {
       S.closed = true;
       if (S.cancelConnect) S.cancelConnect();
-      if (S.snapTimer) clearInterval(S.snapTimer);
+      if (S.snapTimer) stopTick(S.snapTimer);
       if (S.codeRelay) S.codeRelay.close();
       const relay = S.relay;
       if (!relay) return;
@@ -2199,6 +2240,8 @@
       helloTimer: null, slots: makeSlots(), byed: null, welcomeGen: 0, hostGoneTimer: null, boardPub: new Map(), snapshotPs: null,
       link: makeLink(), pingTimer: null, rxTicks: 0, everUp: false, presN: 0, lastPresState: -1, lastPresRun: -1, roundRaw: null, closed: false,
     };
+    S.resumeToken = () => ({ v: 1, host: false, invite: S.payload || '', priv: S.keys ? hex(S.keys.priv) : '', role: S.role,
+      tag: S.tag, suit: S.suit, hat: S.hat, adjIdx: S.adjIdx, nounIdx: S.nounIdx });
     // Link probe + dead-socket watchdog, every TUNE.pingMs of real time while in the room.
     function pingTick() {
       if (S.closed || S.byed != null || !S.relay) return;
@@ -2219,7 +2262,7 @@
     }
     function startPing() {
       if (S.pingTimer || S.closed || S.byed != null) return;
-      S.pingTimer = setInterval(pingTick, TUNE.pingMs);
+      S.pingTimer = ticker(pingTick, TUNE.pingMs);
       sendPing().catch(() => {});                              // an RTT right away: it anchors the shared clock
     }
     let lastLevel = '';
@@ -2237,12 +2280,19 @@
     // seconds (and its SNAP resumes); only a lasting absence ends the room.
     function hostGone(pub) {
       if (hex(pub) !== S.hostHex || S.hostGoneTimer || S.byed != null) return;
+      S.hostAwayAt = performance.now();
+      S.ev.emit('hostaway', { graceMs: HOST_GONE_GRACE });
+      // While the host is away, keep knocking: a host that comes back from a reload has no roster row for us and will
+      // not volunteer anything, but it answers a HELLO at once (one per 5 s is its limit).
+      if (S.awayKnock) stopTick(S.awayKnock);
+      S.awayKnock = ticker(() => { if (S.closed || S.byed != null) { stopTick(S.awayKnock); S.awayKnock = null; return; } sendHello().catch(() => {}); }, 5500);   // the room is holding your seat; the UI says so instead of going quiet
       S.hostGoneTimer = setTimeout(() => {
-        S.hostGoneTimer = null;
+        S.hostGoneTimer = null; S.hostAwayAt = 0;
+        if (S.awayKnock) { stopTick(S.awayKnock); S.awayKnock = null; }
         if (S.byed != null) return;
         S.byed = 1;
         if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
-        S.ev.emit('bye', { reason: 1, detail: 0 });
+        S.ev.emit('bye', { reason: 1, detail: 0, away: true });
       }, HOST_GONE_GRACE);
     }
 
@@ -2274,7 +2324,7 @@
       const res = await openApp(S.pair, wire);
       if (res.err) { S.ev.emit('drop', { why: res.err }); return; }
       S.rxTicks = 0;                                             // the host is reaching us (dead-link watchdog)
-      if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; }   // the host is back
+      if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; S.hostAwayAt = 0; if (S.awayKnock) { stopTick(S.awayKnock); S.awayKnock = null; } S.ev.emit('hostback', {}); }   // the host is back
       const pt = res.pt;
       if (!pt.length) return;
       if (pt[0] > FRAME_CORE_HI) return;                         // reserved/experimental: ignore, never strike (Addendum D)
@@ -2409,7 +2459,7 @@
         if (!b) return;
         S.byed = b.reason;                                       // stop presence + hello retries; reason maps to a kind message
         if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
-        if (S.pingTimer) { clearInterval(S.pingTimer); S.pingTimer = null; }
+        if (S.pingTimer) { stopTick(S.pingTimer); S.pingTimer = null; }
         S.ev.emit('bye', { reason: b.reason, detail: b.detail });
         return;
       }
@@ -2417,11 +2467,11 @@
     }
 
     S.join = async () => {
-      S.keys = await genKeypair();
+      S.keys = opts.resumeKey && isHex(opts.resumeKey, 32) ? keypairFromRaw(unhex(opts.resumeKey)) : await genKeypair();   // same key = the host seats us in the same place
       const region = regionOf(S.inv.region);
       const hosts = (S.inv.flags & 2) ? [S.inv.relayHost] : (region ? region.hosts : null);
       if (!hosts) throw new Error('unknown relay region — update to play together');
-      S.pair = makePair(await derivePairKey(S.keys, S.inv.hostPub, S.inv.roomId, S.inv.epoch), S.inv.roomId, S.inv.epoch, DIR_G2H);
+      S.pair = makePair(await derivePairKey(S.keys, S.inv.hostPub, S.inv.roomId, S.inv.epoch), S.inv.roomId, S.inv.epoch, DIR_G2H, opts.resumeKey ? Date.now() : 0);
       let lastErr = null;
       for (const h of hosts) {
         if (S.closed) throw new Error('Join cancelled');
@@ -2556,9 +2606,10 @@
       S.closed = true;
       if (S.cancelConnect) S.cancelConnect();
       if (S.cancelAdmit) S.cancelAdmit();
-      if (S.pingTimer) { clearInterval(S.pingTimer); S.pingTimer = null; }
+      if (S.pingTimer) { stopTick(S.pingTimer); S.pingTimer = null; }
       if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
-      if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; }
+      if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; S.hostAwayAt = 0; }
+      if (S.awayKnock) { stopTick(S.awayKnock); S.awayKnock = null; }
       if (S.relay) S.relay.close();
     };
     return S;
@@ -2668,6 +2719,7 @@
         throw new Error(msg);
       }
       const next = session = GuestSession(dec.inv, opts || {});
+      next.payload = String(payloadStr);
       next.ev.on((e, d) => { if (session === next) ev.emit(e, d); });   // a closed session's late packets stay silent
       // A relay socket is not room admission. Do not expose seed=0 / player=0
       // or claim success until the host has authenticated and welcomed us.
@@ -2852,10 +2904,13 @@
         runId: (session.isHost ? session.runId : (session.welcomed ? session.welcomed.runId : 0)) | 0,
         mobility: session.mobility || [],
         unstable: !!session.unstable,
+        hostAway: !!session.hostGoneTimer,
         quality: session.mock ? 'good' : (session.quality ? session.quality().level : 'unknown'),
       };
     },
     onEvent(cb) { ev.on(cb); },
+    // The live session's resume token (host or guest), or null. See HostSession.resumeToken.
+    resumeToken() { return session && session.resumeToken && !session.mock ? session.resumeToken() : null; },
     // #shot=room — offline, deterministic room-card fixture (net-spec §6.2).
     // Pure data: a fake host session the read-only getters (info/roster/board)
     // project exactly like a real one. Constructs NO sockets, keys, or timers;

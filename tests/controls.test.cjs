@@ -53,3 +53,16 @@ test('a keyboard, mouse or controller takes over from the touch controls, and to
   tap('touch', 5);
   assert.equal(touching(), true, 'and a finger takes them back from the controller');
 });
+
+test('controllers are named by family, however the browser words the id', () => {
+  const { client, relay } = require('./harness.cjs');
+  const c = client(relay());
+  try {
+    const fam = (id) => c.run(`padFamily({ id: ${JSON.stringify(id)} })`);
+    assert.equal(fam('Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)'), 'playstation');
+    assert.equal(fam('Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)'), 'xbox');
+    assert.equal(fam('Pro Controller (Vendor: 057e Product: 2009)'), 'nintendo');
+    assert.equal(fam('USB Gamepad'), 'generic');
+    assert.equal(c.run("padName({ id: '054c' })"), 'DUALSENSE');
+  } finally { c.close(); }
+});

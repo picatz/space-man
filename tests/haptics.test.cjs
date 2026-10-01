@@ -14,15 +14,15 @@ test('haptics follow the switch, and the strength scales how long the motor runs
   const { c, buzzes } = solo(t);
   c.run('settings.haptics = true; settings.hapticsStrength = 1; settings.hapticsSaver = true; batteryLow = false;');
   c.run("buzz('heavy'); buzz('success')");
-  assert.deepEqual(buzzes, [18, [10, 28, 10]]);
+  assert.deepEqual(buzzes, [18, [15, 28, 15]]);
   buzzes.length = 0;
   c.run('settings.hapticsStrength = 0.5');
   c.run("buzz('heavy'); buzz('success')");
-  assert.deepEqual(buzzes, [9, [5, 28, 5]], 'shorter pulses, same gaps between them');
+  assert.deepEqual(buzzes, [15, [15, 28, 15]], 'shorter pulses (floored at what a phone motor can render), same gaps between them');
   buzzes.length = 0;
   c.run('settings.hapticsStrength = 0.3');
   c.run("buzz('select')");
-  assert.deepEqual(buzzes, [4], 'never shorter than the motor can play');
+  assert.deepEqual(buzzes, [15], 'never shorter than the motor can play');
   buzzes.length = 0;
   c.run('settings.haptics = false');
   c.run("buzz('heavy')");
@@ -62,9 +62,9 @@ test('turning haptics on lets you feel it, and switching off is silent', (t) => 
   const { c, buzzes } = solo(t);
   c.run('settings.haptics = false; settings.hapticsStrength = 1; batteryLow = false;');
   c.run("toggleSetting('haptics')");
-  assert.deepEqual(buzzes, [[10, 28, 10]], 'a confirming buzz');
+  assert.deepEqual(buzzes, [[15, 28, 15]], 'a confirming buzz');
   c.run("toggleSetting('haptics')");
-  assert.equal(buzzes.length, 1, 'switching off is silent');
+  assert.deepEqual(buzzes.slice(1), [0], 'switching off makes no buzz and cuts any pulse still running');
 });
 
 // Build the real settings rows into a host and report which haptic rows are on show.
@@ -165,7 +165,7 @@ test('letting go of the strength slider feels the new strength, once, at that st
   assert.equal(c.run('settings.hapticsStrength'), 0.5);
   assert.deepEqual(buzzes, []);
   range.onchange();                                            // letting go: one confirming buzz at the new strength
-  assert.deepEqual(buzzes, [[5, 28, 5]]);
+  assert.deepEqual(buzzes, [[15, 28, 15]]);
 });
 
 test('swapping or unplugging controllers keeps the strength row honest, without waiting for a connect event', (t) => {
@@ -195,4 +195,48 @@ test('swapping or unplugging controllers keeps the strength row honest, without 
   assert.equal(shown(), true, 'and back');
   pads = []; c.run('input.pad.index = -1; pollGamepad()');
   assert.equal(shown(), false, 'unplugged');
+});
+
+test('the iOS tick input is a real switch, or WebKit never plays its haptic', () => {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(html, /<label class="hap" id="hapLbl"[^>]*><input type="checkbox" switch /);
+});
+
+test('on an iPhone the jump/fire side gets a real-tap haptic overlay during a live run, and only then', () => {
+  const c = client(relay());
+  try {
+    c.run('iosTapHaptics = true'); c.run('settings.haptics = true; settings.lefty = false');
+    const shown = () => c.run("document.getElementById('hapTouch').style.display");
+    c.run("G.mode = 'attract'; tickTouchHaptic()");
+    assert.notEqual(shown(), 'block', 'not on the title screen');
+    c.run("G.mode = 'play'; tickTouchHaptic()");
+    assert.equal(shown(), 'block');
+    assert.equal(c.run("document.getElementById('hapTouch').style.left"), '45%', 'the side away from the stick');
+    c.run('settings.lefty = true; tickTouchHaptic()');
+    assert.equal(c.run("document.getElementById('hapTouch').style.left"), '0');
+    c.run('settings.haptics = false; tickTouchHaptic()');
+    assert.equal(shown(), 'none', 'off means off: the overlay is gone and taps are plain taps');
+    c.run('settings.haptics = true; iosTapHaptics = false; hapticOverlayKey = "x"; tickTouchHaptic()');
+    assert.equal(shown(), 'none', 'a phone with a motor (or a desktop) never gets it');
+  } finally { c.close(); }
+});
+
+test('the overlay feeds the same handlers as the canvas and never steals the native click', () => {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(html, /el\.addEventListener\('pointerdown', onTapDown/);
+  assert.match(html, /el\.addEventListener\('pointermove', onTapMove/);
+  assert.match(html, /if \(onCanvas\) e\.preventDefault\(\)/, 'only the canvas path prevents default: a prevented pointerdown may swallow the click iOS needs');
+  assert.match(html, /<label class="hap-touch" id="hapTouch"[^>]*><input type="checkbox" switch/);
+});
+
+test('the iPhone settings get a test tick that does not exist on other devices', () => {
+  const c = client(relay());
+  try {
+    const host = c.context.document.createElement('div'); c.context.__host = host;
+    c.run('iosTapHaptics = false; buildSettings(__host)');
+    assert.equal(host.children.some((r) => /haptic-test/.test(r.className)), false);
+    const host2 = c.context.document.createElement('div'); c.context.__host2 = host2;
+    c.run('iosTapHaptics = true; buildSettings(__host2)');
+    assert.equal(host2.children.some((r) => /haptic-test/.test(r.className)), true);
+  } finally { c.close(); }
 });

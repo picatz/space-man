@@ -298,7 +298,7 @@ Header overhead = **11 bytes**; AES-GCM tag = **16 bytes**. Total per-frame over
 - **Nonce (96-bit, counter-based, never random):**
   `nonce = dir(1) || counter(u64 LE, 8) || 0x00 0x00 0x00`.
 - **AAD (11 bytes):** `ver(1)=PROTO (currently 0x06) || roomId(8) || epoch(1) || dir(1)`.
-- Counter starts at 0 and increments by 1 per sent frame per (pairKey, dir). At 2³² frames
+- Counter starts at 0 and increments by 1 per sent frame per (pairKey, dir). A side restored after a reload (same keys) instead starts at the wall clock in ms so the peer never sees a replay. At 2⁵³ frames
   the pair is exhausted and MUST be closed (unreachable in practice — assert anyway).
 
 ### 7.3 Replay rule (MUST)
