@@ -378,7 +378,9 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await neutral(); assert.equal(await page.evaluate(() => arenaUI.screen), 'play', 'visible touch browser blur is not proof of leaving');
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   p = await dragStick(); await page.setViewportSize({ width: 640, height: 390 }); await neutral();
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  // Rotation cancels the old physical gesture. Ending it at its stale portrait
+  // coordinates (now outside the screen) poisons Chromium's emulated tap stream.
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
 
   p = await dragStick(); await pause(page);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -468,4 +470,18 @@ test('arena desktop focus loss still pauses after pen input', { timeout: 30000 }
   });
   assert.equal(await page.locator('.arena-root').getAttribute('data-touch'), 'true');
   await page.evaluate(() => window.dispatchEvent(new Event('blur'))); await screen(page, 'pause');
+});
+
+test('arena native touch can resume immediately after a held gesture is paused', { timeout: 30000 }, async t => {
+  const { page, context } = await launch(t, { viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true });
+  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
+  await pause(page); await page.locator('#arenaResume').tap(); await screen(page, 'match');
+  const cdp = await context.newCDPSession(page), box = await page.locator('.arena-stick-zone').boundingBox();
+  const p = { id: 1, x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p] });
+  p.x -= 35; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] });
+  await pause(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.locator('#arenaResume').tap(); await screen(page, 'match');
+  assert.equal(await page.locator('.arena-stick-active,.arena-pressed').count(), 0);
 });
