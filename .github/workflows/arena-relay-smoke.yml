@@ -1,0 +1,53 @@
+name: Arena live relay smoke
+on:
+  workflow_dispatch:
+    inputs:
+      relay_host:
+        description: 'default uses the shipped relay discovery; or choose an authorized hostname[:port]'
+        required: true
+        default: default
+        type: string
+      base_url:
+        description: 'Optional deployed preview URL; blank tests this exact checkout'
+        required: false
+        type: string
+  pull_request:
+    types: [labeled]
+permissions:
+  contents: read
+jobs:
+  live-arena:
+    # A deliberate one-time label event is also an opt-in before this new workflow
+    # lands on main. Ordinary PR pushes never contact a public relay.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'arena-live-smoke' &&
+       github.event.pull_request.user.login == 'picatz' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    env:
+      SPACE_MAN_RELAY_HOST: ${{ inputs.relay_host || 'default' }}
+      SPACE_MAN_BASE_URL: ${{ inputs.base_url || '' }}
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - name: Select Chromium
+        run: |
+          if command -v google-chrome >/dev/null 2>&1; then
+            echo "SPACE_MAN_CHROMIUM_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+          else
+            npx playwright install --with-deps chromium
+          fi
+      - name: Verify real arena relay combat and lifecycle
+        run: npm run test:arena-relay

@@ -60,6 +60,10 @@ jobs:
         run: npm run test:arena
         env:
           SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/arena-screenshots
+      - name: Check friend arena with encrypted simulated relay
+        run: npm run test:arena-online
+        env:
+          SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/arena-screenshots
       - name: Keep arena browser screenshots for review
         if: always()
         uses: actions/upload-artifact@v4

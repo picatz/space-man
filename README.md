@@ -38,9 +38,9 @@ Version 2.0 was a ground-up canvas rewrite designed and built by a Claude
 Fable 5 agent team. It's a fun research project exploring the capabilities
 of AI models for web game development.
 
-## Orbital Arena · CPU battles
+## Orbital Arena · CPU + Friends
 
-Choose **Arena · CPU Battles** from the title to enter a separate, opt-in
+Choose **Arena · CPU + Friends** from the title to enter a separate, opt-in
 platform-fighting mode. Pulse attacks build damage and launch rivals toward the
 edge of space. Double jump and dash to recover; each spacefarer has three lives.
 
@@ -55,10 +55,22 @@ edge of space. Double jump and dash to recover; each spacefarer has three lives.
   stick plus Jump, Pulse and Dash; handedness, motion, mute and power preferences
   carry over
 
-These are local CPU battles. Online friend/group combat is the next milestone;
-Run Together continues to be the existing shared-course runner. Leave a room
-explicitly before opening Arena. Arena matches do not affect runner scores,
-missions or room state. Returning to the runner preserves its existing behavior.
+Play locally against CPUs, or open **Play with friends** to create, join or watch
+an arena room. Up to four players and four spectators share authoritative combat,
+lives and results. The host picks the stage, match format and team assignments;
+empty fighter slots get CPUs. Share the invite link/QR or a production room code.
+Preview invites use their full revision-specific links. Late arrivals watch until
+the next lobby, where they can request a player seat.
+
+The host browser runs all combat. Guests send inputs and display authoritative
+snapshots, so relay latency affects guest responsiveness. Host pause or connection
+loss freezes the shared match; guest menus release controls while play continues.
+Same-tab reconnect keeps a seat for a short grace period. Host leave/reload ends
+the room; no host migration is claimed. [Rules, limits and tests](docs/arena-online.md).
+
+Run Together continues to be the existing shared-course runner. Leave its room
+explicitly before opening Arena. Arena matches do not affect runner scores or
+missions, and local CPU matches remain available offline.
 
 The simulation lives in `src/arena.js`, with device-independent commands,
 serializable state and CPU controllers using the same command interface. Its
