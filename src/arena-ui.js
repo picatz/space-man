@@ -161,7 +161,7 @@
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
-    let touchEdges = { jump: false, attack: false, dash: false };
+    let touchEdges = { jump: false, attack: false, dash: false }, recoveryTap = null, clearRecoveryClick = null;
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
     let audio = null, audioGain = null, lastSfx = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     const listeners = [];
@@ -249,6 +249,7 @@
       // Touch cancellation must never release a keyboard or controller hold.
       const previousTouches = Array.from(touches);
       touches.clear(); stick = null; moveX = moveY = 0;
+      recoveryTap = null;
       if (clearEdges) touchEdges = { jump: false, attack: false, dash: false };
       for (const [id, data] of previousTouches) { data.el.classList.remove('arena-pressed'); try { if (data.el.hasPointerCapture(id)) data.el.releasePointerCapture(id); } catch (_) {} }
       if (stickBase) { stickBase.classList.remove('arena-stick-active'); stickBase.style.removeProperty('left'); stickBase.style.removeProperty('top'); stickKnob.style.transform = 'translate(-50%,-50%)'; }
@@ -372,6 +373,40 @@
         jumpPressed: jumpEdge || touchEdges.jump, jumpHeld: actionHeld('jump') || pad.jump || Array.from(touches.values()).some(t => t.action === 'jump'), attackPressed: attackEdge || touchEdges.attack, dashPressed: dashEdge || touchEdges.dash };
       jumpEdge = attackEdge = dashEdge = false; touchEdges = { jump: false, attack: false, dash: false }; return c;
     }
+    // Only guarded, idempotent menu actions use this fallback. Native browsers
+    // can omit a compatibility click after a captured drag is interrupted.
+    function guardRecoveryClick() {
+      if (clearRecoveryClick) clearRecoveryClick();
+      let timer;
+      const clear = () => {
+        root.removeEventListener('click', swallow, true); root.removeEventListener('pointerdown', clear, true);
+        root.clearTimeout(timer); if (clearRecoveryClick === clear) clearRecoveryClick = null;
+      };
+      const swallow = e => {
+        if (!e.isTrusted || e.detail === 0) return;
+        e.preventDefault(); e.stopImmediatePropagation(); clear();
+      };
+      // This bounded guard intentionally outlives close: WebKit can retarget
+      // the old finger's delayed click onto the runner below the removed dialog.
+      // A new physical press immediately releases it, so the next tap still works.
+      root.addEventListener('click', swallow, true); root.addEventListener('pointerdown', clear, true);
+      timer = root.setTimeout(clear, 700); clearRecoveryClick = clear;
+    }
+    function recoveryButton(text, cls, action) {
+      const n = button(text, cls, action);
+      n.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary && activeModal) recoveryTap = { el: n, id: e.pointerId, x: e.clientX, y: e.clientY }; });
+      n.addEventListener('pointermove', e => { if (recoveryTap && recoveryTap.el === n && recoveryTap.id === e.pointerId && Math.hypot(e.clientX - recoveryTap.x, e.clientY - recoveryTap.y) > 10) recoveryTap = null; });
+      for (const type of ['pointercancel', 'lostpointercapture']) n.addEventListener(type, e => { if (recoveryTap && recoveryTap.el === n && recoveryTap.id === e.pointerId) recoveryTap = null; });
+      n.addEventListener('pointerup', e => {
+        const tap = recoveryTap;
+        if (!tap || tap.el !== n || tap.id !== e.pointerId) return;
+        recoveryTap = null;
+        if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) return;
+        const r = n.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) { guardRecoveryClick(); action(); }
+      });
+      return n;
+    }
     function build() {
       if (built) return;
       arena = root.SpaceManArena;
@@ -405,7 +440,7 @@
       touchEl.append(stickZone, touchActions); rootEl.append(touchEl);
       modal = el('div', 'arena-modal');
       lobby = el('div', 'arena-lobby arena-dialog'); lobby.setAttribute('role', 'dialog'); lobby.setAttribute('aria-labelledby', 'arena-lobby-title');
-      const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), button('← Back to runner', 'arena-text-button', close));
+      const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), recoveryButton('← Back to runner', 'arena-text-button', close));
       const lobbyGrid = el('div', 'arena-lobby-grid');
       const intro = el('div', 'arena-intro'); intro.append(el('span', 'arena-pill', 'LOCAL CPU BATTLES'));
       const h1 = el('h1', 'arena-title'); h1.id = 'arena-lobby-title'; h1.append(document.createTextNode('Small suits.'), el('br'), el('span', '', 'Big knockouts.'));
@@ -444,10 +479,11 @@
       pausePanel = el('div', 'arena-small-panel arena-dialog'); pausePanel.setAttribute('role', 'dialog'); pausePanel.setAttribute('aria-labelledby', 'arena-pause-title');
       const ph = el('h2', 'arena-panel-title', 'Taking a breather'); ph.id = 'arena-pause-title';
       const pauseReason = el('p', 'arena-panel-copy', 'Your match is paused.'); pauseReason.id = 'arena-pause-reason';
-      pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, button('Resume match', 'arena-primary', resumeMatch), button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), button('Back to runner', 'arena-text-button', close)); modal.append(pausePanel);
+      const resumeButton = recoveryButton('Resume match', 'arena-primary', resumeMatch);
+      pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, resumeButton, button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('Back to runner', 'arena-text-button', close)); modal.append(pausePanel);
       resultPanel = el('div', 'arena-small-panel arena-result-panel arena-dialog'); resultPanel.setAttribute('role', 'dialog'); resultPanel.setAttribute('aria-labelledby', 'arena-result-title');
       resultTitle = el('h2', 'arena-panel-title'); resultTitle.id = 'arena-result-title'; resultText = el('p', 'arena-panel-copy'); resultRoster = el('div', 'arena-result-roster');
-      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), button('Back to runner', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
+      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('Back to runner', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
       live = el('div', 'arena-sr-only'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true'); rootEl.append(live);
       // Events stop at this overlay, before the runner's window-level handlers.
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel']) rootEl.addEventListener(type, e => e.stopPropagation(), { passive: type.startsWith('touch') || type === 'wheel' });
@@ -695,6 +731,11 @@
     function frame(now) {
       frameId = 0;
       if (!active || document.hidden) return;
+      // WebKit can dispatch resize before visualViewport exposes the settled
+      // rotation size. Reconcile changed viewport metrics on the next frame;
+      // unchanged frames avoid layout reads and canvas reallocation.
+      const vv = root.visualViewport;
+      if (vv && viewportBox && (Math.abs(vv.width - viewportBox.width) > 1 || Math.abs(vv.height - viewportBox.height) > 1 || Math.abs(vv.offsetLeft - viewportBox.left) > 1 || Math.abs(vv.offsetTop - viewportBox.top) > 1)) resize();
       updatePrefs(); pollGamepad();
       if (!active || document.hidden) return;
       const elapsed = lastTime ? Math.min(.1, Math.max(0, (now - lastTime) / 1000)) : 0; lastTime = now;
@@ -763,7 +804,8 @@
       resetInput();
       // iOS in-app chrome may blur a still-visible game. Visibility/pagehide
       // own mobile backgrounding; desktop window changes still pause at once.
-      if (document.hidden || !usingTouch) pauseMatch('You stepped away');
+      const mobileChrome = !!(root.matchMedia && root.matchMedia('(pointer: coarse) and (hover: none)').matches);
+      if (document.hidden || !mobileChrome) pauseMatch('You stepped away');
     }
     function onPageHide() {
       if (!active) return;
@@ -796,7 +838,7 @@
       if (savedFocus && savedFocus.isConnected && typeof savedFocus.focus === 'function') savedFocus.focus({ preventScroll: true });
       if (typeof opts.onClose === 'function') opts.onClose();
     }
-    function destroy() { close(); destroyed = true; if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
+    function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
     return Object.freeze({ open, close, destroy, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
   }
   root.SpaceManArenaUI = Object.freeze({ create });

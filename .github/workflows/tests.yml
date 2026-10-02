@@ -86,7 +86,7 @@ jobs:
       - name: Install the pinned WebKit engine and dependencies
         run: npx playwright install --with-deps webkit
       - name: Check constrained mobile setup in WebKit
-        run: node --test --test-name-pattern='arena mobile setup' arena.test.cjs
+        run: node --test --test-name-pattern='arena mobile' arena.test.cjs
         env:
           SPACE_MAN_ARENA_BROWSER: webkit
           SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/arena-webkit-screenshots

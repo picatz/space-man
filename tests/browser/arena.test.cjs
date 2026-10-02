@@ -235,6 +235,7 @@ test('arena mobile setup fits short viewports without horizontal overflow', { ti
   }
   for (const [w, h] of [[390, 640], [320, 568], [375, 667], [430, 740], [844, 320]]) {
     await page.setViewportSize({ width: w, height: h });
+    await page.waitForFunction(([w, h]) => Math.abs(visualViewport.width - w) < 1 && Math.abs(visualViewport.height - h) < 1 && Math.abs(document.querySelector('.arena-root').getBoundingClientRect().width - w) < 1, [w, h]);
     await page.locator('.arena-lobby').evaluate(n => { n.scrollTop = 0; });
     await noHorizontalOverflow();
     const setup = await page.locator('.arena-setup').boundingBox();
@@ -282,6 +283,10 @@ test('arena mobile setup fits short viewports without horizontal overflow', { ti
   await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
   assert.equal(await page.evaluate(() => arenaUI.active), false);
   assert.equal(await page.locator('#btnArena').isVisible(), true);
+  await page.locator('#btnArena').tap(); await screen(page, 'lobby');
+  assert.equal(await page.evaluate(() => arenaUI.active), true, 'the next deliberate touch is not swallowed by the delayed-click guard');
+  await page.locator('#arenaBack').tap();
+  assert.equal(await page.evaluate(() => arenaUI.active), false);
 });
 
 test('arena touch recovers from outside release, lost capture, interruptions and mode changes', { timeout: 90000 }, async t => {
@@ -290,6 +295,11 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   // CPU decisions or player state; knockback cannot mask a stuck-input failure.
   await page.evaluate(() => {
     const original = SpaceManArena;
+    window.inputEvents = [];
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'touchend', 'click', 'blur']) window.addEventListener(type, e => {
+      inputEvents.push({ type, id: e.pointerId, primary: e.isPrimary, target: e.target.id || e.target.className || e.target.tagName, screen: arenaUI?.screen });
+      if (inputEvents.length > 35) inputEvents.shift();
+    }, true);
     window.SpaceManArena = { ...original, step(state, commands) {
       const human = state.actors.find(a => a.controller === 'human');
       window.lastHumanCommand = { ...commands[human.id] };
@@ -301,6 +311,12 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
   const cdp = await context.newCDPSession(page);
   let id = 0;
+  async function tapControl(locator) {
+    await locator.scrollIntoViewIfNeeded();
+    const b = await locator.boundingBox();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: ++id, x: b.x + b.width / 2, y: b.y + b.height / 2, radiusX: 1, radiusY: 1, force: 1 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
   async function dragStick(direction = -1, captureFails = false) {
     const zone = page.locator('.arena-stick-zone'); const box = await zone.boundingBox();
     if (captureFails) await zone.evaluate(n => { n.originalCapture = n.setPointerCapture; n.setPointerCapture = () => { throw new Error('capture unavailable'); }; });
@@ -312,15 +328,20 @@ test('arena touch recovers from outside release, lost capture, interruptions and
     return p;
   }
   async function neutral() {
-    await page.waitForFunction(() => lastHumanCommand?.moveX === 0 && lastHumanCommand?.moveY === 0 && !lastHumanCommand?.jumpHeld);
+    try {
+      await page.waitForFunction(() => lastHumanCommand?.moveX === 0 && lastHumanCommand?.moveY === 0 && !lastHumanCommand?.jumpHeld, null, { timeout: 5000 });
+    } catch (error) {
+      t.diagnostic(JSON.stringify(await page.evaluate(() => ({ screen: arenaUI.screen, phase: arenaUI.snapshot()?.phase, command: lastHumanCommand, events: window.inputEvents, pending: __arenaRafPending }))));
+      throw error;
+    }
     assert.equal(await page.locator('.arena-stick-active,.arena-pressed').count(), 0);
   }
   let p = await dragStick();
   const jump = await page.locator('.arena-touch-jump').boundingBox(), q = { id: ++id, x: jump.x + jump.width / 2, y: jump.y + jump.height / 2 };
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p, q] });
   await page.waitForFunction(() => lastHumanCommand?.jumpHeld);
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [p] });
-  await page.waitForFunction(() => !lastHumanCommand?.jumpHeld && lastHumanCommand.moveX < -.5);
+  // CDP touchEnd ends the whole gesture and requires an empty touchPoints
+  // list. Per-pointer ownership is covered by the cross-engine test below.
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await neutral();
 
   // Complete a quick down/up in one task, before a simulation tick can sample
@@ -329,12 +350,12 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await page.locator('.arena-touch-jump').evaluate(n => {
     n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 999, isPrimary: true }));
     n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 999, isPrimary: true }));
-    n.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] }));
+    n.dispatchEvent(Object.assign(new Event('touchend', { bubbles: true }), { touches: [] }));
   });
   await page.waitForFunction(before => humanEdges.jump > before, jumpEdges);
   await neutral();
   await page.keyboard.down('d');
-  await page.evaluate(() => window.dispatchEvent(new TouchEvent('touchcancel', { touches: [] })));
+  await page.evaluate(() => window.dispatchEvent(Object.assign(new Event('touchcancel'), { touches: [] })));
   await page.waitForFunction(() => lastHumanCommand.moveX === 1);
   await page.keyboard.up('d'); await neutral();
 
@@ -347,6 +368,7 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await page.locator('.arena-stick-zone').evaluate(n => n.addEventListener('pointerdown', e => { n.lastPointer = e.pointerId; }));
   p = await dragStick(1);
   await page.locator('.arena-stick-zone').evaluate(n => n.releasePointerCapture(n.lastPointer));
+  p.x += 2; // A changed native point processes pending capture loss.
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] }); await neutral();
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   p = await dragStick();
@@ -357,14 +379,15 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await neutral(); assert.equal(await page.evaluate(() => arenaUI.screen), 'play', 'visible touch browser blur is not proof of leaving');
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   p = await dragStick(); await page.setViewportSize({ width: 640, height: 390 }); await neutral();
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  // Rotation invalidates portrait coordinates; cancel that old native gesture.
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
 
   p = await dragStick(); await pause(page);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await page.locator('#arenaResume').tap(); await neutral();
+  await tapControl(page.locator('#arenaResume')); await neutral();
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await screen(page, 'pause');
   await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
-  await page.locator('#arenaResume').tap(); await neutral();
+  await tapControl(page.locator('#arenaResume')); await neutral();
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
     document.dispatchEvent(new Event('visibilitychange'));
@@ -372,10 +395,110 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await screen(page, 'pause');
   await page.evaluate(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); });
   assert.equal(await page.evaluate(() => arenaUI.screen), 'pause', 'returning from real background requires resume');
-  await page.locator('#arenaResume').tap(); await neutral();
+  await tapControl(page.locator('#arenaResume')); await neutral();
   p = await dragStick(); await pause(page);
-  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await tapControl(page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }));
+  assert.equal(await page.evaluate(() => arenaUI.active), false);
   assert.equal(await page.evaluate(() => input.left || input.right || input.jumpHeld), false);
-  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page); await neutral();
+  await tapControl(page.locator('#btnArena')); await tapControl(page.locator('.arena-launch')); await playing(page); await neutral();
+});
+
+test('arena mobile pointer lifecycle preserves taps and releases stranded holds', { timeout: 45000 }, async t => {
+  const { page } = await launch(t, { viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true });
+  await page.evaluate(() => {
+    const original = SpaceManArena;
+    window.SpaceManArena = { ...original, step(state, commands) {
+      window.sampledHuman = { ...commands[1] };
+      if (sampledHuman.jumpPressed) window.sampledJumps = (window.sampledJumps || 0) + 1;
+      return original.step(state, commands);
+    } };
+  });
+  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
+  // These synthetic DOM sequences cover the fallback when native pointer
+  // capture is unavailable. Chromium's separate CDP test supplies native drags.
+  async function stranded(id, primary = true) {
+    await page.locator('.arena-stick-zone').evaluate((n, args) => {
+      const r = n.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: args.id, isPrimary: args.primary, clientX: x, clientY: y }));
+      n.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', pointerId: args.id, clientX: x - 35, clientY: y }));
+    }, { id, primary });
+    await page.waitForFunction(() => sampledHuman?.moveX < -.5);
+  }
+  async function stopped() { await page.waitForFunction(() => sampledHuman?.moveX === 0); }
+  await stranded(39);
+  await page.locator('.arena-touch-jump').evaluate(n => n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 40, isPrimary: false })));
+  await page.waitForFunction(() => sampledHuman.jumpHeld && sampledHuman.moveX < -.5);
+  await page.locator('.arena-touch-jump').evaluate(n => n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 40 })));
+  await page.waitForFunction(() => !sampledHuman.jumpHeld && sampledHuman.moveX < -.5);
+  await page.evaluate(() => document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 39 })));
+  await stopped();
+  await stranded(41);
+  await page.evaluate(() => document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 41 })));
+  await stopped();
+  await stranded(42);
+  await page.evaluate(() => document.body.dispatchEvent(Object.assign(new Event('touchend', { bubbles: true }), { touches: [] })));
+  await stopped();
+  await stranded(43);
+  // A fresh primary sequence proves all previous fingers ended, even if the
+  // browser omitted the prior terminal event. Its new neutral origin replaces it.
+  await page.locator('.arena-stick-zone').evaluate(n => {
+    const r = n.getBoundingClientRect();
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 44, isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+  });
+  await stopped();
+  await page.evaluate(() => window.dispatchEvent(Object.assign(new Event('touchcancel'), { touches: [] })));
+  const before = await page.evaluate(() => window.sampledJumps || 0);
+  await page.locator('.arena-touch-jump').evaluate(n => {
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 45, isPrimary: true }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 45, isPrimary: true }));
+    n.dispatchEvent(Object.assign(new Event('touchend', { bubbles: true }), { touches: [] }));
+  });
+  await page.waitForFunction(count => sampledJumps > count, before);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  assert.equal(await page.evaluate(() => arenaUI.screen), 'play');
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await screen(page, 'pause');
+  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
+  await page.locator('#arenaResume').tap(); await stopped();
+});
+
+test('arena desktop focus loss still pauses after pen input', { timeout: 30000 }, async t => {
+  const { page } = await launch(t);
+  await page.locator('#btnArena').click(); await page.locator('.arena-launch').click(); await playing(page);
+  await page.locator('.arena-touch-jump').evaluate(n => {
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'pen', pointerId: 71, isPrimary: true }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'pen', pointerId: 71, isPrimary: true }));
+  });
+  assert.equal(await page.locator('.arena-root').getAttribute('data-touch'), 'true');
+  await page.evaluate(() => window.dispatchEvent(new Event('blur'))); await screen(page, 'pause');
+});
+
+test('arena native touch can resume immediately after a held gesture is paused', { timeout: 30000 }, async t => {
+  const { page, context } = await launch(t, { viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true });
+  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
+  await pause(page);
+  await page.locator('#arenaResume').evaluate(n => {
+    const r = n.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 91, clientX: x, clientY: y }));
+    n.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 91, clientX: x + 20, clientY: y }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 91, clientX: x + 20, clientY: y }));
+  });
+  assert.equal(await page.evaluate(() => arenaUI.screen), 'pause', 'a scrolling gesture is not a Resume tap');
+  await page.locator('#arenaResume').evaluate(n => {
+    const r = n.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 92, clientX: x, clientY: y }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', isPrimary: false, pointerId: 93, clientX: x, clientY: y }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 92, clientX: x, clientY: y }));
+  });
+  await screen(page, 'match');
+  await pause(page);
+  await page.locator('#arenaResume').tap(); await screen(page, 'match');
+  const cdp = await context.newCDPSession(page), box = await page.locator('.arena-stick-zone').boundingBox();
+  const p = { id: 1, x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p] });
+  p.x -= 35; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] });
+  await pause(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.locator('#arenaResume').tap(); await screen(page, 'match');
+  assert.equal(await page.locator('.arena-stick-active,.arena-pressed').count(), 0);
 });
