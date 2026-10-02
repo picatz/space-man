@@ -211,6 +211,9 @@ test(
         testPad.buttons[1].pressed = c.brake;
       }, 16);
     });
+    // A full-size grid can take over 30 s; use the test's actual 90 s budget
+    // rather than Playwright's unrelated default locator timeout.
+    await page.waitForFunction(() => raceUI.snapshot()?.phase === "finished", undefined, { timeout: 75000 });
     await screen(page, "results");
     await page.evaluate(() => {
       clearInterval(driver);
@@ -416,7 +419,7 @@ test(
     await screen(page, "play");
     const h = await page.evaluate(() => raceUI.snapshot().actors[0].heading);
     await page.keyboard.down("q");
-    await page.waitForTimeout(100);
+    await page.waitForFunction(h => Math.abs(raceUI.snapshot().actors[0].heading - h) > .1, h, { timeout: 3000 });
     await page.keyboard.up("q");
     assert.ok(
       Math.abs(

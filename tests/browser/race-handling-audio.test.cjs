@@ -287,7 +287,29 @@ test("race road rails: genuine wrong steering and boost remain inside all circui
     assert.ok(result.maxDistance <= result.limit + 0.05,
       `${trackId}: all kart centers remain inside the rail: ${JSON.stringify(result)}`);
     t.diagnostic(`${trackId}: ${result.samples} samples, max road distance ${result.maxDistance.toFixed(3)} / ${result.limit}`);
+    if (process.env.SPACE_MAN_RACE_SCREENSHOTS) {
+      await fs.mkdir(process.env.SPACE_MAN_RACE_SCREENSHOTS, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.SPACE_MAN_RACE_SCREENSHOTS, `handling-${trackId}.png`) });
+    }
     await page.keyboard.press("Escape");
     await menu(page, "Choose a circuit");
   }
+});
+
+test("race solver: worst-case six-pilot switchback pileup stays within the physics frame budget", { timeout: 20000 }, async (t) => {
+  const { page } = await launch(t);
+  const timing = await page.evaluate(() => {
+    const R=SpaceManRace,c=R.course('ember'),p=R.at(c,17*c.length/20+12),s=R.create({trackId:'ember',count:6});
+    const samples=[];
+    for(let i=0;i<150;i++) {
+      s.phase='racing';
+      s.actors.forEach(a=>Object.assign(a,{x:p.x,y:p.y,heading:Math.atan2(p.ty,p.tx),recoveryTicks:1,passed:17,nextGate:18,progress:17,finishTick:null,vx:0,vy:0,speed:0}));
+      const start=performance.now(); R.step(s);
+      if(i>=30)samples.push(performance.now()-start);
+    }
+    samples.sort((a,b)=>a-b);
+    return {median:samples[60],p95:samples[114],max:samples[119]};
+  });
+  t.diagnostic(`Worst-case six-kart contact physics, milliseconds: ${JSON.stringify(timing)}`);
+  assert.ok(timing.median<12 && timing.p95<25, 'bounded solver must leave a practical rendering budget');
 });
