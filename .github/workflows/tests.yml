@@ -15,3 +15,21 @@ jobs:
         with:
           node-version: '22'
       - run: node --test tests/*.test.cjs
+
+  preview-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Check preview paths, caches, and saves without a relay
+        run: npm run test:previews

@@ -2,7 +2,8 @@
   "name": "space-man-browser-smoke",
   "private": true,
   "scripts": {
-    "test": "node --test relay.test.cjs"
+    "test": "node --test relay.test.cjs",
+    "test:previews": "node --test previews.test.cjs"
   },
   "devDependencies": {
     "playwright": "1.63.0"

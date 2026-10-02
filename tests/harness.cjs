@@ -4,11 +4,11 @@ const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 const ROOT = path.resolve(__dirname, '..');
 // Every src/ module, in index.html's <script> order.
-const MODULES = ['contracts', 'save-schema', 'input-snapshot', 'course', 'worldgen', 'enemies', 'powerups', 'art', 'anim', 'callsigns', 'crew', 'relay-directory', 'qr', 'netsmooth', 'net'];
+const MODULES = ['build', 'contracts', 'save-schema', 'input-snapshot', 'course', 'worldgen', 'enemies', 'powerups', 'art', 'anim', 'callsigns', 'crew', 'relay-directory', 'qr', 'netsmooth', 'net'];
 
 // No game/network behavior is mocked. Only browser APIs and the opaque relay
 // transport are replaced; clients exchange the real encrypted wire protocol.
-function client(hub, { game = true, width = 1280, height = 720, storage = new Map(), session = new Map(), hash = '', dpr = 1, navigator = {} } = {}) {
+function client(hub, { game = true, width = 1280, height = 720, storage = new Map(), session = new Map(), hash = '', dpr = 1, navigator = {}, preview = null, pathname = undefined, origin = 'https://space.test' } = {}) {
   const timers = new Set();
   // Per-client network link (tests/netbench.cjs shapes it): every socket this client opens carries it.
   const link = { latency: 0, jitter: 0, loss: 0, reorder: 0, bandwidth: 0, queueMax: 64, down: false, rng: null };
@@ -29,11 +29,11 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
   }
   const elements = new Map();
   const document = { getElementById(id) { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); },
-    createElement: element, createTextNode: (s) => ({ textContent: s }), querySelectorAll: () => [], querySelector: () => null,
+    createElement: element, createTextNode: (s) => ({ textContent: s }), querySelectorAll: () => [], querySelector: (selector) => preview && selector === 'meta[name="space-man-preview"]' ? { getAttribute: () => JSON.stringify(preview) } : null,
     addEventListener() {}, body: element(), head: element(), documentElement: element(), hidden: false };
   const sandbox = { console, TextEncoder, TextDecoder, URL, AbortController, Uint8Array, Uint32Array, Int32Array, Float32Array, ArrayBuffer, DataView,
     crypto: webcrypto, performance: { now: () => hub.now() }, document,
-    Image: class {}, navigator, location: { hash, origin: 'https://space.test', href: 'https://space.test/' },
+    Image: class {}, navigator, location: { hash, origin, pathname, protocol: pathname === undefined ? undefined : 'https:', href: origin + (pathname || '/') + hash },
     sessionStorage: { getItem: (k) => session.get(k) ?? null, setItem: (k, v) => session.set(k, v), removeItem: (k) => session.delete(k) },
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
     innerWidth: width, innerHeight: height, devicePixelRatio: dpr, addEventListener() {},

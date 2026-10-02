@@ -37,7 +37,7 @@
 (function (root) {
   'use strict';
   var DEFAULT_ENDPOINT = 'https://login.tailscale.com/derpmap/default';
-  var CACHE_KEY = 'sm2.relaydir.cache';          // sm2.* namespace; written only when active
+  var CACHE_KEY = root.SpaceManBuild ? root.SpaceManBuild.storageKey('sm2.relaydir.cache') : 'sm2.relaydir.cache';          // sm2.* namespace; written only when active
   var CACHE_TTL = 24 * 3600 * 1000;              // 24h
 
   /* BAKED-BEGIN — verbatim official directory JSON (see REFRESH PROCEDURE above). */

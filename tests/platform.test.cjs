@@ -116,7 +116,7 @@ test('service worker: an update installs beside the running build and only takes
   // The new build's download fails halfway (flaky link): nothing half-installed, old build intact.
   const broken = worker({ stores, version: 'v2.0.0', failInstall: '/src/net.js' });
   await assert.rejects(broken.lifecycle('install'));
-  assert.equal(stores.get('sm2-app-v2.0.0').size, 0, 'an interrupted install stores nothing');
+  assert.equal(stores.get('sm2-app-%2F-v2.0.0').size, 0, 'an interrupted install stores nothing');
   assert.ok((await launch(old)).every((b) => b.startsWith('v1.0.0 ')));
   // A clean install: both builds sit side by side; the running page keeps v1 until the swap.
   const next = worker({ stores, version: 'v2.0.0' });
@@ -124,7 +124,7 @@ test('service worker: an update installs beside the running build and only takes
   assert.equal(next.self.skipped, 0, 'waits for the page to pick a safe moment');
   assert.ok((await launch(old)).every((b) => b.startsWith('v1.0.0 ')), 'no mixing while the new build waits');
   await next.lifecycle('activate');
-  assert.deepEqual([...stores.keys()], ['sm2-app-v2.0.0'], 'the old build is dropped only after the new one is whole');
+  assert.deepEqual([...stores.keys()], ['sm2-app-%2F-v2.0.0'], 'the old build is dropped only after the new one is whole');
   assert.ok((await launch(next)).every((b) => b.startsWith('v2.0.0 ')), 'the reload is entirely the new build');
 });
 
@@ -134,7 +134,7 @@ test('service worker: replaces a legacy cache-first worker at once and drops old
   await sw.lifecycle('install');
   assert.equal(sw.self.skipped, 1);
   await sw.lifecycle('activate');
-  assert.deepEqual([...sw.stores.keys()], ['sm2-app-' + SW_SRC.match(/VERSION = '([^']+)'/)[1]]);
+  assert.deepEqual([...sw.stores.keys()], ['sm2-app-%2F-' + SW_SRC.match(/VERSION = '([^']+)'/)[1]]);
 });
 
 function slowFrames(c, n, ms) { c.run(`for (let i = 0; i < ${n}; i++) { __t += ${ms}; frame(__t); }`); }
@@ -197,4 +197,22 @@ test('a guarded update reload is deferred, not dropped, and never re-stamps the 
   store.set('sm2.swReload', String(Date.now() - 31000));   // guard window has passed
   c.run('swu.readyAt = G.time - 10; tickUpdate()');
   assert.equal(reloads, 1);
+});
+
+test('service worker: preview navigations/assets bypass production and unrelated caches survive activation', async () => {
+  const sw = worker();
+  sw.stores.set('other-application-cache', new Map());
+  sw.stores.set('sm2-app-%2Fother%2F-v1.0.0', new Map());
+  sw.stores.set('sm2-preview-pr-27', new Map());
+  sw.stores.set('sm2-app-v3.19.1', new Map());
+  await sw.lifecycle('install'); await sw.lifecycle('activate');
+  assert.equal(await nav(sw, '/pr/27/' + 'a'.repeat(40) + '/'), null);
+  assert.equal(await sw.request('/pr/27/assets.js'), null);
+  assert.equal(await nav(sw, '/pr/'), null);
+  assert.equal(await nav(sw, '/pr'), null);
+  assert.ok(sw.stores.has('other-application-cache'));
+  assert.ok(sw.stores.has('sm2-app-%2Fother%2F-v1.0.0'));
+  assert.ok(sw.stores.has('sm2-preview-pr-27'));
+  assert.ok(!sw.stores.has('sm2-app-v3.19.1'), 'legacy game shell is migrated');
+  assert.equal(sw.net.length, 0, 'bypass leaves requests to the browser network stack');
 });

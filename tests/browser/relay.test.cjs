@@ -74,7 +74,9 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block', ...options });
     // Preferences only: no game/transport/crypto APIs, clocks, or packets mocked.
     await context.addInitScript((host) => {
-      if (!localStorage.getItem('sm2.settings')) localStorage.setItem('sm2.settings', JSON.stringify({
+      const p = /^\/pr\/([1-9]\d*)\/([a-f0-9]{40})\/([a-f0-9]{40})\//.exec(location.pathname);
+      const key = (p ? 'sm2.preview.' + p[1] + '.' + p[2] + '.' + p[3] + '.' : '') + 'sm2.settings';
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({
         netRelay: host, autorun: false, music: false, sfx: false, haptics: false,
       }));
     }, relayHost);

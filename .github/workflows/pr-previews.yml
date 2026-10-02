@@ -1,0 +1,141 @@
+name: Pages and PR previews
+
+# This workflow must be merged to main before it can publish. Enabling it and
+# switching the existing Pages site to Actions are separate, explicit decisions.
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [Regression tests]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Rebuild the complete live set, rather than applying the triggering PR's delta.
+# GitHub may replace a pending run, so every surviving run reconciles every PR.
+concurrency:
+  group: space-man-pages
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    if: >-
+      vars.SPACE_MAN_PREVIEWS_ENABLED == 'true' &&
+      github.repository == 'picatz/space-man' &&
+      github.event.repository.default_branch == 'main' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      main_sha: ${{ steps.plan.outputs.main_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - id: plan
+        name: Reconcile current trusted PRs
+        run: node scripts/publish-pages.cjs plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SPACE_MAN_PREVIEWS_ENABLED: ${{ vars.SPACE_MAN_PREVIEWS_ENABLED }}
+
+  test:
+    needs: discover
+    if: vars.SPACE_MAN_PREVIEWS_ENABLED == 'true'
+    # Keep this exact name in sync with testJobName() in publish-pages.cjs.
+    name: Offline checks ${{ matrix.label }} ${{ matrix.sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: picatz/space-man
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact checkout
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      # This is the only job that executes PR code. It has no write permissions,
+      # secrets, shared cache, outputs, or artifacts consumed by publication.
+      - name: Offline regression tests
+        run: node --test tests/*.test.cjs
+
+  assemble:
+    needs: [discover, test]
+    if: >-
+      always() && !cancelled() &&
+      vars.SPACE_MAN_PREVIEWS_ENABLED == 'true' &&
+      needs.discover.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    steps:
+      # A fresh runner: the test jobs cannot rewrite these trusted scripts.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.discover.outputs.main_sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assemble production and successful current heads
+        run: node trusted/scripts/publish-pages.cjs assemble
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SPACE_MAN_PREVIEWS_ENABLED: ${{ vars.SPACE_MAN_PREVIEWS_ENABLED }}
+          PREVIEW_PLAN: ${{ needs.discover.outputs.plan }}
+          PAGES_OUTPUT: ${{ runner.temp }}/space-man-site
+      - name: Upload complete site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/space-man-site
+          retention-days: 1
+
+  deploy:
+    needs: [discover, assemble]
+    if: >-
+      always() && !cancelled() &&
+      vars.SPACE_MAN_PREVIEWS_ENABLED == 'true' &&
+      needs.discover.result == 'success' && needs.assemble.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # No checkout, shell, PR source, or repository code in this write-token job.
+      - name: Deploy complete existing Pages site
+        id: deployment
+        uses: actions/deploy-pages@v4

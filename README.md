@@ -179,3 +179,94 @@ physical iOS/Safari coverage, a real background/lock suspension, a cellular/Wi-F
 handoff, camera QR scanning, or installed-PWA/update testing. Service workers are
 blocked to keep this test on one build. Keep the separate-device release checks
 above for those behaviors.
+
+## GitHub Actions PR previews (disabled until explicitly enabled)
+
+The **Pages and PR previews** workflow can publish the existing Pages site as
+one artifact: production from tested `main` at `/`, with playable development
+snapshots under `/pr/<number>/<full-head-sha>/<trusted-builder-sha>/`. The extra
+builder SHA prevents a later packaging change from reusing an old build URL.
+Each preview displays its PR/source identity and includes `preview-build.json`.
+Find links in the successful workflow's assembly summary or the site's `/pr/`
+index. Summary links are prepared links until the deployment job succeeds.
+
+This feature is **off by default**. Merging its code does not enable the custom
+publisher, change repository settings, or launch the opt-in real-relay smoke.
+The existing branch-based production deployment still publishes merged runtime
+changes, including the service-worker migration described below.
+
+### Activation requires a separate approval
+
+1. Review and merge the implementation, allowing the existing production Pages
+   flow to publish the worker migration. Keep the preview variable unset.
+2. Open the main game on each test browser, finish its update at the title/death
+   screen, and reload. An older installed root worker intercepts every navigation;
+   it can serve the old production game when a preview is first opened. New
+   preview code cannot fix a navigation already intercepted by that old worker.
+   Do this before opening preview links; do not clear saves to force an update.
+3. In repository **Settings → Pages → Build and deployment**, select **GitHub
+   Actions** as the source, preserving the existing custom domain/HTTPS setup.
+   Keep the `github-pages` environment restricted to trusted default-branch
+   deployments. The workflow needs `pages: write` and `id-token: write` only in
+   its deployment job; it needs no PAT, provider account or new stored secret.
+4. Set repository Actions variable `SPACE_MAN_PREVIEWS_ENABLED` to exactly `true`
+   and manually run **Pages and PR previews** from `main`. These settings and the
+   first deployment are explicit activation steps, not part of preparing a PR.
+5. Verify production, `/pr/`, one preview, and a same-preview invitation in two
+   browsers. The real-relay smoke can then be launched separately with an
+   authorized relay host and the exact preview URL as `base_url`.
+
+### Trust, isolation, and lifecycle
+
+- Only open PRs authored by `picatz`, targeting `main`, with a head in
+  `picatz/space-man` are eligible. Forks and other authors are not auto-published.
+  Previews execute JavaScript on the production **origin**. Namespaced storage
+  prevents accidental collisions, not hostile access; arbitrary contributor
+  previews need a separate origin instead of loosening this filter.
+- The trusted workflow reconciles all eligible current heads. Each exact head
+  and production commit is tested on a separate read-only runner. A fresh runner
+  uses the trusted default-branch static packager; no PR build script, artifact,
+  test output, secret, shared cache, or write-token job executes PR code.
+  Assembly uses GitHub's job conclusions for this exact run/attempt. If retrying
+  a partial failure, use **Re-run all jobs**, not just failed jobs.
+- A failing or incompatible PR is omitted without blocking other passing
+  previews. Production tests must pass. If `main` changes during verification,
+  the run preserves the live site and waits for the queued reconciliation.
+  The only write-token job runs the official Pages deploy action, with no
+  checkout or repository script execution. No preview comments are posted.
+- Publishing is serialized and always includes the full current live set.
+  Superseded, closed, failing, or incompatible snapshots may be removed at the
+  next publication; these links are revision-specific, not permanent archives.
+  Closing a PR alone does not trigger publication. The next push, PR test
+  completion, or manual run cleans it up. A retired URL is never reassigned to
+  a newer revision. Each static build is capped at 20 MiB and the complete site
+  at 200 MiB; temporary Pages artifacts retain for one day.
+- Previews are online-only, do not install a service worker/PWA, and keep saves,
+  settings, relay-directory cache, and room-resume state separate by both SHAs.
+  The updated production worker bypasses `/pr` and `/pr/` and cleans only its
+  own scoped caches plus legacy game caches.
+- Use the full invite link or its QR to play together. Preview hosts do not
+  publish room codes, since codes carry no build identity. Pasted full links
+  are checked against the current preview before their payload is parsed.
+  This does not change protocol 6 or provide new server-side build negotiation.
+  Relay connectivity still needs a successful live smoke; hosting a preview
+  alone is not evidence that a public relay accepts the connection.
+
+### Verification
+
+`node --test tests/*.test.cjs` includes packaging, trust filters, exact-SHA job
+outcomes, storage/invite isolation, and simulated service-worker regression
+checks. The **Regression tests** workflow also runs a localhost-only Chromium
+check for production/preview navigation, caches and separate saves. It does not
+contact a relay. To run that browser check explicitly:
+
+```sh
+cd tests/browser
+npm ci
+npx playwright install chromium
+npm run test:previews
+```
+
+GitHub Pages remains the only host. Standard public-repository Actions runner
+minutes are free; normal Pages and artifact-storage limits still apply. No paid
+runner, provider subscription, or billing setting is added by this workflow.
