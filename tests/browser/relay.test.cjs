@@ -16,6 +16,8 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
   timeout: 180000,
 }, async (t) => {
   assert.match(relayHost, /^[A-Za-z0-9.-]+(?::\d{1,5})?$/, 'Use a relay hostname[:port], without scheme or path');
+  const port = relayHost.includes(':') ? Number(relayHost.split(':')[1]) : 443;
+  assert.ok(port >= 1 && port <= 65535, 'Relay port must be between 1 and 65535');
   const expectedSocketURL = new URL(`wss://${relayHost}/derp`).href;
   const { chromium } = require('playwright');
   let browser;
@@ -103,6 +105,19 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
         && rows.length === 3 && rows.some((r) => r.you);
     });
   }
+  async function rostersAgree() {
+    await Promise.all(clients.map((c) => rosterReady(c.page)));
+    // `you` differs by page; compare the shared identity fields, not just counts.
+    const expected = await clients[0].page.evaluate(() => window.SpaceManNet.roster()
+      .map(({ p, role, callsign, host }) => ({ p, role, callsign, host: !!host }))
+      .sort((a, b) => a.p - b.p));
+    await Promise.all(clients.map((c) => wait(c.page, (rows) => {
+      const actual = window.SpaceManNet.roster()
+        .map(({ p, role, callsign, host }) => ({ p, role, callsign, host: !!host }))
+        .sort((a, b) => a.p - b.p);
+      return JSON.stringify(actual) === JSON.stringify(rows);
+    }, expected)));
+  }
   async function join(c, invite, watch) {
     // Exercise pasted-link parsing, the Play/Watch choice, and first-run callsign.
     await c.page.locator('#btnTogether').click();
@@ -133,7 +148,7 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
     stage = 'joining player and spectator through the UI';
     await join(player, invite, false);
     await join(spectator, invite, true);
-    await Promise.all(clients.map((c) => rosterReady(c.page)));
+    await rostersAgree();
     assert.match(await host.page.locator('#roomCounts').innerText(), /players 2\/\d+ · spectators 1\/\d+/);
     assert.equal(await host.page.locator('#roomRoster .roster-row').count(), 3);
     const playerBefore = await identity(player.page), spectatorBefore = await identity(spectator.page);
@@ -157,14 +172,14 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
     await wait(host.page, (p) => !window.SpaceManNet.presence().some((r) => r.p === p), playerBefore.myP);
     stage = 'reconnecting the player to the same seat';
     await player.context.setOffline(false); // the app's real online handler nudges reconnect
-    await Promise.all(clients.map((c) => rosterReady(c.page)));
+    await rostersAgree();
     await wait(host.page, (p) => window.SpaceManNet.presence().some((r) => r.p === p), playerBefore.myP);
     assert.deepEqual(await identity(player.page), playerBefore, 'Reconnect preserves seat, role, seed and round');
     assert.ok(player.sockets > socketCount, 'A replacement WebSocket was opened');
 
     stage = 'reloading the spectator and resuming its seat';
     await spectator.page.reload();
-    await Promise.all(clients.map((c) => rosterReady(c.page)));
+    await rostersAgree();
     assert.deepEqual(await identity(spectator.page), spectatorBefore, 'Reload resumes spectator without a duplicate player');
     t.diagnostic('Player loss/reconnect and spectator page reload preserved the original seats and roles.');
 
@@ -191,17 +206,32 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
       assert.equal(current.seed, round.seed);
       assert.equal(current.runId, round.runId);
     }
-    await wait(spectator.page, () => netSpectating() && validWatch());
+    await wait(spectator.page, () => netSpectating() && validWatch() && spec.watchP > 0 && spec.cameraP === spec.watchP);
     // Actual keyboard input drives the shipped simulation; remote PRES/SNAP
     // samples must change on both the other player and the spectator.
     async function moveAndObserve(mover, observers) {
       const p = (await identity(mover.page)).myP;
+      await wait(spectator.page, (p) => watchable(ghostByP.get(p)), p);
+      if (await spectator.page.evaluate((p) => spec.watchP !== p, p)) {
+        await spectator.page.keyboard.press('ArrowRight'); // two runners: select the other one
+      }
+      await wait(spectator.page, (p) => {
+        const g = ghostByP.get(p);
+        return spec.watchP === p && spec.cameraP === p && watchable(g)
+          && Math.abs(G.camX - (g.x1 - view.w * 0.42)) < 3;
+      }, p);
+      const cameraBefore = await spectator.page.evaluate(() => G.camX);
       const before = await mover.page.evaluate(() => G.player.x + G.player.w / 2);
       await mover.page.keyboard.down('ArrowRight');
       try { await wait(mover.page, (x) => G.player.x + G.player.w / 2 > x + 12, before); }
       finally { await mover.page.keyboard.up('ArrowRight'); }
       await Promise.all(observers.map((c) => wait(c.page, ({ p, x }) =>
         window.SpaceManNet.presence().some((r) => r.p === p && !r.spectator && r.x > x + 8 && r.runId === window.SpaceManNet.info().runId), { p, x: before })));
+      await wait(spectator.page, ({ p, x }) => {
+        const g = ghostByP.get(p);
+        return spec.watchP === p && spec.cameraP === p && watchable(g) && G.camX > x + 5
+          && Math.abs(G.camX - (g.x1 - view.w * 0.42)) < 4;
+      }, { p, x: cameraBefore });
     }
     stage = 'observing bidirectional live presence after reconnect';
     await moveAndObserve(host, [player, spectator]);
