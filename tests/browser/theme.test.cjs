@@ -149,3 +149,18 @@ test('keyboard and controller focus are visible, settings survive reload', { tim
   await page.reload(); await page.locator('#btnSettings').click();
   assert.equal(await page.locator('#ovSettings button[role=switch]').first().getAttribute('aria-checked'), after);
 });
+
+test('runner result card fixture shares chrome without clipping retry or score', { timeout: 30000 }, async t => {
+  const page = await launch(t);
+  // The shipped deterministic screenshot route stages a run-over card. This
+  // checks its layout only; real gameplay/results remain covered elsewhere.
+  const base = page.url();
+  await page.goto(base + '?theme-layout=results#shot=dead&seed=42&frames=600');
+  await page.locator('#ovDead.show').waitFor();
+  for (const [width,height] of [[320,568],[390,640],[844,390],[1440,900]]) {
+    await page.setViewportSize({ width,height });
+    await reachable(page, '#btnAgain');
+    await fit(page, ['#ovDead .panel','#deadStats','.dead-cols']);
+    await capture(page, `after-${width}x${height}-runner-results-fixture`);
+  }
+});
