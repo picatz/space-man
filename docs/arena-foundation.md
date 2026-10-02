@@ -1,5 +1,9 @@
 # Arena: first playable slice and the next boundary
 
+This is the historical foundation/design note. The friend-room milestone is now
+implemented; see [the current online contract and limits](arena-online.md). The
+current casual client interpolates authoritative state without combat prediction.
+
 ## Intent
 
 Space Man is growing into a small set of related games with the same spacefarers,

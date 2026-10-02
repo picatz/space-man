@@ -151,6 +151,7 @@
 `;
   const ONLINE_STYLES = `
 .arena-online-panel{margin:18px 0 0;padding:18px;border:1px solid #36526d;border-radius:18px;background:#071527cc;color:#dcefff}
+.arena-online-panel .arena-local-note{display:block;max-width:none;text-align:left}
 .arena-online-panel>summary{cursor:pointer;font-size:15px;font-weight:750;min-height:36px;line-height:36px}
 .arena-online-entry,.arena-room-box{display:grid;gap:12px;margin-top:12px}.arena-online-entry[hidden],.arena-room-box[hidden],.arena-touch[hidden],.arena-watch-tools[hidden]{display:none!important}
 .arena-online-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.arena-online-actions>button{min-height:48px}

@@ -1541,7 +1541,24 @@
     };
   }
 
+  // Settings accept secure URL prefixes, but relay sockets and invite packets
+  // require a bare hostname[:port]. Validate before allocating a room identity:
+  // malformed custom input must fail, never quietly select a public relay.
+  function normalizeRelayHost(value) {
+    if (value == null || value === '') return '';
+    const bad = () => new Error('Invalid custom relay. Use a hostname[:port], optionally prefixed with https:// or wss://, without paths, credentials, queries or fragments.');
+    if (typeof value !== 'string' || value.length > 128) throw bad();
+    const bare = value.trim().replace(/^(?:https|wss):\/\//i, '');
+    const match = /^([A-Za-z0-9.-]+)(?::([0-9]{1,5}))?$/.exec(bare);
+    if (!match || !match[1].split('.').every((label) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))) throw bad();
+    if (match[2] != null && (+match[2] < 1 || +match[2] > 65535)) throw new Error('Invalid custom relay port. Use a port from 1 to 65535.');
+    const host = match[1].toLowerCase() + (match[2] == null ? '' : ':' + Number(match[2]));
+    if (host.length < 4 || host.length > 64) throw new Error('Invalid custom relay. The hostname and optional port must fit 4 to 64 characters.');
+    return host;
+  }
+
   function HostSession(opts) {   // opts: {relayHost, region, tag, suit, hat, code:boolean, expiryMin?, role?, adjIdx?, nounIdx?}
+    opts = Object.assign({}, opts || {}, { relayHost: normalizeRelayHost(opts && opts.relayHost) });
     const S = {
       isHost: true, mode: modeName(opts), roleLocked: false,
       playerCap: modeByte(opts) ? Math.max(1, Math.min(4, opts.playerCap | 0 || 4)) : PLAYER_CAP,
@@ -2899,7 +2916,8 @@
 
     async openRoom(opts) {
       if (session) { if (modeName(opts) !== (session.mode || 'runner')) throw modeError(); return NET.info(); }
-      const operation = ++roomOperation, o = opts || {};
+      const operation = ++roomOperation, o = Object.assign({}, opts || {});
+      o.relayHost = normalizeRelayHost(o.relayHost);
       // Reserve ownership before the first await: leave() must cancel this open
       // even while directory lookup has not yet created a session to close.
       // Optional live directory refresh (host only) before picking a relay; the

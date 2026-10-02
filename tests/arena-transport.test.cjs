@@ -364,3 +364,65 @@ test('acceptJoin invalidates an older directory open and its late result cannot 
   await host.net.sendArena(bytes(18, 77)); await until(() => rx.events.length === 1, 'new guest still receives authenticated packets');
   assert.equal(rx.events[0].bytes[0], 77);
 });
+
+test('secure custom relay prefixes normalize before sockets and invites in arena and runner rooms', async (t) => {
+  for (const mode of ['arena', 'runner']) for (const input of ['relay.test:8443', 'https://relay.test:8443', 'wss://relay.test:8443']) {
+    const hub = relay(), Base = hub.Socket, opened = [];
+    hub.Socket = class extends Base {
+      constructor(url, protocol) {
+        assert.equal(url, 'wss://relay.test:8443/derp', 'relay receives one canonical secure URL');
+        assert.equal(protocol, 'derp'); super(url, protocol); opened.push(url);
+      }
+    };
+    const host = client(hub, { game: false }), guest = client(hub, { game: false });
+    t.after(() => { host.close(); guest.close(); });
+    const options = Object.freeze({ mode, relayHost: input, code: false });
+    await host.net.openRoom(options);
+    const hs = host.net._n1.session(), invite = host.net.info().link.split('#j=')[1];
+    assert.equal(host.net._n1.invite.decodeInvite(invite).inv.relayHost, 'relay.test:8443');
+    assert.equal(hs.relayHostName, 'relay.test:8443');
+    assert.equal(options.relayHost, input, 'caller preferences remain unchanged');
+    await guest.net.acceptJoin(invite, { mode });
+    await until(() => guest.net.roster().some((r) => r.you), 'canonical-relay admission');
+    assert.equal(opened.length, 2, 'host and guest connect to the same valid endpoint');
+    if (mode === 'arena') {
+      const rx = collect(guest.net); await host.net.sendArena(bytes(700, 88));
+      await until(() => rx.events.length === 1, 'encrypted arena snapshot'); assert.equal(rx.events[0].bytes[0], 88);
+    } else {
+      assert.equal(host.net.resumeToken().relayHost, 'relay.test:8443');
+      host.net.sendPresence(100, 200, 0, 11, 0, 0, 0); await hs._snapTick();
+      await until(() => guest.net.presence().some((r) => r.p === 1 && r.x === 100), 'encrypted runner snapshot');
+    }
+    host.close(); guest.close();
+  }
+});
+
+test('invalid custom relay formats fail clearly before directory lookup, keys or sockets', async (t) => {
+  const hub = relay(), c = client(hub, { game: false }); t.after(() => c.close());
+  let sockets = 0, directoryLoads = 0;
+  c.context.WebSocket = class { constructor() { sockets++; throw new Error('unexpected socket'); } };
+  c.context.SpaceManRelayDir = { load() { directoryLoads++; throw new Error('unexpected directory fallback'); } };
+  for (const relayHost of [
+    'http://relay.test', 'ws://relay.test', 'ftp://relay.test', 'https:///relay.test', '//relay.test',
+    'https://relay.test/', 'wss://relay.test/derp', 'relay.test/path', 'relay.test?x=1', 'relay.test#fragment',
+    'https://user:password@relay.test', 'user@relay.test', 'relay.test:0', 'relay.test:65536', 'relay.test:-1',
+    'relay.test:abc', 'relay.test:', 'relay.test:123456', 'relay.test:80:90', 'relay\\test', 'relay test',
+    'relay..test', '-relay.test', 'relay-.test', '   ', 'abc', 'a'.repeat(65), false, 123, {},
+  ]) {
+    await assert.rejects(c.net.openRoom({ mode: 'arena', relayHost, code: false, relayDir: { mode: 'custom' } }), /Invalid custom relay/, String(relayHost));
+    assert.equal(c.net._n1.session(), null); assert.equal(c.net.active, false);
+  }
+  assert.equal(sockets, 0); assert.equal(directoryLoads, 0, 'invalid input never falls back to another relay');
+  assert.throws(() => c.net._n1.HostSession({ relayHost: 'https://user@relay.test' }), /Invalid custom relay/);
+});
+
+test('custom relay canonicalization also covers direct sessions, casing, port spelling and invite rotation', async (t) => {
+  const hub = relay(), c = client(hub, { game: false }); t.after(() => c.close());
+  const direct = c.net._n1.HostSession({ mode: 'arena', relayHost: ' WSS://RELAY.TEST:08443 ', code: false });
+  t.after(() => direct.close()); await direct.open();
+  assert.equal(direct.relayHostName, 'relay.test:8443');
+  const oldInvite = c.net._n1.invite.decodeInvite(direct.invite).inv;
+  assert.equal(oldInvite.relayHost, 'relay.test:8443');
+  await direct.rotateLink();
+  assert.equal(c.net._n1.invite.decodeInvite(direct.invite).inv.relayHost, 'relay.test:8443');
+});

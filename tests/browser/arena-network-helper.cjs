@@ -20,21 +20,31 @@ async function simulatedRelay(context, c, hub) {
   // No state, input, crypto, DOM, timers, or frame-rate APIs are replaced.
   // Binary ciphertext is transported from the browser's actual WebSocket API
   // boundary into tests/harness.cjs, which authenticates and routes opaque data.
-  const sockets = new Map();
+  const sockets = new Map(), deliveries = new Map();
   c.bridgeSockets = sockets;
-  const deliver = (page, id, type, bytes) => page.evaluate(({ id, type, bytes }) => {
-    window.__arenaRelayDispatch?.(id, type, bytes);
-  }, { id, type, bytes }).catch(() => {});
+  // Native WebSockets preserve order, including OPEN before the first frame.
+  // Serialize CDP deliveries instead of relying on concurrent evaluate order.
+  const deliver = (page, id, type, bytes) => {
+    const next = (deliveries.get(id) || Promise.resolve()).then(() => page.evaluate(({ id, type, bytes }) => {
+      window.__arenaRelayDispatch?.(id, type, bytes);
+    }, { id, type, bytes })).catch(() => { c.deliveryErrors++; });
+    deliveries.set(id,next); return next;
+  };
   await context.exposeBinding('__arenaRelayHop', ({ page }, action, id, value) => {
     if (action === 'open') {
       c.sockets++;
-      if (value !== 'wss://relay.test/derp') c.unexpectedSockets++;
+      if (value !== 'wss://relay.test/derp') {
+        c.unexpectedSockets++;
+        setImmediate(() => { deliver(page,id,'error'); deliver(page,id,'close'); });
+        return; // A substituted relay must never conceal an invalid endpoint.
+      }
       if (c.offline) { setImmediate(() => deliver(page, id, 'close')); return; }
       const socket = new hub.Socket(); sockets.set(id, socket);
       socket.onopen = () => deliver(page, id, 'open');
       socket.onmessage = event => {
         c.received++;
         const b = new Uint8Array(event.data);
+        c.receivedTypes[b[0]] = (c.receivedTypes[b[0]] || 0) + 1;
         if (b[0] === 5) c.encryptedReceived++;
         return deliver(page, id, 'message', Array.from(b));
       };
@@ -42,6 +52,7 @@ async function simulatedRelay(context, c, hub) {
       const socket = sockets.get(id);
       if (!socket || c.offline || socket.readyState !== 1) return;
       c.sent++;
+      c.sentTypes[value[0]] = (c.sentTypes[value[0]] || 0) + 1;
       if (value[0] === 4) c.encryptedSent++;
       socket.send(Uint8Array.from(value));
     } else if (action === 'close') {
@@ -126,7 +137,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     ...(process.env.SPACE_MAN_CHROMIUM_PATH ? { executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : {}) });
   async function client(name, options = {}) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block', ...options });
-    const c = { name, context, sockets: 0, sent: 0, received: 0, encryptedSent: 0, encryptedReceived: 0, unexpectedSockets: 0, errors: [], offline: false };
+    const c = { name, context, phone:!!options.isMobile, sockets: 0, sent: 0, received: 0, encryptedSent: 0, encryptedReceived: 0, unexpectedSockets: 0, deliveryErrors:0, sentTypes:{}, receivedTypes:{}, errors: [], offline: false };
     if (!live) await simulatedRelay(context, c, hub);
     await context.addInitScript(host => {
       const p = /^\/pr\/([1-9]\d*)\/([a-f0-9]{40})\/([a-f0-9]{40})\//.exec(location.pathname);
@@ -146,7 +157,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await c.page.goto(baseURL); await c.page.locator('#btnArena').waitFor();
     await c.page.evaluate(() => {
       window.__arenaRunnerBefore = G.player;
-      window.__arenaAcceptance = { events: [], uiEvents: [], inputs: {}, snapshots: 0 };
+      window.__arenaAcceptance = { events: [], uiEvents: [], lifecycle: [], inputs: {}, snapshots: 0 };
       const seen = new Set();
       const collect = state => {
         for (const event of state?.events || []) {
@@ -156,6 +167,15 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
         }
       };
       window.SpaceManNet.onEvent((event, data) => {
+        if (['state','join-progress','welcomed','ok','join','rejoin','roster','role','leave','reconnecting','reconnected','hostaway','hostback','bye'].includes(event)) {
+          // Never retain event payloads: they can contain identity/capability data.
+          const item = {event};
+          if (['established','down'].includes(data.state)) item.state=data.state;
+          if (['relay','hello'].includes(data.stage)) item.stage=data.stage;
+          for (const key of ['p','reason','detail']) if (Number.isInteger(data[key])) item[key]=data[key];
+          __arenaAcceptance.lifecycle.push(item);
+          if (__arenaAcceptance.lifecycle.length>40) __arenaAcceptance.lifecycle.shift();
+        }
         if (event !== 'arena-data') return;
         const input = window.SpaceManArenaOnline.decodeInput(data.bytes);
         if (input) window.__arenaAcceptance.inputs[data.p] = { seq: input.seq, command: input.command };
@@ -179,9 +199,12 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
   const snapshot = c => c.page.evaluate(() => arenaUI.snapshot());
   async function open(c) { await c.page.locator('#btnArena').click(); await screen(c, 'lobby'); await c.page.locator('.arena-online-panel > summary').click(); }
   async function join(c, invite, watch = false) {
-    await open(c); await c.page.locator('#arenaRoomInput').fill(invite);
+    await open(c);
+    if (c.phone) assert.equal(await c.page.locator('#arenaRoomHint').isVisible(),true,'phone lobby connection/help status is visible');
+    await c.page.locator('#arenaRoomInput').fill(invite);
     await c.page.locator(watch ? '#arenaWatch' : '#arenaJoin').click();
     await wait(c, () => SpaceManNet.active && SpaceManNet.info().mode === 'arena' && SpaceManNet.roster().some(r => r.you));
+    if (c.phone) assert.equal(await c.page.locator('#arenaRoomHint').isVisible(),true,'phone joined-room connection status is visible');
   }
   const identity = c => c.page.evaluate(() => {
     const n = SpaceManNet, info = n.info(), s = n._n1.session();
@@ -262,8 +285,8 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await wait(host, p => __arenaAcceptance.inputs[p]?.command.moveX === 0, guestIdentity.p);
     const menuTick = (await snapshot(host)).tick;
     await wait(host, tick => arenaUI.snapshot().tick > tick + 12, menuTick);
-    assert.equal(await host.page.locator('.arena-root').getAttribute('data-screen'), 'play');
-    await guest.page.locator('#arenaResume').click(); await screen(guest,'play');
+    assert.equal(await host.page.locator('.arena-root').getAttribute('data-screen'), 'match');
+    await guest.page.locator('#arenaResume').click(); await screen(guest,'match');
 
     stage = 'host shared pause and new late player admitted as watching';
     await host.page.locator('#arenaPause').click(); await pausedAgreement(host,[guest,watcher]);
@@ -287,7 +310,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     assert.ok(guest.sockets > socketsBefore, 'reconnect creates a replacement socket');
     await pausedAgreement(host,[guest,watcher,late]);
     await host.page.locator('#arenaResume').click();
-    await Promise.all(clients.map(c => screen(c,'play')));
+    await Promise.all(clients.map(c => screen(c,'match')));
 
     stage = 'keyboard attack produces a real shared hit and damage';
     await wait(host, () => arenaUI.snapshot().actors.every(a => a.invulnerable === 0));
@@ -302,7 +325,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     assert.ok(hit.actors[1].damage >= 12 && hit.actors[0].attackSerial > 0);
     await Promise.all([guest,watcher,late].map(c => wait(c, () => __arenaAcceptance.events.some(e => e.type === 'hit' && e.actorId === 1 && e.targetId === 2))));
     for (const c of clients) assert.match(await c.page.locator('.arena-roster [data-actor="2"] .arena-damage').innerText(), /^[1-9]\d*%$/);
-    await host.page.locator('#arenaResume').click(); await screen(guest,'play');
+    await host.page.locator('#arenaResume').click(); await screen(guest,'match');
 
     stage = 'ordinary movement loses stocks and all browsers agree on match result';
     await guest.page.keyboard.down('d');
@@ -340,6 +363,12 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     assert.equal(teams.actors.find(a => a.peerP === 1).team,1);
     assert.ok((await snapshot(guest)).actors.every(a => a.controller !== 'human'));
     assert.ok((await snapshot(watcher)).actors.some(a => a.controller === 'human'));
+    const viewport = guest.page.viewportSize();
+    for (const id of ['arenaWatchPrevious','arenaWatchNext']) {
+      await guest.page.locator('#'+id).waitFor({state:'visible'});
+      const bounds = await guest.page.locator('#'+id).boundingBox();
+      assert.ok(bounds && bounds.width>=44 && bounds.height>=44 && bounds.x>=0 && bounds.y>=0 && bounds.x+bounds.width<=viewport.width+1 && bounds.y+bounds.height<=viewport.height+1,'phone spectator control is visible, touch-sized and within viewport');
+    }
 
     stage = 'host closure and clean runner return';
     await host.page.locator('#arenaPause').click(); await host.page.locator('#arenaLobby').click();
@@ -389,7 +418,25 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     // Live capability links/keys must never escape through Playwright call logs
     // or assertion diffs. Stage names are deliberately constant and public.
     if (live) throw new Error(`Live arena acceptance failed while ${stage} (${error.name || 'Error'}). Private diagnostics suppressed.`);
-    error.message = `Simulated-relay arena acceptance: ${stage}: ${error.message}`; throw error;
+    const redact = text => String(text || '').replace(/https?:\/\/\S+/gi,'[url]').replace(/(?:#j=)?[A-Za-z0-9_=-]{40,}/g,'[redacted]').slice(0,320);
+    for (const c of clients) {
+      const state = await c.page.evaluate(() => {
+        const n=window.SpaceManNet, info=n?.info(), a=window.__arenaAcceptance;
+        return {hint:document.querySelector('#arenaRoomHint')?.textContent || '',
+          screen:document.querySelector('.arena-root')?.dataset.screen,
+          active:!!n?.active,mode:info?.mode,p:info?.myP,role:info?.role,
+          players:info?.players,spectators:info?.spectators,
+          roster:n?.roster().map(r=>({p:r.p,role:r.role,host:!!r.host,you:!!r.you})),
+          snapshots:a?.snapshots,lifecycle:a?.lifecycle || []};
+      }).catch(() => ({unavailable:true}));
+      if (state.hint) state.hint=redact(state.hint);
+      t.diagnostic('Simulated-relay diagnostic '+JSON.stringify({client:c.name,...state,
+        sockets:c.sockets,openBridgeSockets:c.bridgeSockets?.size || 0,sent:c.sent,received:c.received,
+        sentTypes:c.sentTypes,receivedTypes:c.receivedTypes,encryptedSent:c.encryptedSent,encryptedReceived:c.encryptedReceived,
+        unexpectedSockets:c.unexpectedSockets,deliveryErrors:c.deliveryErrors,browserErrors:c.errors.length,
+        relayPackets:hub?.packetCount || 0}));
+    }
+    throw new Error(`Simulated-relay arena acceptance: ${stage}: ${redact(error.message)}`);
   }
 }
 module.exports = { runAcceptance, validateRelayHost };
