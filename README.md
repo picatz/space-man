@@ -38,9 +38,9 @@ Version 2.0 was a ground-up canvas rewrite designed and built by a Claude
 Fable 5 agent team. It's a fun research project exploring the capabilities
 of AI models for web game development.
 
-## Orbital Arena · CPU battles
+## Orbital Arena · CPU + Friends
 
-Choose **Arena · CPU Battles** from the title to enter a separate, opt-in
+Choose **Arena · CPU + Friends** from the title to enter a separate, opt-in
 platform-fighting mode. Pulse attacks build damage and launch rivals toward the
 edge of space. Double jump and dash to recover; each spacefarer has three lives.
 
@@ -55,10 +55,22 @@ edge of space. Double jump and dash to recover; each spacefarer has three lives.
   stick plus Jump, Pulse and Dash; handedness, motion, mute and power preferences
   carry over
 
-These are local CPU battles. Online friend/group combat is the next milestone;
-Run Together continues to be the existing shared-course runner. Leave a room
-explicitly before opening Arena. Arena matches do not affect runner scores,
-missions or room state. Returning to the runner preserves its existing behavior.
+Play locally against CPUs, or open **Play with friends** to create, join or watch
+an arena room. Up to four players and four spectators share authoritative combat,
+lives and results. The host picks the stage, match format and team assignments;
+empty fighter slots get CPUs. Share the invite link/QR or a production room code.
+Preview invites use their full revision-specific links. Late arrivals watch until
+the next lobby, where they can request a player seat.
+
+The host browser runs all combat. Guests send inputs and display authoritative
+snapshots, so relay latency affects guest responsiveness. Host pause or connection
+loss freezes the shared match; guest menus release controls while play continues.
+Same-tab reconnect keeps a seat for a short grace period. Host leave/reload ends
+the room; no host migration is claimed. [Rules, limits and tests](docs/arena-online.md).
+
+Run Together continues to be the existing shared-course runner. Leave its room
+explicitly before opening Arena. Arena matches do not affect runner scores or
+missions, and local CPU matches remain available offline.
 
 The simulation lives in `src/arena.js`, with device-independent commands,
 serializable state and CPU controllers using the same command interface. Its
@@ -71,6 +83,25 @@ keyboard/touch controls, matches, pause/restart, layout and returning to the
 runner using local assets, without contacting a relay. Like the other browser
 tests, it requires `npm ci` and Playwright Chromium; an existing Chromium can be
 selected with `SPACE_MAN_CHROMIUM_PATH`.
+
+## Star Circuit · Arcade Racing
+
+Choose **Star Circuit · Racing** from the title for an original top-down
+hoverkart race against four CPU pilots. Race three laps on **Starlight Speedway**,
+**Ember Switchback**, or **Bloom Lagoon**, with Chill, Sport and Expert CPU pace.
+Carve corners, catch boost strips, manage rechargeable boost and recover from a
+missed bend. Ordered checkpoints, race position, timing and results are part of
+the actual simulation. Race again, switch circuits or return to the runner.
+
+Auto-drive is on. A/D or Left/Right steer, S/Down brakes, Space/Shift boosts,
+R rescues and Escape pauses. Touch and standard controllers are supported;
+existing left-handed, steering remaps, mute and reduced-motion preferences carry
+over. Portrait uses a forward-facing view; the minimap keeps the full circuit
+visible. Leave an existing room before entering local racing.
+
+This is **local CPU racing**. Friend racing is a separate next milestone on the
+shared room transport; it is not advertised as online play yet. Racing does not
+change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
 
 ## Daily Course and challenges
 

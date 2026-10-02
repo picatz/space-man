@@ -41,6 +41,9 @@ accepts `storageKey`, `settings()` and `onClose()` and returns `open`, `close`,
 `destroy`, `active`, `screen`, and a detached `snapshot()`. Controls produce
 normalized commands. Touch cancellation, lost capture, global release,
 viewport changes, visibility, pause/restart and mode exit all clear held input.
+Portrait uses a forward-facing chase view; reduced motion keeps a fixed heading
+and disables decorative parallax, flame pulsing and rescue blinking. Pilot labels
+stay upright and crowded CPU names are omitted in favor of the player label.
 The overlay consumes the shared safe-area/status-rail insets and the visual
 viewport, so browser chrome is not reserved twice.
 

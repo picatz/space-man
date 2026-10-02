@@ -75,6 +75,7 @@
       oldOverflow,
       inert = [],
       prefs = {},
+      prefersReduced = false,
       padNeutral = true,
       padPrevious = {},
       pad = { steer: 0, boost: false, brake: false, recover: false },
@@ -101,8 +102,13 @@
     const announce = (text) => {
       live.textContent = text;
     };
+    const calm = () =>
+      prefs.reduceMotion === undefined ? prefersReduced : !!prefs.reduceMotion;
     function preferences() {
       prefs = typeof opts.settings === "function" ? opts.settings() : {};
+      prefersReduced = !!root.matchMedia?.("(prefers-reduced-motion: reduce)")
+        .matches;
+      rootEl.dataset.calm = String(calm());
       rootEl.dataset.handed =
         prefs.lefty || prefs.handedness === "left" || prefs.leftHanded
           ? "left"
@@ -728,8 +734,7 @@
       camera = {
         x: a.x,
         y: a.y,
-        rotation:
-          height > width && !prefs.reduceMotion ? -a.heading - Math.PI / 2 : 0,
+        rotation: height > width && !calm() ? -a.heading - Math.PI / 2 : 0,
       };
       setPanel(null);
       announce("Three laps. Auto-drive is on. Race starts in three.");
@@ -928,7 +933,7 @@
         ctx.fillStyle = a.color + "48";
         ctx.beginPath();
         ctx.moveTo(-16, -7);
-        ctx.lineTo(-42 - ((state?.tick || 0) % 6), 0);
+        ctx.lineTo(-42 - (calm() ? 0 : (state?.tick || 0) % 6), 0);
         ctx.lineTo(-16, 7);
         ctx.fill();
         ctx.fillStyle = "#d7ffff";
@@ -1032,8 +1037,13 @@
       g.fillStyle = c.sky;
       g.fillRect(0, 0, width, height);
       for (let i = 0; i < 100; i++) {
-        const x = (((i * 137.1 - camera.x * 0.045) % width) + width) % width,
-          y = (((i * i * 39.1 - camera.y * 0.045) % height) + height) % height;
+        const x =
+            (((i * 137.1 - (calm() ? 0 : camera.x * 0.045)) % width) + width) %
+            width,
+          y =
+            (((i * i * 39.1 - (calm() ? 0 : camera.y * 0.045)) % height) +
+              height) %
+            height;
         g.fillStyle = i % 4 ? "#c9e4ff60" : c.edge + "80";
         g.fillRect(x, y, i % 7 ? 1 : 2, i % 7 ? 1 : 2);
       }
@@ -1075,7 +1085,7 @@
       // Portrait gets a forward-facing chase view: the useful road extends
       // into the tall screen instead of spending most of its area on empty sky.
       // Reduced-motion players keep the fixed-heading overview.
-      const followHeading = height > width && !prefs.reduceMotion;
+      const followHeading = height > width && !calm();
       const targetRotation = followHeading ? -a.heading - Math.PI / 2 : 0;
       camera.rotation +=
         Math.atan2(
@@ -1104,12 +1114,22 @@
         g.restore();
       }
       for (const actor of state.actors) {
-        if (actor.recoveryTicks && state.tick % 12 < 5) continue;
+        if (!calm() && actor.recoveryTicks && state.tick % 12 < 5) continue;
         kart(g, actor);
       }
       g.restore();
       // Screen-space labels remain upright in the chase view. Keep YOU first
       // and omit crowded CPU labels rather than stacking names over the grid.
+      const topClip = Math.max(
+        83,
+        hud.getBoundingClientRect().bottom - (viewport?.top || 0) + 10,
+      );
+      const controlsTop =
+        rootEl.dataset.touch === "true" && !touch.hidden
+          ? touch.querySelector(".race-touch-group").getBoundingClientRect()
+              .top - (viewport?.top || 0)
+          : height;
+      const bottomClip = Math.min(height - 100, controlsTop - 16);
       const labels = [],
         cos = Math.cos(camera.rotation),
         sin = Math.sin(camera.rotation);
@@ -1131,8 +1151,8 @@
         if (
           box.left < 5 ||
           box.right > width - 5 ||
-          box.top < 83 ||
-          box.bottom > height - 100
+          box.top < topClip ||
+          box.bottom > bottomClip
         )
           continue;
         if (

@@ -66,6 +66,18 @@
   const CAP_CALLSIGN = 1 << 0, CAP_SPECTATE = 1 << 1, CAP_ROLECHANGE = 1 << 2,
         CAP_ANTICHEAT = 1 << 3, CAP_HOSTEPOCH = 1 << 4;
   const CAPS = CAP_CALLSIGN | CAP_SPECTATE | CAP_ROLECHANGE | CAP_ANTICHEAT | CAP_HOSTEPOCH;
+  // Arena is an explicitly different room mode, never inferred from capability alone.
+  // Runner HELLO/WELCOME bytes stay unchanged. An arena join also requires the invite
+  // bit and mode marker, so old runner clients cannot silently enter arena rooms.
+  const CAP_ARENA = 1 << 5, INV_ARENA = 0x10, MODE_ARENA = 1, A_ARENA = 0x40;
+  const ARENA_MAX = 1024, ARENA_HEAD = 8, ARENA_CHUNK = WIRE_MAX - 27 - ARENA_HEAD;
+  const ARENA_TTL = 1000, ARENA_ABSENT_GRACE = 15000, SEAL_QUEUE_MAX = 32;
+  const modeName = (o) => o && o.mode === 'arena' ? 'arena' : 'runner';
+  const modeByte = (o) => modeName(o) === 'arena' ? MODE_ARENA : 0;
+  const inviteMode = (inv) => inv.flags & INV_ARENA ? 'arena' : 'runner';
+  const arenaCaps = (o) => CAPS | (modeByte(o) ? CAP_ARENA : 0);
+  const modeMatches = (mode, h) => h.mode === (mode === 'arena' ? MODE_ARENA : 0) && (mode !== 'arena' || !!(h.caps & CAP_ARENA));
+  const modeError = () => new Error('This invite is for a different game mode. Open Arena for arena rooms or Run Together for runner rooms.');
 
   // Mobility rate-limit tables (Addendum F.1) — GUEST-enforced; the host is
   // never trusted to self-limit. Move/handoff FLOWS are M2 (reserved frame
@@ -466,7 +478,7 @@
   // ROUND/control, KILL/KILLB/KILLS, BYE, EMOTE, HELLO, and anything unknown — mutates state,
   // so it must arrive after every earlier state frame: one whose counter is not above the last
   // accepted state frame is dropped as 'late' (never struck — that is reordering, not an attack).
-  const REORDER_SAFE = new Set([A_PRES, A_SNAP, A_PING, A_PONG]);
+  const REORDER_SAFE = new Set([A_PRES, A_SNAP, A_PING, A_PONG, A_ARENA]);
   // Anti-replay with a small window (the DTLS/IPsec rule): every counter opens at most once; one
   // that arrives a little late (reordered on a lossy path) is still accepted, one from beyond the
   // window is dropped as stale. `mask` bit i = counter highSeen−1−i already opened.
@@ -499,13 +511,17 @@
     // WebCrypto completion order is not guaranteed. The receiver requires
     // increasing counters, so preserve invocation order per pair (also across
     // SNAP/ROSTER/ROUND). Copy scratch-backed plaintext before waiting.
+    if (!(pt instanceof Uint8Array) || pt.length > WIRE_MAX - 27) return Promise.reject(new Error('app packet too large'));
+    if ((pair.sealPending || 0) >= SEAL_QUEUE_MAX) return Promise.reject(new Error('crypto send backlog'));
+    pair.sealPending = (pair.sealPending || 0) + 1;
     const bytes = pt.slice();
     const pending = (pair.sealQueue || Promise.resolve()).then(() => sealAppFrame(pair, bytes));
-    pair.sealQueue = pending.catch(() => {});
-    return pending;
+    const tracked = pending.finally(() => { pair.sealPending--; });
+    pair.sealQueue = tracked.catch(() => {});
+    return tracked;
   }
   async function sealAppFrame(pair, pt) {
-    if (pair.sendCtr >= Number.MAX_SAFE_INTEGER) throw new Error('pair exhausted');   // the counter is u64 on the wire; JS numbers are exact to 2^53
+    if (pair.sendCtr >= Number.MAX_SAFE_INTEGER || (pair.sendEnd && pair.sendCtr >= pair.sendEnd)) throw new Error('pair exhausted');   // the counter is u64 on the wire; JS numbers are exact to 2^53
     const ctr = pair.sendCtr++;
     const { iv, aad } = envHead(pair, pair.dir, ctr);
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad, tagLength: 128 }, pair.key, pt));
@@ -761,7 +777,7 @@
       host, keys, cb, ws: null, state: 'idle', closed: false,
       rx: null, rxLen: 0, boxK: null, serverInfo: null,
       lastRecv: 0, lastSend: 0, pingCtr: 0, pingSent: new Map(), rtt: 0,
-      attempts: 0, timers: [], hq: Promise.resolve(),
+      attempts: 0, timers: [], hq: Promise.resolve(), hqState: { n: 0, bytes: 0 },
     };
     const now = () => performance.now();
     const later = (fn, ms) => { const t = setTimeout(fn, ms); c.timers.push(t); return t; };
@@ -769,13 +785,15 @@
     const log = (m) => { if (cb.onLog) cb.onLog(m); };
 
     function sendFrame(type, payload) {
-      if (!c.ws || c.ws.readyState !== 1) return;
+      if (!c.ws || c.ws.readyState !== 1) return false;
+      if (type === F_SEND && c.ws.bufferedAmount > TUNE.backlogHard) return false;
       const b = new Uint8Array(5 + payload.length);
       b[0] = type;
       new DataView(b.buffer).setUint32(1, payload.length, false);   // relay lengths are big-endian
       b.set(payload, 5);
       c.ws.send(b);
       c.lastSend = now();
+      return true;
     }
     c.send = (dstPub, bytes) => sendFrame(F_SEND, cat(dstPub, bytes));
 
@@ -855,17 +873,25 @@
       c.rx.set(d, c.rxLen);
       c.rxLen += d.length;
       let off = 0;
-      const jobs = [];
+      const jobs = [], queue = c.hqState;
+      let jobBytes = 0;
       while (c.rxLen - off >= 5) {
         const type = c.rx[off];
         const len = ((c.rx[off + 1] << 24) | (c.rx[off + 2] << 16) | (c.rx[off + 3] << 8) | c.rx[off + 4]) >>> 0;
         if (len > RELAY_FRAME_MAX) return fail('frame too large');
         if (c.rxLen - off - 5 < len) break;
+        if (queue.n + jobs.length >= 256 || queue.bytes + jobBytes + len > RX_RING * 2) return fail('frame backlog');
+        jobBytes += len;
         jobs.push([type, c.rx.slice(off + 5, off + 5 + len)]);      // copy out so the ring can compact
         off += 5 + len;
       }
       if (off) { c.rx.copyWithin(0, off, c.rxLen); c.rxLen -= off; }
-      for (const [t, p] of jobs) c.hq = c.hq.then(() => handleFrame(t, p)).catch((e) => fail('frame: ' + (e && e.message)));
+      for (const [t, p] of jobs) {
+        queue.n++; queue.bytes += p.length;
+        c.hq = c.hq.then(() => { if (c.hqState === queue && !c.closed && c.state !== 'down') return handleFrame(t, p); })
+          .catch((e) => { if (c.hqState === queue) fail('frame: ' + (e && e.message)); })
+          .finally(() => { queue.n--; queue.bytes -= p.length; });
+      }
     }
 
     c.connect = () => {
@@ -875,6 +901,7 @@
       c.rx = c.rx || new Uint8Array(RX_RING);
       c.rxLen = 0;
       c.hq = Promise.resolve();
+      c.hqState = { n: 0, bytes: 0 };
       let ws;
       try { ws = new WebSocket('wss://' + c.host + '/derp', 'derp'); }
       catch (e) { return fail('ws ctor: ' + (e && e.message)); }
@@ -935,9 +962,9 @@
 
   // HELLO core is bytes 0..35 (as N1). Bytes 36..42 append role/caps/callsign
   // (addenda A/C/D). The proof is over (gPub,hostPub), independent of the body,
-  // so appending fields is always safe. Decoders read trailing fields only if
-  // present (shorter frame from an older client → defaults) and ignore any bytes
-  // beyond byte 42 (forward compat).
+  // so appending fields is safe. Decoders read trailing fields only if present
+  // (shorter runner frames → defaults). Byte 43 explicitly marks arena mode;
+  // bytes beyond it remain reserved for future negotiated extensions.
   function encHello(s, o) {  // o: {tag,suit,hat,rejoin8?,wantP,proof16, role?, caps?, adjIdx?, nounIdx?}
     const u = s.u8, dv = s.dv;
     u[0] = A_HELLO; u[1] = PROTO; u[2] = PROTO;
@@ -952,6 +979,7 @@
     dv.setUint32(37, (o.caps == null ? CAPS : o.caps) >>> 0, true);
     u[41] = (o.adjIdx == null ? CALLSIGN_NONE : o.adjIdx) & 0xff;
     u[42] = (o.nounIdx == null ? CALLSIGN_NONE : o.nounIdx) & 0xff;
+    if (o.mode === MODE_ARENA) { u[43] = MODE_ARENA; return u.subarray(0, 44); }
     return u.subarray(0, HELLO_LEN);
   }
   function decHello(pt) {
@@ -966,11 +994,13 @@
       caps: pt.length >= 41 ? dv.getUint32(37, true) : 0,
       adjIdx: pt.length >= 42 ? pt[41] : CALLSIGN_NONE,
       nounIdx: pt.length >= 43 ? pt[42] : CALLSIGN_NONE,
+      mode: pt.length >= 44 ? pt[43] : 0,
     };
   }
   // WELCOME keeps its 23B length: hostEpoch (Addendum F.1) rides byte 15 and the
   // capability bitfield (Addendum D) bytes 16..19, both inside the old reserved
-  // tail. Decoders default them when absent (older host).
+  // tail. Arena additionally uses bytes 20..22 for its mode and seat caps;
+  // runner packets keep those reserved bytes zero.
   function encWelcome(s, o) { // o: {yourP,seed,runId,epoch,hostTag,rosterN,boardN,roomFlags, hostEpoch?, caps?}
     const u = s.u8, dv = s.dv;
     u[0] = A_WELCOME; u[1] = PROTO; u[2] = o.yourP;
@@ -982,6 +1012,8 @@
     u.fill(0, 15, WELCOME_LEN);
     u[15] = (o.hostEpoch || 0) & 0xff;
     dv.setUint32(16, (o.caps == null ? CAPS : o.caps) >>> 0, true);
+    u[20] = o.mode === MODE_ARENA ? MODE_ARENA : 0;
+    if (o.mode === MODE_ARENA) { u[21] = o.playerCap || 4; u[22] = o.spectatorCap || 4; }
     return u.subarray(0, WELCOME_LEN);
   }
   function decWelcome(pt) {
@@ -992,7 +1024,8 @@
     return {
       proto: pt[1], yourP: pt[2], seed: dv.getUint32(3, true), runId: pt[7], epoch: pt[8],
       hostTag: wTag(tag), rosterN: pt[12], boardN: pt[13], roomFlags: pt[14],
-      hostEpoch: pt[15], caps: dv.getUint32(16, true),
+      hostEpoch: pt[15], caps: dv.getUint32(16, true), mode: pt[20],
+      playerCap: Math.max(1, Math.min(4, pt[21] || 4)), spectatorCap: Math.max(1, Math.min(4, pt[22] || 4)),
     };
   }
   // PRES v5 (20B): t u16 is the SENDER's sim clock (frames at 60/s, mod 2^16) at the sample —
@@ -1424,6 +1457,82 @@
   const PENDING_TTL = 35000;   // ms a held approve-mode join waits (guest gives up at 30 s)
   const HOST_GONE_GRACE = 120000; // ms after the relay reports the host gone before a guest leaves. A host's tab sent to the background or a phone locked is not a closed room; a host that really leaves says BYE, which ends it at once
   const PRES_STALE = 2500;     // ms without a fresh PRES → stop fanning the row out (paused/backgrounded peers hide promptly)
+  // Opaque, lossy latest-value lane. Only one assembly (<=1024B) per peer;
+  // fresh message IDs supersede incomplete/stale messages. Fragments can reorder
+  // inside the existing AEAD replay window, but never replay a delivered message.
+  function arenaFragment(bytes, id, index) {
+    const part = bytes.subarray(index * ARENA_CHUNK, (index + 1) * ARENA_CHUNK);
+    const out = new Uint8Array(ARENA_HEAD + part.length), dv = new DataView(out.buffer);
+    out[0] = A_ARENA; dv.setUint32(1, id, true); dv.setUint16(5, bytes.length, true); out[7] = index;
+    out.set(part, ARENA_HEAD); return out;
+  }
+  function arenaRate(holder, n) {
+    const now = performance.now();
+    const r = holder.arenaRate || (holder.arenaRate = { t: now, frames: 240, bytes: 65536 });
+    const dt = Math.max(0, now - r.t); r.t = now;
+    r.frames = Math.min(240, r.frames + dt * 0.18);
+    r.bytes = Math.min(65536, r.bytes + dt * 32.768);
+    if (r.frames < 1 || r.bytes < n) return false;
+    r.frames--; r.bytes -= n; return true;
+  }
+  function arenaReceive(holder, pt, deliver) {
+    if (pt.length <= ARENA_HEAD || pt.length > WIRE_MAX - 27) return 'arena-size';
+    const dv = new DataView(pt.buffer, pt.byteOffset), id = dv.getUint32(1, true), n = dv.getUint16(5, true), index = pt[7];
+    const count = Math.ceil(n / ARENA_CHUNK);
+    if (!id || !n || n > ARENA_MAX || index >= count || pt.length !== ARENA_HEAD + Math.min(ARENA_CHUNK, n - index * ARENA_CHUNK)) return 'arena-fragment';
+    const now = performance.now(), rx = holder.arenaRx || (holder.arenaRx = { high: 0, at: 0, data: null, mask: 0 });
+    const delta = (id - rx.high) | 0;
+    if (rx.high && delta < 0) return null;
+    if (delta > 0 || !rx.high) { rx.high = id; rx.at = now; rx.data = new Uint8Array(n); rx.mask = 0; }
+    if (!rx.data) return null;                          // completed or expired: same ID cannot restart it
+    if (now - rx.at > ARENA_TTL) { rx.data = null; return null; }
+    if (rx.data.length !== n) return 'arena-fragment';
+    if (rx.mask & (1 << index)) return null;
+    rx.data.set(pt.subarray(ARENA_HEAD), index * ARENA_CHUNK); rx.mask |= 1 << index;
+    if (rx.mask === (1 << count) - 1) { const bytes = rx.data; rx.data = null; deliver(bytes); }
+    return null;
+  }
+  function arenaExpire(holder, now) {
+    if (holder.arenaRx && now - holder.arenaRx.at > ARENA_TTL) holder.arenaRx.data = null;
+  }
+  function arenaSend(S, holder, pub, bytes) {
+    if (!(bytes instanceof Uint8Array) || !bytes.length || bytes.length > ARENA_MAX || S.closed || !S.relay || S.relay.state !== 'established') return Promise.resolve(false);
+    const tx = holder.arenaTx || (holder.arenaTx = { id: 0, pending: null, running: false });
+    const result = new Promise((resolve) => {
+      if (tx.pending) tx.pending.resolve(false);
+      tx.pending = { bytes: bytes.slice(), resolve, at: performance.now() };
+    });
+    if (!tx.running) {
+      tx.running = true;
+      (async () => {
+        try {
+          while (tx.pending) {
+            if (S.closed || holder.absent || !S.relay || S.relay.state !== 'established' || performance.now() - tx.pending.at > ARENA_TTL) {
+              tx.pending.resolve(false); tx.pending = null; break;
+            }
+            // Coalesce while crypto/socket is backed up. At most one active and
+            // one latest pending message per peer, with no unbounded promise chain.
+            if ((S.relay.backlog && S.relay.backlog() > TUNE.backlogSoft) || (holder.pair.sealPending || 0) >= SEAL_QUEUE_MAX - 2) {
+              await new Promise((resolve) => setTimeout(resolve, 25)); continue;
+            }
+            const item = tx.pending; tx.pending = null;
+            tx.id = (tx.id + 1) >>> 0; if (!tx.id) tx.id = 1;
+            let ok = true;
+            try {
+              for (let i = 0; i < Math.ceil(item.bytes.length / ARENA_CHUNK); i++) {
+                if (S.closed || holder.absent || S.relay.state !== 'established' || (S.relay.backlog && S.relay.backlog() > TUNE.backlogHard)) { ok = false; break; }
+                const wire = await sealApp(holder.pair, arenaFragment(item.bytes, tx.id, i));
+                if (S.closed || holder.absent || S.relay.state !== 'established' || S.relay.send(pub, wire) === false) { ok = false; break; }
+              }
+            } catch (e) { ok = false; }
+            item.resolve(ok);
+          }
+        } finally { tx.running = false; }
+      })().catch(() => { if (tx.pending) { tx.pending.resolve(false); tx.pending = null; } });
+    }
+    return result;
+  }
+
   function emitter() {
     const subs = new Set();
     return {
@@ -1432,10 +1541,30 @@
     };
   }
 
+  // Settings accept secure URL prefixes, but relay sockets and invite packets
+  // require a bare hostname[:port]. Validate before allocating a room identity:
+  // malformed custom input must fail, never quietly select a public relay.
+  function normalizeRelayHost(value) {
+    if (value == null || value === '') return '';
+    const bad = () => new Error('Invalid custom relay. Use a hostname[:port], optionally prefixed with https:// or wss://, without paths, credentials, queries or fragments.');
+    if (typeof value !== 'string' || value.length > 128) throw bad();
+    const bare = value.trim().replace(/^(?:https|wss):\/\//i, '');
+    const match = /^([A-Za-z0-9.-]+)(?::([0-9]{1,5}))?$/.exec(bare);
+    if (!match || !match[1].split('.').every((label) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))) throw bad();
+    if (match[2] != null && (+match[2] < 1 || +match[2] > 65535)) throw new Error('Invalid custom relay port. Use a port from 1 to 65535.');
+    const host = match[1].toLowerCase() + (match[2] == null ? '' : ':' + Number(match[2]));
+    if (host.length < 4 || host.length > 64) throw new Error('Invalid custom relay. The hostname and optional port must fit 4 to 64 characters.');
+    return host;
+  }
+
   function HostSession(opts) {   // opts: {relayHost, region, tag, suit, hat, code:boolean, expiryMin?, role?, adjIdx?, nounIdx?}
+    opts = Object.assign({}, opts || {}, { relayHost: normalizeRelayHost(opts && opts.relayHost) });
     const S = {
-      isHost: true, keys: null, relay: null, codeRelay: null, code: null, codeKeys: null,
-      roomId: null, secret: null, epoch: 0, hostEpoch: 0, ctrlSeq: 0, caps: CAPS, seed: 0, runId: 1,
+      isHost: true, mode: modeName(opts), roleLocked: false,
+      playerCap: modeByte(opts) ? Math.max(1, Math.min(4, opts.playerCap | 0 || 4)) : PLAYER_CAP,
+      spectatorCap: modeByte(opts) ? Math.max(1, Math.min(4, opts.spectatorCap | 0 || 4)) : SPECTATOR_CAP,
+      keys: null, relay: null, codeRelay: null, code: null, codeKeys: null,
+      roomId: null, secret: null, epoch: 0, hostEpoch: 0, ctrlSeq: 0, caps: arenaCaps(opts), seed: 0, runId: 1,
       roundT0: 0, roundRunId: 0,   // shared-round clock: roundT0 is the perf.now() the flare reads zero for roundRunId
 
       roster: new Map(),         // pubHex → {p, pub, tag, suit, hat, role, adjIdx, nounIdx, pair, pres, strikes, bucket, lastHello, helloN, unverified, lastRole, runT0}
@@ -1457,10 +1586,11 @@
       codeOk: (!opts.relayHost || ((regionOf(opts.region) || { hosts: [] }).hosts.indexOf(opts.relayHost) >= 0)) && (!opts.region || /^[a-z]{3}$/.test(opts.region)),
       codeReplies: 0, codeRepliesMin: 0, codeMinMark: 0,
     };
-    // Separate caps (Addendum A): count players vs spectators across the roster.
-    function counts() {
+    // Separate caps (Addendum A): public counts show active peers; arena admission
+    // also reserves absent role slots until its 15-second reconnect grace expires.
+    function counts(reserveAbsent) {
       let players = S.role === ROLE_SPECTATOR ? 0 : 1, spectators = S.role === ROLE_SPECTATOR ? 1 : 0;
-      for (const r of S.roster.values()) { if (r.absent) continue; if (r.role === ROLE_SPECTATOR) spectators++; else players++; }
+      for (const r of S.roster.values()) { if (r.absent && !reserveAbsent) continue; if (r.role === ROLE_SPECTATOR) spectators++; else players++; }
       return { players, spectators };
     }
     // A peer's transport dropped (relay F_PEER_GONE) — hide its ghost at once and
@@ -1472,6 +1602,7 @@
       dropPending(hex(pub));
       const row = S.roster.get(hex(pub));
       if (!row || row.absent) return;
+      if (row.arenaRx) row.arenaRx.data = null;
       row.pres = null; row.absent = true; row.lastSeen = 0; row.absentAt = performance.now();
       S.ev.emit('leave', { p: row.p, tag: row.tag });
       sendRoster(2, [row]).catch(() => {});   // ROSTER leave → peers drop the ghost + roster entry
@@ -1511,6 +1642,7 @@
       }
       const row = S.roster.get(key);
       if (!row) return joinAttempt(srcPub, key, wire);
+      if (S.mode === 'arena' && !arenaRate(row, wire.length)) return;
       const res = await openApp(row.pair, wire);
       if (res.err === 'stale' || res.err === 'late') return;     // reordered past the window, or a state frame overtaken by a newer one: dropped, never a strike (a slow path is not an attack)
       if (res.err) return strike(row, res.err);
@@ -1519,7 +1651,16 @@
       if (!pt.length) return;
       // Frame-type partition (Addendum D): reserved (0x40-0x7F) & experimental
       // (0x80-0xFF) types are ignored silently and NEVER striked.
+      if (pt[0] === A_ARENA) {
+        if (S.mode !== 'arena' || !(row.caps & CAP_ARENA)) return;
+        if (row.role === ROLE_SPECTATOR) return strike(row, 'spectator-arena');
+        if (row.absent) return;
+        const why = arenaReceive(row, pt, (bytes) => S.ev.emit('arena-data', { p: row.p, pubHex: key, bytes }));
+        if (why) strike(row, why);
+        return;
+      }
       if (pt[0] > FRAME_CORE_HI) return;
+      if (S.mode === 'arena' && (pt[0] === A_PRES || pt[0] === A_KILL)) return strike(row, 'runner-frame');
       // Host-only broadcast/control types never legitimately travel guest→host.
       // A guest emitting one is forging host authority (a fabricated kick /
       // new-world / roster / snap / emote-broadcast) → strike. The pair AEAD
@@ -1647,10 +1788,11 @@
         const rc = decRole(pt);
         if (!rc) return;
         const t3 = performance.now();
+        if (S.mode === 'arena' && S.roleLocked) { sendRoster(1, [row], row).catch(() => {}); return; }
         if (row.lastRole && t3 - row.lastRole < ROLE_MIN_INTERVAL) { sendRoster(1, [row], row).catch(() => {}); return; }
-        const c = counts();
-        if (rc.newRole === ROLE_SPECTATOR && row.role !== ROLE_SPECTATOR && c.spectators >= SPECTATOR_CAP) { sendRoster(1, [row], row).catch(() => {}); return; }
-        if (rc.newRole === ROLE_PLAYER && row.role !== ROLE_PLAYER && c.players >= PLAYER_CAP) { sendRoster(1, [row], row).catch(() => {}); return; }
+        const c = counts(S.mode === 'arena');
+        if (rc.newRole === ROLE_SPECTATOR && row.role !== ROLE_SPECTATOR && c.spectators >= S.spectatorCap) { sendRoster(1, [row], row).catch(() => {}); return; }
+        if (rc.newRole === ROLE_PLAYER && row.role !== ROLE_PLAYER && c.players >= S.playerCap) { sendRoster(1, [row], row).catch(() => {}); return; }
         row.lastRole = t3;
         if (row.role !== rc.newRole) {
           row.role = rc.newRole;
@@ -1666,12 +1808,13 @@
         row.lastHello = t2;
         const h = decHello(pt);
         if (!h) return strike(row, 'short');
+        if (!modeMatches(S.mode, h)) { S.relay.send(row.pub, await sealApp(row.pair, encBye(S.out, 3, INV_ARENA))); return; }
         // Members prove themselves with the invite they joined on. rotateLink
         // bumps epoch + secret for FUTURE joins only, so check the admit-time
         // proof, never the current one (that would strike every reconnect).
         if (!ctEq(row.proof, h.proof16)) return strike(row, 'proof');
         const w = encWelcome(S.out, {
-          yourP: row.p, seed: S.seed, runId: S.runId, epoch: S.epoch, hostEpoch: S.hostEpoch, caps: S.caps,
+          yourP: row.p, seed: S.seed, runId: S.runId, epoch: S.epoch, hostEpoch: S.hostEpoch, caps: S.caps, mode: modeByte(S), playerCap: S.playerCap, spectatorCap: S.spectatorCap,
           hostTag: S.tag, rosterN: S.roster.size + 1, boardN: 0, roomFlags: 0,
         });
         S.relay.send(row.pub, await sealApp(row.pair, w));
@@ -1701,7 +1844,17 @@
       pre.lastHello = t; pre.helloN++;
       S.joinTimes = S.joinTimes.filter((x) => t - x < 60000);
       if (S.joinTimes.length >= 10) return;
-      const pair = makePair(await derivePairKey(S.keys, srcPub, S.roomId, S.epoch), S.roomId, S.epoch, DIR_H2G, S.restored ? Date.now() : 0);
+      // Arena retires absent rows quickly. Re-admitting the same key must never
+      // restart its host nonce at zero. Disjoint per-admission counter ranges
+      // avoid key/nonce reuse even if the wall clock moves backwards.
+      let startCtr = S.restored ? Date.now() : 0;
+      if (S.mode === 'arena') {
+        S.arenaCounterBase = (S.arenaCounterBase || 0) + 4294967296;
+        if (S.arenaCounterBase + 4294967296 >= Number.MAX_SAFE_INTEGER) return;
+        startCtr = S.arenaCounterBase;
+      }
+      const pair = makePair(await derivePairKey(S.keys, srcPub, S.roomId, S.epoch), S.roomId, S.epoch, DIR_H2G, startCtr);
+      if (S.mode === 'arena') pair.sendEnd = startCtr + 4294967296;
       const res = await openApp(pair, wire);
       if (res.err || !res.pt.length || res.pt[0] !== A_HELLO) { preStrike(key, pre); return; }
       const h = decHello(res.pt);
@@ -1709,9 +1862,17 @@
       if (h.protoMin > PROTO || h.protoMax < PROTO) return;      // version gap → BYE(3) in N2; drop for now
       const want = joinProof(S.secret, S.roomId, S.epoch, srcPub, S.keys.pub);
       if (!ctEq(want, h.proof16)) { preStrike(key, pre); return; }   // silent: no oracle for secret-guessers
+      if (!modeMatches(S.mode, h)) {
+        S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 3, INV_ARENA)));
+        S.ev.emit('mode-rejected', { mode: S.mode }); return;
+      }
       // Separate caps (Addendum A): 32 players + 16 spectators, checked by role.
-      const c = counts();
-      if (h.role === ROLE_SPECTATOR ? c.spectators >= SPECTATOR_CAP : c.players >= PLAYER_CAP) return;  // full → BYE(4) in N2
+      if (S.mode === 'arena' && S.roleLocked) h.role = ROLE_SPECTATOR;
+      const c = counts(S.mode === 'arena');
+      if (h.role === ROLE_SPECTATOR ? c.spectators >= S.spectatorCap : c.players >= S.playerCap) {
+        if (S.mode === 'arena') S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));
+        return;
+      }
       S.joinTimes.push(t);
       // Approve-mode (Addendum G / §2.6): hold the proven join; the host UI shows
       // "X wants to join [✓][✕]" and calls approve(pubHex, ok). The join is fully
@@ -1736,8 +1897,12 @@
     // and approve() (an admitted held join). Re-checks caps at admit time — a
     // queue delay may have filled the room.
     async function admitJoin(srcPub, key, h, pair) {
-      const c = counts();
-      if (h.role === ROLE_SPECTATOR ? c.spectators >= SPECTATOR_CAP : c.players >= PLAYER_CAP) return false;
+      if (S.mode === 'arena' && S.roleLocked) h.role = ROLE_SPECTATOR;
+      const c = counts(S.mode === 'arena');
+      if (h.role === ROLE_SPECTATOR ? c.spectators >= S.spectatorCap : c.players >= S.playerCap) {
+        if (S.mode === 'arena') S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));
+        return false;
+      }
       const t = performance.now();
       let p = 2;
       const used = new Set([1]);
@@ -1764,7 +1929,7 @@
       S.roster.set(key, row);
       S.prelim.delete(key);
       const w = encWelcome(S.out, {
-        yourP: p, seed: S.seed, runId: S.runId, epoch: S.epoch, hostEpoch: S.hostEpoch, caps: S.caps,
+        yourP: p, seed: S.seed, runId: S.runId, epoch: S.epoch, hostEpoch: S.hostEpoch, caps: S.caps, mode: modeByte(S), playerCap: S.playerCap, spectatorCap: S.spectatorCap,
         hostTag: S.tag, rosterN: S.roster.size + 1, boardN: 0, roomFlags: (S.approveJoins ? 1 : 0),
       });
       S.relay.send(row.pub, await sealApp(row.pair, w));
@@ -1804,7 +1969,10 @@
     // are queued, and the entries are read when each send's turn comes.
     // target = one row only; except = every member but that row.
     function sendRoster(op, entriesOpt, target, except) {
-      const run = S.rosterQueue.then(() => sendRosterNow(op, entriesOpt, target, except));
+      if ((S.rosterPending || 0) >= SEAL_QUEUE_MAX) return Promise.resolve(false);
+      S.rosterPending = (S.rosterPending || 0) + 1;
+      const run = S.rosterQueue.then(() => sendRosterNow(op, entriesOpt, target, except))
+        .finally(() => { S.rosterPending--; });
       S.rosterQueue = run.catch(() => {});
       return run;
     }
@@ -1844,6 +2012,7 @@
     }
     // Tell one member which aliens this round has already lost (a late joiner, or a reconnect that missed KILLBs).
     async function replayKills(row) {
+      if (S.mode === 'arena') return;
       if (!S.relay || S.relay.state !== 'established') return;
       const ids = [];
       for (const key of S.killed) if (Math.floor(key / 4294967296) === S.runId) ids.push(key % 4294967296);
@@ -1856,6 +2025,7 @@
     // a guest CANNOT forge or replay it: encCtrl binds {roomId, hostEpoch, seq}
     // under the pair AEAD, guests validate via ctrlGate before adopting.
     async function broadcastRound(countdown, target) {
+      if (S.mode === 'arena') return;
       if (!S.relay || S.relay.state !== 'established') return;
       const now = performance.now();
       const startDelayMs = S.roundT0 > now ? (S.roundT0 - now) : 0;         // pre-roll remaining
@@ -1874,6 +2044,7 @@
     }
     // Everything we know right now, to one member (a join or a rejoin).
     async function snapTo(row) {
+      if (S.mode === 'arena') return;
       if (!S.relay || S.relay.state !== 'established') return;
       const nowTick = performance.now();
       const rows = S.role === ROLE_SPECTATOR || nowTick - (S.selfSeen || 0) > PRES_STALE ? [] : [{ p: 1, pres: S.self }];
@@ -1904,9 +2075,10 @@
       // Housekeeping: an absent row keeps its P# through a short reconnect,
       // then frees it (P# ≤ 32 on the wire) and stops costing a seal per tick;
       // a held join outlives the guest's own admission timeout by nothing.
-      for (const r of S.roster.values()) if (r.absent && nowTick - r.absentAt > ABSENT_GRACE) removeRow(r);
+      for (const r of S.roster.values()) if (r.absent && nowTick - r.absentAt > (S.mode === 'arena' ? ARENA_ABSENT_GRACE : ABSENT_GRACE)) removeRow(r);
       for (const [key, pend] of S.pending) if (nowTick - pend.t > PENDING_TTL) dropPending(key);
       S.tick = (nowTick - S.started) | 0;
+      if (S.mode === 'arena') { for (const r of S.roster.values()) arenaExpire(r, nowTick); return; }
       // Congestion: our own socket backing up means the uplink can't keep 10 Hz — send every
       // other tick (and let samples replace each other in the meantime).
       const backlog = S.relay.backlog ? S.relay.backlog() : 0;
@@ -1960,6 +2132,7 @@
       // A page reload, a crash or a Back swipe must not end the room: the host's identity is kept for the tab's session
       // (see resumeToken) and handed back here, so the same invite keeps working and guests reconnect to the same host.
       const rs = opts.resume;
+      if (rs && (S.mode === 'arena' || rs.mode === 'arena')) throw new Error('Arena rooms cannot be restored after a page reload. Join a fresh arena invite.');
       if (rs && isHex(rs.priv, 32) && isHex(rs.roomId, 8) && isHex(rs.secret, 16)) {
         S.keys = keypairFromRaw(unhex(rs.priv)); S.roomId = unhex(rs.roomId); S.secret = unhex(rs.secret);
         S.epoch = rs.epoch & 0xff; S.seed = rs.seed >>> 0; S.runId = Math.max(1, rs.runId | 0); S.self.runId = S.runId;
@@ -1982,7 +2155,7 @@
       }
       S.relayHostName = relayHost;
       S.invite = encodeInvite({
-        flags: (opts.relayHost ? 2 : 0), roomId: S.roomId, epoch: S.epoch, hostPub: S.keys.pub,
+        flags: (opts.relayHost ? 2 : 0) | (S.mode === 'arena' ? INV_ARENA : 0), roomId: S.roomId, epoch: S.epoch, hostPub: S.keys.pub,
         region: S.region, relayHost: opts.relayHost || '', secret: S.secret,
         expiryMin: S.expiryMin,
       });
@@ -2025,10 +2198,11 @@
     };
     // Everything needed to stand this room back up after a reload. Secret material: the caller keeps it in the tab's own
     // sessionStorage (gone when the tab closes), never in anything that syncs, and clears it when the room is left.
-    S.resumeToken = () => ({ v: 1, host: true, pub: hex(S.keys.pub), priv: hex(S.keys.priv), roomId: hex(S.roomId), secret: hex(S.secret), epoch: S.epoch, seed: S.seed >>> 0,
+    S.resumeToken = () => S.mode === 'arena' ? null : ({ v: 1, host: true, pub: hex(S.keys.pub), priv: hex(S.keys.priv), roomId: hex(S.roomId), secret: hex(S.secret), epoch: S.epoch, seed: S.seed >>> 0,
       runId: S.runId, expiryMin: S.expiryMin, region: S.region, relayHost: opts.relayHost || '', approve: !!S.approveJoins,
       tag: S.tag, suit: S.suit, hat: S.hat, adjIdx: S.adjIdx, nounIdx: S.nounIdx, role: S.role });
     S.setPresence = (x, y, vx, state, chain, score, dist, t, vy) => {
+      if (S.mode === 'arena') return;
       S.selfSeen = performance.now();
       // A fresh object per sample: the snapshot fan-out compares identities, and the
       // previous sample may still be queued for sealing.
@@ -2075,7 +2249,20 @@
     S.board = () => Array.from(S._board.values()).sort((a, b) => b.bestScore - a.bestScore);
     S.myP = () => 1;
     // Host sits out / rejoins (Addendum A: administration ≠ participation).
-    S.setRole = (role) => { S.role = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER; sendRoster(0).catch(() => {}); };
+    S.setRole = (role) => {
+      const wanted = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER;
+      if (S.mode === 'arena' && S.roleLocked && wanted !== S.role) return false;
+      const c = counts(S.mode === 'arena');
+      if (wanted !== S.role && (wanted === ROLE_SPECTATOR ? c.spectators >= S.spectatorCap : c.players >= S.playerCap)) return false;
+      S.role = wanted; sendRoster(0).catch(() => {}); return true;
+    };
+    S.setArenaRoleLock = (locked) => { if (S.mode !== 'arena') return false; S.roleLocked = !!locked; return true; };
+    S.sendArena = (bytes, targetP) => {
+      if (S.mode !== 'arena') return Promise.resolve(false);
+      const rows = members().filter((r) => (r.caps & CAP_ARENA) && (targetP == null || r.p === targetP));
+      if (!rows.length) return Promise.resolve(false);
+      return Promise.all(rows.map((r) => arenaSend(S, r, r.pub, bytes))).then((sent) => sent.every(Boolean));
+    };
     S.setCallsign = (a, n) => { S.adjIdx = a & 0xff; S.nounIdx = n & 0xff; sendRoster(0).catch(() => {}); };
     S.sendRoster = sendRoster; S.counts = counts;
 
@@ -2087,7 +2274,7 @@
 
     // Emote from the host itself: authoritative, so fan EMOTEB(p=1) directly. The
     // UI self-echo is owned by NET.emote(); this shows the host's bubble to guests.
-    S.sendKill = (id) => { acceptKill(1, S.runId, id >>> 0, null); };
+    S.sendKill = (id) => { if (S.mode === 'arena') return; acceptKill(1, S.runId, id >>> 0, null); };
     S.sendEmote = (id) => {
       const e = id | 0;
       if (e < 0 || e > EMOTE_MAX) return;
@@ -2132,7 +2319,7 @@
         }
       }
       S.invite = encodeInvite({
-        flags: (opts.relayHost ? 2 : 0), roomId: S.roomId, epoch: S.epoch, hostPub: S.keys.pub,
+        flags: (opts.relayHost ? 2 : 0) | (S.mode === 'arena' ? INV_ARENA : 0), roomId: S.roomId, epoch: S.epoch, hostPub: S.keys.pub,
         region: S.region || RELAY_MAP.regions[0].code, relayHost: opts.relayHost || '', secret: S.secret,
         expiryMin: opts.expiryMin || Math.floor(Date.now() / 60000) + 1440,
       });
@@ -2146,6 +2333,7 @@
     // ROUND; markRoundStart lazily anchors the CURRENT runId the first time the
     // host itself starts a run so peers already in the room sync to it.
     S.beginRound = (o) => {
+      if (S.mode === 'arena') return;
       o = o || {};
       const now = performance.now();
       if (o.newSeed) {
@@ -2166,6 +2354,7 @@
       return { seed: S.seed, runId: S.runId, startInMs: delay };
     };
     S.markRoundStart = (delayMs) => {
+      if (S.mode === 'arena') return;
       if (S.roundRunId === S.runId && S.roundT0) return { startInMs: Math.max(0, S.roundT0 - performance.now()) };
       const delay = Math.max(0, delayMs | 0);
       S.roundT0 = performance.now() + delay; S.roundRunId = S.runId;
@@ -2228,7 +2417,8 @@
 
   function GuestSession(inv, opts) {   // inv from decodeInvite; opts: {tag, suit, hat, hz, role, adjIdx, nounIdx}
     const S = {
-      isHost: false, keys: null, relay: null, inv, welcomed: null,
+      isHost: false, mode: modeName(opts), playerCap: modeByte(opts) ? 4 : PLAYER_CAP, spectatorCap: modeByte(opts) ? 4 : SPECTATOR_CAP,
+      keys: null, relay: null, inv, welcomed: null,
       p: 0, tag: wTag(opts.tag || 'AAA'), suit: opts.suit | 0, hat: opts.hat | 0,
       role: opts.role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER,
       adjIdx: opts.adjIdx == null ? CALLSIGN_NONE : opts.adjIdx & 0xff,
@@ -2240,12 +2430,13 @@
       helloTimer: null, slots: makeSlots(), byed: null, welcomeGen: 0, hostGoneTimer: null, boardPub: new Map(), snapshotPs: null,
       link: makeLink(), pingTimer: null, rxTicks: 0, everUp: false, presN: 0, lastPresState: -1, lastPresRun: -1, roundRaw: null, closed: false,
     };
-    S.resumeToken = () => ({ v: 1, host: false, invite: S.payload || '', priv: S.keys ? hex(S.keys.priv) : '', role: S.role,
+    S.resumeToken = () => S.mode === 'arena' ? null : ({ v: 1, host: false, invite: S.payload || '', priv: S.keys ? hex(S.keys.priv) : '', role: S.role,
       tag: S.tag, suit: S.suit, hat: S.hat, adjIdx: S.adjIdx, nounIdx: S.nounIdx });
     // Link probe + dead-socket watchdog, every TUNE.pingMs of real time while in the room.
     function pingTick() {
       if (S.closed || S.byed != null || !S.relay) return;
       if (S.relay.state !== 'established') { S.rxTicks = 0; return; }
+      arenaExpire(S, performance.now());
       linkExpire(S.link, performance.now());
       // The host answers every PING and sends a snapshot heartbeat: silence for deadTicks
       // ticks means our socket is dead without knowing it (a NAT rebind, a network switch).
@@ -2300,7 +2491,7 @@
       const proof = joinProof(S.inv.secret, S.inv.roomId, S.inv.epoch, S.keys.pub, S.inv.hostPub);
       const pt = encHello(S.out, {
         tag: S.tag, suit: S.suit, hat: S.hat, wantP: 0, proof16: proof,
-        role: S.role, caps: CAPS, adjIdx: S.adjIdx, nounIdx: S.nounIdx,
+        role: S.role, caps: arenaCaps(S), mode: modeByte(S), adjIdx: S.adjIdx, nounIdx: S.nounIdx,
       });
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, pt));
     }
@@ -2321,17 +2512,32 @@
       const key = hex(srcPub);
       if (key !== S.hostHex) return;                             // guests hear the host only (I12)
       if (droppedKeys.has(key)) return;                          // blocked host (Addendum G): dropped on receipt
+      if (S.mode === 'arena' && !arenaRate(S, wire.length)) return;
       const res = await openApp(S.pair, wire);
       if (res.err) { S.ev.emit('drop', { why: res.err }); return; }
       S.rxTicks = 0;                                             // the host is reaching us (dead-link watchdog)
       if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; S.hostAwayAt = 0; if (S.awayKnock) { stopTick(S.awayKnock); S.awayKnock = null; } S.ev.emit('hostback', {}); }   // the host is back
       const pt = res.pt;
       if (!pt.length) return;
+      if (pt[0] === A_ARENA) {
+        if (S.mode !== 'arena' || !S.welcomed || !(S.caps & CAP_ARENA) || S.byed != null || res.ctr <= (S.arenaMinCtr || 0)) return;
+        const why = arenaReceive(S, pt, (bytes) => S.ev.emit('arena-data', { p: 1, pubHex: S.hostHex, bytes }));
+        if (why) S.ev.emit('drop', { why });
+        return;
+      }
+      if (S.mode === 'arena' && (pt[0] === A_SNAP || pt[0] === A_KILLB || pt[0] === A_KILLS || pt[0] === A_ROUND)) return;
       if (pt[0] > FRAME_CORE_HI) return;                         // reserved/experimental: ignore, never strike (Addendum D)
       if (pt[0] === A_WELCOME) {
         const w = decWelcome(pt);
         if (!w || w.proto !== PROTO) return;
+        if (!modeMatches(S.mode, w)) {
+          S.byed = 3;
+          if (S.helloTimer) { clearInterval(S.helloTimer); S.helloTimer = null; }
+          if (S.pingTimer) { stopTick(S.pingTimer); S.pingTimer = null; }
+          S.ev.emit('bye', { reason: 3, detail: INV_ARENA, modeMismatch: true }); return;
+        }
         S.welcomed = w; S.p = w.yourP; S.caps = w.caps; S.welcomeGen++;
+        if (S.mode === 'arena') { S.playerCap = w.playerCap; S.spectatorCap = w.spectatorCap; S.arenaRx = null; S.arenaMinCtr = res.ctr; }
         startPing();
         // Adopt the host epoch MONOTONICALLY (Addendum F.1): a WELCOME must
         // never rewind the control gate — a downgrade would resurrect control
@@ -2467,6 +2673,8 @@
     }
 
     S.join = async () => {
+      if (inviteMode(inv) !== S.mode) throw modeError();
+      if (S.mode === 'arena' && opts.resumeKey) throw new Error('Arena page reloads must join with a fresh identity.');
       S.keys = opts.resumeKey && isHex(opts.resumeKey, 32) ? keypairFromRaw(unhex(opts.resumeKey)) : await genKeypair();   // same key = the host seats us in the same place
       const region = regionOf(S.inv.region);
       const hosts = (S.inv.flags & 2) ? [S.inv.relayHost] : (region ? region.hosts : null);
@@ -2519,6 +2727,7 @@
       return 1;
     };
     S.sendPresence = async (x, y, vx, state, chain, score, dist, t, vy) => {
+      if (S.mode === 'arena') return;
       if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
       if (S.role === ROLE_SPECTATOR || S.requestedRole === ROLE_SPECTATOR) return;
       const essential = (state & 0x0c) !== (S.lastPresState & 0x0c) || S.welcomed.runId !== S.lastPresRun;
@@ -2535,6 +2744,7 @@
     // rate-limits, and re-broadcasts EMOTEB; the local self-echo is owned by
     // NET.emote(). seq is advisory (host re-stamps its own into EMOTEB).
     S.sendKill = async (id) => {
+      if (S.mode === 'arena') return;
       if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
       if (S.role === ROLE_SPECTATOR || S.requestedRole === ROLE_SPECTATOR) return;
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, encKill(S.out, S.welcomed.runId, id >>> 0)));
@@ -2556,6 +2766,10 @@
       S.requestedRole = nr;
       S.roleSeq = (S.roleSeq + 1) & 0xffff;
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, encRole(S.out, S.roleSeq, nr)));
+    };
+    S.sendArena = (bytes, targetP) => {
+      if (S.mode !== 'arena' || !S.welcomed || !S.rosterMap.has(S.p) || S.byed != null || S.role === ROLE_SPECTATOR || S.requestedRole === ROLE_SPECTATOR || (targetP != null && targetP !== 1)) return Promise.resolve(false);
+      return arenaSend(S, S, S.inv.hostPub, bytes);
     };
     S.setCallsign = (a, n) => { S.adjIdx = a & 0xff; S.nounIdx = n & 0xff; };
     // Presence + session board for the render stage (N3). A guest projects the
@@ -2676,8 +2890,19 @@
      the mock arrive in later stages; their slots exist so integrators can
      wire call sites once.
      ------------------------------------------------------------------------- */
-  let session = null;
+  let session = null, roomOperation = 0;
   const ev = emitter();
+  async function loadRelayDirectory(mode, o, operation) {
+    if (operation != null && operation !== roomOperation) throw new Error('Room cancelled');
+    const dir = root.SpaceManRelayDir;
+    if (!dir) return { source: 'seed', regions: activeMap().regions.length };
+    const r = await dir.load(Object.assign({ mode: mode || 'default', active: NET.active }, o || {}));
+    // A cancelled host's late directory response must not change the map used by
+    // a newer room, even though its fetch itself may be impossible to abort.
+    if (operation != null && operation !== roomOperation) throw new Error('Room cancelled');
+    setActiveMap(r.map);
+    return { source: r.source, regions: r.map.regions.length };
+  }
   const NET = {
     active: false,
     mockActive: false,
@@ -2686,31 +2911,30 @@
     // Relay directory (Addendum E). Loads via SpaceManRelayDir's fallback ladder
     // and installs the result as the active map. mode: 'default'|'custom'|'list'.
     // Only called intentionally (host, settings) — fetch/localStorage stay lazy.
-    async setRelayDirectory(mode, o) {
-      const dir = root.SpaceManRelayDir;
-      if (!dir) return { source: 'seed', regions: activeMap().regions.length };
-      const r = await dir.load(Object.assign({ mode: mode || 'default', active: NET.active }, o || {}));
-      setActiveMap(r.map);
-      return { source: r.source, regions: r.map.regions.length };
-    },
+    async setRelayDirectory(mode, o) { return loadRelayDirectory(mode, o); },
     relayDirectory() { const m = activeMap(); return { src: m.src, regions: m.regions.map((r) => ({ code: r.code, city: r.city, hosts: r.hosts.length })) }; },
 
     async openRoom(opts) {
-      if (session) return NET.info();
-      const o = opts || {};
+      if (session) { if (modeName(opts) !== (session.mode || 'runner')) throw modeError(); return NET.info(); }
+      const operation = ++roomOperation, o = Object.assign({}, opts || {});
+      o.relayHost = normalizeRelayHost(o.relayHost);
+      // Reserve ownership before the first await: leave() must cancel this open
+      // even while directory lookup has not yet created a session to close.
       // Optional live directory refresh (host only) before picking a relay; the
       // baked copy already backs activeMap() so a failed fetch never blocks.
-      if (o.relayDir) { try { await NET.setRelayDirectory(o.relayDir.mode, o.relayDir); } catch (e) {} }
+      if (o.relayDir) { try { await loadRelayDirectory(o.relayDir.mode, o.relayDir, operation); } catch (e) {} }
+      if (operation !== roomOperation) throw new Error('Room cancelled');
       const next = session = HostSession(o);
       next.ev.on((e, d) => { if (session === next) ev.emit(e, d); });   // a closed session's late packets stay silent
       try { await next.open(); }
       catch (e) { next.close(); if (session === next) session = null; throw e; }
-      if (session !== next) { next.close(); throw new Error('Room cancelled'); }
+      if (operation !== roomOperation || session !== next) { next.close(); throw new Error('Room cancelled'); }
       NET.active = true;
       return NET.info();
     },
     async acceptJoin(payloadStr, opts) {
-      if (session) return NET.info();
+      if (session) { if (modeName(opts) !== (session.mode || 'runner')) throw modeError(); return NET.info(); }
+      const operation = ++roomOperation;
       const dec = decodeInvite(payloadStr);
       if (dec.err) {
         const msg = dec.err === 'version' ? 'update to play together'
@@ -2718,6 +2942,7 @@
           : 'that invite did not scan — ask for a fresh link';
         throw new Error(msg);
       }
+      if (inviteMode(dec.inv) !== modeName(opts)) throw modeError();
       const next = session = GuestSession(dec.inv, opts || {});
       next.payload = String(payloadStr);
       next.ev.on((e, d) => { if (session === next) ev.emit(e, d); });   // a closed session's late packets stay silent
@@ -2733,13 +2958,13 @@
         unsubscribe = next.ev.on((e, d) => {
           if (e === 'join-progress' && d.stage === 'hello') arm();
           if (e === 'welcomed') resolve();
-          if (e === 'bye') reject(new Error('The host declined or ended this room.'));
+          if (e === 'bye') reject(d.reason === 3 && d.detail === INV_ARENA ? modeError() : new Error(d.reason === 4 ? 'That room is full for this role.' : 'The host declined or ended this room.'));
         });
       });
       try { await Promise.all([next.join(), admitted]); }
       catch (e) { next.close(); if (session === next) session = null; throw e; }
       finally { clearTimeout(timer); unsubscribe(); next.cancelAdmit = null; }
-      if (session !== next) { next.close(); throw new Error('Join cancelled'); }
+      if (operation !== roomOperation || session !== next) { next.close(); throw new Error('Join cancelled'); }
       NET.active = true;
       return NET.info();
     },
@@ -2751,7 +2976,7 @@
     peekInvite(payloadStr) {
       const dec = decodeInvite(payloadStr);
       if (dec.err) return { err: dec.err };
-      return { hostHex: hex(dec.inv.hostPub), custom: !!(dec.inv.flags & 2), region: dec.inv.region };
+      return { hostHex: hex(dec.inv.hostPub), custom: !!(dec.inv.flags & 2), region: dec.inv.region, mode: inviteMode(dec.inv) };
     },
     // Resolve a typed room code to its invite without joining (the UI shows the usual Play/Watch prompt next).
     // A typed region (NYC-COMET-42) asks that one relay; a bare code asks the few relays nearest this device.
@@ -2772,6 +2997,7 @@
       return NET.acceptJoin(invite, o);
     },
     leave() {
+      roomOperation++;
       if (session) session.close();
       session = null;
       NET.active = false;
@@ -2814,7 +3040,7 @@
       if (!session) return Promise.resolve(false);
       const current = session, wanted = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER;
       if (current.role === wanted) return Promise.resolve(true);
-      if (current.isHost) { current.setRole(wanted); return Promise.resolve(true); }
+      if (current.isHost) return Promise.resolve(current.setRole(wanted) !== false);
       return new Promise((resolve) => {
         let done = false;
         const finish = (ok) => { if (done) return; done = true; current.requestedRole = null; clearTimeout(timer); unsubscribe(); resolve(ok); };
@@ -2823,6 +3049,10 @@
         current.requestRole(wanted).catch(() => finish(false));
       });
     },
+    // Arena app data is latest-value/best-effort. Repeat durable configuration in
+    // snapshots; transport deliberately knows nothing about game packet fields.
+    sendArena(bytes, targetP) { return session && session.sendArena ? session.sendArena(bytes, targetP) : Promise.resolve(false); },
+    setArenaRoleLock(locked) { return !!(session && session.setArenaRoleLock && session.setArenaRoleLock(locked)); },
     // Callsigns (Addendum C) — indexes only; the picker uses the validator to
     // re-roll out-of-range / denied pairs. UI (N2b) owns the spinner.
     setCallsign(adjIdx, nounIdx) { if (session && session.setCallsign) session.setCallsign(adjIdx, nounIdx); },
@@ -2882,14 +3112,15 @@
     presence() { return session && session.presence ? session.presence() : []; },
     board() { return session && session.board ? session.board() : []; },   // session leaderboard (per-P bests)
     info() {
-      if (!session) return { city: '', rttMs: 0, players: 0, spectators: 0, cap: ROOM_CAP, specCap: SPECTATOR_CAP, code: '', link: '', isHost: false, caps: CAPS, role: ROLE_PLAYER, hostEpoch: 0, myP: 0, seed: 0, runId: 0, unstable: false };
+      if (!session) return { mode: 'runner', city: '', rttMs: 0, players: 0, spectators: 0, cap: ROOM_CAP, specCap: SPECTATOR_CAP, code: '', link: '', isHost: false, caps: CAPS, role: ROLE_PLAYER, hostEpoch: 0, myP: 0, seed: 0, runId: 0, unstable: false };
       const c = session.isHost && session.counts ? session.counts() : null;
       return {
         city: cityOfHost(session.isHost ? session.relayHostName : ((session.inv.flags & 2) ? session.inv.relayHost : (regionOf(session.inv.region) || { hosts: [''] }).hosts[0])),
         rttMs: session.relay ? Math.round(session.relay.rtt) : 0,
         players: c ? c.players : Array.from(session.rosterMap.values()).filter((r) => r.role !== ROLE_SPECTATOR).length,
         spectators: c ? c.spectators : Array.from(session.rosterMap.values()).filter((r) => r.role === ROLE_SPECTATOR).length,
-        cap: PLAYER_CAP, specCap: SPECTATOR_CAP,
+        mode: session.mode || 'runner',
+        cap: session.playerCap || PLAYER_CAP, specCap: session.spectatorCap || SPECTATOR_CAP,
         code: session.code || '',
         joinCode: session.isHost && session.codeOk ? joinCodeText(session.region, session.code) : '',
         link: session.link || '',
@@ -2908,7 +3139,10 @@
         quality: session.mock ? 'good' : (session.quality ? session.quality().level : 'unknown'),
       };
     },
-    onEvent(cb) { ev.on(cb); },
+    onEvent(type, cb) {
+      if (typeof type === 'function') return ev.on(type);
+      return ev.on((event, data) => { if (event === type && typeof cb === 'function') cb(data); });
+    },
     // The live session's resume token (host or guest), or null. See HostSession.resumeToken.
     resumeToken() { return session && session.resumeToken && !session.mock ? session.resumeToken() : null; },
     // #shot=room — offline, deterministic room-card fixture (net-spec §6.2).
@@ -3018,7 +3252,8 @@
     // Room-protocol seam (N2): additive over _n1 for the harness + N2b UI.
     _room: {
       ROLE_PLAYER, ROLE_SPECTATOR, PLAYER_CAP, SPECTATOR_CAP, CAPS, CALLSIGN_NONE,
-      caps: { CAP_CALLSIGN, CAP_SPECTATE, CAP_ROLECHANGE, CAP_ANTICHEAT, CAP_HOSTEPOCH },
+      caps: { CAP_CALLSIGN, CAP_SPECTATE, CAP_ROLECHANGE, CAP_ANTICHEAT, CAP_HOSTEPOCH, CAP_ARENA },
+      arena: { A_ARENA, INV_ARENA, MODE_ARENA, ARENA_MAX, ARENA_CHUNK, ARENA_TTL, ARENA_ABSENT_GRACE, SEAL_QUEUE_MAX, arenaFragment, arenaReceive },
       frameRange: { FRAME_CORE_HI, FRAME_RESERVED_HI },
       callsign: { text: callsignText, valid: callsignValid, denied: (a, n) => { const cs = callsignData(); return cs ? callsignDenied(cs, a, n) : false; }, data: callsignData },
       anticheat: { check: checkEnvelope, AC },

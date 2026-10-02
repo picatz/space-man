@@ -26,6 +26,8 @@ const SHELL = [
   './src/art.js',
   './src/anim.js',
   './src/arena.js',
+  './src/arena-online.js',
+  './src/arena-room.js',
   './src/arena-ui.js',
   './src/race.js',
   './src/race-ui.js',

@@ -1,5 +1,5 @@
 // Real browser tests for Star Circuit's production UI and fixed-tick simulation.
-// The fixture mounts the lazy mode directly until title integration is merged.
+// The actual title launcher parks the runner and restores it on exit.
 const test = require("node:test"),
   assert = require("node:assert/strict");
 const fs = require("node:fs/promises"),
@@ -9,15 +9,10 @@ const { chromium, webkit } = require("playwright");
 const ROOT = path.resolve(__dirname, "../..");
 const engine =
   process.env.SPACE_MAN_RACE_BROWSER === "webkit" ? webkit : chromium;
-const fixture = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Star Circuit UI test</title><body style="margin:0"><button id="launcher">Star Circuit</button><script src="src/race.js"></script><script src="src/race-ui.js"></script><script>window.prefs={muted:true};const raceUI=SpaceManRaceUI.create({settings:()=>prefs});document.getElementById('launcher').onclick=()=>raceUI.open();</script></body></html>`;
 async function launch(t, device = {}, init) {
   const server = http.createServer(async (req, res) => {
     try {
       const pathname = new URL(req.url, "http://localhost").pathname;
-      if (pathname === "/__race__") {
-        res.writeHead(200, { "Content-Type": "text/html" }).end(fixture);
-        return;
-      }
       const file = path.resolve(
         ROOT,
         "." +
@@ -63,8 +58,12 @@ async function launch(t, device = {}, init) {
     sockets = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("websocket", (w) => sockets.push(w.url()));
-  await page.goto(`http://127.0.0.1:${server.address().port}/__race__`);
-  await page.locator("#launcher").click();
+  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.evaluate(() => {
+    window.prefs = settings;
+    settings.muted = true;
+  });
+  await page.locator("#btnRace").click();
   await screen(page, "lobby");
   t.after(() => {
     assert.deepEqual(errors, [], "no uncaught browser errors");
@@ -157,9 +156,9 @@ test(
     assert.equal(await page.evaluate(() => raceUI.active), false);
     assert.equal(
       await page.evaluate(() => document.activeElement.id),
-      "launcher",
+      "btnRace",
     );
-    await page.locator("#launcher").click();
+    await page.locator("#btnRace").click();
     await screen(page, "lobby");
     await menu(page, "← Back to runner");
     assert.equal(
@@ -167,6 +166,11 @@ test(
       1,
       "one lazy root after repeated open",
     );
+    await page.locator("#btnPlay").focus();
+    await page.keyboard.press("Enter");
+    await page.keyboard.down("d");
+    await page.waitForFunction(() => G.mode === "play" && G.player.vx > 0);
+    await page.keyboard.up("d");
   },
 );
 
@@ -335,7 +339,7 @@ test(
       .filter({ visible: true })
       .tap();
     assert.equal(await page.evaluate(() => raceUI.active), false);
-    await page.locator("#launcher").tap();
+    await page.locator("#btnRace").tap();
     await screen(page, "lobby");
     await capture(page, "race-lobby-small-phone");
   },
@@ -352,6 +356,7 @@ test(
     });
     await page.evaluate(() => {
       prefs.lefty = true;
+      prefs.reduceMotion = true;
       prefs.keys = { left: "q" };
       prefs.batterySaver = true;
     });
@@ -360,6 +365,10 @@ test(
     assert.equal(
       await page.locator(".race-root").getAttribute("data-handed"),
       "left",
+    );
+    assert.equal(
+      await page.locator(".race-root").getAttribute("data-calm"),
+      "true",
     );
     assert.equal(
       await page.evaluate(() => document.querySelector(".race-canvas").width),
@@ -469,5 +478,35 @@ test(
     await menu(page, "Choose a circuit");
     await page.locator(".race-launch").scrollIntoViewIfNeeded();
     await capture(page, "race-setup-small-phone");
+  },
+);
+
+test(
+  "race mobile: OS reduced motion fallback and explicit preference override",
+  { timeout: 25000 },
+  async (t) => {
+    const { page } = await launch(t, {
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+      reducedMotion: "reduce",
+    });
+    assert.equal(
+      await page.locator(".race-root").getAttribute("data-calm"),
+      "true",
+    );
+    await page.locator(".race-launch").tap();
+    await playing(page);
+    await capture(page, "race-reduced-motion-phone");
+    await page.getByRole("button", { name: "Pause race" }).tap();
+    await menu(page, "Choose a circuit");
+    await page.evaluate(() => {
+      prefs.reduceMotion = false;
+    });
+    await page.locator(".race-launch").tap();
+    assert.equal(
+      await page.locator(".race-root").getAttribute("data-calm"),
+      "false",
+    );
   },
 );

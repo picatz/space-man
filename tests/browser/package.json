@@ -4,7 +4,9 @@
   "scripts": {
     "test": "node --test relay.test.cjs",
     "test:previews": "node --test previews.test.cjs",
-    "test:arena": "node --test arena.test.cjs"
+    "test:arena": "node --test arena.test.cjs",
+    "test:arena-online": "node --test arena-online.test.cjs",
+    "test:arena-relay": "node --test arena-relay.test.cjs"
   },
   "devDependencies": {
     "playwright": "1.63.0"
