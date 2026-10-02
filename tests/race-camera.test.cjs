@@ -1,19 +1,95 @@
-const test=require('node:test'),assert=require('node:assert/strict');
-const Camera=require('../src/race-camera.js'),Scene=require('../src/race-scene.js'),R=require('../src/race.js');
-test('perspective cameras use snapshot position and preserve immutable simulation',()=>{
- const s=R.snapshot(R.create()),before=JSON.stringify(s),c=R.course(s.trackId),cam=Camera.create(),a=s.actors[0];
- const chase=cam.update(a,c,R.at,{mode:'chase',reduceMotion:true});
- assert.ok(chase.eye[1]>50);assert.ok((a.x-chase.eye[0])*Math.cos(a.heading)+(a.y-chase.eye[2])*Math.sin(a.heading)>100);
- const cockpit=cam.update(a,c,R.at,{mode:'cockpit'});assert.equal(cockpit.eye[1],22);assert.ok(cockpit.target[1]<cockpit.eye[1]);
- const art=Scene.course(c,R.at),moving=Scene.actors(s);assert.equal(art.meshes.length,2);assert.ok(moving.vertices.length>100);
- for(const mesh of [...art.meshes,moving]){assert.equal(mesh.vertices.length%9,0);assert.ok(mesh.vertices.every(Number.isFinite));}
- assert.equal(JSON.stringify(s),before);
+const test = require("node:test"),
+  assert = require("node:assert/strict");
+const Camera = require("../src/race-camera.js"),
+  Scene = require("../src/race-scene.js"),
+  R = require("../src/race.js");
+test("perspective cameras use snapshot position and preserve immutable simulation", () => {
+  const s = R.snapshot(R.create()),
+    before = JSON.stringify(s),
+    c = R.course(s.trackId),
+    cam = Camera.create(),
+    a = s.actors[0];
+  const chase = cam.update(a, c, R.at, { mode: "chase", reduceMotion: true });
+  assert.ok(chase.eye[1] > 50);
+  assert.ok(
+    (a.x - chase.eye[0]) * Math.cos(a.heading) +
+      (a.y - chase.eye[2]) * Math.sin(a.heading) >
+      100,
+  );
+  const cockpit = cam.update(a, c, R.at, { mode: "cockpit" });
+  assert.equal(cockpit.eye[1], 22);
+  assert.ok(cockpit.target[1] < cockpit.eye[1]);
+  const art = Scene.course(c, R.at),
+    moving = Scene.actors(s);
+  assert.equal(art.meshes.length, 2);
+  assert.ok(moving.vertices.length > 100);
+  for (const mesh of [...art.meshes, moving]) {
+    assert.equal(mesh.vertices.length % 9, 0);
+    assert.ok(mesh.vertices.every(Number.isFinite));
+  }
+  assert.equal(JSON.stringify(s), before);
 });
-test('camera reset snaps after recovery and actor/mode switch, with no roll or speed zoom in reduced motion',()=>{
- const c=R.course('starlight'),a=R.create().actors[0],cam=Camera.create();cam.update(a,c,R.at,{});
- const b={...a,x:a.x+500,heading:a.heading+1,recoveries:1};const frame=cam.update(b,c,R.at,{});
- assert.ok(Math.abs(frame.eye[0]-(b.x-Math.cos(b.heading)*132))<1e-7);
- const stable=cam.update({...b,speed:100},c,R.at,{reduceMotion:true});assert.equal(stable.fov,59*Math.PI/180);
- cam.reset();assert.deepEqual(cam.update(b,c,R.at,{}),frame);
+test("camera reset snaps after recovery and actor/mode switch, with no roll or speed zoom in reduced motion", () => {
+  const c = R.course("starlight"),
+    a = R.create().actors[0],
+    cam = Camera.create();
+  cam.update(a, c, R.at, {});
+  const b = { ...a, x: a.x + 500, heading: a.heading + 1, recoveries: 1 };
+  const frame = cam.update(b, c, R.at, {});
+  assert.ok(Math.abs(frame.eye[0] - (b.x - Math.cos(b.heading) * 132)) < 1e-7);
+  const stable = cam.update({ ...b, speed: 100 }, c, R.at, {
+    reduceMotion: true,
+  });
+  assert.equal(stable.fov, (59 * Math.PI) / 180);
+  cam.reset();
+  assert.deepEqual(cam.update(b, c, R.at, {}), frame);
 });
-test('all authored tracks build finite render-only geometry',()=>{for(const track of R.tracks){const mesh=Scene.course(R.course(track.id),R.at);assert.ok(mesh.meshes.every(m=>m.static&&m.vertices.every(Number.isFinite)));}});
+test("all authored tracks build finite render-only geometry", () => {
+  for (const track of R.tracks) {
+    const mesh = Scene.course(R.course(track.id), R.at);
+    assert.ok(
+      mesh.meshes.every((m) => m.static && m.vertices.every(Number.isFinite)),
+    );
+  }
+});
+
+test("generated road and model lighting normals face outward", () => {
+  const box = Scene.builder();
+  box.box(0, 0, 0, 10, 10, 10, [1, 1, 1]);
+  const verts = box.mesh().vertices;
+  for (let i = 0; i < verts.length; i += 27) {
+    const middle = [0, 1, 2].map(
+      (axis) =>
+        (verts[i + axis] + verts[i + 9 + axis] + verts[i + 18 + axis]) / 3 -
+        [0, 5, 0][axis],
+    );
+    assert.ok(
+      middle.reduce((sum, value, j) => sum + value * verts[i + 3 + j], 0) > 0,
+      "box face points outward",
+    );
+  }
+  const sphere = Scene.builder();
+  sphere.sphere(0, 0, 0, 8, [1, 1, 1], 10, 6);
+  const sv = sphere.mesh().vertices;
+  for (let i = 0; i < sv.length; i += 27) {
+    const dot = [0, 1, 2].reduce(
+      (sum, j) =>
+        sum + (sv[i + j] + sv[i + 9 + j] + sv[i + 18 + j]) * sv[i + 3 + j],
+      0,
+    );
+    assert.ok(dot > 0 || Math.abs(dot) < 1e-6);
+  }
+  const scene = Scene.course(R.course("starlight"), R.at).meshes[1].vertices;
+  assert.ok(scene[4] > 0.99, "first road ribbon faces up");
+});
+test("portrait chase backs up enough to show the road and remains finite on resize", () => {
+  const a = R.create().actors[0],
+    c = R.course("starlight");
+  const landscape = Camera.create().update(a, c, R.at, { aspect: 1280 / 800 });
+  const portrait = Camera.create().update(a, c, R.at, { aspect: 390 / 844 });
+  assert.ok(
+    Math.hypot(portrait.eye[0] - a.x, portrait.eye[2] - a.y) >
+      Math.hypot(landscape.eye[0] - a.x, landscape.eye[2] - a.y),
+  );
+  assert.ok([...portrait.eye, ...portrait.target].every(Number.isFinite));
+});

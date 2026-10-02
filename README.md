@@ -86,7 +86,7 @@ selected with `SPACE_MAN_CHROMIUM_PATH`.
 
 ## Star Circuit · Arcade Racing
 
-Choose **Star Circuit · Racing** from the title for an original top-down
+Choose **Star Circuit · Racing** from the title for an original perspective
 hoverkart race against four CPU pilots. Race three laps on **Starlight Speedway**,
 **Ember Switchback**, or **Bloom Lagoon**, with Chill, Sport and Expert CPU pace.
 Carve corners, catch boost strips, manage rechargeable boost and recover from a
@@ -96,8 +96,10 @@ the actual simulation. Race again, switch circuits or return to the runner.
 Auto-drive is on. A/D or Left/Right steer, S/Down brakes, Space/Shift boosts,
 R rescues and Escape pauses. Touch and standard controllers are supported;
 existing left-handed, steering remaps, mute and reduced-motion preferences carry
-over. Portrait uses a forward-facing view; the minimap keeps the full circuit
-visible. Leave an existing room before entering local racing.
+over. Choose Chase (default), Cockpit or Top-down using the camera button,
+C key or pause/setup options. A steady horizon and reduced-motion preferences
+keep the view comfortable; the minimap keeps the full circuit visible. The
+lightweight WebGL renderer falls back to top-down if graphics are unavailable. Leave an existing room before entering local racing.
 
 This is **local CPU racing**. Friend racing is a separate next milestone on the
 shared room transport; it is not advertised as online play yet. Racing does not

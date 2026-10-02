@@ -1,0 +1,41 @@
+name: Perspective racing browsers
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  perspective:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - name: Verify perspective cameras and fallback pixels
+        run: node --test race-perspective.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/perspective-screenshots
+      - name: Verify complete race and mobile lifecycle
+        run: node --test race.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/perspective-screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perspective-${{ matrix.engine }}-screenshots
+          path: ${{ runner.temp }}/perspective-screenshots/*.png
+          retention-days: 3
