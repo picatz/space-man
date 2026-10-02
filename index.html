@@ -792,6 +792,7 @@
     <button class="btn pulse" id="btnPlay">Tap to Start</button>
     <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
+    <button class="btn ghost" id="btnArena">Arena · CPU Battles</button>
     </div>
     <div class="attract-side">
     <div class="control-guide desktop-guide" aria-label="Keyboard controls">
@@ -1053,6 +1054,9 @@
 <!-- Presentation only: shared palette + draw helpers, and the character animation rig. -->
 <script src="src/art.js"></script>
 <script src="src/anim.js"></script>
+<!-- Arena is opt-in: pure simulation + an inert, lazy-created presentation shell. -->
+<script src="src/arena.js"></script>
+<script src="src/arena-ui.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
      #j= invite is accepted (net-spec §4.1 lazy gate). -->
@@ -2279,11 +2283,24 @@ function padFamily(gp) {
 }
 function padName(gp) { return { playstation: 'DUALSENSE', xbox: 'XBOX CONTROLLER', nintendo: 'PRO CONTROLLER', generic: 'CONTROLLER' }[padFamily(gp)]; }
 function pollGamepad() {
+  if (arenaUI && arenaUI.active) return;
   if (!navigator.getGamepads) return;
   const pads = navigator.getGamepads();
   let gp = input.pad.index >= 0 ? pads[input.pad.index] : null;
   if (!gp) {
     for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
+  }
+  // An arena menu can be closed with A while that button is still held. Wait
+  // for a neutral controller before resuming runner/menu input, so that same
+  // press cannot immediately start a run or reopen the arena.
+  if (arenaPadNeutral) {
+    input.firePad = false; input.gamepadX = 0; input.down = false;
+    input.pad.navDir = '0,0'; input.pad.navAt = Infinity;
+    if (gp) {
+      for (let i = 0; i < gp.buttons.length; i++) input.pad.prev[i] = !!gp.buttons[i].pressed;
+      if (gp.buttons.some((b) => b.pressed) || gp.axes.some((v) => Math.abs(v) > 0.18)) return;
+    }
+    arenaPadNeutral = false;
   }
   noteRumble(gp);
   if (!gp) {
@@ -2345,6 +2362,7 @@ function isTextField(t) {
   return !!t && (t.tagName === 'TEXTAREA' || t.isContentEditable || (t.tagName === 'INPUT' && /^(text|search|url|tel|email|password)$/i.test(t.type || 'text')));
 }
 function onKey(e, down) {
+  if (arenaUI && arenaUI.active) return;
   const k = (e.key || '').toLowerCase();
   if (isTextField(e.target)) { if (down && k === 'escape' && menuBack()) e.preventDefault(); return; }
   if (down && (k === 'enter' || k === ' ') && G.mode !== 'play' && focusInOverlay()) return;   // native button activation — never a second startRun/restart
@@ -4322,8 +4340,14 @@ function finishTick() {
    21. FIXED-TIMESTEP LOOP with interpolation + hitstop + slow-mo
    ------------------------------------------------------------------------- */
 let acc = 0, lastT = 0, rafId = 0, shotFrozen = false;
+let arenaUI = null;
+let arenaPadNeutral = false;
 function frame(now) {
   rafId = requestAnimationFrame(frame);
+  // The opt-in arena owns its own fixed tick and input while open. The runner
+  // is parked, not reset or repurposed; no runner physics, saves or room code
+  // participate in an arena match.
+  if (arenaUI && arenaUI.active) { lastT = 0; return; }
   pollGamepad();
   if (shotFrozen) { render(1); return; }   // QA: re-render frozen state (survives post-load resizes)
   // Pacing: skip whole callbacks (before any work) to hold 30fps under battery saver or
@@ -8391,6 +8415,20 @@ $('btnRosterCancel').onclick = () => { hideAllOverlays(); if (G.mode === 'attrac
    25. UI WIRING
    ------------------------------------------------------------------------- */
 $('btnPlay').onclick = () => { Audio.ensure(); Audio.resume(); startRun(); };
+$('btnArena').onclick = () => {
+  if (netLive()) {
+    queueToast('Leave Run Together before opening a CPU arena.', 'sys');
+    announce('Leave Run Together before opening a CPU arena. Your room is still connected.');
+    return;
+  }
+  if (G.mode !== 'attract' || !window.SpaceManArenaUI) return;
+  if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
+    storageKey: BUILD.storageKey('sm2.arena.v1'),
+    settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
+    onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); $('btnArena').focus(); },
+  });
+  clearInput(); Audio.suspend(); arenaUI.open();
+};
 // Pointer clicks drop focus so a later Space still means start/retry; keyboard
 // activation (detail 0) keeps it where the player put it.
 $('btnDaily').onclick = (e) => { e.currentTarget.blur(); startDaily(); };
@@ -8528,7 +8566,7 @@ document.addEventListener('visibilitychange', () => {
   } else {
     if (!SHOT && power.looping) startLoop();
     if (NET && NET.nudge) NET.nudge();   // a socket that died while we were away reconnects now
-    Audio.resume();
+    if (!(arenaUI && arenaUI.active)) Audio.resume();
     SEASON = computeSeason();   // E13: the date can roll over mid-session
     if (G.mode === 'attract') renderDailyCard();   // …and so can the Daily Course
   }
@@ -8560,6 +8598,7 @@ function swUpdateReady() {
   queueToast('UPDATE READY', 'sys');
 }
 function swSafeMoment() {
+  if (arenaUI && arenaUI.active) return false;
   if (netLive()) return false;
   if (G.mode === 'attract') return $('ovAttract').classList.contains('show');
   return G.mode === 'dead' && $('ovDead').classList.contains('show');
