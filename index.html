@@ -817,6 +817,7 @@
     <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
     <button class="btn ghost" id="btnArena">Arena · CPU + Friends</button>
+    <button class="btn ghost" id="btnRace">Star Circuit · Racing</button>
     </div>
     <div class="attract-side">
     <div class="control-guide desktop-guide" aria-label="Keyboard controls">
@@ -1084,6 +1085,8 @@
 <script src="src/arena-online.js"></script>
 <script src="src/arena-room.js"></script>
 <script src="src/arena-ui.js"></script>
+<script src="src/race.js"></script>
+<script src="src/race-ui.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
      #j= invite is accepted (net-spec §4.1 lazy gate). -->
@@ -2310,7 +2313,7 @@ function padFamily(gp) {
 }
 function padName(gp) { return { playstation: 'DUALSENSE', xbox: 'XBOX CONTROLLER', nintendo: 'PRO CONTROLLER', generic: 'CONTROLLER' }[padFamily(gp)]; }
 function pollGamepad() {
-  if (arenaUI && arenaUI.active) return;
+  if (modeOverlayActive()) return;
   if (!navigator.getGamepads) return;
   const pads = navigator.getGamepads();
   let gp = input.pad.index >= 0 ? pads[input.pad.index] : null;
@@ -2354,6 +2357,8 @@ function pollGamepad() {
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   if (just(8) && netInRun() && G.mode === 'play') { crew.peek = false; toggleCrew(); }   // Share / Select / View: the crew standings
   const menuTook = pollMenuNav(gp, just);
+  // A menu activation may have transferred input ownership in this same poll.
+  if (modeOverlayActive()) return;
   if (padState.pause && just(9)) {
     if (menuSubOpen()) menuBack();   // Start closes a sub-menu like B (no-op for the initials picker)
     else if (G.mode === 'attract') startRun();
@@ -2389,7 +2394,7 @@ function isTextField(t) {
   return !!t && (t.tagName === 'TEXTAREA' || t.isContentEditable || (t.tagName === 'INPUT' && /^(text|search|url|tel|email|password)$/i.test(t.type || 'text')));
 }
 function onKey(e, down) {
-  if (arenaUI && arenaUI.active) return;
+  if (modeOverlayActive()) return;
   const k = (e.key || '').toLowerCase();
   if (isTextField(e.target)) { if (down && k === 'escape' && menuBack()) e.preventDefault(); return; }
   if (down && (k === 'enter' || k === ' ') && G.mode !== 'play' && focusInOverlay()) return;   // native button activation — never a second startRun/restart
@@ -4368,14 +4373,17 @@ function finishTick() {
    ------------------------------------------------------------------------- */
 let acc = 0, lastT = 0, rafId = 0, shotFrozen = false;
 let arenaUI = null;
+let raceUI = null;
+function modeOverlayActive() { return !!((arenaUI && arenaUI.active) || (raceUI && raceUI.active)); }
 let arenaPadNeutral = false;
 function frame(now) {
   rafId = requestAnimationFrame(frame);
   // The opt-in arena owns its own fixed tick and input while open. The runner
   // is parked, not reset or repurposed; no runner physics, saves or room code
   // participate in an arena match.
-  if (arenaUI && arenaUI.active) { lastT = 0; return; }
+  if (modeOverlayActive()) { lastT = 0; return; }
   pollGamepad();
+  if (modeOverlayActive()) { lastT = 0; return; }
   if (shotFrozen) { render(1); return; }   // QA: re-render frozen state (survives post-load resizes)
   // Pacing: skip whole callbacks (before any work) to hold 30fps under battery saver or
   // 15fps behind a pause / run-over card. The fixed-step accumulator absorbs the longer dt,
@@ -8478,7 +8486,7 @@ $('btnArena').onclick = () => {
     announce('Leave Run Together before opening Arena. Your room is still connected.');
     return;
   }
-  if (G.mode !== 'attract' || !window.SpaceManArenaUI) return;
+  if (G.mode !== 'attract' || (raceUI && raceUI.active) || !window.SpaceManArenaUI) return;
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
     storageKey: BUILD.storageKey('sm2.arena.v1'),
     net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
@@ -8492,6 +8500,20 @@ $('btnArena').onclick = () => {
     onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); hideAllOverlays(); showOverlay('ovAttract'); $('btnArena').focus(); },
   });
   clearInput(); Audio.suspend(); arenaUI.open();
+};
+$('btnRace').onclick = () => {
+  if (netLive()) {
+    queueToast('Leave your room before opening Star Circuit.', 'sys');
+    announce('Leave your room before opening Star Circuit. Your room is still connected.');
+    return;
+  }
+  if (G.mode !== 'attract' || (arenaUI && arenaUI.active) || !window.SpaceManRaceUI) return;
+  if (!raceUI) raceUI = window.SpaceManRaceUI.create({
+    storageKey: BUILD.storageKey('sm2.race.v1'),
+    settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
+    onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); hideAllOverlays(); showOverlay('ovAttract'); $('btnRace').focus(); },
+  });
+  clearInput(); Audio.suspend(); raceUI.open();
 };
 // Pointer clicks drop focus so a later Space still means start/retry; keyboard
 // activation (detail 0) keeps it where the player put it.
@@ -8541,7 +8563,7 @@ $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
-  if ((arenaUI && arenaUI.active) || NET.info().mode === 'arena') return;
+  if (modeOverlayActive() || NET.info().mode === 'arena') return;
   if (e === 'rotated' || e === 'round' || e === 'join' || e === 'rejoin' || e === 'ok') saveResume();   // keep the token current
   if (e === 'reconnecting') { announce('Connection lost. Reconnecting.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'reconnected') { announce('Reconnected.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
@@ -8631,7 +8653,7 @@ document.addEventListener('visibilitychange', () => {
   } else {
     if (!SHOT && power.looping) startLoop();
     if (NET && NET.nudge) NET.nudge();   // a socket that died while we were away reconnects now
-    if (!(arenaUI && arenaUI.active)) Audio.resume();
+    if (!modeOverlayActive()) Audio.resume();
     SEASON = computeSeason();   // E13: the date can roll over mid-session
     if (G.mode === 'attract') renderDailyCard();   // …and so can the Daily Course
   }
@@ -8663,7 +8685,7 @@ function swUpdateReady() {
   queueToast('UPDATE READY', 'sys');
 }
 function swSafeMoment() {
-  if (arenaUI && arenaUI.active) return false;
+  if (modeOverlayActive()) return false;
   if (netLive()) return false;
   if (G.mode === 'attract') return $('ovAttract').classList.contains('show');
   return G.mode === 'dead' && $('ovDead').classList.contains('show');
