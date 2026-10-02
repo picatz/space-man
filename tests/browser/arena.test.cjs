@@ -330,12 +330,12 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await page.locator('.arena-touch-jump').evaluate(n => {
     n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 999, isPrimary: true }));
     n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 999, isPrimary: true }));
-    n.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] }));
+    n.dispatchEvent(Object.assign(new Event('touchend', { bubbles: true }), { touches: [] }));
   });
   await page.waitForFunction(before => humanEdges.jump > before, jumpEdges);
   await neutral();
   await page.keyboard.down('d');
-  await page.evaluate(() => window.dispatchEvent(new TouchEvent('touchcancel', { touches: [] })));
+  await page.evaluate(() => window.dispatchEvent(Object.assign(new Event('touchcancel'), { touches: [] })));
   await page.waitForFunction(() => lastHumanCommand.moveX === 1);
   await page.keyboard.up('d'); await neutral();
 
@@ -348,6 +348,7 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await page.locator('.arena-stick-zone').evaluate(n => n.addEventListener('pointerdown', e => { n.lastPointer = e.pointerId; }));
   p = await dragStick(1);
   await page.locator('.arena-stick-zone').evaluate(n => n.releasePointerCapture(n.lastPointer));
+  p.x += 2; // A changed native point processes pending capture loss.
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] }); await neutral();
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   p = await dragStick();
@@ -392,7 +393,7 @@ test('arena mobile pointer lifecycle preserves taps and releases stranded holds'
     } };
   });
   await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
-  // These browser-dispatched sequences cover the fallback when native pointer
+  // These synthetic DOM sequences cover the fallback when native pointer
   // capture is unavailable. Chromium's separate CDP test supplies native drags.
   async function stranded(id, primary = true) {
     await page.locator('.arena-stick-zone').evaluate((n, args) => {
@@ -414,7 +415,7 @@ test('arena mobile pointer lifecycle preserves taps and releases stranded holds'
   await page.evaluate(() => document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 41 })));
   await stopped();
   await stranded(42);
-  await page.evaluate(() => document.body.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] })));
+  await page.evaluate(() => document.body.dispatchEvent(Object.assign(new Event('touchend', { bubbles: true }), { touches: [] })));
   await stopped();
   await stranded(43);
   // A fresh primary sequence proves all previous fingers ended, even if the
@@ -424,12 +425,12 @@ test('arena mobile pointer lifecycle preserves taps and releases stranded holds'
     n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 44, isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
   });
   await stopped();
-  await page.evaluate(() => window.dispatchEvent(new TouchEvent('touchcancel', { touches: [] })));
+  await page.evaluate(() => window.dispatchEvent(Object.assign(new Event('touchcancel'), { touches: [] })));
   const before = await page.evaluate(() => window.sampledJumps || 0);
   await page.locator('.arena-touch-jump').evaluate(n => {
     n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 45, isPrimary: true }));
     n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 45, isPrimary: true }));
-    n.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] }));
+    n.dispatchEvent(Object.assign(new Event('touchend', { bubbles: true }), { touches: [] }));
   });
   await page.waitForFunction(count => sampledJumps > count, before);
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
