@@ -307,6 +307,12 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
   const cdp = await context.newCDPSession(page);
   let id = 0;
+  async function tapControl(locator) {
+    await locator.scrollIntoViewIfNeeded();
+    const b = await locator.boundingBox();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: ++id, x: b.x + b.width / 2, y: b.y + b.height / 2, radiusX: 1, radiusY: 1, force: 1 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
   async function dragStick(direction = -1, captureFails = false) {
     const zone = page.locator('.arena-stick-zone'); const box = await zone.boundingBox();
     if (captureFails) await zone.evaluate(n => { n.originalCapture = n.setPointerCapture; n.setPointerCapture = () => { throw new Error('capture unavailable'); }; });
@@ -373,10 +379,10 @@ test('arena touch recovers from outside release, lost capture, interruptions and
 
   p = await dragStick(); await pause(page);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await page.locator('#arenaResume').tap(); await neutral();
+  await tapControl(page.locator('#arenaResume')); await neutral();
   await page.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await screen(page, 'pause');
   await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
-  await page.locator('#arenaResume').tap(); await neutral();
+  await tapControl(page.locator('#arenaResume')); await neutral();
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
     document.dispatchEvent(new Event('visibilitychange'));
@@ -384,12 +390,12 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await screen(page, 'pause');
   await page.evaluate(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); });
   assert.equal(await page.evaluate(() => arenaUI.screen), 'pause', 'returning from real background requires resume');
-  await page.locator('#arenaResume').tap(); await neutral();
+  await tapControl(page.locator('#arenaResume')); await neutral();
   p = await dragStick(); await pause(page);
-  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
+  await tapControl(page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }));
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   assert.equal(await page.evaluate(() => input.left || input.right || input.jumpHeld), false);
-  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page); await neutral();
+  await tapControl(page.locator('#btnArena')); await tapControl(page.locator('.arena-launch')); await playing(page); await neutral();
 });
 
 test('arena mobile pointer lifecycle preserves taps and releases stranded holds', { timeout: 45000 }, async t => {
