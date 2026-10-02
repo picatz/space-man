@@ -292,12 +292,9 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await page.evaluate(() => {
     const original = SpaceManArena;
     window.inputEvents = [];
-    const prevent = Event.prototype.preventDefault;
-    Event.prototype.preventDefault = function () { inputEvents.push({ prevent: this.type, target: this.target?.id || this.target?.className, stack: new Error().stack?.split('\n').slice(1, 4) }); return prevent.call(this); };
-    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mouseup', 'click', 'blur']) window.addEventListener(type, e => {
-      const entry = { type, id: e.pointerId, primary: e.isPrimary, x: e.clientX, y: e.clientY, touches: e.touches && Array.from(e.touches, p => ({ id: p.identifier, x: p.clientX, y: p.clientY })), target: e.target.id || e.target.className || e.target.tagName };
-      inputEvents.push(entry); queueMicrotask(() => { entry.prevented = e.defaultPrevented; });
-      if (inputEvents.length > 45) inputEvents.shift();
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'touchend', 'click', 'blur']) window.addEventListener(type, e => {
+      inputEvents.push({ type, id: e.pointerId, primary: e.isPrimary, target: e.target.id || e.target.className || e.target.tagName, screen: arenaUI?.screen });
+      if (inputEvents.length > 35) inputEvents.shift();
     }, true);
     window.SpaceManArena = { ...original, step(state, commands) {
       const human = state.actors.find(a => a.controller === 'human');
@@ -378,8 +375,7 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await neutral(); assert.equal(await page.evaluate(() => arenaUI.screen), 'play', 'visible touch browser blur is not proof of leaving');
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   p = await dragStick(); await page.setViewportSize({ width: 640, height: 390 }); await neutral();
-  // Rotation cancels the old physical gesture. Ending it at its stale portrait
-  // coordinates (now outside the screen) poisons Chromium's emulated tap stream.
+  // Rotation invalidates portrait coordinates; cancel that old native gesture.
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
 
   p = await dragStick(); await pause(page);
@@ -475,7 +471,15 @@ test('arena desktop focus loss still pauses after pen input', { timeout: 30000 }
 test('arena native touch can resume immediately after a held gesture is paused', { timeout: 30000 }, async t => {
   const { page, context } = await launch(t, { viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true });
   await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
-  await pause(page); await page.locator('#arenaResume').tap(); await screen(page, 'match');
+  await pause(page);
+  await page.locator('#arenaResume').evaluate(n => {
+    const r = n.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 91, clientX: x, clientY: y }));
+    n.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 91, clientX: x + 20, clientY: y }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 91, clientX: x + 20, clientY: y }));
+  });
+  assert.equal(await page.evaluate(() => arenaUI.screen), 'pause', 'a scrolling gesture is not a Resume tap');
+  await page.locator('#arenaResume').tap(); await screen(page, 'match');
   const cdp = await context.newCDPSession(page), box = await page.locator('.arena-stick-zone').boundingBox();
   const p = { id: 1, x: box.x + box.width / 2, y: box.y + box.height / 2 };
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p] });
