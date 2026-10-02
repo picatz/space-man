@@ -465,6 +465,7 @@ test(
     }
     const rescue = await page.locator(".race-recover").boundingBox();
     assert.ok(rescue.width >= 44);
+    assert.equal(await page.locator(".race-recover").evaluate(n => getComputedStyle(n).fontSize), "0px", "narrow rescue uses one icon, without overflowing text");
     for (const b of boxes)
       assert.ok(
         rescue.x + rescue.width <= b.x ||
