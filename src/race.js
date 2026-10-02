@@ -239,6 +239,7 @@
         passed: 0,
         lap: 1,
         finishTick: null,
+        dnf: false,
         progress: 0,
         offroad: false,
         recoveries: 0,
@@ -259,6 +260,11 @@
       actors,
       events: [],
       results: null,
+      // Local races keep their original first-human finish. Online authority
+      // opts into a bounded finish window for all admitted human seats.
+      finishMode: options.finishMode === "all-humans" ? "all-humans" : "first-human",
+      firstFinishTick: null,
+      finishReason: null,
     };
   }
   function cpuInput(state, actor) {
@@ -315,7 +321,7 @@
     const c = course(state.trackId),
       previous = new Map();
     for (const a of state.actors) {
-      if (a.finishTick !== null) continue;
+      if (a.finishTick !== null || a.dnf) continue;
       const input = command(inputs[a.id]);
       if (input.recover && !a.recoverHeld && a.recoveryTicks === 0)
         recover(state, a, c);
@@ -380,6 +386,8 @@
         if (
           a.finishTick !== null ||
           b.finishTick !== null ||
+          a.dnf ||
+          b.dnf ||
           a.recoveryTicks ||
           b.recoveryTicks ||
           !previous.has(a.id) ||
@@ -408,7 +416,7 @@
       }
     for (const a of state.actors) {
       const old = previous.get(a.id);
-      if (!old || a.finishTick !== null || a.recoveryTicks) continue;
+      if (!old || a.finishTick !== null || a.dnf || a.recoveryTicks) continue;
       const n = nearest(c, a.x, a.y);
       a.speed = Math.hypot(a.vx, a.vy);
       const gate = c.gates[a.nextGate],
@@ -440,12 +448,24 @@
       if (delta > c.length * 0.5) delta = 0;
       a.progress = a.passed + clamp(delta / (c.length / 20), 0, 0.999);
     }
-    const human = state.actors.find((a) => a.controller === "human");
-    if (
-      state.actors.every((a) => a.finishTick !== null) ||
-      (human && human.finishTick !== null) ||
-      state.raceTick >= 60 * 300
-    ) {
+    checkFinish(state);
+    return state;
+  }
+  // Authority may settle disconnected seats while paused without advancing physics.
+  function checkFinish(state) {
+    if (state.phase !== "racing") return state;
+    const humans = state.actors.filter((a) => a.controller === "human");
+    const finishedHumans = humans.filter((a) => a.finishTick !== null);
+    if (state.firstFinishTick === null && finishedHumans.length)
+      state.firstFinishTick = Math.min(...finishedHumans.map((a) => a.finishTick));
+    const allDone = state.actors.every((a) => a.finishTick !== null || a.dnf);
+    const humansDone = state.finishMode === "all-humans"
+      ? humans.length > 0 && humans.every((a) => a.finishTick !== null || a.dnf)
+      : humans.length > 0 && humans[0].finishTick !== null;
+    const graceDone = state.finishMode === "all-humans" &&
+      state.firstFinishTick !== null && state.raceTick - state.firstFinishTick >= 60 * 30;
+    if (allDone || humansDone || graceDone || state.raceTick >= 60 * 300) {
+      state.finishReason = humansDone ? "humans" : allDone ? "all" : graceDone ? "grace" : "time";
       state.phase = "finished";
       state.results = standings(state).map((a, i) => ({
         id: a.id,
@@ -480,6 +500,8 @@
       STEP,
       GATES: 20,
       COUNTDOWN: 180,
+      FINISH_GRACE_TICKS: 60 * 30,
+      MAX_RACE_TICKS: 60 * 300,
     }),
     tracks,
     course,
@@ -489,6 +511,7 @@
     create,
     cpuInput,
     step,
+    checkFinish,
     standings,
     snapshot,
   });

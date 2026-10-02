@@ -9,6 +9,7 @@
     "test:arena-relay": "node --test arena-relay.test.cjs"
   },
   "devDependencies": {
-    "playwright": "1.63.0"
+    "playwright": "1.63.0",
+    "ws": "8.22.0"
   }
 }
