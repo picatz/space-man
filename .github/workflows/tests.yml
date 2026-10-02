@@ -30,7 +30,20 @@ jobs:
           cache: npm
           cache-dependency-path: tests/browser/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - name: Select available Chromium browser
+        timeout-minutes: 4
+        run: |
+          # Hosted runners often already contain Chrome. Avoid an unnecessary
+          # browser/apt download on that path; use pinned Playwright otherwise.
+          if command -v google-chrome >/dev/null 2>&1; then
+            echo "SPACE_MAN_CHROMIUM_PATH=$(command -v google-chrome)" >> "$GITHUB_ENV"
+            google-chrome --version
+          elif command -v chromium >/dev/null 2>&1; then
+            echo "SPACE_MAN_CHROMIUM_PATH=$(command -v chromium)" >> "$GITHUB_ENV"
+            chromium --version
+          else
+            npx playwright install --with-deps chromium
+          fi
       - name: Check preview paths, caches, and saves without a relay
         run: npm run test:previews
       - name: Check arena controls, match flow, and runner return without a relay

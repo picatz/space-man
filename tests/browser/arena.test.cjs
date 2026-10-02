@@ -149,6 +149,11 @@ test('arena phone: readable controls, multi-touch movement/release, rotation and
   await page.waitForTimeout(100);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
   await capture(page, 'arena-match-phone-landscape');
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.waitForTimeout(100);
+  const tabletJump = await page.locator('.arena-touch-jump').boundingBox();
+  assert.ok(tabletJump && tabletJump.width >= 48 && tabletJump.x + tabletJump.width <= 769 && tabletJump.y + tabletJump.height <= 1025);
+  await capture(page, 'arena-match-tablet');
   await page.locator('[aria-label="Pause match"]').tap(); await screen(page, 'pause');
   await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
   assert.equal(await page.evaluate(() => arenaUI.active), false);
