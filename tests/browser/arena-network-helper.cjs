@@ -197,6 +197,14 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
   const wait = (c, fn, arg) => c.page.waitForFunction(fn, arg, { timeout: STEP_MS, polling: 25 });
   const screen = (c, value) => c.page.locator(`.arena-root[data-screen="${value}"]`).waitFor();
   const snapshot = c => c.page.evaluate(() => arenaUI.snapshot());
+  async function capture(c, name) {
+    if (live || !process.env.SPACE_MAN_ARENA_SCREENSHOTS) return;
+    try {
+      await fs.mkdir(process.env.SPACE_MAN_ARENA_SCREENSHOTS,{recursive:true});
+      await c.page.screenshot({path:path.join(process.env.SPACE_MAN_ARENA_SCREENSHOTS,'arena-online-'+name+'.png'),timeout:5000,
+        mask:[c.page.locator('#arenaInvite'),c.page.locator('#arenaRoomInput'),c.page.locator('.arena-room-qr'),c.page.locator('.arena-room-code')]});
+    } catch { t.diagnostic('Optional simulated-relay screenshot unavailable: '+name); }
+  }
   async function open(c) { await c.page.locator('#btnArena').click(); await screen(c, 'lobby'); await c.page.locator('.arena-online-panel > summary').click(); }
   async function join(c, invite, watch = false) {
     await open(c);
@@ -251,6 +259,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     const guestIdentity = await identity(guest), watchIdentity = await identity(watcher);
     assert.equal(guestIdentity.role, 0); assert.equal(watchIdentity.role, 1);
     assert.equal(await guest.page.locator('#arenaStart').isDisabled(), true);
+    await capture(guest,'phone-lobby');
     t.diagnostic(`${live ? 'Live' : 'Simulated'} relay: isolated desktop, phone and spectator browsers agree on membership.`);
 
     stage = 'starting the shared duel and checking spectator controls';
@@ -259,6 +268,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     assert.equal((await snapshot(host)).actors[0].controller, 'human');
     assert.equal((await snapshot(guest)).actors[1].controller, 'human');
     assert.ok((await snapshot(watcher)).actors.every(a => a.controller !== 'human'));
+    await capture(guest,'phone-fight');
     await watcher.page.locator('#arenaWatchNext').click();
     await watcher.page.locator('#arenaWatchPrevious').click();
     await watcher.page.keyboard.press('f'); await watcher.page.keyboard.press('Space');
@@ -312,18 +322,22 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await host.page.locator('#arenaResume').click();
     await Promise.all(clients.map(c => screen(c,'match')));
 
-    stage = 'keyboard attack produces a real shared hit and damage';
+    stage = 'positioning host for a real keyboard attack';
     await wait(host, () => arenaUI.snapshot().actors.every(a => a.invulnerable === 0));
     await host.page.keyboard.down('d');
     try { await wait(host, () => { const [a,b] = arenaUI.snapshot().actors; return a.x >= b.x - 62; }); }
     finally { await host.page.keyboard.up('d'); }
     await wait(host, () => Math.abs(arenaUI.snapshot().actors[0].vx) < .1);
+    stage = 'waiting for authoritative keyboard-hit damage';
     await host.page.keyboard.press('f');
     await wait(host, () => arenaUI.snapshot().actors[1].damage > 0);
+    stage = 'pausing immediately after hit and checking state agreement';
     await host.page.locator('#arenaPause').click();
     const hit = await pausedAgreement(host,[guest,watcher,late]);
     assert.ok(hit.actors[1].damage >= 12 && hit.actors[0].attackSerial > 0);
+    stage = 'waiting for remote hit-event delivery after shared pause';
     await Promise.all([guest,watcher,late].map(c => wait(c, () => __arenaAcceptance.events.some(e => e.type === 'hit' && e.actorId === 1 && e.targetId === 2))));
+    stage = 'checking shared hit-damage HUD';
     for (const c of clients) assert.match(await c.page.locator('.arena-roster [data-actor="2"] .arena-damage').innerText(), /^[1-9]\d*%$/);
     await host.page.locator('#arenaResume').click(); await screen(guest,'match');
 
@@ -340,6 +354,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       assert.equal(await c.page.locator('.arena-roster [data-actor="2"] .arena-stocks').innerText(),'○○○');
       assert.equal(await c.page.locator('.arena-roster [data-actor="2"] .arena-damage').innerText(),'OUT');
     }
+    await capture(guest,'phone-results');
     t.diagnostic(`${live ? 'Live' : 'Simulated'} relay: real touch/keyboard commands, release, hit, damage, stocks, result and same-seat reconnect passed.`);
 
     stage = 'rematch and lobby role/team changes through visible controls';
@@ -369,6 +384,8 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       const bounds = await guest.page.locator('#'+id).boundingBox();
       assert.ok(bounds && bounds.width>=44 && bounds.height>=44 && bounds.x>=0 && bounds.y>=0 && bounds.x+bounds.width<=viewport.width+1 && bounds.y+bounds.height<=viewport.height+1,'phone spectator control is visible, touch-sized and within viewport');
     }
+
+    await capture(guest,'phone-watch');
 
     stage = 'host closure and clean runner return';
     await host.page.locator('#arenaPause').click(); await host.page.locator('#arenaLobby').click();
@@ -430,6 +447,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
           snapshots:a?.snapshots,lifecycle:a?.lifecycle || []};
       }).catch(() => ({unavailable:true}));
       if (state.hint) state.hint=redact(state.hint);
+      await capture(c,'failure-'+c.name.replace(/[^a-z0-9]+/gi,'-'));
       t.diagnostic('Simulated-relay diagnostic '+JSON.stringify({client:c.name,...state,
         sockets:c.sockets,openBridgeSockets:c.bridgeSockets?.size || 0,sent:c.sent,received:c.received,
         sentTypes:c.sentTypes,receivedTypes:c.receivedTypes,encryptedSent:c.encryptedSent,encryptedReceived:c.encryptedReceived,

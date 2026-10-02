@@ -85,7 +85,7 @@
     function resetCommands(){for(const s of seats)Object.assign(s,{seq:0,edges:[0,0,0],pending:[false,false,false],command:blank(),receivedAt:-Infinity,lastAcceptedTick:0,bucket:12,bucketAt:0});}
     function start(seed){if(roster.filter(r=>r.role===0).length>(rules.format==='duel'?2:4))return false;epoch++;status='running';state=Arena.create(Object.assign({},rules,{seed}));events=[];assign();return true;}
     function lobby(){epoch++;status='lobby';events=[];state=Arena.create(rules);assign();}
-    function pause(on){if(status==='lobby'||state.phase==='over')return false;if((status==='paused')===!!on)return true;status=on?'paused':'running';epoch++;events=[];resetCommands();return true;}
+    function pause(on){if(status==='lobby'||state.phase==='over')return false;if((status==='paused')===!!on)return true;status=on?'paused':'running';epoch++;resetCommands();return true;}
     function receive(p,identity,bytes,now){
       const input=decodeInput(bytes),seat=seats.find(s=>s.p===p&&s.identity===identity&&s.connected);
       if(!input||!seat||status!=='running'||state.phase==='over'||input.epoch!==epoch||!input.seq||input.seq<=seat.seq||input.seq-seat.seq>3600||input.tick+120<state.tick||input.tick>state.tick+12)return false;

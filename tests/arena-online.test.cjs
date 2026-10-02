@@ -507,3 +507,13 @@ test('host team selection swaps full sides and stays fixed throughout combat',()
   assert.deepEqual(teams(),[[1,0],[2,0],[3,1],[4,1]]);assert.equal(h.setTeam(2,1),false);
   h.lobby();assert.equal(h.setTeam(2,1),true);assert.equal(new Set(h.seats.map(s=>s.actorId)).size,4);
 });
+
+test('pausing before the next broadcast preserves an unseen presentation event exactly once',()=>{
+  const {host,client}=playing();
+  host.receive(1,'key-1',input(host,1,{jumpHeld:true},[1,0,0]),0);
+  host.step(0); assert.equal(host.state.events[0].type,'jump');
+  host.pause(true);
+  assert.equal(client.accept(host.packet()).state.events.filter(e=>e.type==='jump').length,1);
+  assert.equal(client.accept(host.packet()).state.events.length,0);
+  host.pause(false);assert.equal(client.accept(host.packet()).state.events.length,0);
+});
