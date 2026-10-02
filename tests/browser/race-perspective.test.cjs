@@ -466,3 +466,121 @@ test(
     }
   },
 );
+
+test(
+  "perspective short landscape: camera reset remains clickable above touch controls and status rail",
+  { timeout: 30000 },
+  async (t) => {
+    const { page } = await launch(t, {
+      viewport: { width: 568, height: 320 },
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 2,
+    });
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty("--game-ui-top", "38px");
+      document.documentElement.style.setProperty("--game-ui-bottom", "24px");
+    });
+    await page.locator(".race-launch").click();
+    await page.getByRole("button", { name: "Camera view", exact: true }).tap();
+    const reset = page
+      .locator(".race-view-menu")
+      .getByRole("button", { name: "Reset camera", exact: true });
+    const bounds = await reset.boundingBox();
+    assert.ok(bounds.width >= 44 && bounds.height >= 44);
+    const hit = await reset.evaluate((n) => {
+      const r = n.getBoundingClientRect();
+      return (
+        document
+          .elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+          ?.closest("button") === n
+      );
+    });
+    assert.equal(
+      hit,
+      true,
+      "Reset camera must not be covered by the touch overlay",
+    );
+    await capture(page, "perspective-short-landscape-menu");
+    await reset.tap();
+    assert.equal(
+      await page
+        .getByRole("button", { name: "Camera view", exact: true })
+        .getAttribute("aria-expanded"),
+      "false",
+    );
+    assert.equal(await page.locator(".race-pressed").count(), 0);
+  },
+);
+
+test(
+  "perspective frame pacing: measure warmed renderer while driving through normal inputs",
+  { timeout: 45000 },
+  async (t) => {
+    const { page } = await launch(t, {}, () => {
+      window.testPad = {
+        connected: true,
+        mapping: "standard",
+        index: 0,
+        axes: [0, 0],
+        buttons: Array.from({ length: 17 }, () => ({
+          pressed: false,
+          value: 0,
+        })),
+      };
+      Object.defineProperty(navigator, "getGamepads", {
+        value: () => [testPad],
+        configurable: true,
+      });
+    });
+    await page.locator(".race-launch").click();
+    await playing(page);
+    await page.evaluate(() => {
+      window.driver = setInterval(() => {
+        const s = raceUI.snapshot();
+        if (!s || s.phase !== "racing") return;
+        const c = SpaceManRace.cpuInput(s, s.actors[0]);
+        testPad.axes[0] = c.steer;
+        testPad.buttons[0].pressed = c.boost;
+        testPad.buttons[1].pressed = c.brake;
+      }, 16);
+    });
+    const samples = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const times = [];
+          let last = 0;
+          function sample(now) {
+            if (last) times.push(now - last);
+            last = now;
+            if (times.length === 180) resolve(times);
+            else requestAnimationFrame(sample);
+          }
+          requestAnimationFrame(sample);
+        }),
+    );
+    await page.evaluate(() => {
+      clearInterval(driver);
+      testPad.axes[0] = 0;
+      testPad.buttons.forEach((b) => (b.pressed = false));
+    });
+    const sorted = samples.slice().sort((a, b) => a - b),
+      q = (p) =>
+        Math.round(sorted[Math.floor((sorted.length - 1) * p)] * 100) / 100;
+    console.log(
+      "Warmed software-browser frame intervals (not physical-device FPS):",
+      JSON.stringify({
+        browser: process.env.SPACE_MAN_RACE_BROWSER || "chromium",
+        medianMs: q(0.5),
+        p95Ms: q(0.95),
+        p99Ms: q(0.99),
+        maxMs: q(1),
+      }),
+    );
+    assert.ok(samples.every((n) => Number.isFinite(n) && n > 0));
+    assert.ok(
+      q(0.95) < 80,
+      "the warmed single-race test must avoid sustained severe stalls",
+    );
+  },
+);
