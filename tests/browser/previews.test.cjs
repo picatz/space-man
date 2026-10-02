@@ -105,6 +105,8 @@ test('preview status stays outside runner and arena touch controls through phone
   async function settleLayout() {
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   }
+  const overlaps = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x &&
+    a.y < b.y + b.height && a.y + a.height > b.y;
   async function bounds(label, controls) {
     const badge = await page.locator('#previewBuild').boundingBox();
     const metrics = await page.evaluate(() => ({
@@ -122,8 +124,7 @@ test('preview status stays outside runner and arena touch controls through phone
     assert.equal(metrics.pointerEvents, 'none', label + ': status never captures controls');
     for (const [name, r] of Object.entries(controls)) {
       assert.ok(r, label + ': ' + name + ' exists');
-      const overlap = badge.x < r.x + r.width && badge.x + badge.width > r.x && badge.y < r.y + r.height && badge.y + badge.height > r.y;
-      assert.equal(overlap, false, label + ': badge must not overlap ' + name);
+      assert.equal(overlaps(badge, r), false, label + ': badge must not overlap ' + name);
     }
   }
   for (const scenario of cases) {
@@ -159,6 +160,10 @@ test('preview status stays outside runner and arena touch controls through phone
         return { ...textBounds, pause: hit(G._pauseHit), mute: hit(G._muteHit), fire: disc(fire.cx, fire.cy, fire.r + 14), jump: disc(w * (lefty ? .26 : .74), h - bottom - 44, 29), move: disc(w * (lefty ? .78 : .22), h - bottom - (view.isTablet ? 92 : 76), 36) };
       }, lefty);
       await bounds(scenario.name + (lefty ? ' runner-lefty' : ' runner'), controls);
+      for (const [name, text] of Object.entries(controls).filter(([name]) => name.startsWith('HUD text '))) {
+        for (const button of ['pause', 'mute']) assert.equal(overlaps(text, controls[button]), false,
+          scenario.name + ': ' + name + ' must clear the ' + button + ' hit target');
+      }
     }
     if (process.env.SPACE_MAN_PREVIEW_SCREENSHOTS) {
       await fs.mkdir(process.env.SPACE_MAN_PREVIEW_SCREENSHOTS, { recursive: true });
@@ -180,7 +185,9 @@ test('preview status stays outside runner and arena touch controls through phone
     await page.locator('.arena-root[data-screen="match"]').waitFor();
     await settleLayout();
     for (const lefty of [false, true]) {
-      await page.evaluate(lefty => { document.getElementById('arenaRoot').dataset.lefty = String(lefty); }, lefty);
+      await page.evaluate(lefty => { settings.lefty = lefty; }, lefty);
+      await page.waitForFunction(lefty => document.getElementById('arenaRoot').dataset.lefty === String(lefty), lefty);
+      await settleLayout();
       const controls = {};
       for (const name of ['jump', 'attack', 'dash']) controls[name] = await page.locator('.arena-touch-' + name).boundingBox();
       controls.move = await page.locator('.arena-stick-zone').boundingBox();

@@ -5951,7 +5951,7 @@ function drawHUD() {
   if (netSpectating()) return;
   // odometer + score, indented past the button cluster — ducks alpha instead
   // of fighting the player sprite when the camera pins them near the top.
-  const ox = left + (dead ? 0 : pitch + ps + 8 * us);
+  const ox = left + (dead ? 0 : pitch + ps + Math.max(8 * us, 12 * view.w / vpW()));
   ctx.save(); ctx.globalAlpha *= lerp(1, 0.3, G.hudDuck);   // composes with ambient (E9.1 death fade), doesn't clobber it
   ctx.textAlign = 'left';
   drawGlowText(Math.floor(G.dist) + 'm', ox, top + 15 * us, 20 * us, '#38E1FF', '#F4F7FF');
@@ -6053,7 +6053,9 @@ function drawMuteButton(x, y, s, us) {
 function drawGlowText(text, x, y, size, glow, fill) {
   ctx.font = fontStr(900, size, FONT);
   const a = ctx.globalAlpha;   // ambient alpha multiplies both layers (HUD duck, stinger/celebrate fades)
-  ctx.save(); ctx.transform(1, 0, -0.08, 1, 0, 0);
+  // Skew the letters around their baseline, not the screen origin. Otherwise
+  // moving a HUD below a notch/status rail also drags its text left.
+  ctx.save(); ctx.transform(1, 0, -0.08, 1, 0.08 * y, 0);
   ctx.fillStyle = glow; ctx.globalAlpha = 0.5 * a; ctx.fillText(text, x + 1.5, y + 1.5);
   ctx.globalAlpha = a; ctx.fillStyle = fill; ctx.fillText(text, x, y);
   ctx.restore();
