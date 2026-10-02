@@ -14,7 +14,8 @@ async function launch(t, device = {}) {
       const file = path.resolve(ROOT, '.' + decodeURIComponent(pathname) + (pathname.endsWith('/') ? 'index.html' : ''));
       if (!file.startsWith(ROOT + path.sep)) return res.writeHead(400).end();
       const type = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.json': 'application/json' }[path.extname(file)] || 'text/plain';
-      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }).end(await fs.readFile(file));
+      const bytes = await fs.readFile(file);
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }).end(bytes);
     } catch (_) { res.writeHead(404).end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -29,8 +30,18 @@ async function launch(t, device = {}) {
       } catch (_) { /* Diagnostics never replace a test result. */
       }
     }
-    if (browser) await browser.close(); await new Promise(resolve => server.close(resolve));
+    if (browser) await browser.close();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
   });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  // A missing asset must return a real 404 without crashing the server or
+  // preventing subsequent requests from succeeding.
+  const missing = await fetch(base + '/__missing_arena_test_asset__.js');
+  assert.equal(missing.status, 404); await missing.arrayBuffer();
+  const available = await fetch(base + '/src/arena.js');
+  assert.equal(available.status, 200);
+  assert.match(await available.text(), /SpaceManArena/);
   browser = await chromium.launch(process.env.SPACE_MAN_CHROMIUM_PATH ? { executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : {});
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block', ...device });
   await context.addInitScript(() => {
@@ -44,7 +55,7 @@ async function launch(t, device = {}) {
   const page = await context.newPage(), errors = [], sockets = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('websocket', ws => sockets.push(ws.url()));
-  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.goto(base + '/');
   await page.locator('#btnArena').waitFor();
   t.after(() => { assert.deepEqual(errors, [], 'no uncaught browser errors'); assert.deepEqual(sockets, [], 'CPU arena never opens a relay socket'); });
   return { page, context, errors, sockets };
