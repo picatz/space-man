@@ -695,6 +695,11 @@
     function frame(now) {
       frameId = 0;
       if (!active || document.hidden) return;
+      // WebKit can dispatch resize before visualViewport exposes the settled
+      // rotation size. Reconcile changed viewport metrics on the next frame;
+      // unchanged frames avoid layout reads and canvas reallocation.
+      const vv = root.visualViewport;
+      if (vv && viewportBox && (Math.abs(vv.width - viewportBox.width) > 1 || Math.abs(vv.height - viewportBox.height) > 1 || Math.abs(vv.offsetLeft - viewportBox.left) > 1 || Math.abs(vv.offsetTop - viewportBox.top) > 1)) resize();
       updatePrefs(); pollGamepad();
       if (!active || document.hidden) return;
       const elapsed = lastTime ? Math.min(.1, Math.max(0, (now - lastTime) / 1000)) : 0; lastTime = now;
@@ -763,7 +768,8 @@
       resetInput();
       // iOS in-app chrome may blur a still-visible game. Visibility/pagehide
       // own mobile backgrounding; desktop window changes still pause at once.
-      if (document.hidden || !usingTouch) pauseMatch('You stepped away');
+      const mobileChrome = !!(root.matchMedia && root.matchMedia('(pointer: coarse) and (hover: none)').matches);
+      if (document.hidden || !mobileChrome) pauseMatch('You stepped away');
     }
     function onPageHide() {
       if (!active) return;

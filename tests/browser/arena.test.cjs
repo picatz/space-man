@@ -235,6 +235,7 @@ test('arena mobile setup fits short viewports without horizontal overflow', { ti
   }
   for (const [w, h] of [[390, 640], [320, 568], [375, 667], [430, 740], [844, 320]]) {
     await page.setViewportSize({ width: w, height: h });
+    await page.waitForFunction(([w, h]) => Math.abs(visualViewport.width - w) < 1 && Math.abs(visualViewport.height - h) < 1 && Math.abs(document.querySelector('.arena-root').getBoundingClientRect().width - w) < 1, [w, h]);
     await page.locator('.arena-lobby').evaluate(n => { n.scrollTop = 0; });
     await noHorizontalOverflow();
     const setup = await page.locator('.arena-setup').boundingBox();
@@ -319,8 +320,8 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   const jump = await page.locator('.arena-touch-jump').boundingBox(), q = { id: ++id, x: jump.x + jump.width / 2, y: jump.y + jump.height / 2 };
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p, q] });
   await page.waitForFunction(() => lastHumanCommand?.jumpHeld);
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [p] });
-  await page.waitForFunction(() => !lastHumanCommand?.jumpHeld && lastHumanCommand.moveX < -.5);
+  // CDP touchEnd ends the whole gesture and requires an empty touchPoints
+  // list. Per-pointer ownership is covered by the cross-engine test below.
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await neutral();
 
   // Complete a quick down/up in one task, before a simulation tick can sample
@@ -378,4 +379,73 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   assert.equal(await page.evaluate(() => input.left || input.right || input.jumpHeld), false);
   await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page); await neutral();
+});
+
+test('arena mobile pointer lifecycle preserves taps and releases stranded holds', { timeout: 45000 }, async t => {
+  const { page } = await launch(t, { viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true });
+  await page.evaluate(() => {
+    const original = SpaceManArena;
+    window.SpaceManArena = { ...original, step(state, commands) {
+      window.sampledHuman = { ...commands[1] };
+      if (sampledHuman.jumpPressed) window.sampledJumps = (window.sampledJumps || 0) + 1;
+      return original.step(state, commands);
+    } };
+  });
+  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
+  // These browser-dispatched sequences cover the fallback when native pointer
+  // capture is unavailable. Chromium's separate CDP test supplies native drags.
+  async function stranded(id, primary = true) {
+    await page.locator('.arena-stick-zone').evaluate((n, args) => {
+      const r = n.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+      n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: args.id, isPrimary: args.primary, clientX: x, clientY: y }));
+      n.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'touch', pointerId: args.id, clientX: x - 35, clientY: y }));
+    }, { id, primary });
+    await page.waitForFunction(() => sampledHuman?.moveX < -.5);
+  }
+  async function stopped() { await page.waitForFunction(() => sampledHuman?.moveX === 0); }
+  await stranded(39);
+  await page.locator('.arena-touch-jump').evaluate(n => n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 40, isPrimary: false })));
+  await page.waitForFunction(() => sampledHuman.jumpHeld && sampledHuman.moveX < -.5);
+  await page.locator('.arena-touch-jump').evaluate(n => n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 40 })));
+  await page.waitForFunction(() => !sampledHuman.jumpHeld && sampledHuman.moveX < -.5);
+  await page.evaluate(() => document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 39 })));
+  await stopped();
+  await stranded(41);
+  await page.evaluate(() => document.body.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 41 })));
+  await stopped();
+  await stranded(42);
+  await page.evaluate(() => document.body.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] })));
+  await stopped();
+  await stranded(43);
+  // A fresh primary sequence proves all previous fingers ended, even if the
+  // browser omitted the prior terminal event. Its new neutral origin replaces it.
+  await page.locator('.arena-stick-zone').evaluate(n => {
+    const r = n.getBoundingClientRect();
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 44, isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+  });
+  await stopped();
+  await page.evaluate(() => window.dispatchEvent(new TouchEvent('touchcancel', { touches: [] })));
+  const before = await page.evaluate(() => window.sampledJumps || 0);
+  await page.locator('.arena-touch-jump').evaluate(n => {
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 45, isPrimary: true }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 45, isPrimary: true }));
+    n.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] }));
+  });
+  await page.waitForFunction(count => sampledJumps > count, before);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  assert.equal(await page.evaluate(() => arenaUI.screen), 'play');
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await screen(page, 'pause');
+  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
+  await page.locator('#arenaResume').tap(); await stopped();
+});
+
+test('arena desktop focus loss still pauses after pen input', { timeout: 30000 }, async t => {
+  const { page } = await launch(t);
+  await page.locator('#btnArena').click(); await page.locator('.arena-launch').click(); await playing(page);
+  await page.locator('.arena-touch-jump').evaluate(n => {
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'pen', pointerId: 71, isPrimary: true }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'pen', pointerId: 71, isPrimary: true }));
+  });
+  assert.equal(await page.locator('.arena-root').getAttribute('data-touch'), 'true');
+  await page.evaluate(() => window.dispatchEvent(new Event('blur'))); await screen(page, 'pause');
 });
