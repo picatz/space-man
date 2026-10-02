@@ -5,6 +5,7 @@ const vm = require("node:vm");
 const Race = require("../src/race.js");
 const Camera = require("../src/race-camera.js");
 const Scene = require("../src/race-scene.js");
+const Presentation = require("../src/race-presentation.js");
 
 const source = fs.readFileSync(require.resolve("../src/race-view.js"), "utf8");
 const freeze = (value) => {
@@ -88,6 +89,7 @@ function harness({
   const sandbox = {
     document,
     SpaceManRace: Race,
+    SpaceManRacePresentation: Presentation,
     SpaceManRaceCamera: Camera,
     SpaceManRaceScene: Scene,
     performance: { now: () => 0 },
@@ -259,9 +261,11 @@ test("camera switching while paused rebuilds actor geometry and redraws the unch
   const cockpit = h.frames.at(-1);
   assert.notEqual(cockpit.meshes.at(-1), chase.meshes.at(-1));
   assert.equal(
-    cockpit.meshes.at(-1).vertices.length,
-    Scene.actors(h.snapshot, { hideId: h.snapshot.actors[0].id }).vertices
-      .length,
+    cockpit.meshes.filter((m) => m.actorId).length,
+    h.snapshot.actors.length - 1,
+  );
+  assert.ok(
+    !cockpit.meshes.some((m) => m.actorId === h.snapshot.actors[0].id),
     "cockpit omits the local pilot rather than reusing chase geometry",
   );
   assert.equal(cockpit.camera.eye[1], 34);
@@ -306,5 +310,22 @@ test("context loss falls back and restoration redraws while paused without advan
   );
   assert.equal(h.base.hidden, false);
   assert.equal(h.world.hidden, true);
+  h.view.destroy();
+});
+
+test("fractional display frames update shared camera and craft poses without rebuilding geometry", () => {
+  const h = harness();
+  const previous = Presentation.capture(h.snapshot);
+  previous.actors.forEach((a) => (a.x -= 4));
+  h.view.render(h.snapshot, { ...h.config, previous, alpha: 0 });
+  const a = h.frames
+    .at(-1)
+    .meshes.find((m) => m.actorId === h.snapshot.actors[0].id);
+  h.view.render(h.snapshot, { ...h.config, previous, alpha: 0.5 });
+  const b = h.frames
+    .at(-1)
+    .meshes.find((m) => m.actorId === h.snapshot.actors[0].id);
+  assert.equal(a.vertices, b.vertices);
+  assert.ok(Math.abs(b.model[12] - a.model[12] - 2) < 0.001);
   h.view.destroy();
 });

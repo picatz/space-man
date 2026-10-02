@@ -21,7 +21,7 @@ test("perspective cameras use snapshot position and preserve immutable simulatio
   assert.ok(cockpit.target[1] < cockpit.eye[1]);
   const art = Scene.course(c, R.at),
     moving = Scene.actors(s);
-  assert.equal(art.meshes.length, 2);
+  assert.equal(art.meshes.length, 3);
   assert.ok(moving.vertices.length > 100);
   for (const mesh of [...art.meshes, moving]) {
     assert.equal(mesh.vertices.length % 9, 0);
@@ -111,5 +111,81 @@ test("chase occlusion hides close rear pilots but keeps subject and rivals ahead
   assert.deepEqual(
     Scene.actors({ ...s, actors: [a, front] }, { chaseActor: a }),
     Scene.actors({ ...s, actors: [a, front] }),
+  );
+});
+
+test("craft geometry is reused on GPU while only per-frame pose matrices change", () => {
+  const s = R.snapshot(R.create()),
+    before = JSON.stringify(s),
+    first = Scene.actorMeshes(s);
+  const next = {
+    ...s,
+    actors: s.actors.map((a) => ({
+      ...a,
+      x: a.x + 3,
+      y: a.y + 4,
+      heading: a.heading + 0.01,
+    })),
+  };
+  const second = Scene.actorMeshes(next);
+  assert.ok(
+    first.every((m, i) => m.static && m.vertices === second[i].vertices),
+  );
+  assert.ok(
+    first.every(
+      (m, i) =>
+        m.model !== second[i].model &&
+        Math.abs(second[i].model[12] - m.model[12] - 3) < 0.001,
+    ),
+  );
+  assert.equal(JSON.stringify(s), before);
+});
+
+test("all scenery clears the entire playable road corridor, including other hairpin sections", () => {
+  const Track = require("../src/race-track-mesh.js");
+  for (const t of R.tracks) {
+    const c = R.course(t.id),
+      scene = Scene.course(c, R.at);
+    assert.ok(scene.clearances.length > 20);
+    for (const p of scene.clearances)
+      assert.ok(
+        Track.distance(c, p.x, p.z) - p.radius > c.width / 2 + 5,
+        `${t.id} ${p.type} intersects road`,
+      );
+  }
+});
+
+test("rear thrusters point opposite travel and cockpit stays above vehicle geometry", () => {
+  const s = R.snapshot(R.create()),
+    a = s.actors[0],
+    models = Scene.actorMeshes(s);
+  const vertices = models[0].vertices;
+  const engines = [];
+  let maxY = 0;
+  for (let i = 0; i < vertices.length; i += 9) {
+    maxY = Math.max(maxY, vertices[i + 1]);
+    if (
+      Math.abs(vertices[i + 6] - 0.8) < 0.00001 &&
+      vertices[i + 7] === 1 &&
+      vertices[i + 8] === 1
+    )
+      engines.push(vertices[i]);
+  }
+  assert.ok(
+    engines.length > 20 && engines.every((x) => x < -20),
+    "bright engine discs are at the rear",
+  );
+  const view = Camera.create().update(a, R.course(s.trackId), R.at, {
+    mode: "cockpit",
+  });
+  assert.ok(
+    view.eye[1] > maxY + 1,
+    "camera is above other hoverpod surfaces; own craft is omitted",
+  );
+  const m = models[0].model;
+  assert.ok(
+    Math.abs(m[0] - Math.cos(a.heading)) < 0.0001 &&
+      Math.abs(m[2] - Math.sin(a.heading)) < 0.0001,
+    "local nose axis matches simulation heading",
   );
 });

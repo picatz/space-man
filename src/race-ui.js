@@ -15,6 +15,14 @@
     n.addEventListener("click", action);
     return n;
   }
+  // Network snapshots arrive at 20Hz. Preserve DOM text nodes while their
+  // value is unchanged, including during an in-flight pointer click in WebKit.
+  function setText(node, value) {
+    if (node.textContent !== value) node.textContent = value;
+  }
+  function setDisabled(node, value) {
+    if (node.disabled !== !!value) node.disabled = !!value;
+  }
   function round(g, x, y, w, h, r) {
     g.beginPath();
     g.roundRect(x, y, w, h, r);
@@ -31,6 +39,7 @@
 @media(max-width:760px){.race-grid{gap:22px;grid-template-columns:1fr}.race-intro{display:grid;grid-template-columns:1fr .8fr;column-gap:10px;align-items:center}.race-intro>.race-pill{grid-column:1;justify-self:start;font-size:8px;letter-spacing:.1em;padding:6px 9px}.race-title{font-size:34px;line-height:1;margin:13px 0;grid-column:1}.race-lede{font-size:12px;margin:0;grid-column:1/-1;max-width:none}.race-hero{grid-column:2;grid-row:1/4;width:100%;margin:0}.race-facts{display:none}.race-lobby-header{margin-bottom:8px}.race-setup{padding:17px}.race-track{min-height:68px}.race-track canvas{width:85px;height:50px;flex-basis:85px}.race-options{margin-bottom:15px}.race-modal{padding:calc(var(--race-top) + 12px) calc(var(--race-right) + 16px) calc(var(--race-bottom) + 14px) calc(var(--race-left) + 16px)}.race-hud{left:calc(var(--race-left) + 12px);right:calc(var(--race-right) + 12px);top:calc(var(--race-top) + 12px);gap:7px}.race-hud-box{gap:13px;padding:10px 12px}.race-position{font-size:32px}.race-metric strong{font-size:15px}.race-time{font-size:14px;padding:11px 10px}.race-pause{width:44px;height:44px;min-height:44px}.race-touch-group{gap:7px}.race-touch-button{width:59px;height:63px}.race-steering{left:calc(var(--race-left) + 13px)}.race-actions{right:calc(var(--race-right) + 13px)}.race-recover{font-size:8px;padding:7px;bottom:calc(var(--race-bottom) + 31px)}.race-hint{max-width:60%;white-space:normal;text-align:center}.race-warning{top:calc(var(--race-top) + 85px)}}
 @media(max-height:520px) and (min-width:600px){.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:11px}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:48%;font-size:55px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
 @media(max-width:350px){.race-touch-button{width:54px;height:60px}.race-root .race-recover{width:44px;font-size:0;padding:5px 2px}.race-recover:after{content:"↺";font-size:23px}.race-boostbar{width:100px}.race-root[data-touch=true] .race-minimap{width:100px;height:70px}.race-hud-box{padding:9px 10px;gap:10px}.race-hud{gap:5px}.race-time{padding:10px 8px}}
+.race-online-panel{margin-top:18px;padding:13px 18px;border:1px solid #38536b;border-radius:16px;background:#10263be8}.race-online-panel>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750;color:#d6efbf}.race-online-entry{display:grid;gap:10px}.race-online-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.race-room-input{width:100%;min-height:46px;border:1px solid #547183;border-radius:10px;background:#071c2e;color:#e1f5ff;font:inherit;padding:10px;user-select:text;touch-action:auto}.race-room-members{padding-left:20px;color:#c7e2ef;font-size:12px}.race-room-code{font-size:18px;letter-spacing:.08em}.race-watch-tools{position:absolute;bottom:calc(var(--race-bottom) + 18px);left:50%;transform:translateX(-50%);z-index:4;background:#10263be8;border:1px solid #38536b;border-radius:12px;display:flex;align-items:center;gap:8px;max-width:95%;font-size:10px}.race-watch-tools>.race-button{width:44px;min-width:44px;height:44px;padding:8px;flex:0 0 44px}.race-watch-tools>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-root button:disabled{opacity:.5;cursor:default}.race-root[data-online=true] .race-hint{display:none}
 @media(prefers-reduced-motion:reduce){.race-root *{transition:none!important}}
 `;
   function create(opts = {}) {
@@ -82,6 +91,7 @@
       lastPad = null,
       audio = null,
       perspective = null,
+      previousPose = null,
       renderDt = 1 / 60;
     let selected = { trackId: "starlight", difficulty: "normal" },
       keys = new Map(),
@@ -92,6 +102,382 @@
       camera = { x: 0, y: 0, rotation: 0 },
       recoveryTap = null,
       recoveryClickCleanup = null;
+    let room = null,
+      roomStatus = null,
+      roomPaused = false,
+      localRoomMenu = false,
+      roomClosing = false;
+    let roomDetails,
+      roomEntry,
+      roomBox,
+      roomInput,
+      roomInvite,
+      roomHint,
+      roomMembers,
+      roomRole,
+      roomLeave,
+      roomCode,
+      roomCopy,
+      roomShare,
+      watchTools,
+      watchName;
+    let roomButtons = [],
+      watchId = null,
+      roomSignature = "",
+      networkEpoch = -1;
+    const onlineActive = () => !!room?.active;
+    const ownActor = () =>
+      state?.actors.find((a) => a.controller === "human") || null;
+    const followActor = () =>
+      ownActor() ||
+      state?.actors.find((a) => a.id === watchId) ||
+      state?.actors[0];
+    const canControl = () =>
+      !onlineActive() ||
+      (!!ownActor() &&
+        !ownActor().forfeited &&
+        ownActor().finishTick === null &&
+        !roomStatus?.stale &&
+        !roomStatus?.connection);
+    function syncRoomChoices() {
+      if (!room) return;
+      const online = onlineActive(),
+        host = room.isHost,
+        busy = room.busy;
+      for (const b of [...trackButtons, ...difficultyButtons])
+        setDisabled(b, busy || (online && !host));
+      const launch = rootEl.querySelector(".race-launch");
+      setDisabled(
+        launch,
+        busy || (online && (!host || !!roomStatus?.connection)),
+      );
+      setText(
+        launch,
+        online
+          ? host
+            ? "Start together  ↗"
+            : "Waiting for host…"
+          : "Launch race  ↗",
+      );
+      for (const b of roomButtons) setDisabled(b, busy);
+      setDisabled(roomInput, busy);
+      for (const id of ["raceRestart", "raceRematch", "raceNext"])
+        setDisabled(rootEl.querySelector("#" + id), online && !host);
+      const resume = rootEl.querySelector("#raceResume");
+      setDisabled(
+        resume,
+        online && ((!host && roomPaused) || !!roomStatus?.connection),
+      );
+      setText(resume, resume.disabled ? "Waiting for host…" : "Resume race");
+      setText(
+        rootEl.querySelector("#raceLobby"),
+        online
+          ? host
+            ? "Back to room lobby"
+            : "Leave race room"
+          : "Choose a circuit",
+      );
+      setText(
+        rootEl.querySelector(".race-setup > .race-local-note"),
+        online
+          ? "Shared laps, boost and collisions. Empty grid slots get CPUs."
+          : "Local CPU racing · or open Play with friends below",
+      );
+      touch.hidden = view !== "play" || paused || (online && !canControl());
+      watchTools.hidden = !online || view !== "play" || paused || !!ownActor();
+      if (!watchTools.hidden)
+        setText(watchName, "WATCHING " + (followActor()?.name || "RACE"));
+    }
+    function roomChanged(status) {
+      if (!active || roomClosing) return;
+      const previous = roomStatus;
+      roomStatus = status;
+      rootEl.dataset.online = String(status.active);
+      roomEntry.hidden = status.active;
+      roomBox.hidden = !status.active;
+      roomLeave.hidden = !status.active && !status.busy;
+      setText(
+        roomLeave,
+        status.busy
+          ? "Cancel connecting"
+          : status.host
+            ? "Close race room"
+            : "Leave race room",
+      );
+      setText(
+        roomHint,
+        status.error ||
+          status.closedReason ||
+          (status.busy
+            ? "Connecting… You can cancel below."
+            : status.connection ||
+              (status.stale
+                ? "Waiting for host · controls released"
+                : status.active
+                  ? status.host
+                    ? "You host the race. Keep this tab open; stepping away pauses everyone."
+                    : "The host chooses the circuit. Mid-race arrivals watch until the next lobby."
+                  : "Up to 4 friends + 4 spectators. CPUs fill the five-pilot grid.")),
+      );
+      if (status.active) {
+        const signature = JSON.stringify(
+          status.roster.map((r) => [r.p, r.callsign, r.role]),
+        );
+        if (signature !== roomSignature) {
+          roomSignature = signature;
+          roomMembers.replaceChildren();
+          for (const r of status.roster)
+            roomMembers.append(
+              el(
+                "li",
+                "",
+                (r.callsign || "PLAYER " + r.p) +
+                  (r.you ? " · YOU" : "") +
+                  (r.host ? " · HOST" : "") +
+                  (r.spectator ? " · WATCHING" : " · RACER"),
+              ),
+            );
+        }
+        const link =
+          status.host && typeof status.info.link === "string"
+            ? status.info.link
+            : "";
+        if (roomInvite.value !== link) roomInvite.value = link;
+        roomInvite.hidden = roomCopy.hidden = roomShare.hidden = !link;
+        setText(
+          roomCode,
+          status.info.joinCode ||
+            (link ? "Invite link · same build" : "Friend race"),
+        );
+        setText(
+          roomRole,
+          status.info.role === 1 ? "Join next race" : "Watch instead",
+        );
+        setDisabled(
+          roomRole,
+          !status.current || status.current.status !== "lobby",
+        );
+        if (status.connection || status.stale) {
+          keys.clear();
+          resetTouch();
+          pad = { steer: 0, boost: false, brake: false, recover: false };
+          padNeutral = true;
+        }
+      } else if (previous?.active || status.closedReason) {
+        state = null;
+        view = "lobby";
+        paused = roomPaused = localRoomMenu = false;
+        networkEpoch = -1;
+        roomSignature = "";
+        setPanel(lobby);
+        announce(status.closedReason || "Left race room");
+      }
+      syncRoomChoices();
+    }
+    function networkSnapshot(snapshot) {
+      if (!active || roomClosing) return;
+      const old = state,
+        next = snapshot.state,
+        choicesChanged =
+          selected.trackId !== next.trackId ||
+          selected.difficulty !== next.difficulty;
+      selected.trackId = next.trackId;
+      selected.difficulty = next.difficulty;
+      if (snapshot.status === "lobby") {
+        const enteringLobby = view !== "lobby" || !!state;
+        if (enteringLobby) {
+          resetInput();
+          state = null;
+          view = "lobby";
+          paused = roomPaused = localRoomMenu = false;
+          setPanel(lobby);
+        }
+        networkEpoch = -1;
+        if (enteringLobby || choicesChanged) syncChoices();
+        else syncRoomChoices();
+        return;
+      }
+      const newRound =
+        !old ||
+        old.tick > next.tick ||
+        old.trackId !== next.trackId ||
+        (old.phase === "finished" && next.phase !== "finished");
+      state = next;
+      networkEpoch = snapshot.epoch;
+      if (newRound) {
+        previousPose = null;
+        perspective?.reset();
+        resetInput();
+        view = "play";
+        paused = roomPaused = localRoomMenu = false;
+        last = 0;
+        acc = 0;
+        watchId = null;
+        const a = followActor();
+        camera = {
+          x: a.x,
+          y: a.y,
+          rotation: height > width && !calm() ? -a.heading - Math.PI / 2 : 0,
+        };
+        setPanel(null);
+        tone(0.7);
+      }
+      const wasPaused = roomPaused;
+      roomPaused = snapshot.status === "paused";
+      if (roomPaused) {
+        paused = true;
+        resetInput();
+        setText(
+          pausePanel.querySelector("p"),
+          snapshot.isHost
+            ? "The whole race is paused. Resume when you’re ready."
+            : "The host paused the race. Everyone is safely parked.",
+        );
+        if (rootEl.dataset.screen !== "pause") setPanel(pausePanel);
+      } else if (wasPaused && !localRoomMenu) {
+        paused = false;
+        setPanel(null);
+      }
+      if (state.phase === "finished" && view !== "results") {
+        paused = false;
+        localRoomMenu = false;
+        results();
+      }
+      syncRoomChoices();
+      ensureFrame();
+    }
+    function cycleWatch(direction) {
+      if (!state) return;
+      const list = state.actors;
+      const i = list.findIndex((a) => a.id === followActor()?.id);
+      watchId = list[(i + direction + list.length) % list.length].id;
+      syncRoomChoices();
+    }
+    function leaveRaceRoom() {
+      if (!room) return true;
+      if (
+        room.active &&
+        room.isHost &&
+        (roomStatus?.info.players || 0) + (roomStatus?.info.spectators || 0) >
+          1 &&
+        !root.confirm("Close the race room? This ends the race for everyone.")
+      )
+        return false;
+      roomClosing = true;
+      room.close();
+      roomClosing = false;
+      roomStatus = null;
+      roomPaused = localRoomMenu = false;
+      networkEpoch = -1;
+      roomSignature = "";
+      state = null;
+      view = "lobby";
+      paused = false;
+      resetInput();
+      setPanel(lobby);
+      roomChanged(room.status());
+      return true;
+    }
+    function buildRoomControls() {
+      if (!opts.net || !root.SpaceManRaceRoom) return;
+      roomDetails = el("details", "race-online-panel");
+      roomDetails.append(
+        el("summary", "", "Play with friends · Create, join or watch"),
+      );
+      roomEntry = el("div", "race-online-entry");
+      const host = button("Create race room", "race-primary", async () => {
+        roomDetails.open = true;
+        await room.hosting(selected);
+      });
+      host.id = "raceHost";
+      roomInput = el("input", "race-room-input");
+      roomInput.id = "raceRoomInput";
+      roomInput.placeholder = opts.build?.preview
+        ? "Full invite link from this preview"
+        : "Room code or invite link";
+      roomInput.setAttribute("aria-label", "Race room code or invite link");
+      roomInput.autocomplete = "off";
+      const join = button("Join race", "", () => room.join(roomInput.value, 0));
+      join.id = "raceJoin";
+      const watch = button("Watch race", "race-text", () =>
+        room.join(roomInput.value, 1),
+      );
+      watch.id = "raceWatch";
+      roomButtons = [host, join, watch];
+      const joins = el("div", "race-online-actions");
+      joins.append(join, watch);
+      roomEntry.append(host, roomInput, joins);
+      roomBox = el("div");
+      roomBox.hidden = true;
+      roomCode = el("strong", "race-room-code");
+      roomMembers = el("ul", "race-room-members");
+      roomMembers.id = "raceRoomMembers";
+      roomInvite = el("input", "race-room-input");
+      roomInvite.id = "raceInvite";
+      roomInvite.readOnly = true;
+      roomInvite.setAttribute("aria-label", "Race invite link");
+      roomCopy = button("Copy invite link", "", async () => {
+        try {
+          await root.navigator.clipboard.writeText(roomInvite.value);
+          roomHint.textContent = "Invite copied. Send it to your friends.";
+        } catch (_) {
+          roomInvite.focus();
+          roomInvite.select();
+          roomHint.textContent = "Select and copy this invite link.";
+        }
+      });
+      roomShare = button("Share", "race-text", async () => {
+        if (root.navigator.share) {
+          try {
+            await root.navigator.share({
+              title: "Space Man · Star Circuit",
+              url: roomInvite.value,
+            });
+          } catch (_) {}
+        } else roomCopy.click();
+      });
+      roomRole = button("Watch instead", "race-text", async () => {
+        roomRole.disabled = true;
+        const ok = await room.role(roomStatus.info.role === 1 ? 0 : 1);
+        if (!ok)
+          roomHint.textContent =
+            "No seat available yet. Try again in the next lobby.";
+      });
+      roomRole.id = "raceRoomRole";
+      const sharing = el("div", "race-online-actions");
+      sharing.append(roomCopy, roomShare, roomRole);
+      roomBox.append(roomCode, roomMembers, roomInvite, sharing);
+      roomHint = el("p", "race-local-note");
+      roomHint.id = "raceRoomHint";
+      roomHint.setAttribute("role", "status");
+      roomLeave = button("Leave race room", "race-text", leaveRaceRoom);
+      roomLeave.id = "raceRoomLeave";
+      roomLeave.hidden = true;
+      roomDetails.append(roomEntry, roomBox, roomHint, roomLeave);
+      lobby.append(roomDetails);
+      watchTools = el("div", "race-watch-tools");
+      watchTools.hidden = true;
+      const previous = button("←", "race-small", () => cycleWatch(-1));
+      previous.id = "raceWatchPrevious";
+      previous.setAttribute("aria-label", "Watch previous kart");
+      const next = button("→", "race-small", () => cycleWatch(1));
+      next.id = "raceWatchNext";
+      next.setAttribute("aria-label", "Watch next kart");
+      watchName = el("span");
+      watchName.id = "raceWatchName";
+      watchTools.append(previous, watchName, next);
+      rootEl.append(watchTools);
+      room = root.SpaceManRaceRoom.create({
+        net: opts.net,
+        build: opts.build,
+        identity: opts.identity,
+        hostOptions: opts.hostOptions,
+        baseUrl: opts.baseUrl,
+        onChange: roomChanged,
+        onSnapshot: networkSnapshot,
+      });
+    }
+
     const fmt = (t) => {
       const s = Math.max(0, t);
       return Math.floor(s / 60) + ":" + (s % 60).toFixed(2).padStart(5, "0");
@@ -181,6 +567,7 @@
       }
     }
     function resetInput() {
+      if (onlineActive()) room.release();
       keys.clear();
       resetTouch();
       pad = { steer: 0, boost: false, brake: false, recover: false };
@@ -238,7 +625,7 @@
     function focusables() {
       return Array.from(
         (modal.hidden ? hud : modal).querySelectorAll(
-          "button:not([disabled]),summary",
+          "button:not([disabled]),input:not([disabled]),summary",
         ),
       ).filter((n) => n.getClientRects().length);
     }
@@ -269,6 +656,7 @@
         return;
       }
       if (!modal.hidden) {
+        if (e.target?.tagName === "INPUT") return;
         if (["Enter", "Space"].includes(e.code)) {
           e.preventDefault();
           if (!e.repeat && modal.contains(document.activeElement))
@@ -427,7 +815,9 @@
       modal.hidden = !panel;
       for (const p of [lobby, pausePanel, resultPanel]) p.hidden = p !== panel;
       hud.hidden = view === "lobby";
-      touch.hidden = !!panel;
+      touch.hidden = !!panel || (onlineActive() && !canControl());
+      if (watchTools)
+        watchTools.hidden = !!panel || !onlineActive() || !!ownActor();
       minimap.hidden = view === "lobby";
       rootEl.dataset.screen =
         view === "lobby"
@@ -455,9 +845,10 @@
           String(b.dataset.difficulty === selected.difficulty),
         ),
       );
-      description.textContent = R.course(selected.trackId).subtitle;
+      setText(description, R.course(selected.trackId).subtitle);
       save();
       drawHero();
+      syncRoomChoices();
     }
     function build() {
       if (built) return;
@@ -614,6 +1005,7 @@
         const b = button("", "race-track", () => {
           selected.trackId = t.id;
           syncChoices();
+          if (onlineActive()) room.configure(selected);
         });
         b.dataset.track = t.id;
         const preview = el("canvas");
@@ -637,6 +1029,7 @@
         const b = button(label, "race-segment", () => {
           selected.difficulty = id;
           syncChoices();
+          if (onlineActive()) room.configure(selected);
         });
         b.dataset.difficulty = id;
         segments.append(b);
@@ -666,7 +1059,7 @@
         el(
           "p",
           "race-local-note",
-          "Local CPU racing · original tracks · no online race yet",
+          "Local CPU racing · or open Play with friends below",
         ),
         help,
       );
@@ -708,6 +1101,12 @@
         button("Choose a circuit", "race-text", showLobby),
         recoveryButton("Back to runner", "race-text", close),
       );
+      pausePanel.querySelectorAll("button")[0].id = "raceResume";
+      pausePanel.querySelectorAll("button")[1].id = "raceRestart";
+      pausePanel.querySelectorAll("button")[2].id = "raceLobby";
+      resultPanel.querySelectorAll("button")[0].id = "raceRematch";
+      resultPanel.querySelectorAll("button")[1].id = "raceNext";
+      buildRoomControls();
       modal.append(lobby, pausePanel, resultPanel);
       rootEl.append(modal);
       live = el("div", "race-sr");
@@ -738,10 +1137,21 @@
     let rescueRequest = false;
     function start() {
       if (!active) return;
+      if (onlineActive()) {
+        if (room.isHost) {
+          localRoomMenu = false;
+          const next = { ...selected };
+          if (room.current?.status !== "lobby") room.lobby();
+          room.configure(next);
+          room.start();
+        }
+        return;
+      }
       resetInput();
       rescueRequest = false;
       preferences();
       state = R.create(selected);
+      previousPose = null;
       perspective?.reset();
       view = "play";
       paused = false;
@@ -760,6 +1170,13 @@
     }
     function showLobby() {
       if (!active) return;
+      if (onlineActive()) {
+        if (!room.isHost) {
+          leaveRaceRoom();
+          return;
+        }
+        if (room.current?.status !== "lobby") room.lobby();
+      }
       resetInput();
       state = null;
       view = "lobby";
@@ -773,20 +1190,43 @@
     function pause() {
       if (!isRunning() || state.phase === "finished") return;
       paused = true;
+      if (onlineActive()) {
+        localRoomMenu = true;
+        room.pause(true);
+        setText(
+          pausePanel.querySelector("p"),
+          room.isHost
+            ? "The whole race is paused. Resume when you’re ready."
+            : roomPaused
+              ? "The host paused the race. Everyone is safely parked."
+              : "The race keeps going. Your kart coasts while this menu is open.",
+        );
+      }
       resetInput();
       last = 0;
       acc = 0;
       setPanel(pausePanel);
       announce("Race paused");
+      syncRoomChoices();
     }
     function resume() {
       if (!active || !paused || document.hidden) return;
+      if (
+        onlineActive() &&
+        ((roomPaused && !room.isHost) || roomStatus?.connection)
+      )
+        return;
+      if (onlineActive()) {
+        localRoomMenu = false;
+        room.pause(false);
+      }
       resetInput();
       rescueRequest = false;
       paused = false;
       last = 0;
       acc = 0;
       setPanel(null);
+      previousPose = root.SpaceManRacePresentation?.capture(state);
       announce("Race resumed");
       ensureFrame();
     }
@@ -794,9 +1234,10 @@
       resetInput();
       view = "results";
       resultRows.replaceChildren();
-      const me = state.results.find((r) => r.id === state.actors[0].id);
-      resultTitle.textContent =
-        me.position === 1
+      const me = state.results.find((r) => r.id === ownActor()?.id);
+      resultTitle.textContent = !me
+        ? "The stars have spoken."
+        : me.position === 1
           ? "You took the stars!"
           : me.finished
             ? "A fine orbit."
@@ -805,11 +1246,7 @@
         const row = el("div", "race-result-row");
         row.append(
           el("span", "", String(r.position)),
-          el(
-            "strong",
-            "",
-            r.name + (r.id === state.actors[0].id ? " · YOU" : ""),
-          ),
+          el("strong", "", r.name + (r.id === ownActor()?.id ? " · YOU" : "")),
           el("span", "", r.time === null ? "Unfinished" : fmt(r.time)),
         );
         resultRows.append(row);
@@ -817,11 +1254,12 @@
       setPanel(resultPanel);
       announce(
         "Race complete. You placed " +
-          me.position +
+          (me?.position || "watching") +
           " of " +
           state.actors.length,
       );
       tone(1.5);
+      syncRoomChoices();
     }
     function resize() {
       if (!active) return;
@@ -1095,10 +1533,14 @@
         return;
       }
       speed.parentNode.hidden = false;
-      const a = state.actors[0],
+      const a = followActor(),
         zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
       const rendered3d = perspective?.render(R.snapshot(state), {
         actorId: a.id,
+        previous: onlineActive() ? null : previousPose,
+        network: onlineActive(),
+        paused: onlineActive() ? roomPaused : paused,
+        alpha: paused || state.phase === "finished" ? 1 : acc * 60,
         dt: renderDt,
         reduceMotion: calm(),
       });
@@ -1203,7 +1645,10 @@
       drawMap(mg, c, 340, 240, state.actors);
       position.replaceChildren(
         document.createTextNode(
-          String(R.standings(state).findIndex((x) => x.id === a.id) + 1),
+          String(
+            state.results?.find((r) => r.id === a.id)?.position ??
+              R.standings(state).findIndex((x) => x.id === a.id) + 1,
+          ),
         ),
         el("small", "", " / " + state.actors.length),
       );
@@ -1218,12 +1663,28 @@
           el("small", "", "AUTO DRIVE · GET READY"),
         );
       }
-      warning.hidden = !a.offroad && !a.recoveryTicks;
-      warning.textContent = a.recoveryTicks
-        ? "RESCUING · BACK TO LAST CHECKPOINT"
-        : a.offroad
-          ? "OFF COURSE · FOLLOW THE CIRCUIT"
-          : "";
+      warning.hidden =
+        !a.offroad &&
+        !a.recoveryTicks &&
+        !(
+          onlineActive() &&
+          (roomStatus?.connection ||
+            roomStatus?.stale ||
+            a.finishTick !== null ||
+            a.forfeited)
+        );
+      warning.textContent =
+        onlineActive() && (roomStatus?.connection || roomStatus?.stale)
+          ? "WAITING FOR CONNECTION · CONTROLS RELEASED"
+          : a.forfeited
+            ? "DISCONNECTED · DID NOT FINISH"
+            : onlineActive() && a.finishTick !== null
+              ? "FINISHED · WAITING FOR OTHER RACERS"
+              : a.recoveryTicks
+                ? "RESCUING · BACK TO LAST CHECKPOINT"
+                : a.offroad
+                  ? "OFF COURSE · FOLLOW THE CIRCUIT"
+                  : "";
     }
     function tick(now) {
       frameId = 0;
@@ -1232,7 +1693,17 @@
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
       last = now;
       renderDt = dt;
-      if (isRunning()) {
+      if (onlineActive() && view === "play") {
+        acc += dt;
+        let count = 0;
+        while (acc >= 1 / 60 && count++ < 6) {
+          const command = isRunning() && canControl() ? input() : R.command();
+          if (rescueRequest && canControl()) command.recover = true;
+          rescueRequest = false;
+          room.step(command, now);
+          acc -= 1 / 60;
+        }
+      } else if (isRunning()) {
         acc += dt;
         let count = 0;
         while (acc >= 1 / 60 && count++ < 6) {
@@ -1245,6 +1716,7 @@
             rescueRequest = false;
           }
           const prev = state.countdown;
+          previousPose = root.SpaceManRacePresentation?.capture(state);
           R.step(state, cmds);
           acc -= 1 / 60;
           if (
@@ -1351,10 +1823,12 @@
       listen(root, "touchcancel", touchEnd, { capture: true, passive: true });
       resize();
       showLobby();
+      if (room) roomChanged(room.status());
       ensureFrame();
     }
     function close() {
       if (!active) return;
+      if (room && (room.active || room.busy) && !leaveRaceRoom()) return;
       resetInput();
       active = false;
       if (frameId) root.cancelAnimationFrame(frameId);
@@ -1390,6 +1864,16 @@
       open,
       close,
       destroy,
+      joinInvite(payload, role) {
+        if (!active) open();
+        if (!room) return Promise.resolve(false);
+        roomDetails.open = true;
+        return room.join(payload, role, true);
+      },
+      roomStatus() {
+        const s = room?.status();
+        return s ? JSON.parse(JSON.stringify(s)) : null;
+      },
       get active() {
         return active;
       },

@@ -1,9 +1,13 @@
 /* Original low-poly Star Circuit art. Pure mesh generation; no physics state. */
 (function (root, factory) {
-  const api = factory();
+  const api = factory(
+    typeof module === "object" && module.exports
+      ? require("./race-track-mesh.js")
+      : root.SpaceManRaceTrackMesh,
+  );
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.SpaceManRaceScene = api;
-})(typeof window !== "undefined" ? window : globalThis, function () {
+})(typeof window !== "undefined" ? window : globalThis, function (TrackMesh) {
   "use strict";
   const rgb = (h) =>
     [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
@@ -127,47 +131,9 @@
       edge = rgb(c.edge),
       accent = rgb(c.accent),
       road = rgb(c.road);
-    const ribbon = (p, q, l, r, y, color) =>
-      b.quad(
-        roadPoint(p, r, y),
-        roadPoint(q, r, y),
-        roadPoint(q, l, y),
-        roadPoint(p, l, y),
-        color,
-      );
-    const half = c.width / 2;
-    const points = c.segments.map((p) => ({
-      x: p.x,
-      y: p.y,
-      tx: p.tx,
-      ty: p.ty,
-    }));
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i],
-        q = points[(i + 1) % points.length];
-      ribbon(p, q, -half - 95, half + 95, -3, [0.075, 0.12, 0.17]);
-      ribbon(p, q, -half, half, 0, shade(road, i % 8 < 4 ? 1.12 : 1));
-      for (const side of [-1, 1]) {
-        ribbon(p, q, side * half - 3, side * half + 3, 1, edge);
-        ribbon(
-          p,
-          q,
-          side * (half + 9) - 5,
-          side * (half + 9) + 5,
-          0,
-          i % 6 < 3 ? [0.8, 0.86, 0.85] : shade(road, 0.6),
-        );
-        ribbon(
-          p,
-          q,
-          side * (half + 90) - 3,
-          side * (half + 90) + 3,
-          -2,
-          shade(edge, 0.38),
-        );
-      }
-      if (i % 4 < 2) ribbon(p, q, -1, 1, 0.3, [0.4, 0.55, 0.62]);
-    }
+    const half = c.width / 2,
+      clearances = [];
+    const trackMesh = TrackMesh.build(c);
     // Repeated luminous pylons create strong speed/depth cues without collision walls.
     for (let d = 0; d < c.length; d += 105) {
       const p = at(c, d),
@@ -175,6 +141,8 @@
       for (const side of [-1, 1]) {
         const x = p.x - p.ty * (half + 25) * side,
           z = p.y + p.tx * (half + 25) * side;
+        if (TrackMesh.distance(c, x, z) < half + 12) continue;
+        clearances.push({ x, z, radius: 6, type: "pylon" });
         b.box(x, 0, z, 7, 17, 7, [0.12, 0.2, 0.27], h);
         b.box(x, 16, z, 8, 3, 8, edge, h);
       }
@@ -186,6 +154,11 @@
         dist = half + 135 + (i % 4) * 55,
         x = p.x - p.ty * dist * side,
         z = p.y + p.tx * dist * side;
+      const radius = c.id === "ember" ? 60 : c.id === "bloom" ? 48 : 26;
+      // Clearance is measured against EVERY track segment, including the far
+      // side of a hairpin. A local tangent offset does not imply a safe site.
+      if (TrackMesh.distance(c, x, z) < half + radius + 24) continue;
+      clearances.push({ x, z, radius, type: "landmark" });
       if (c.id === "ember") {
         b.crystal(
           x,
@@ -287,10 +260,24 @@
     const skyMesh = sky.mesh();
     skyMesh.static = true;
     return {
-      meshes: [skyMesh, mesh],
+      meshes: [skyMesh, trackMesh, mesh],
+      clearances,
       background: rgb(c.sky),
       fog: { color: rgb(c.sky), near: 1700, far: 6000 },
     };
+  }
+  function visibleActor(a, { hideId = null, chaseActor = null } = {}) {
+    if (a.id === hideId) return false;
+    if (chaseActor && a.id !== chaseActor.id) {
+      const dx = a.x - chaseActor.x,
+        dz = a.y - chaseActor.y;
+      const behind =
+        dx * Math.cos(chaseActor.heading) + dz * Math.sin(chaseActor.heading);
+      const side =
+        -dx * Math.sin(chaseActor.heading) + dz * Math.cos(chaseActor.heading);
+      if (behind < -25 && behind > -320 && Math.abs(side) < 95) return false;
+    }
+    return true;
   }
   function actors(
     snapshot,
@@ -298,20 +285,7 @@
   ) {
     const b = builder();
     for (const a of snapshot.actors) {
-      if (a.id === hideId) continue;
-      // Nearby racers between the follow camera and its subject should not
-      // turn into giant foreground occluders, especially in portrait. This
-      // is visibility only: every pilot stays in the rules and minimap.
-      if (chaseActor && a.id !== chaseActor.id) {
-        const dx = a.x - chaseActor.x,
-          dz = a.y - chaseActor.y;
-        const behind =
-          dx * Math.cos(chaseActor.heading) + dz * Math.sin(chaseActor.heading);
-        const side =
-          -dx * Math.sin(chaseActor.heading) +
-          dz * Math.cos(chaseActor.heading);
-        if (behind < -25 && behind > -320 && Math.abs(side) < 95) continue;
-      }
+      if (!visibleActor(a, { hideId, chaseActor })) continue;
       const h = a.heading,
         co = Math.cos(h),
         si = Math.sin(h),
@@ -385,7 +359,8 @@
         );
       }
       // Colored life-support panel at the rear of the suit/helmet.
-      pod(-12.6, 22, 0, 1.6, 4, 4, color);
+      b.box(...p(-13, 18, 0), 3, 7, 7, [0.27, 0.43, 0.5], h);
+      b.box(...p(-14.7, 20, 0), 0.5, 2, 5, color, h);
       // Soft-edged geometric contact shadow: no downloaded texture.
       for (let i = 0; i < 16; i++) {
         const a0 = (i * Math.PI) / 8,
@@ -422,5 +397,58 @@
     }
     return b.mesh();
   }
-  return Object.freeze({ rgb, builder, course, actors });
+  const kartModels = new Map();
+  function actorMeshes(snapshot, options = {}) {
+    const out = [];
+    for (const a of snapshot.actors) {
+      if (!visibleActor(a, options)) continue;
+      const boosted = !!(a.boosting || a.padTicks > 0),
+        key = a.color + ":" + boosted;
+      let vertices = kartModels.get(key);
+      if (!vertices) {
+        const local = {
+          ...a,
+          x: 0,
+          y: 0,
+          heading: 0,
+          boosting: boosted,
+          padTicks: 0,
+        };
+        vertices = actors(
+          { tick: 0, actors: [local] },
+          { calm: true },
+        ).vertices;
+        kartModels.set(key, vertices);
+        if (kartModels.size > 24)
+          kartModels.delete(kartModels.keys().next().value);
+      }
+      const c = Math.cos(a.heading),
+        s = Math.sin(a.heading);
+      out.push({
+        vertices,
+        static: true,
+        actorId: a.id,
+        model: new Float32Array([
+          c,
+          0,
+          s,
+          0,
+          0,
+          1,
+          0,
+          0,
+          -s,
+          0,
+          c,
+          0,
+          a.x,
+          0,
+          a.y,
+          1,
+        ]),
+      });
+    }
+    return out;
+  }
+  return Object.freeze({ rgb, builder, course, actors, actorMeshes });
 });

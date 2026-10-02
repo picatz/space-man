@@ -3,8 +3,8 @@
 An original perspective arcade hoverkart racer alongside Space Man’s runner and
 Orbital Arena. Five pilots race three laps around an authored circuit. Steering,
 braking, soft kart contacts, boost strips and a rechargeable boost reserve make
-corner entry and exit matter. The first release has one local player and four
-CPU opponents; it does not yet offer friend racing.
+corner entry and exit matter. Play locally against four CPUs, or create a friend
+room with up to four human racers and CPU-filled empty slots.
 
 ## Circuits and controls
 
@@ -61,6 +61,10 @@ and the finish arch are presentation geometry, not newly introduced obstacles.
   look-at / projection math, lighting, fog, depth testing and GPU lifetime
 - `src/race-camera.js`: chase/cockpit poses, stable horizon, aspect-aware phone
   framing, render-only smoothing and reset on rescue or followed-pilot change
+- `src/race-track-mesh.js`: one full-course distance field partitioned into
+  disjoint road/curb/apron triangles, so tight corners cannot self-overlap
+- `src/race-presentation.js`: fixed-tick local pose interpolation and a bounded
+  received-snapshot playback clock; no physics prediction or extrapolation
 - `src/race-scene.js`: original procedural road, boost strips, karts and three
   themed skylines; immutable course meshes plus per-snapshot actor meshes
 - `src/race-view.js`: camera menu, preferences, resolution budget and safe fallback
@@ -74,8 +78,9 @@ a perspective view is actually requested; the runner retains its existing 2D
 rendering path.
 
 No runtime dependency, model download, texture asset, service or paid API is
-required. Static geometry stays on the GPU; actor geometry streams through a
-reusable buffer. Pixel ratio is capped at 1.5, battery saving uses 70% resolution,
+required. Static course and per-color craft geometry stay on the GPU; only tiny actor
+pose matrices change on each display frame. Scenery clearance is measured
+against the entire course plus each prop footprint, including nearby hairpins. Pixel ratio is capped at 1.5, battery saving uses 70% resolution,
 and sustained slow frames reduce resolution to 65%. Fast frames restore quality.
 Context loss switches to the original playable top-down view and restoration
 rebuilds graphics resources. A browser without WebGL attempts initialization once
@@ -99,13 +104,33 @@ lifecycle in WebKit, mobile rotation, narrow viewports, pause/resume, settings,
 rematch and repeat opening/closing. Browser-engine coverage is not a claim of
 physical-device testing.
 
-## Friend racing next
+## Friend racing (v3.23)
 
-The pure command/snapshot boundary is intentional: one room host can advance
-rules and publish verified snapshots while peers send bounded input commands.
-Online racing still needs an explicit race-mode room handshake, command
-ownership/sequence validation, reconnection, host lifecycle and multi-browser
-end-to-end tests. It must use the existing shared room transport instead of a
-second network stack. Arena packets cannot be treated as race packets. No online
-race capability should be advertised until those paths have been implemented
-and tested.
+Open **Star Circuit**, then **Play with friends**. Create a room and share its
+invite (or production room code), or choose Join race / Watch race. The host
+chooses the circuit and CPU pace and starts the grid. Up to four racers and four
+spectators share a five-kart race; CPUs fill unused racing slots.
+
+The existing encrypted room relay is reused with a separate race capability and
+invite mode. Runner, Arena and Star Circuit rooms cannot be accidentally mixed.
+The host owns the simulation: other racers send bounded steering/brake/boost/
+rescue commands, never positions, lap counts or results. Each player sees their
+own kart; spectators can switch the followed kart. A race waits for all humans,
+with a 30-second finish window after the first human finishes and a five-minute
+maximum. Disconnected racers coast without controls, have ten seconds to rejoin
+their same seat, then receive a did-not-finish result.
+
+The host's pause applies to everyone. A guest's menu only releases their own
+controls. Keep the host tab open; a suspended host pauses the race and closing
+it ends the room. New mid-race arrivals watch until the next lobby. There is no
+host migration or page-reload race restoration. Local CPU racing still works
+without a connection. The shared room has no voice or text chat.
+
+Verification: Node authority/codec/transport/coordinator tests and separate
+Chromium/WebKit multi-context acceptance cover real controls, laps/results,
+watchers, touch interruption, reconnect, host closure and runner return. The
+ordinary browser suite substitutes only the opaque relay hop. The separate
+`race-live.test.cjs` entrypoint requires explicit `SPACE_MAN_RELAY_HOST=default` (or an authorized relay hostname) and
+uses actual WebSockets to the existing relay; it never represents simulated
+relay results as a live-network pass. Physical iPhone/cellular testing remains
+separate.

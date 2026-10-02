@@ -394,3 +394,75 @@ test(
     await page.keyboard.up("d");
   },
 );
+
+test(
+  "perspective corners: drive Ember and Bloom hairpins, interrupt steering, rescue and keep camera coherent",
+  { timeout: 120000 },
+  async (t) => {
+    const { page } = await launch(t, {}, () => {
+      window.testPad = {
+        connected: true,
+        mapping: "standard",
+        index: 0,
+        axes: [0, 0],
+        buttons: Array.from({ length: 17 }, () => ({
+          pressed: false,
+          value: 0,
+        })),
+      };
+      Object.defineProperty(navigator, "getGamepads", {
+        value: () => [testPad],
+        configurable: true,
+      });
+    });
+    for (const track of ["ember", "bloom"]) {
+      await page.locator(`[data-track="${track}"]`).click();
+      await page.locator(".race-launch").click();
+      await playing(page);
+      await page.evaluate(() => {
+        window.driver = setInterval(() => {
+          const s = raceUI.snapshot();
+          if (!s || s.phase !== "racing") return;
+          const c = SpaceManRace.cpuInput(s, s.actors[0]);
+          testPad.axes[0] = c.steer;
+          testPad.buttons[0].pressed = c.boost;
+          testPad.buttons[1].pressed = c.brake;
+        }, 16);
+      });
+      for (const gate of [5, 10, 15, 19]) {
+        await page.waitForFunction(
+          (g) => raceUI.snapshot().actors[0].passed >= g,
+          gate,
+          { timeout: 30000 },
+        );
+        await capture(page, `perspective-${track}-bend-${gate}`);
+      }
+      await page.evaluate(() => {
+        clearInterval(driver);
+        testPad.axes[0] = 0;
+        testPad.buttons.forEach((b) => (b.pressed = false));
+      });
+      await page.keyboard.down("ArrowRight");
+      await page.waitForTimeout(1200);
+      await page.keyboard.up("ArrowRight");
+      await capture(page, `perspective-${track}-edge-interrupt`);
+      const recoveries = await page.evaluate(
+        () => raceUI.snapshot().actors[0].recoveries,
+      );
+      await page.keyboard.press("r");
+      await page.waitForFunction(
+        (n) => raceUI.snapshot().actors[0].recoveries > n,
+        recoveries,
+      );
+      await capture(page, `perspective-${track}-recovery`);
+      assert.equal(
+        await page.locator(".race-root").getAttribute("data-renderer"),
+        "webgl",
+      );
+      await page
+        .getByRole("button", { name: "Pause race", exact: true })
+        .click();
+      await menu(page, "Choose a circuit");
+    }
+  },
+);

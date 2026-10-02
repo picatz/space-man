@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 const ROOT = path.resolve(__dirname, '..');
 // Every src/ module, in index.html's <script> order.
-const MODULES = ['build', 'contracts', 'save-schema', 'input-snapshot', 'course', 'worldgen', 'enemies', 'powerups', 'art', 'anim', 'arena', 'arena-online', 'arena-room', 'arena-ui', 'race', 'render3d', 'race-camera', 'race-scene', 'race-view', 'race-ui', 'callsigns', 'crew', 'relay-directory', 'qr', 'netsmooth', 'net'];
+const MODULES = ['build', 'contracts', 'save-schema', 'input-snapshot', 'course', 'worldgen', 'enemies', 'powerups', 'art', 'anim', 'arena', 'arena-online', 'arena-room', 'arena-ui', 'race', 'race-online', 'race-room', 'render3d', 'race-camera', 'race-track-mesh', 'race-scene', 'race-presentation', 'race-view', 'race-ui', 'callsigns', 'crew', 'relay-directory', 'qr', 'netsmooth', 'net'];
 
 // No game/network behavior is mocked. Only browser APIs and the opaque relay
 // transport are replaced; clients exchange the real encrypted wire protocol.

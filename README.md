@@ -87,7 +87,8 @@ selected with `SPACE_MAN_CHROMIUM_PATH`.
 ## Star Circuit · Arcade Racing
 
 Choose **Star Circuit · Racing** from the title for an original perspective
-hoverkart race against four CPU pilots. Race three laps on **Starlight Speedway**,
+hoverkart race against four CPU pilots, or open **Play with friends** to create,
+join or watch an encrypted race room. Race three laps on **Starlight Speedway**,
 **Ember Switchback**, or **Bloom Lagoon**, with Chill, Sport and Expert CPU pace.
 Carve corners, catch boost strips, manage rechargeable boost and recover from a
 missed bend. Ordered checkpoints, race position, timing and results are part of
@@ -99,11 +100,14 @@ existing left-handed, steering remaps, mute and reduced-motion preferences carry
 over. Choose Chase (default), Cockpit or Top-down using the camera button,
 C key or pause/setup options. A steady horizon and reduced-motion preferences
 keep the view comfortable; the minimap keeps the full circuit visible. The
-lightweight WebGL renderer falls back to top-down if graphics are unavailable. Leave an existing room before entering local racing.
+lightweight WebGL renderer falls back to top-down if graphics are unavailable. Leave an existing room before switching game modes.
 
-This is **local CPU racing**. Friend racing is a separate next milestone on the
-shared room transport; it is not advertised as online play yet. Racing does not
-change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
+Friend rooms support up to four racers plus four watchers, with CPUs filling
+the five-kart grid. The host owns laps, collisions and results, and pauses the
+whole race when stepping away. Guests can take a local pit-stop menu. A lost
+connection releases controls and reserves the seat for ten seconds, then marks
+it unfinished. New arrivals watch until the next lobby. There is no host
+migration or page-reload restoration. Racing does not change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
 
 ## Daily Course and challenges
 

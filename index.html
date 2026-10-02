@@ -1086,9 +1086,13 @@
 <script src="src/arena-room.js"></script>
 <script src="src/arena-ui.js"></script>
 <script src="src/race.js"></script>
+<script src="src/race-online.js"></script>
+<script src="src/race-room.js"></script>
 <script src="src/render3d.js"></script>
 <script src="src/race-camera.js"></script>
+<script src="src/race-track-mesh.js"></script>
 <script src="src/race-scene.js"></script>
+<script src="src/race-presentation.js"></script>
 <script src="src/race-view.js"></script>
 <script src="src/race-ui.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
@@ -7302,7 +7306,8 @@ function netHostBlocked(hostHex) {
   try { return NET.blocklist().some((b) => b.pubkey === hostHex); } catch (e) { return false; }
 }
 function resetJoinPrompt() {
-  $('joinTitle').textContent = joinPayload && NET.peekInvite(joinPayload).mode === 'arena' ? 'Join This Arena?' : 'Join This Run Together?';
+  const joinMode = joinPayload && NET.peekInvite(joinPayload).mode;
+  $('joinTitle').textContent = joinMode === 'race' ? 'Join Star Circuit?' : joinMode === 'arena' ? 'Join This Arena?' : 'Join This Run Together?';
   $('joinChoices').style.display = '';
   $('btnJoinNotNow').style.display = '';
   setJoinState('');
@@ -7338,6 +7343,7 @@ async function acceptInvite(role) {
   }
   joinOverride = false;                                    // override consumed (single-use)
   if (isOffline()) { setJoinState(OFFLINE_TOGETHER); return; }
+  if (peek && peek.mode === 'race') { $('btnRace').onclick(); if (raceUI && raceUI.active) { hideAllOverlays(); await raceUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
   if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
   $('joinChoices').style.display = 'none';
@@ -8514,6 +8520,13 @@ $('btnRace').onclick = () => {
   if (G.mode !== 'attract' || (arenaUI && arenaUI.active) || !window.SpaceManRaceUI) return;
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
     storageKey: BUILD.storageKey('sm2.race.v1'),
+    net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    hostOptions() {
+      const relayDir = { mode: settings.netRelayMode };
+      if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
+      else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
+      return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
+    },
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
     onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); hideAllOverlays(); showOverlay('ovAttract'); $('btnRace').focus(); },
   });
@@ -8567,7 +8580,7 @@ $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
-  if (modeOverlayActive() || NET.info().mode === 'arena') return;
+  if (modeOverlayActive() || ['arena','race'].includes(NET.info().mode)) return;
   if (e === 'rotated' || e === 'round' || e === 'join' || e === 'rejoin' || e === 'ok') saveResume();   // keep the token current
   if (e === 'reconnecting') { announce('Connection lost. Reconnecting.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'reconnected') { announce('Reconnected.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }

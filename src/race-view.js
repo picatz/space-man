@@ -12,6 +12,7 @@
     const parent = options.root,
       base = options.canvas,
       camera = root.SpaceManRaceCamera.create(),
+      timeline = root.SpaceManRacePresentation?.createTimeline(),
       key = (options.storageKey || "sm2.race.v1") + ".camera";
     let mode = "chase",
       renderer = null,
@@ -170,6 +171,16 @@
         slow = fast = 0;
         resize(w, h, dpr);
       }
+      snapshot =
+        config.network && timeline
+          ? timeline.sample(snapshot, root.performance.now(), {
+              paused: config.paused,
+            })
+          : root.SpaceManRacePresentation?.between(
+              config.previous,
+              snapshot,
+              config.alpha,
+            ) || snapshot;
       const a =
         snapshot.actors.find((a) => a.id === config.actorId) ||
         snapshot.actors[0];
@@ -179,18 +190,16 @@
         scene = root.SpaceManRaceScene.course(course, root.SpaceManRace.at);
         trackId = snapshot.trackId;
         camera.reset();
+        timeline?.reset();
         lastTick = null;
       }
-      const meshKey = mode + ":" + a.id;
-      if (lastTick !== snapshot.tick || !mesh || mesh.key !== meshKey) {
-        mesh = root.SpaceManRaceScene.actors(snapshot, {
-          hideId: mode === "cockpit" ? a.id : null,
-          calm: !!config.reduceMotion,
-          chaseActor: mode === "chase" ? a : null,
-        });
-        mesh.key = meshKey;
-        lastTick = snapshot.tick;
-      }
+      // Reuse immutable local-space craft meshes on the GPU. Only small model
+      // transforms change each display frame, including interpolated frames.
+      const moving = root.SpaceManRaceScene.actorMeshes(snapshot, {
+        hideId: mode === "cockpit" ? a.id : null,
+        calm: !!config.reduceMotion,
+        chaseActor: mode === "chase" ? a : null,
+      });
       const view = camera.update(a, course, root.SpaceManRace.at, {
         mode,
         dt: config.dt,
@@ -201,7 +210,7 @@
       const ok = renderer.draw({
         ...scene,
         camera: view,
-        meshes: [...scene.meshes, mesh],
+        meshes: [...scene.meshes, ...moving],
       });
       const cost = root.performance.now() - started;
       if (!ok) {
@@ -235,6 +244,7 @@
       },
       reset() {
         camera.reset();
+        timeline?.reset();
         lastTick = null;
       },
       panel(container) {
@@ -252,6 +262,7 @@
         toggle.setAttribute("aria-expanded", "false");
         base.hidden = false;
         camera.reset();
+        timeline?.reset();
         lastTick = null;
       },
       destroy() {
