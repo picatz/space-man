@@ -283,6 +283,10 @@ test('arena mobile setup fits short viewports without horizontal overflow', { ti
   await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
   assert.equal(await page.evaluate(() => arenaUI.active), false);
   assert.equal(await page.locator('#btnArena').isVisible(), true);
+  await page.locator('#btnArena').tap(); await screen(page, 'lobby');
+  assert.equal(await page.evaluate(() => arenaUI.active), true, 'the next deliberate touch is not swallowed by the delayed-click guard');
+  await page.locator('#arenaBack').tap();
+  assert.equal(await page.evaluate(() => arenaUI.active), false);
 });
 
 test('arena touch recovers from outside release, lost capture, interruptions and mode changes', { timeout: 90000 }, async t => {
