@@ -269,7 +269,9 @@ async function main(command) {
     const [state, jobs] = await Promise.all([currentState(api),
       allPages(api, `/repos/${REPOSITORY}/actions/runs/${runId}/attempts/${attempt}/jobs`, 'jobs')]);
     const selected = selectPublishable(plan, state.mainSha, state.pulls, jobs);
-    writeSummary(await assemble(plan, selected));
+    const manifest = await assemble(plan, selected);
+    output('manifest', manifest);
+    writeSummary(manifest);
   } else throw new Error('Usage: node scripts/publish-pages.cjs plan|assemble');
 }
 
