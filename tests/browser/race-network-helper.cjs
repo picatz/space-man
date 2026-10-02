@@ -10,112 +10,72 @@ const { validateRelayHost } = require('./arena-network-helper.cjs');
 const ROOT = path.resolve(__dirname, '../..');
 const STEP_MS = 30000;
 
-// Reuse the arena suite's opaque relay bridge, with ordered delivery batching.
-// This copy keeps the established arena acceptance helper API unchanged.
+// Use the same opaque in-memory DERP hop as arena acceptance. A CI-only
+// loopback WebSocket adapts native browser frames to harness.relay.Socket.
+// This avoids automation-RPC latency without replacing browser socket events,
+// frame ordering, timers, cryptography, UI, input or simulation behavior.
 async function simulatedRelay(context, c, hub) {
-  // No state, input, crypto, DOM, timers, or frame-rate APIs are replaced.
-  // Binary ciphertext is transported from the browser's actual WebSocket API
-  // boundary into tests/harness.cjs, which authenticates and routes opaque data.
-  const sockets = new Map(), deliveries = new Map();
-  c.bridgeSockets = sockets;
-  // Native WebSockets preserve order, including OPEN before the first frame.
-  // Batch queued opaque frames into one browser automation call. A separate
-  // evaluate per fragment can itself add seconds of artificial latency in
-  // WebKit. Preserve every frame and its order; never drop/coalesce game state.
-  const deliver = (page, id, type, bytes) => new Promise(resolve => {
-    let delivery = deliveries.get(id);
-    if (!delivery) { delivery = {queue:[],draining:false}; deliveries.set(id,delivery); }
-    delivery.queue.push({id,type,bytes,queuedAt:Date.now(),resolve});
-    c.pendingDeliveries = (c.pendingDeliveries || 0) + 1;
-    c.peakPendingDeliveries = Math.max(c.peakPendingDeliveries || 0,c.pendingDeliveries);
-    if (delivery.draining) return;
-    delivery.draining = true;
-    setImmediate(async () => {
-      try {
-        while (delivery.queue.length) {
-          const batch = delivery.queue.splice(0,64);
-          c.maxDeliveryDelayMs = Math.max(c.maxDeliveryDelayMs || 0,Date.now()-batch[0].queuedAt);
-          c.maxDeliveryBatch = Math.max(c.maxDeliveryBatch || 0,batch.length);
-          try {
-            await page.evaluate(async records => {
-              for (const {id,type,bytes} of records) {
-                window.__arenaRelayDispatch?.(id,type,bytes);
-                // Keep the ordinary microtask boundary between ordered events.
-                await Promise.resolve();
-              }
-            },batch.map(({id,type,bytes}) => ({id,type,bytes})));
-          } catch { c.deliveryErrors += batch.length; }
-          finally {
-            c.pendingDeliveries -= batch.length;
-            for (const record of batch) record.resolve();
-          }
-        }
-      } finally { delivery.draining = false; }
-    });
-  });
-  await context.exposeBinding('__arenaRelayHop', ({ page }, action, id, value) => {
-    if (action === 'open') {
-      c.sockets++;
-      if (value !== 'wss://relay.test/derp') {
-        c.unexpectedSockets++;
-        setImmediate(() => { deliver(page,id,'error'); deliver(page,id,'close'); });
-        return; // A substituted relay must never conceal an invalid endpoint.
-      }
-      if (c.offline) { setImmediate(() => deliver(page, id, 'close')); return; }
-      const socket = new hub.Socket(); sockets.set(id, socket);
-      socket.onopen = () => deliver(page, id, 'open');
-      socket.onmessage = event => {
-        c.received++;
-        const b = new Uint8Array(event.data);
-        c.receivedTypes[b[0]] = (c.receivedTypes[b[0]] || 0) + 1;
-        if (b[0] === 5) c.encryptedReceived++;
-        return deliver(page, id, 'message', Array.from(b));
-      };
-    } else if (action === 'send') {
-      const socket = sockets.get(id);
-      if (!socket || c.offline || socket.readyState !== 1) return;
-      c.sent++;
-      c.sentTypes[value[0]] = (c.sentTypes[value[0]] || 0) + 1;
-      if (value[0] === 4) c.encryptedSent++;
-      socket.send(Uint8Array.from(value));
-    } else if (action === 'close') {
-      const socket = sockets.get(id); sockets.delete(id); socket?.close();
-      return deliver(page, id, 'close');
-    }
-  });
-  await context.addInitScript(() => {
-    let serial = 0;
-    const sockets = new Map();
-    class RelayHop extends EventTarget {
-      static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
-      constructor(url, protocol) {
-        super(); this.url = String(url); this.protocol = typeof protocol === 'string' ? protocol : '';
-        this.extensions = ''; this.binaryType = 'blob'; this.bufferedAmount = 0; this.readyState = 0;
-        this.id = ++serial; sockets.set(this.id, this);
-        window.__arenaRelayHop('open', this.id, this.url).catch(() => this.close());
-      }
-      send(data) {
-        if (this.readyState !== 1) throw new DOMException('Socket is not open', 'InvalidStateError');
-        const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-        this.bufferedAmount += bytes.length;
-        window.__arenaRelayHop('send', this.id, Array.from(bytes)).finally(() => { this.bufferedAmount -= bytes.length; });
-      }
-      close() {
-        if (this.readyState >= 2) return;
-        this.readyState = 2; window.__arenaRelayHop('close', this.id).catch(() => {});
-      }
-    }
-    Object.assign(RelayHop.prototype, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 });
-    window.__arenaRelayDispatch = (id, type, bytes) => {
-      const socket = sockets.get(id); if (!socket) return;
-      if (type === 'open') { if (socket.readyState !== 0) return; socket.readyState = 1; }
-      if (type === 'message' && socket.readyState !== 1) return;
-      if (type === 'close') { socket.readyState = 3; sockets.delete(id); }
-      const event = type === 'message' ? new MessageEvent(type, { data: Uint8Array.from(bytes).buffer }) : new Event(type);
-      socket['on' + type]?.(event); socket.dispatchEvent(event);
+  const { WebSocketServer, WebSocket } = require('ws');
+  const server = new WebSocketServer({host:'127.0.0.1',port:0,path:'/derp',perMessageDeflate:false,maxPayload:1024*1024});
+  await new Promise((resolve,reject) => { server.once('listening',resolve); server.once('error',reject); });
+  c.loopbackURL = `ws://127.0.0.1:${server.address().port}/derp`;
+  const sockets = new Map(); c.bridgeSockets = sockets;
+  c.closeBridge = async () => {
+    for (const ws of server.clients) ws.terminate();
+    for (const relay of sockets.values()) if (!relay.closed) relay.close();
+    await new Promise(resolve => server.close(resolve));
+  };
+  server.on('connection',ws => {
+    c.sockets++;
+    if (c.offline) { ws.terminate(); return; }
+    const relay = new hub.Socket(); sockets.set(ws,relay);
+    const startup = []; let startupBytes = 0;
+    relay.onopen = () => {
+      for (const bytes of startup) if (!c.offline && ws.readyState === WebSocket.OPEN) relay.send(bytes);
+      startup.length = 0; startupBytes = 0;
     };
-    window.WebSocket = RelayHop;
+    relay.onmessage = event => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const bytes = new Uint8Array(event.data);
+      c.received++; c.receivedTypes[bytes[0]] = (c.receivedTypes[bytes[0]] || 0)+1;
+      if (bytes[0] === 5) c.encryptedReceived++;
+      c.maxRelayBufferedBytes = Math.max(c.maxRelayBufferedBytes || 0,ws.bufferedAmount);
+      ws.send(bytes,{binary:true});
+    };
+    ws.on('message',(bytes,isBinary) => {
+      if (!isBinary) { c.unexpectedSockets++; ws.close(1003); return; }
+      if (c.offline) return;
+      c.sent++; c.sentTypes[bytes[0]] = (c.sentTypes[bytes[0]] || 0)+1;
+      if (bytes[0] === 4) c.encryptedSent++;
+      const frame = Uint8Array.from(bytes);
+      if (relay.readyState === 0) {
+        // The loopback handshake can beat the harness socket's deferred OPEN.
+        // Preserve startup frames in order rather than discarding that race.
+        if (startup.length >= 64 || startupBytes + frame.length > 1024*1024) {
+          c.deliveryErrors++; ws.close(1009); return;
+        }
+        startup.push(frame); startupBytes += frame.length;
+      } else if (relay.readyState === 1) relay.send(frame);
+    });
+    ws.on('close',() => { sockets.delete(ws); if (!relay.closed) relay.close(); });
+    ws.on('error',() => { c.deliveryErrors++; });
   });
+  await context.addInitScript(endpoint => {
+    const NativeWebSocket = window.WebSocket;
+    window.__raceUnexpectedSocketCount = 0;
+    class LocalRelaySocket extends NativeWebSocket {
+      constructor(url,protocols) {
+        if (String(url) !== 'wss://relay.test/derp') {
+          window.__raceUnexpectedSocketCount++;
+          throw new DOMException('Unexpected simulated relay endpoint','SecurityError');
+        }
+        // The local test application is HTTP. This is a native loopback socket,
+        // never a TLS exception or a fallback from the opt-in public relay path.
+        if (protocols === undefined) super(endpoint); else super(endpoint,protocols);
+      }
+    }
+    window.WebSocket = LocalRelaySocket;
+  },c.loopbackURL);
 }
 
 function browserName() {
@@ -141,6 +101,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await delay(80); // Let the encrypted host BYE leave before destroying contexts.
     for (const c of clients) for (const socket of c.bridgeSockets?.values() || []) socket.close();
     await browser?.close();
+    for (const c of clients) if (c.closeBridge) await c.closeBridge();
     if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   });
   let baseURL;
@@ -187,6 +148,10 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     c.page = await context.newPage(); c.page.setDefaultTimeout(STEP_MS); clients.push(c);
     c.page.on('pageerror', () => c.errors.push('uncaught browser error'));
     c.page.on('websocket', ws => {
+      if (!live) {
+        if (ws.url() !== c.loopbackURL) c.unexpectedSockets++;
+        return; // Native loopback server counts opaque frames without RPCs.
+      }
       c.sockets++;
       if (!live || (relayHost === 'default' ? !/^wss:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/derp$/.test(ws.url()) : ws.url() !== `wss://${relayHost}/derp`)) c.unexpectedSockets++;
       ws.on('framesent', event => { c.sent++; if (Buffer.from(event.payload)[0] === 4) c.encryptedSent++; });
@@ -195,7 +160,16 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await c.page.goto(baseURL); await c.page.locator('#btnRace').waitFor();
     await c.page.evaluate(() => {
       window.__raceRunnerBefore = G.player;
-      window.__raceAcceptance = { inputs:{},snapshots:0,lifecycle:[],maxPassed:{},boosts:{} };
+      window.__raceAcceptance = { inputs:{},snapshots:0,lifecycle:[],visibility:[],maxPassed:{},boosts:{} };
+      const visibility = event => {
+        const events = __raceAcceptance.visibility;
+        events.push({event,hidden:document.hidden,state:document.visibilityState,focus:document.hasFocus()});
+        if (events.length > 30) events.shift();
+      };
+      document.addEventListener('visibilitychange',() => visibility('visibilitychange'));
+      window.addEventListener('focus',() => visibility('focus'));
+      window.addEventListener('blur',() => visibility('blur'));
+      visibility('initial');
       SpaceManNet.onEvent((event, data) => {
         const a = __raceAcceptance;
         if (['state','welcomed','join','rejoin','roster','role','leave','reconnecting','reconnected','hostaway','hostback','bye'].includes(event)) {
@@ -474,7 +448,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       assert.equal(await c.page.evaluate(() => !!(input.left || input.right || input.jumpHeld)),false,'racing controls do not leak into runner');
       assert.equal(await c.page.evaluate(() => document.activeElement.id),'btnRace');
       assert.equal(c.errors.length,0,`${c.name}: no uncaught browser errors`);
-      assert.equal(c.unexpectedSockets,0,`${c.name}: only selected relay endpoints`);
+      assert.equal(c.unexpectedSockets + await c.page.evaluate(() => window.__raceUnexpectedSocketCount || 0),0,`${c.name}: only selected relay endpoints`);
       assert.ok(c.sockets > 0 && c.sent > 0 && c.received > 0 && c.encryptedReceived > 0,`${c.name}: encrypted relay traffic observed`);
     }
     assert.ok(host.encryptedSent > 0 && guest.encryptedSent > 0);
@@ -491,7 +465,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
         const n = window.SpaceManNet, info = n?.info(), a = window.__raceAcceptance;
         const s = typeof raceUI !== 'undefined' ? raceUI?.snapshot() : null;
         const current = typeof raceUI !== 'undefined' ? raceUI?.roomStatus()?.current : null;
-        return {screen:document.querySelector('.race-root')?.dataset.screen,hint:document.querySelector('#raceRoomHint')?.textContent || '',
+        return {screen:document.querySelector('.race-root')?.dataset.screen,hidden:document.hidden,visibilityState:document.visibilityState,hasFocus:document.hasFocus(),focusId:document.activeElement?.id || '',visibility:a?.visibility || [],hint:document.querySelector('#raceRoomHint')?.textContent || '',
           active:!!n?.active,mode:info?.mode,p:info?.myP,role:info?.role,
           roster:n?.roster().map(r => ({p:r.p,role:r.role,host:!!r.host,you:!!r.you})),
           phase:s?.phase,tick:s?.tick,actors:s?.actors.map(r => ({id:r.id,peerP:r.peerP,controller:r.controller,passed:r.passed,finishTick:r.finishTick})),
@@ -502,8 +476,8 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       await capture(c,'failure-'+c.name.replace(/[^a-z0-9]+/gi,'-'));
       t.diagnostic('Simulated-relay diagnostic '+JSON.stringify({client:c.name,...state,sockets:c.sockets,sent:c.sent,received:c.received,
         encryptedSent:c.encryptedSent,encryptedReceived:c.encryptedReceived,unexpectedSockets:c.unexpectedSockets,
-        deliveryErrors:c.deliveryErrors,pendingDeliveries:c.pendingDeliveries || 0,peakPendingDeliveries:c.peakPendingDeliveries || 0,
-        maxDeliveryDelayMs:c.maxDeliveryDelayMs || 0,maxDeliveryBatch:c.maxDeliveryBatch || 0,browserErrors:c.errors.length,relayPackets:hub?.packetCount || 0}));
+        deliveryErrors:c.deliveryErrors,transport:'native-loopback-websocket',maxRelayBufferedBytes:c.maxRelayBufferedBytes || 0,
+        browserErrors:c.errors.length,relayPackets:hub?.packetCount || 0}));
     }
     throw new Error(`Simulated-relay racing acceptance: ${stage}: ${redact(error.message)}`);
   }
