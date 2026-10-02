@@ -9,7 +9,7 @@
 })(typeof window !== 'undefined' ? window : globalThis, function (Race) {
   'use strict';
   const VERSION = 1, INPUT = 1, SNAPSHOT = 2, MAX_BYTES = 1024;
-  const INPUT_BYTES = 19, HEADER_BYTES = 30, ACTOR_BYTES = 63, EVENT_BYTES = 8;
+  const INPUT_BYTES = 19, HEADER_BYTES = 30, ACTOR_BYTES = 64, EVENT_BYTES = 8;
   const INPUT_TTL_MS = 200, REJOIN_MS = 10000, SNAPSHOT_MS = 50;
   const MAX_HUMANS = 4, PILOTS = 5, MAX_EVENTS = 12, NONE = 65535;
   const C = Race.constants;
@@ -94,6 +94,8 @@
       b[o + 60] = seat ? seat.adjIdx : 255;
       b[o + 61] = seat ? seat.nounIdx : 255;
       b[o + 62] = seat ? seat.displayP : 0;
+      // Final placement is authoritative: float32 progress can erase close gaps.
+      b[o + 63] = s.results ? s.results.find(r => r.id === a.id).position : 0;
       o += ACTOR_BYTES;
     }
     for (const e of events) {
@@ -127,10 +129,14 @@
         (status === 'lobby' && (state.tick !== 0 || state.phase !== 'countdown')) ||
         (status === 'paused' && state.phase === 'finished') ||
         (first !== NONE && (first < 1 || first > state.raceTick))) return null;
-    const seats = [], seenP = new Set();
+    const seats = [], seenP = new Set(), finalRanks = new Set(), rankedActors = [];
     let o = HEADER_BYTES;
     for (const [index, a] of state.actors.entries()) {
-      const p = b[o + 1], flags = b[o + 2], hasSeat = index < b[27];
+      const p = b[o + 1], flags = b[o + 2], hasSeat = index < b[27], finalRank = b[o + 63];
+      if (state.phase === 'finished') {
+        if (finalRank < 1 || finalRank > PILOTS || finalRanks.has(finalRank)) return null;
+        finalRanks.add(finalRank); rankedActors.push({ actor: a, rank: finalRank });
+      } else if (finalRank !== 0) return null;
       if (b[o] !== index || p > 48 || flags > 2 || (p && seenP.has(p)) ||
           (!hasSeat && p) || (hasSeat && !p && flags === 1)) return null;
       const seq = v.getUint32(o + 3, true), lastAcceptedTick = v.getUint32(o + 7, true);
@@ -195,7 +201,7 @@
     if (state.phase === 'finished') {
       const expected = humansDone ? 'humans' : allDone ? 'all' : graceDone ? 'grace' : timedOut ? 'time' : null;
       if (state.finishReason !== expected) return null;
-      state.results = Race.standings(state).map((a, i) => ({ id: a.id, name: a.name,
+      state.results = rankedActors.sort((a, b) => a.rank - b.rank).map(({ actor: a }, i) => ({ id: a.id, name: a.name,
         position: i + 1, time: a.finishTick === null ? null : a.finishTick * C.STEP,
         finished: a.finishTick !== null }));
     } else if (state.phase === 'racing' && state.raceTick > 0 && (allDone || humansDone || graceDone || timedOut)) return null;

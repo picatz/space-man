@@ -431,7 +431,7 @@ for (const track of Race.tracks) {
       assert.ok(steps < 60 * 90, 'finish comfortably before cap');
     }
     assert.ok(host.state.actors.slice(0, 4).every(a => a.finishTick > 0 && a.passed === 20));
-    assert.equal(host.state.finishReason, 'humans'); assert.ok(largest <= 441);
+    assert.equal(host.state.finishReason, 'humans'); assert.ok(largest <= 446);
     assert.ok(Online.decodeSnapshot(host.packet()));
   });
 }
@@ -497,4 +497,73 @@ test('identity rejoin may use a recycled disconnected seat P without duplicate o
   host.syncRoster([rows(3)[0], { p: 3, role: 0, identity: 'key-2' }, { p: 7, role: 0, identity: 'key-3' }], t + 200);
   assert.equal(host.seats[2].p, 7); assert.equal(host.seats[2].connected, true);
   assert.ok(Online.decodeSnapshot(host.packet()));
+});
+
+
+function nearTieFinish() {
+  const { host } = playing(1);
+  for (const [i, progress] of [[1, 10.50000001], [2, 10.50000002]])
+    Object.assign(host.state.actors[i], { passed: 10, nextGate: 11, lap: 1, progress });
+  host.state.raceTick = C.MAX_RACE_TICKS;
+  host.state.tick = C.COUNTDOWN + host.state.raceTick;
+  Race.checkFinish(host.state);
+  return host;
+}
+
+test('final ranks preserve authoritative near-tie DNF order despite float32 progress rounding', () => {
+  const host = nearTieFinish(), decoded = Online.decodeSnapshot(host.packet());
+  assert.ok(decoded);
+  assert.ok(host.state.actors[2].progress > host.state.actors[1].progress);
+  assert.equal(decoded.state.actors[1].progress, decoded.state.actors[2].progress);
+  assert.deepEqual(Race.standings(decoded.state).slice(0, 2).map(a => a.id), ['pilot-1', 'pilot-2'],
+    're-sorting quantized progress would produce the wrong final order');
+  assert.deepEqual(host.state.results.slice(0, 2).map(r => r.id), ['pilot-2', 'pilot-1']);
+  assert.deepEqual(decoded.state.results, host.state.results);
+  const client = Online.createClient();
+  assert.deepEqual(client.accept(host.packet(), 1).state.results, host.state.results);
+});
+
+test('final ranks must be zero before finish and an exact unique 1..5 permutation afterward', () => {
+  const live = playing().host.packet();
+  for (let i = 0; i < 5; i++) {
+    const bad = clone(live); bad[H + A * i + 63] = 1;
+    assert.equal(Online.decodeSnapshot(bad), null, `premature rank for pilot-${i}`);
+  }
+  const finished = nearTieFinish().packet();
+  assert.equal(finished.length <= 446, true);
+  for (let i = 0; i < 5; i++) {
+    for (const rank of [0, 6, 255]) {
+      const bad = clone(finished); bad[H + A * i + 63] = rank;
+      assert.equal(Online.decodeSnapshot(bad), null, `invalid final rank ${rank} for pilot-${i}`);
+    }
+    const bad = clone(finished); bad[H + A * i + 63] = bad[H + A * ((i + 1) % 5) + 63];
+    assert.equal(Online.decodeSnapshot(bad), null, `duplicate final rank for pilot-${i}`);
+  }
+});
+
+test('three guests accept lobby and restart tick resets after pause despite dropped/reordered snapshots', () => {
+  const { host } = setup(4), clients = Array.from({ length: 3 }, () => Online.createClient());
+  while (host.state.tick < 497) host.step(clock(host));
+  host.pause(true); const paused = host.packet();
+  for (const client of clients) assert.ok(client.accept(paused, 1));
+  const previousEpoch = host.epoch, previousRevision = host.revision;
+  host.lobby(); const lobby = host.packet();
+  host.start(); const restarted = host.packet();
+  assert.equal(host.epoch, previousEpoch + 2); assert.ok(host.revision > previousRevision);
+  assert.ok(clients[0].accept(lobby, 1));
+  for (const client of clients) {
+    assert.ok(client.accept(restarted, 1), 'new epoch accepts countdown tick zero');
+    assert.equal(client.current.state.tick, 0);
+    assert.equal(client.current.status, 'running');
+    assert.equal(client.accept(paused, 1), null);
+    assert.equal(client.accept(lobby, 1), null);
+  }
+  while (host.state.tick < 1074) {
+    host.step(clock(host));
+    if (host.state.tick % 3 === 0) {
+      const bytes = host.packet();
+      for (const client of clients) assert.ok(client.accept(bytes, 1));
+    }
+  }
+  for (const client of clients) assert.equal(client.current.state.tick, 1074);
 });

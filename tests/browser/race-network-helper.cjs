@@ -10,8 +10,8 @@ const { validateRelayHost } = require('./arena-network-helper.cjs');
 const ROOT = path.resolve(__dirname, '../..');
 const STEP_MS = 30000;
 
-// Deliberately reuse the arena suite's opaque relay bridge unchanged. Keeping
-// this copy local avoids changing the established arena acceptance helper API.
+// Reuse the arena suite's opaque relay bridge, with ordered delivery batching.
+// This copy keeps the established arena acceptance helper API unchanged.
 async function simulatedRelay(context, c, hub) {
   // No state, input, crypto, DOM, timers, or frame-rate APIs are replaced.
   // Binary ciphertext is transported from the browser's actual WebSocket API
@@ -19,13 +19,40 @@ async function simulatedRelay(context, c, hub) {
   const sockets = new Map(), deliveries = new Map();
   c.bridgeSockets = sockets;
   // Native WebSockets preserve order, including OPEN before the first frame.
-  // Serialize CDP deliveries instead of relying on concurrent evaluate order.
-  const deliver = (page, id, type, bytes) => {
-    const next = (deliveries.get(id) || Promise.resolve()).then(() => page.evaluate(({ id, type, bytes }) => {
-      window.__arenaRelayDispatch?.(id, type, bytes);
-    }, { id, type, bytes })).catch(() => { c.deliveryErrors++; });
-    deliveries.set(id,next); return next;
-  };
+  // Batch queued opaque frames into one browser automation call. A separate
+  // evaluate per fragment can itself add seconds of artificial latency in
+  // WebKit. Preserve every frame and its order; never drop/coalesce game state.
+  const deliver = (page, id, type, bytes) => new Promise(resolve => {
+    let delivery = deliveries.get(id);
+    if (!delivery) { delivery = {queue:[],draining:false}; deliveries.set(id,delivery); }
+    delivery.queue.push({id,type,bytes,queuedAt:Date.now(),resolve});
+    c.pendingDeliveries = (c.pendingDeliveries || 0) + 1;
+    c.peakPendingDeliveries = Math.max(c.peakPendingDeliveries || 0,c.pendingDeliveries);
+    if (delivery.draining) return;
+    delivery.draining = true;
+    setImmediate(async () => {
+      try {
+        while (delivery.queue.length) {
+          const batch = delivery.queue.splice(0,64);
+          c.maxDeliveryDelayMs = Math.max(c.maxDeliveryDelayMs || 0,Date.now()-batch[0].queuedAt);
+          c.maxDeliveryBatch = Math.max(c.maxDeliveryBatch || 0,batch.length);
+          try {
+            await page.evaluate(async records => {
+              for (const {id,type,bytes} of records) {
+                window.__arenaRelayDispatch?.(id,type,bytes);
+                // Keep the ordinary microtask boundary between ordered events.
+                await Promise.resolve();
+              }
+            },batch.map(({id,type,bytes}) => ({id,type,bytes})));
+          } catch { c.deliveryErrors += batch.length; }
+          finally {
+            c.pendingDeliveries -= batch.length;
+            for (const record of batch) record.resolve();
+          }
+        }
+      } finally { delivery.draining = false; }
+    });
+  });
   await context.exposeBinding('__arenaRelayHop', ({ page }, action, id, value) => {
     if (action === 'open') {
       c.sockets++;
@@ -182,7 +209,10 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
         const command = SpaceManRaceOnline.decodeInput(data.bytes);
         if (command) a.inputs[data.p] = {seq:command.seq,command:command.command};
         const snapshot = SpaceManRaceOnline.decodeSnapshot(data.bytes);
-        if (snapshot) a.snapshots++;
+        if (snapshot) {
+          a.snapshots++;
+          a.lastSnapshot = {epoch:snapshot.epoch,revision:snapshot.revision,status:snapshot.status,tick:snapshot.state.tick,at:performance.now()};
+        }
       });
       const observe = () => {
         const s = typeof raceUI !== 'undefined' && raceUI?.active ? raceUI.snapshot() : null;
@@ -460,17 +490,20 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       const state = await c.page.evaluate(() => {
         const n = window.SpaceManNet, info = n?.info(), a = window.__raceAcceptance;
         const s = typeof raceUI !== 'undefined' ? raceUI?.snapshot() : null;
+        const current = typeof raceUI !== 'undefined' ? raceUI?.roomStatus()?.current : null;
         return {screen:document.querySelector('.race-root')?.dataset.screen,hint:document.querySelector('#raceRoomHint')?.textContent || '',
           active:!!n?.active,mode:info?.mode,p:info?.myP,role:info?.role,
           roster:n?.roster().map(r => ({p:r.p,role:r.role,host:!!r.host,you:!!r.you})),
           phase:s?.phase,tick:s?.tick,actors:s?.actors.map(r => ({id:r.id,peerP:r.peerP,controller:r.controller,passed:r.passed,finishTick:r.finishTick})),
-          snapshots:a?.snapshots,lifecycle:a?.lifecycle || []};
+          snapshots:a?.snapshots,lastDecoded:a?.lastSnapshot ? {...a.lastSnapshot,ageMs:Math.round(performance.now()-a.lastSnapshot.at),at:undefined} : null,
+          accepted:current ? {epoch:current.epoch,revision:current.revision,status:current.status,tick:current.state.tick} : null,lifecycle:a?.lifecycle || []};
       }).catch(() => ({unavailable:true}));
       state.hint = redact(state.hint);
       await capture(c,'failure-'+c.name.replace(/[^a-z0-9]+/gi,'-'));
       t.diagnostic('Simulated-relay diagnostic '+JSON.stringify({client:c.name,...state,sockets:c.sockets,sent:c.sent,received:c.received,
         encryptedSent:c.encryptedSent,encryptedReceived:c.encryptedReceived,unexpectedSockets:c.unexpectedSockets,
-        deliveryErrors:c.deliveryErrors,browserErrors:c.errors.length,relayPackets:hub?.packetCount || 0}));
+        deliveryErrors:c.deliveryErrors,pendingDeliveries:c.pendingDeliveries || 0,peakPendingDeliveries:c.peakPendingDeliveries || 0,
+        maxDeliveryDelayMs:c.maxDeliveryDelayMs || 0,maxDeliveryBatch:c.maxDeliveryBatch || 0,browserErrors:c.errors.length,relayPackets:hub?.packetCount || 0}));
     }
     throw new Error(`Simulated-relay racing acceptance: ${stage}: ${redact(error.message)}`);
   }

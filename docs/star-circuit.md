@@ -3,8 +3,8 @@
 An original top-down arcade hoverkart racer alongside Space Man’s runner and
 Orbital Arena. Five pilots race three laps around an authored circuit. Steering,
 braking, soft kart contacts, boost strips and a rechargeable boost reserve make
-corner entry and exit matter. The first release has one local player and four
-CPU opponents; it does not yet offer friend racing.
+corner entry and exit matter. Play locally against four CPUs, or create a friend
+room with up to four human racers and CPU-filled empty slots.
 
 ## Circuits and controls
 
@@ -66,17 +66,6 @@ skips physics. It also covers real touch cancellation in Chromium, pointer
 lifecycle in WebKit, mobile rotation, narrow viewports, pause/resume, settings,
 rematch and repeat opening/closing. Browser-engine coverage is not a claim of
 physical-device testing.
-
-## Friend racing next
-
-The pure command/snapshot boundary is intentional: one room host can advance
-rules and publish verified snapshots while peers send bounded input commands.
-Online racing still needs an explicit race-mode room handshake, command
-ownership/sequence validation, reconnection, host lifecycle and multi-browser
-end-to-end tests. It must use the existing shared room transport instead of a
-second network stack. Arena packets cannot be treated as race packets. No online
-race capability should be advertised until those paths have been implemented
-and tested.
 
 ## Friend racing (v3.23)
 
