@@ -662,6 +662,7 @@
     function nextArena() { const i = arena.arenas.findIndex(a => a.id === selections.arenaId); selections.arenaId = arena.arenas[(i + 1) % arena.arenas.length].id; syncChoices(); startMatch(); }
     function showResults() {
       if (!state || !state.result) return;
+      updateHud(true); // The final stock loss must bypass the five-tick HUD throttle.
       resetInput(); const result = state.result, human = state.actors.find(a => a.controller === 'human');
       const won = result.winnerIds.includes(human.id) || (state.format === 'teams' && result.winnerTeam === human.team);
       resultTitle.textContent = result.tie ? 'A cosmic stalemate' : won ? (state.format === 'teams' ? 'Your crew wins!' : 'You held your orbit!') : 'One more orbit?';

@@ -95,6 +95,8 @@ test('arena desktop: launcher, real controls, pause, result/rematch, stage forma
   await page.locator('.arena-root[data-screen="results"]').waitFor({ timeout: 35000 });
   await page.keyboard.up('d');
   assert.equal(await page.evaluate(() => arenaUI.snapshot().phase), 'over');
+  assert.equal(await page.locator('.arena-roster [data-actor="1"] .arena-stocks').innerText(), '○○○', 'final HUD refresh agrees with zero remaining lives');
+  assert.equal(await page.locator('.arena-roster [data-actor="1"] .arena-damage').innerText(), 'OUT');
   await capture(page, 'arena-results-desktop');
   await page.getByRole('button', { name: 'Rematch', exact: true }).click();
   assert.equal(await page.evaluate(() => arenaUI.snapshot().phase), 'countdown');
