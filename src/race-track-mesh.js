@@ -84,6 +84,49 @@
     return [inside, outside];
   }
 
+  function partition(vertices, chunkSize) {
+    const buckets = new Map();
+    for (let start = 0; start < vertices.length; start += 27) {
+      // Assign a whole triangle by its centroid. Do not clip, simplify, or
+      // otherwise change its geometry at a chunk boundary.
+      const column = Math.floor((vertices[start] + vertices[start + 9] +
+          vertices[start + 18]) / (3 * chunkSize)),
+        row = Math.floor((vertices[start + 2] + vertices[start + 11] +
+          vertices[start + 20]) / (3 * chunkSize)),
+        key = column + ":" + row;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { column, row, starts: [] };
+        buckets.set(key, bucket);
+      }
+      bucket.starts.push(start);
+    }
+    const ordered = [...buckets.values()].sort((a, b) => a.row - b.row || a.column - b.column),
+      packed = new Float32Array(vertices.length), chunks = [];
+    let cursor = 0;
+    for (const bucket of ordered) {
+      const first = cursor,
+        min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      for (const start of bucket.starts) {
+        for (let i = 0; i < 27; i++) packed[cursor + i] = vertices[start + i];
+        for (let vertex = 0; vertex < 27; vertex += 9)
+          for (let axis = 0; axis < 3; axis++) {
+            // Read the final Float32 position, so a rounded-up height or
+            // coordinate cannot accidentally fall outside the culling box.
+            const value = packed[cursor + vertex + axis];
+            min[axis] = Math.min(min[axis], value);
+            max[axis] = Math.max(max[axis], value);
+          }
+        cursor += 27;
+      }
+      chunks.push({ vertices: packed.subarray(first, cursor), static: true,
+        bounds: { min, max } });
+    }
+    // Only the final packed storage is retained. Full-mesh consumers and
+    // culled chunk consumers share the same bytes; the temporary buckets die.
+    return { vertices: packed, chunks };
+  }
+
   function build(course) {
     if (meshCache.has(course)) return meshCache.get(course);
     if (!Number.isFinite(course && course.width) || course.width <= 0)
@@ -165,9 +208,11 @@
         triangle(a, d, b);
       }
 
-    const result = { vertices: new Float32Array(vertices), static: true,
+    const chunkSize = 384, packed = partition(vertices, chunkSize),
+      result = { vertices: packed.vertices, chunks: packed.chunks, static: true,
       diagnostics: {
         method: "global-distance-field-union", cellSize, columns, rows,
+        chunkSize, chunkCount: packed.chunks.length,
         origin: [minX, minZ], fieldSamples: grid.length,
         physicalRadius: half, roadRadius, coverageGuard,
         vertexCount: vertices.length / 9, triangleCount: vertices.length / 27,

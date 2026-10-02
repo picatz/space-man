@@ -1489,42 +1489,59 @@
     function paint() {
       if (!active || !g) return;
       const c = R.course(state?.trackId || selected.trackId);
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.fillStyle = c.sky;
-      g.fillRect(0, 0, width, height);
-      for (let i = 0; i < 100; i++) {
-        const x =
-            (((i * 137.1 - (calm() ? 0 : camera.x * 0.045)) % width) + width) %
-            width,
-          y =
-            (((i * i * 39.1 - (calm() ? 0 : camera.y * 0.045)) % height) +
-              height) %
-            height;
-        g.fillStyle = i % 4 ? "#c9e4ff60" : c.edge + "80";
-        g.fillRect(x, y, i % 7 ? 1 : 2, i % 7 ? 1 : 2);
+      const a = state ? followActor() : null;
+      const rendered3d =
+        a &&
+        perspective?.render(R.snapshot(state), {
+          actorId: a.id,
+          previous: onlineActive() ? null : previousPose,
+          network: onlineActive(),
+          paused: onlineActive() ? roomPaused : paused,
+          alpha: paused || state.phase === "finished" ? 1 : acc * 60,
+          dt: renderDt,
+          reduceMotion: calm(),
+        });
+      // The hidden fallback canvas does not need a second full-screen sky pass.
+      // Its camera stays warm below; redraw it fully only when it is presented.
+      if (!rendered3d) {
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.fillStyle = c.sky;
+        g.fillRect(0, 0, width, height);
+        for (let i = 0; i < 100; i++) {
+          const x =
+              (((i * 137.1 - (calm() ? 0 : camera.x * 0.045)) % width) +
+                width) %
+              width,
+            y =
+              (((i * i * 39.1 - (calm() ? 0 : camera.y * 0.045)) % height) +
+                height) %
+              height;
+          g.fillStyle = i % 4 ? "#c9e4ff60" : c.edge + "80";
+          g.fillRect(x, y, i % 7 ? 1 : 2, i % 7 ? 1 : 2);
+        }
+        const px = width * 0.78,
+          py = height * 0.28,
+          r = Math.min(width, height) * 0.25,
+          grad = g.createRadialGradient(
+            px - r * 0.3,
+            py - r * 0.4,
+            r * 0.1,
+            px,
+            py,
+            r,
+          );
+        grad.addColorStop(0, c.planet);
+        grad.addColorStop(1, c.sky);
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(px, py, r, 0, TAU);
+        g.fill();
+        g.strokeStyle = c.edge + "20";
+        g.lineWidth = 2;
+        g.beginPath();
+        g.ellipse(px, py, r * 1.55, r * 0.25, -0.4, 0, TAU);
+        g.stroke();
       }
-      const px = width * 0.78,
-        py = height * 0.28,
-        r = Math.min(width, height) * 0.25,
-        grad = g.createRadialGradient(
-          px - r * 0.3,
-          py - r * 0.4,
-          r * 0.1,
-          px,
-          py,
-          r,
-        );
-      grad.addColorStop(0, c.planet);
-      grad.addColorStop(1, c.sky);
-      g.fillStyle = grad;
-      g.beginPath();
-      g.arc(px, py, r, 0, TAU);
-      g.fill();
-      g.strokeStyle = c.edge + "20";
-      g.lineWidth = 2;
-      g.beginPath();
-      g.ellipse(px, py, r * 1.55, r * 0.25, -0.4, 0, TAU);
-      g.stroke();
       if (!state) {
         perspective?.close();
         speed.parentNode.hidden = true;
@@ -1533,17 +1550,7 @@
         return;
       }
       speed.parentNode.hidden = false;
-      const a = followActor(),
-        zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
-      const rendered3d = perspective?.render(R.snapshot(state), {
-        actorId: a.id,
-        previous: onlineActive() ? null : previousPose,
-        network: onlineActive(),
-        paused: onlineActive() ? roomPaused : paused,
-        alpha: paused || state.phase === "finished" ? 1 : acc * 60,
-        dt: renderDt,
-        reduceMotion: calm(),
-      });
+      const zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
       // Keep the fallback camera warm while WebGL is active, so switching view
       // or losing the graphics context never flies back from an old position.
       const desiredX = a.x + Math.cos(a.heading) * 85,

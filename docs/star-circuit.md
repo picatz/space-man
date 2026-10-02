@@ -79,7 +79,10 @@ rendering path.
 
 No runtime dependency, model download, texture asset, service or paid API is
 required. Static course and per-color craft geometry stay on the GPU; only tiny actor
-pose matrices change on each display frame. Scenery clearance is measured
+pose matrices change on each display frame. The exact road triangles are grouped
+into spatial chunks sharing one CPU buffer, and conservative frustum checks
+skip off-camera chunks before upload/draw. The hidden top-down canvas skips its
+full-screen background pass while WebGL is shown. Scenery clearance is measured
 against the entire course plus each prop footprint, including nearby hairpins. Pixel ratio is capped at 1.5, battery saving uses 70% resolution,
 and sustained slow frames reduce resolution to 65%. Fast frames restore quality.
 Context loss switches to the original playable top-down view and restoration

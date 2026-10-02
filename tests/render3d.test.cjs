@@ -337,3 +337,24 @@ test('malformed or empty geometry is skipped and partial triangles never overrun
   assert.ok(Array.from(matrix).every(Number.isFinite));
   renderer.dispose();
 });
+
+test('conservative box culling covers all clip planes and preserves straddling geometry',()=>{
+ const m=Render3D.multiply(Render3D.perspective(Math.PI/2,1,1,100),Render3D.lookAt([0,0,0],[0,0,-1]));
+ const box=(min,max)=>({min,max});
+ assert.equal(Render3D.boxVisible(box([-1,-1,-6],[1,1,-4]),m),true);
+ for(const b of [box([-1,-1,2],[1,1,4]),box([30,-1,-6],[32,1,-4]),box([-32,-1,-6],[-30,1,-4]),box([-1,30,-6],[1,32,-4]),box([-1,-32,-6],[1,-30,-4]),box([-1,-1,-120],[1,1,-110]),box([-.1,-.1,-.8],[.1,.1,-.2])])assert.equal(Render3D.boxVisible(b,m),false);
+ assert.equal(Render3D.boxVisible(box([-1,-1,-2],[1,1,-.5]),m),true);
+ assert.equal(Render3D.boxVisible(box([-20,-20,-20],[20,20,20]),m),true);
+ assert.equal(Render3D.boxVisible(null,m),true);assert.equal(Render3D.boxVisible(box([NaN,0,0],[1,1,1]),m),true);
+});
+test('offscreen bounded meshes skip GPU uploads while unbounded geometry and visible models still draw',()=>{
+ const h=harness(),renderer=Render3D.create(h.canvas),v=triangle();
+ const camera={eye:[0,0,0],target:[0,0,-1],near:1,far:100};
+ const behind={min:[-1,-1,3],max:[1,1,5]};
+ renderer.draw({camera,meshes:[{vertices:v,static:true,bounds:behind}]});
+ assert.equal(h.count('drawArrays'),0);assert.equal(h.count('bufferData'),0);
+ const model=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,-10,1]);
+ renderer.draw({camera,meshes:[{vertices:v,static:true,bounds:behind,model}]});
+ assert.equal(h.count('drawArrays'),1);assert.equal(h.count('bufferData'),1);
+ renderer.draw({camera,meshes:[{vertices:v,static:true}]});assert.equal(h.count('drawArrays'),2);renderer.dispose();
+});

@@ -115,6 +115,20 @@
     '  gl_FragColor = vec4(mix(vColor, uFogColor, fog), 1.0);', '}'
   ].join('\n');
 
+  // Conservative homogeneous-frustum test for an axis-aligned local-space box.
+  // Missing/invalid bounds stay visible. A straddling box is never clipped away.
+  function boxVisible(bounds, matrix) {
+    if (!bounds || !bounds.min || !bounds.max || !matrix || matrix.length !== 16) return true;
+    const lo=bounds.min,hi=bounds.max;
+    for(let i=0;i<3;i++) if(!Number.isFinite(lo[i])||!Number.isFinite(hi[i])||lo[i]>hi[i])return true;
+    for(let axis=0;axis<3;axis++) for(const sign of [-1,1]) {
+      const x=matrix[3]+sign*matrix[axis],y=matrix[7]+sign*matrix[4+axis],z=matrix[11]+sign*matrix[8+axis],w=matrix[15]+sign*matrix[12+axis];
+      const support=x*(x>=0?hi[0]:lo[0])+y*(y>=0?hi[1]:lo[1])+z*(z>=0?hi[2]:lo[2])+w;
+      if(support < -1e-5)return false;
+    }
+    return true;
+  }
+
   function create(canvas, options) {
     options = options || {};
     if (!canvas || typeof canvas.getContext !== 'function') return null;
@@ -243,6 +257,8 @@
           // Cross-realm Float32Arrays are valid. Ignore incomplete triangles.
           if (!ArrayBuffer.isView(vertices) || vertices.BYTES_PER_ELEMENT !== 4 ||
               Object.prototype.toString.call(vertices) !== '[object Float32Array]' || vertices.length < 27) continue;
+          const model = mesh.model && mesh.model.length === 16 ? mesh.model : IDENTITY;
+          if (mesh.bounds && !boxVisible(mesh.bounds, model === IDENTITY ? vp : multiply(vp,model))) continue;
           let buffer;
           if (mesh.static) {
             let record = staticCache.get(vertices);
@@ -266,7 +282,6 @@
           gl.vertexAttribPointer(locations.aPosition, 3, gl.FLOAT, false, 36, 0);
           gl.vertexAttribPointer(locations.aNormal, 3, gl.FLOAT, false, 36, 12);
           gl.vertexAttribPointer(locations.aColor, 3, gl.FLOAT, false, 36, 24);
-          const model = mesh.model && mesh.model.length === 16 ? mesh.model : IDENTITY;
           gl.uniformMatrix4fv(locations.uModel, false, model);
           gl.uniformMatrix3fv(locations.uNormal, false, model === IDENTITY ? IDENTITY_NORMAL : normalMatrix(model));
           gl.drawArrays(gl.TRIANGLES, 0, Math.floor(vertices.length / 27) * 3);
@@ -308,5 +323,5 @@
     return renderer;
   }
 
-  return { perspective, lookAt, multiply, project, cameraFrame, create };
+  return { perspective, lookAt, multiply, project, cameraFrame, boxVisible, create };
 });

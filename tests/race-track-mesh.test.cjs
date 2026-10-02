@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
+const { createHash } = require("node:crypto");
 const Race = require("../src/race.js");
 const TrackMesh = require("../src/race-track-mesh.js");
 
@@ -17,6 +18,23 @@ const makeCourse = (points, width) => Object.freeze({
 const hairpin = makeCourse([[0, 0], [160, 0], [160, 35], [0, 35], [0, 70],
   [160, 70], [160, 220], [0, 220]], 148);
 const crossing = makeCourse([[0, 0], [220, 220], [0, 220], [220, 0]], 100);
+
+// Order-independent hashes captured from the unchunked mesh. Positions,
+// normals, colors, winding, and triangle multiplicity must all stay exact.
+const originalTriangles = {
+  starlight: "6c51b8c39be0e0b90e786a40171020a651ced289f14665f83f4ba5c8f883e7f0",
+  ember: "cc0a31378f6870448cfe7e66343b0f7e9d4f90a9f94188f8f66826dfc14b56fb",
+  bloom: "bd8d303ccf11aebf874837b84458ed58c7539f18b4c947d99513935b28a29ae2",
+};
+
+function triangleHash(vertices) {
+  const data = Buffer.from(vertices.buffer, vertices.byteOffset, vertices.byteLength),
+    triangles = [], hash = createHash("sha256");
+  for (let i = 0; i < data.length; i += 108) triangles.push(data.subarray(i, i + 108));
+  triangles.sort(Buffer.compare);
+  for (const triangle of triangles) hash.update(triangle);
+  return hash.digest("hex");
+}
 
 function indexMesh(mesh) {
   const { cellSize, origin } = mesh.diagnostics, cells = new Map(), triangles = [];
@@ -99,9 +117,59 @@ for (const course of tracks) {
     assert.equal(JSON.stringify(course), before, "no changes to physics course");
     assert.equal(TrackMesh.build(course), mesh, "one static build per immutable course");
   });
+
+  test(`${course.id}: spatial packing preserves every original triangle and material byte`, () => {
+    assert.equal(triangleHash(TrackMesh.build(course).vertices), originalTriangles[course.id]);
+  });
 }
 
 for (const [name, course] of [...tracks.map((c) => [c.id, c]), ["tight hairpins", hairpin], ["crossing", crossing]]) {
+  test(`${name}: bounded spatial chunks partition one shared buffer with exact enclosing bounds`, () => {
+    const mesh = TrackMesh.build(course), size = mesh.diagnostics.chunkSize;
+    assert.equal(size, 384);
+    assert.equal(mesh.chunks.length, mesh.diagnostics.chunkCount);
+    assert.ok(mesh.chunks.length > 1 && mesh.chunks.length <= 48);
+    const occupied = new Set();
+    let offset = 0, previous = null;
+    for (const chunk of mesh.chunks) {
+      assert.equal(chunk.static, true);
+      assert.ok(chunk.vertices instanceof Float32Array);
+      assert.ok(chunk.vertices.length > 0);
+      assert.equal(chunk.vertices.length % 27, 0, "never split a triangle");
+      assert.equal(chunk.vertices.buffer, mesh.vertices.buffer, "no retained geometry copy");
+      assert.equal(chunk.vertices.byteOffset, mesh.vertices.byteOffset + offset * 4,
+        "contiguous nonoverlapping views, with no omitted bytes");
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      let key = null;
+      for (let i = 0; i < chunk.vertices.length; i += 27) {
+        const v = chunk.vertices,
+          column = Math.floor((v[i] + v[i + 9] + v[i + 18]) / (3 * size)),
+          row = Math.floor((v[i + 2] + v[i + 11] + v[i + 20]) / (3 * size)),
+          current = column + ":" + row;
+        if (key === null) {
+          key = current;
+          assert.ok(!occupied.has(key), "exactly one chunk per spatial bucket");
+          if (previous) assert.ok(row > previous.row || (row === previous.row && column > previous.column),
+            "chunks have deterministic numeric row-major order");
+          occupied.add(key);
+          previous = { column, row };
+        }
+        assert.equal(current, key, "only nearby triangles share a chunk");
+        for (let vertex = 0; vertex < 27; vertex += 9)
+          for (let axis = 0; axis < 3; axis++) {
+            const value = v[i + vertex + axis];
+            assert.ok(value >= chunk.bounds.min[axis] && value <= chunk.bounds.max[axis]);
+            min[axis] = Math.min(min[axis], value);
+            max[axis] = Math.max(max[axis], value);
+          }
+      }
+      assert.deepEqual(chunk.bounds, { min, max }, "bounds use final Float32 values exactly");
+      offset += chunk.vertices.length;
+    }
+    assert.equal(offset, mesh.vertices.length, "the chunk union is the entire full mesh");
+    assert.equal(mesh.vertices.byteLength, mesh.vertices.buffer.byteLength);
+  });
+
   test(`${name}: the road covers the complete physical lane, including curved segment end caps`, () => {
     const mesh = TrackMesh.build(course), index = indexMesh(mesh), half = course.width / 2;
     let probes = 0;
@@ -165,6 +233,10 @@ test("the mesh is deterministic across builds and exports the same dependency-fr
   const first = TrackMesh.build(course), second = TrackMesh.build({ ...course });
   assert.deepEqual(first.vertices, second.vertices);
   assert.deepEqual(first.diagnostics, second.diagnostics);
+  assert.deepEqual(first.chunks.map((chunk) => ({ bounds: chunk.bounds,
+    offset: chunk.vertices.byteOffset, length: chunk.vertices.length })),
+    second.chunks.map((chunk) => ({ bounds: chunk.bounds,
+      offset: chunk.vertices.byteOffset, length: chunk.vertices.length })));
 });
 
 test("invalid fields fail explicitly and point segments remain well-defined", () => {

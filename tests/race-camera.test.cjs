@@ -21,7 +21,7 @@ test("perspective cameras use snapshot position and preserve immutable simulatio
   assert.ok(cockpit.target[1] < cockpit.eye[1]);
   const art = Scene.course(c, R.at),
     moving = Scene.actors(s);
-  assert.equal(art.meshes.length, 3);
+  assert.ok(art.meshes.length >= 3);
   assert.ok(moving.vertices.length > 100);
   for (const mesh of [...art.meshes, moving]) {
     assert.equal(mesh.vertices.length % 9, 0);
@@ -188,4 +188,18 @@ test("rear thrusters point opposite travel and cockpit stays above vehicle geome
       Math.abs(m[2] - Math.sin(a.heading)) < 0.0001,
     "local nose axis matches simulation heading",
   );
+});
+
+test("all cached craft vertices fit their conservative local-space culling bounds", () => {
+  const s = R.create();
+  s.actors.forEach((a) => (a.boosting = true));
+  for (const m of Scene.actorMeshes(s)) {
+    assert.ok(m.bounds);
+    for (let i = 0; i < m.vertices.length; i += 9)
+      for (let k = 0; k < 3; k++)
+        assert.ok(
+          m.vertices[i + k] >= m.bounds.min[k] &&
+            m.vertices[i + k] <= m.bounds.max[k],
+        );
+  }
 });

@@ -260,7 +260,7 @@
     const skyMesh = sky.mesh();
     skyMesh.static = true;
     return {
-      meshes: [skyMesh, trackMesh, mesh],
+      meshes: [skyMesh, ...(trackMesh.chunks || [trackMesh]), mesh],
       clearances,
       background: rgb(c.sky),
       fog: { color: rgb(c.sky), near: 1700, far: 6000 },
@@ -428,6 +428,7 @@
         vertices,
         static: true,
         actorId: a.id,
+        bounds: { min: [-72, 0, -30], max: [32, 34, 30] },
         model: new Float32Array([
           c,
           0,
