@@ -3,7 +3,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 
 const ROOT_FILES = ['index.html', 'service-worker.js', 'manifest.json', 'favicon.png', 'CNAME', 'LICENSE', 'README.md'];
-const DIRECTORIES = { src: /^[a-z0-9-]+\.js$/, icons: /^[a-z0-9-]+\.png$/, screenshots: /^[a-z0-9-]+\.png$/, docs: /^[a-z0-9-]+\.md$/ };
+const DIRECTORIES = { src: /^[a-z0-9-]+\.(js|css)$/, icons: /^[a-z0-9-]+\.png$/, screenshots: /^[a-z0-9-]+\.png$/, docs: /^[a-z0-9-]+\.md$/ };
 async function copyFile(source, output, relative, optional = false) {
   const from = path.join(source, relative), to = path.join(output, relative);
   let stat;

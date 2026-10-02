@@ -28,12 +28,12 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
   const server = http.createServer(async (req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
     const file = pathname === '/' ? 'index.html' : pathname.slice(1);
-    if (!/^(?:index\.html|manifest\.json|favicon\.png|src\/[a-z-]+\.js|icons\/[a-z0-9-]+\.png)$/.test(file)) {
+    if (!/^(?:index\.html|manifest\.json|favicon\.png|src\/[a-z-]+\.(?:js|css)|icons\/[a-z0-9-]+\.png)$/.test(file)) {
       res.writeHead(404).end(); return;
     }
     try {
       const body = await fs.readFile(path.join(ROOT, file));
-      const type = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' }[path.extname(file)];
+      const type = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' }[path.extname(file)];
       res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }).end(body);
     } catch { res.writeHead(404).end(); }
   });

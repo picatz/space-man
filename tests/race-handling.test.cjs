@@ -72,12 +72,87 @@ test('30, 60 and 120 Hz presentation schedules replay identical 60 Hz handling',
   }
   assert.deepEqual(snapshots[0],snapshots[1]); assert.deepEqual(snapshots[1],snapshots[2]);
 });
-test('snapshot replay preserves rescue timers while authority wire remains valid',()=>{
+test('snapshot replay preserves rescue timers deterministically',()=>{
   const s=playing('bloom',5),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,230);
   Object.assign(a,{x:p.x-p.ty*(c.width/2+60),y:p.y+p.tx*(c.width/2+60),heading:Math.atan2(p.tx,-p.ty)});
   for(let i=0;i<30;i++) drive(s,{throttle:1});
   assert.ok(a.offroadTicks>0);
   const restored=Race.snapshot(s);
   for(let i=0;i<130;i++){drive(s,{throttle:1});drive(restored,{throttle:1});assert.deepEqual(s,restored);}
-  assert.equal(typeof Online.decodeSnapshot,'function');
+
+});
+
+// The timer is intentionally not added to the version-1 wire format: guests do
+// not simulate. Existing authoritative pose/recovery fields remain validated.
+test('authority publishes valid bounded poses throughout hostile steering and rescue',()=>{
+  const host=Online.createHost({trackId:'ember'});
+  host.syncRoster([{p:1,role:0,identity:'host'}],0); host.start();
+  for(let i=0;i<1500;i++){
+    const now=host.state.tick*1000/60;
+    const packet=Online.encodeInput({epoch:host.epoch,tick:host.state.tick,seq:i+1,recoverEdges:0,command:{throttle:1,boost:true,steer:i%300<150?1:-1}});
+    assert.ok(host.receive(1,'host',packet,now)); host.step(now);
+    const decoded=Online.decodeSnapshot(host.packet()); assert.ok(decoded);
+    for(const a of decoded.state.actors){
+      const c=Race.course(decoded.state.trackId);
+      assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+0.001);
+    }
+  }
+});
+
+test('valid on-road rail contact crosses the expected bend checkpoint without stranding',()=>{
+  const s=playing('starlight'),a=s.actors[0];
+  const heading=-0.83720658724;
+  Object.assign(a,{x:196.553253859489,y:582.167678533048,heading,vx:Math.cos(heading)*2.6,vy:Math.sin(heading)*2.6,speed:2.6,passed:17,nextGate:18,progress:17.99});
+  drive(s,{throttle:1});
+  assert.equal(a.passed,18);assert.equal(a.nextGate,19);assert.equal(a.recoveries,0);
+});
+test('recovery release resolves coincident visible karts without advancing checkpoints',()=>{
+  const s=playing('starlight',5), c=Race.course(s.trackId),p=Race.at(c,12);
+  for(const a of s.actors) Object.assign(a,{x:p.x,y:p.y,recoveryTicks:1});
+  Race.step(s);
+  for(let i=0;i<s.actors.length;i++){
+    const a=s.actors[i];assert.equal(a.recoveryTicks,0);assert.equal(a.passed,0);
+    assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+1e-6);
+    for(let j=i+1;j<s.actors.length;j++)assert.ok(Math.hypot(a.x-s.actors[j].x,a.y-s.actors[j].y)>=55.95);
+  }
+});
+for(const track of Race.tracks)test(`${track.id}: full-size start grids and repeated tailgate/side contacts remain separated`,()=>{
+  const s=Race.create({trackId:track.id,count:6}),c=Race.course(track.id);
+  s.actors.forEach(a=>a.controller='cpu');
+  for(let tick=0;tick<2400;tick++){
+    Race.step(s,Object.fromEntries(s.actors.map(a=>[a.id,Race.cpuInput(s,a)])));
+    for(let i=0;i<s.actors.length;i++){
+      const a=s.actors[i];if(a.finishTick!==null || a.recoveryTicks)continue;
+      assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+1e-6);
+      for(let j=i+1;j<s.actors.length;j++){
+        const b=s.actors[j];if(b.finishTick!==null || b.recoveryTicks)continue;
+        assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>=55.95,`tick${tick} ${a.id}/${b.id}: physical hoverpod overlap`);
+      }
+    }
+  }
+});
+
+test('rail projection introduced contacts are resolved before solver early exit',()=>{
+  const s=playing('starlight',2), [a,b]=s.actors;
+  Object.assign(a,{x:257.28593081224335,y:892.0137897855346,heading:-1.8187498205435788,vx:-0.48368984051242875,vy:-1.9105857197723457,speed:1.9708611453912606});
+  Object.assign(b,{x:210.72255928722026,y:859.3473071978294,heading:Math.atan2(Math.sin(-3.833036278926943),Math.cos(-3.833036278926943)),vx:-6.40524167941061,vy:5.302041256491121,speed:8.31497218619478});
+  Race.step(s,{[a.id]:{throttle:1},[b.id]:{throttle:1}});
+  assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>=55.95);
+});
+
+test('six simultaneous recovery releases at Ember switchback preserve the full hull envelope',()=>{
+  const s=playing('ember',6),c=Race.course(s.trackId),p=Race.at(c,17*c.length/20+12);
+  s.actors.forEach(a=>Object.assign(a,{x:p.x,y:p.y,heading:Math.atan2(p.ty,p.tx),recoveryTicks:1,passed:17,nextGate:18,progress:17}));
+  Race.step(s);
+  for(let i=0;i<6;i++)for(let j=i+1;j<6;j++)assert.ok(Math.hypot(s.actors[i].x-s.actors[j].x,s.actors[i].y-s.actors[j].y)>=55.95);
+  assert.ok(s.actors.every(a=>a.passed===17 && a.nextGate===18));
+});
+test('simultaneous real rescues choose clear backwards-only recovery slots',()=>{
+  const s=playing('ember',6), c=Race.course(s.trackId);
+  Race.step(s,Object.fromEntries(s.actors.map(a=>[a.id,{recover:true}])));
+  for(let i=0;i<6;i++){
+    const a=s.actors[i];assert.equal(a.passed,0);assert.equal(a.nextGate,1);assert.equal(a.recoveries,1);
+    assert.ok(Race.nearest(c,a.x,a.y).distance<1e-6);
+    for(let j=i+1;j<6;j++)assert.ok(Math.hypot(a.x-s.actors[j].x,a.y-s.actors[j].y)>=56);
+  }
 });

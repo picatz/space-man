@@ -40,7 +40,7 @@ of AI models for web game development.
 
 ## Orbital Arena · CPU + Friends
 
-Choose **Arena · CPU + Friends** from the title to enter a separate, opt-in
+Choose **Orbital Arena** from the title to enter a separate, opt-in
 platform-fighting mode. Pulse attacks build damage and launch rivals toward the
 edge of space. Double jump and dash to recover; each spacefarer has three lives.
 
@@ -86,7 +86,7 @@ selected with `SPACE_MAN_CHROMIUM_PATH`.
 
 ## Star Circuit · Arcade Racing
 
-Choose **Star Circuit · Racing** from the title for an original top-down
+Choose **Star Circuit** from the title for an original top-down
 hoverkart race against four CPU pilots, or open **Play with friends** to create,
 join or watch an encrypted race room. Race three laps on **Starlight Speedway**,
 **Ember Switchback**, or **Bloom Lagoon**, with Chill, Sport and Expert CPU pace.
@@ -356,3 +356,18 @@ npm run test:previews
 GitHub Pages remains the only host. Standard public-repository Actions runner
 minutes are free; normal Pages and artifact-storage limits still apply. No paid
 runner, provider subscription, or billing setting is added by this workflow.
+
+## Shared visual language
+
+`src/space-theme.css` is the shared chrome layer, using Orbital Arena's dark
+panels, warm action buttons, compact labels and body-copy hierarchy as the
+reference. The launcher names all three modes. Mode art, gameplay canvases,
+input handlers and safe-area calculations stay local to each mode.
+
+Run `node --test tests/*.test.cjs` for regressions. In `tests/browser`, run
+`node --test theme.test.cjs` after installing Playwright. Set
+`SPACE_MAN_THEME_BROWSER=webkit` for WebKit and `SPACE_MAN_THEME_SCREENSHOTS`
+to retain real screenshots. Optional `SPACE_MAN_THEME_BASE_ROOT` points at an
+older checkout for before screenshots. The dedicated workflow checks 320px
+phones, browser-sized phone viewports, landscape, tablet and desktop, including
+keyboard/controller focus styling, persisted settings and cross-mode return.

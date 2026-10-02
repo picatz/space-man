@@ -1,0 +1,189 @@
+/* Space Man · shared flight deck
+   Orbital Arena is the visual reference. This layer owns chrome, not worlds:
+   no canvas sizing, gameplay positioning, touch hit zones or safe-inset math.
+   The lazy mode styles are intentionally overridden with scoped specificity. */
+:root {
+  --sm-font-display: var(--font);
+  --sm-font-body: ui-rounded, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --sm-space: #060818;
+  --sm-ink: #f4f7ff;
+  --sm-copy: #afc8de;
+  --sm-muted: #8faac3;
+  --sm-cyan: #9ff1ff;
+  --sm-gold: #ffc66b;
+  --sm-lime: #c7f47d;
+  --sm-focus: #ffe59a;
+  --sm-panel: linear-gradient(145deg, rgba(19,37,60,.94), rgba(9,18,34,.96));
+  --sm-surface: #132239;
+  --sm-surface-hover: #1c304c;
+  --sm-line: rgba(117,179,216,.22);
+  --sm-line-strong: rgba(159,241,255,.32);
+  --sm-radius-panel: 22px;
+  --sm-radius-control: 12px;
+  --sm-radius-small: 8px;
+  --sm-space-1: 4px;
+  --sm-space-2: 8px;
+  --sm-space-3: 12px;
+  --sm-space-4: 16px;
+  --sm-space-5: 24px;
+  --sm-target: 44px;
+  --sm-shadow: 0 20px 60px rgba(0,0,0,.24), inset 0 1px 0 rgba(214,244,255,.04);
+  /* Keep the existing shared layout/visual-viewport inset contract. */
+  --sm-safe-top: var(--game-ui-top, env(safe-area-inset-top, 0px));
+  --sm-safe-right: var(--game-ui-right, env(safe-area-inset-right, 0px));
+  --sm-safe-bottom: var(--game-ui-bottom, env(safe-area-inset-bottom, 0px));
+  --sm-safe-left: var(--game-ui-left, env(safe-area-inset-left, 0px));
+}
+
+/* Calm panels, warm actions and readable body copy across all three modes. */
+.overlay .panel, .arena-root .arena-setup, .arena-root .arena-small-panel,
+.race-root .race-setup, .race-root .race-compact {
+  background: var(--sm-panel);
+  border-color: var(--sm-line);
+  border-radius: var(--sm-radius-panel);
+  box-shadow: var(--sm-shadow);
+}
+.overlay .dock { background: rgba(10,20,36,.97); border-color: var(--sm-line); }
+.overlay .title-lg { color: var(--sm-ink); letter-spacing: -.025em; text-transform: none; line-height: 1.25; }
+.overlay .sub, .overlay .daily-blurb, .overlay .stats-line,
+.overlay .toggle-row, .overlay .settings-list, .overlay .net-sub {
+  font-family: var(--sm-font-body);
+  letter-spacing: .01em;
+}
+.overlay .sub { color: var(--sm-copy); opacity: 1; line-height: 1.5; }
+.overlay .toggle-row { text-transform: none; line-height: 1.4; padding-inline: 6px; }
+.overlay .eyebrow, .overlay .section-head, .overlay .room-caption {
+  color: var(--sm-muted); font-size: 10px; letter-spacing: .14em; line-height: 1.5;
+}
+.overlay .btn {
+  min-height: var(--sm-target);
+  border: 1px solid #ffd998;
+  border-radius: var(--sm-radius-control);
+  background: var(--sm-gold);
+  color: #1a1724;
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: .01em;
+  text-transform: none;
+  box-shadow: 0 3px 0 #8a6137;
+  text-shadow: none;
+}
+.overlay .btn.ghost {
+  background: var(--sm-surface);
+  color: #dbefff;
+  border-color: var(--sm-line-strong);
+  box-shadow: none;
+}
+.overlay .btn.coral:not(.ghost) { background: var(--sm-gold); color: #1a1724; border-color: #ffd998; box-shadow: 0 3px 0 #8a6137; }
+.overlay .btn.ghost.coral { background: rgba(255,79,102,.06); color: #ff9ca9; border-color: rgba(255,139,155,.35); }
+.overlay .btn:disabled { box-shadow: none; }
+.overlay .btn.pulse, .overlay .btn.pulse::after { animation: none; }
+.overlay .btn.pulse::after { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .overlay .btn:hover:not(:disabled):not(:active), .overlay .btn.coral:hover:not(:disabled):not(:active) { background: #ffd793; filter: none; box-shadow: 0 3px 0 #8a6137; }
+  .overlay .btn.ghost:hover:not(:disabled):not(:active) { background: var(--sm-surface-hover); border-color: #6f9eb9; box-shadow: none; }
+}
+.overlay :is(button, summary, input):focus-visible,
+body.gamepad-active .overlay :is(button, summary, input):focus,
+.arena-root :focus-visible, .race-root :focus-visible,
+body.gamepad-active :is(.arena-root, .race-root) :is(button, summary, input):focus {
+  outline: 3px solid var(--sm-focus) !important;
+  outline-offset: -3px !important;
+}
+.overlay .pause-settings > summary { min-height: var(--sm-target); border-radius: var(--sm-radius-control); }
+.overlay .slider-row input[type='range'] { min-height: var(--sm-target); }
+.overlay .stat-grid .stat { background: rgba(4,12,27,.5); border-color: var(--sm-line); }
+.overlay #deadScore { text-shadow: none; color: var(--sm-ink); }
+.overlay .control-guide > div { background: rgba(4,12,27,.35); border-color: var(--sm-line); border-radius: var(--sm-radius-small); }
+
+/* A compact launcher: three equally discoverable adventures, quiet utilities.
+   Existing IDs, focus order and start/room handlers remain the entry points. */
+#ovAttract .panel { max-width: 780px; --px: 22px; --py: 18px; }
+#ovAttract .attract-main, #ovAttract .attract-side { min-width: 0; }
+.launch-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.launch-heading h1 { margin: 0; color: var(--sm-muted); font: 800 10px/1.5 var(--sm-font-display); letter-spacing: .14em; text-align: left; }
+#ovAttract #attractBest { margin: 0; color: var(--sm-gold); font: 700 11px/1.4 var(--sm-font-body); letter-spacing: .03em; white-space: nowrap; }
+.launch-modes { display: grid; gap: 8px; }
+#ovAttract .mode-link {
+  --mode-accent: var(--sm-gold);
+  position: relative; display: flex; flex-direction: column; align-items: flex-start;
+  justify-content: center; gap: 3px; text-align: left;
+  min-height: 66px; margin: 0; padding: 11px 40px 11px 16px;
+  background: rgba(9,20,37,.76); color: var(--sm-ink);
+  border: 1px solid var(--sm-line-strong); border-left: 3px solid var(--mode-accent);
+  font-size: 14px; box-shadow: none;
+}
+#ovAttract #btnArena { --mode-accent: var(--sm-cyan); }
+#ovAttract #btnRace { --mode-accent: var(--sm-lime); }
+#ovAttract .mode-link::after { content: attr(data-description); color: var(--sm-copy); font: 400 11px/1.45 var(--sm-font-body); letter-spacing: .01em; }
+#ovAttract .mode-link::before { content: '›'; position: absolute; right: 17px; top: 50%; transform: translateY(-50%); color: var(--mode-accent); font: 500 25px/1 var(--sm-font-body); }
+#ovAttract .mode-link:hover:not(:disabled):not(:active) { background: #193049; border-color: var(--mode-accent); box-shadow: none; }
+#ovAttract .mode-link:active { transform: translateY(1px); }
+#ovAttract #btnDaily { margin: 12px 0 0; padding: 9px 12px; min-height: 50px; font-size: 11px; background: rgba(9,20,37,.46); }
+#ovAttract #btnDaily .daily-theme { font-family: var(--sm-font-body); letter-spacing: .04em; color: var(--sm-copy); }
+#ovAttract #btnDaily .daily-info { font-size: 10px; letter-spacing: .01em; color: var(--sm-gold); }
+#ovAttract .daily-blurb { margin: 6px 0 0; max-width: none; color: var(--sm-muted); opacity: 1; text-align: left; font-size: 11px; }
+#ovAttract #attractMedals { margin: 0 0 10px !important; color: var(--sm-muted); }
+#ovAttract .medal-empty { font: 500 10px/1.5 var(--sm-font-body); letter-spacing: .05em; opacity: 1; }
+#ovAttract .control-guide { margin: 0 0 12px; }
+#ovAttract #attractRow { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+#ovAttract #attractRow .btn { min-width: 0; margin: 0; padding: 10px 6px; font-size: 11px; }
+#ovAttract #attractStats { color: var(--sm-muted); opacity: 1; font-size: 10px; line-height: 1.5; margin-top: 12px; }
+
+/* Lazy mode chrome consumes the same tokens; art and selection accents stay
+   mode-specific. Do not broaden these rules to the touch buttons or HUD. */
+.arena-root .arena-setup, .race-root .race-setup { border-color: var(--sm-line); }
+.arena-root .arena-dialog .arena-button, .race-root .race-dialog .race-button { border-radius: var(--sm-radius-control); }
+.race-root .race-title { font-family: var(--sm-font-display); font-size: clamp(34px,3.75vw,52px); font-weight: 900; letter-spacing: -.045em; line-height: 1.12; }
+.race-root .race-compact h2 { font-family: var(--sm-font-display); font-size: 27px; letter-spacing: -.025em; line-height: 1.25; }
+.race-root .race-kicker, .race-root .race-label, .race-root .race-dialog .race-button:not(.race-segment), .race-root .race-track strong { font-family: var(--sm-font-display); font-weight: 700; }
+.race-root .race-dialog .race-text { font: 600 12px/1.4 var(--sm-font-body); }
+.race-root .race-kicker, .race-root .race-label { font-size: 10px; letter-spacing: .14em; color: var(--sm-muted); }
+.race-root .race-dialog .race-segment { font: 600 11px/1.2 var(--sm-font-body); }
+.race-root .race-options { flex-wrap: wrap; }
+/* Correct the existing root button font inheritance without moving a hit zone.
+   The lazy 320px icon-only rule still wins at equal specificity. */
+.race-root .race-recover { font-size: 9px; }
+.race-root .race-lede, .race-root .race-compact p { color: var(--sm-copy); }
+.arena-root .arena-primary, .race-root .race-primary { background: var(--sm-gold); color: #1a1724; border-color: #ffd998; box-shadow: 0 4px 0 #8a6137, 0 10px 28px rgba(255,180,84,.13); }
+.arena-root .arena-primary:hover, .race-root .race-primary:hover { background: #ffd793; border-color: #fff0c1; }
+.arena-root .arena-dialog .arena-segment, .race-root .race-dialog .race-segment,
+.arena-root .arena-dialog summary, .race-root .race-dialog summary { min-height: var(--sm-target); }
+.race-root .race-dialog summary, .arena-root .arena-dialog summary { display: list-item; align-content: center; }
+.arena-root .arena-small-panel .arena-button { min-height: var(--sm-target); }
+.arena-root .arena-result-row, .race-root .race-result-row { border-radius: var(--sm-radius-small); }
+
+@media (min-width: 700px) {
+  #ovAttract .panel { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: 24px; align-items: center; }
+}
+@media (max-width: 699px) {
+  #ovAttract .panel { display: block; max-width: 440px; --px: 16px; --py: 16px; }
+  #ovAttract .attract-side { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--sm-line); }
+  #ovAttract .control-guide { display: none !important; }
+  #ovAttract #attractMedals { display: none; }
+  #ovAttract .mode-link { min-height: 59px; padding-top: 8px; padding-bottom: 8px; font-size: 13px; }
+  #ovAttract .daily-blurb { display: none !important; }
+  #ovAttract #attractStats { margin-top: 8px; }
+  .race-root .race-title { font-size: 30px; }
+  .race-root .race-track strong { font-size: 11px; }
+}
+@media (max-width: 380px) {
+  #ovAttract .panel { --px: 12px; --py: 12px; }
+  .launch-heading h1 { font-size: 10px; letter-spacing: .09em; }
+  #ovAttract .mode-link { font-size: 12px; }
+  #ovAttract #btnDaily { font-size: 10px; }
+  #ovAttract #attractRow .btn { font-size: 10px; }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  #ovAttract .panel { --py: 12px; max-width: 780px; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr); gap: 18px; }
+  #ovAttract .attract-side { margin: 0; padding: 0; border: 0; }
+  #ovAttract .mode-link { min-height: 52px; padding-top: 7px; padding-bottom: 7px; font-size: 12px; }
+  #ovAttract .mode-link::after { font-size: 10px; }
+  #ovAttract .launch-heading { margin-bottom: 8px; }
+  #ovAttract #btnDaily { margin-top: 8px; min-height: 44px; padding: 6px 10px; }
+  #ovAttract .daily-blurb { display: none !important; }
+  .race-root .race-title { font-size: 34px; }
+}
+/* The saved motion switch is authoritative; its default already reads the OS. */
+body.reduce-motion #ovAttract .panel, body.reduce-motion #ovAttract .panel > *,
+body.reduce-motion .overlay .btn { animation: none; transition: none; }
