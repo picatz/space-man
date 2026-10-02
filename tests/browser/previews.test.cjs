@@ -128,7 +128,7 @@ test('preview status stays outside runner and arena touch controls through phone
   }
   for (const scenario of cases) {
     await page.setViewportSize({ width: scenario.width, height: scenario.height });
-    await cdp.send('Emulation.setSafeAreaInsets', { insets: scenario.safe });
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: scenario.safe });
     await page.goto(base + a.basePath + '#shot=play&touch=1');
     await page.locator('#previewBuild').waitFor();
     await page.evaluate(({ width, height, visible }) => {
