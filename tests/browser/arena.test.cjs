@@ -292,9 +292,12 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await page.evaluate(() => {
     const original = SpaceManArena;
     window.inputEvents = [];
-    for (const type of ['pointerdown', 'pointerup', 'lostpointercapture', 'touchend', 'click', 'blur']) window.addEventListener(type, e => {
-      inputEvents.push({ type, id: e.pointerId, target: e.target.id || e.target.className || e.target.tagName, screen: window.arenaUI?.screen });
-      if (inputEvents.length > 35) inputEvents.shift();
+    const prevent = Event.prototype.preventDefault;
+    Event.prototype.preventDefault = function () { inputEvents.push({ prevent: this.type, target: this.target?.id || this.target?.className, stack: new Error().stack?.split('\n').slice(1, 4) }); return prevent.call(this); };
+    for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mouseup', 'click', 'blur']) window.addEventListener(type, e => {
+      const entry = { type, id: e.pointerId, primary: e.isPrimary, x: e.clientX, y: e.clientY, touches: e.touches && Array.from(e.touches, p => ({ id: p.identifier, x: p.clientX, y: p.clientY })), target: e.target.id || e.target.className || e.target.tagName };
+      inputEvents.push(entry); queueMicrotask(() => { entry.prevented = e.defaultPrevented; });
+      if (inputEvents.length > 45) inputEvents.shift();
     }, true);
     window.SpaceManArena = { ...original, step(state, commands) {
       const human = state.actors.find(a => a.controller === 'human');
