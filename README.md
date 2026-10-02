@@ -128,3 +128,54 @@ release, exercise a desktop host + phone player + spectator on separate networks
 scan/join, move apart and reunite, die/watch/rejoin, change rounds, background a
 phone, reconnect, and update an installed PWA. Check portrait/landscape controls
 and verify that both devices run the same asset version.
+
+### Opt-in real-relay browser smoke
+
+The separate smoke in `tests/browser/relay.test.cjs` runs the shipped page in
+three isolated Chromium contexts: a desktop host, a 390×844 touch-capable
+phone-sized player, and a spectator. It uses real browser WebSockets, crypto,
+and relay packets, never the in-memory relay. It checks UI create/pasted-link
+join, matching rosters and roles, player disconnect/reconnect, spectator reload
+and session resume, shared countdown, live movement in both directions,
+spectator follow without a player ghost, and host room closure.
+
+Install the optional test-only dependencies (Node 22+), then explicitly choose
+an accessible DERP relay you are permitted to use:
+
+```sh
+cd tests/browser
+npm ci
+npx playwright install chromium
+SPACE_MAN_RELAY_HOST=your-relay.example.com npm test
+```
+
+Use a plain `hostname[:port]`, without `wss://` or `/derp`. Without
+`SPACE_MAN_RELAY_HOST`, the test reports **skipped**, without loading Playwright
+or contacting a relay. Normal `node --test tests/*.test.cjs` and CI remain
+network-independent and need no installation. An unreachable relay **fails** an
+opted-in run; it is never reported as a pass or silently replaced by a fake.
+
+By default, an ephemeral loopback HTTP server serves this checkout. To test a
+particular deployed build or PR preview instead, set
+`SPACE_MAN_BASE_URL=https://preview.example.com/path/to/build/` as well. The
+host's invite must point back to that same base URL. `SPACE_MAN_HEADED=1` shows
+the browsers; `SPACE_MAN_CHROMIUM_PATH` optionally selects an existing Chromium
+executable instead of Playwright's installed version.
+
+The **Real relay browser smoke** Actions workflow offers the same explicit opt-in
+with a required relay host and optional preview URL (once this workflow is on
+the default branch). It never runs on a push or pull request, and does not deploy.
+
+Every run uses fresh browser storage and newly generated room keys/invite.
+Cleanup attempts an orderly room leave and closes the browser and server even
+after failure. Diagnostics omit invite
+and session secrets; no traces or screenshots are saved. Runs have a three-minute
+limit and are deliberately not retried automatically against public relays.
+
+The player reconnect is a real socket close plus Chromium offline/online
+emulation while waiting at the start line; spectator resume is a page reload.
+All three clients still share one machine and network. Phone sizing is **not**
+physical iOS/Safari coverage, a real background/lock suspension, a cellular/Wi-Fi
+handoff, camera QR scanning, or installed-PWA/update testing. Service workers are
+blocked to keep this test on one build. Keep the separate-device release checks
+above for those behaviors.
