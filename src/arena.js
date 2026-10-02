@@ -1,0 +1,553 @@
+/* Space Man: Pulse Arena. Pure, fixed-tick rules shared by every controller.
+ * Positions are top-left world pixels; velocities are pixels per 60 Hz tick.
+ * Rendering, audio, input sampling and elapsed real time never enter this module.
+ * cpuInput is an explicit controller: step never invents missing commands.
+ */
+(function (root, factory) {
+  'use strict';
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.SpaceManArena = api;
+})(typeof window !== 'undefined' ? window : globalThis, function () {
+  'use strict';
+
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const finite = (v, fallback) => typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  const sign = (v) => v < 0 ? -1 : v > 0 ? 1 : 0;
+  function freeze(value) {
+    if (value && typeof value === 'object') {
+      Object.keys(value).forEach((key) => freeze(value[key]));
+      Object.freeze(value);
+    }
+    return value;
+  }
+  const constants = freeze({
+    VERSION: 1, TICK_RATE: 60, STEP: 1 / 60, WIDTH: 960, HEIGHT: 600,
+    COUNTDOWN_TICKS: 180, MATCH_TICKS: 180 * 60, STOCKS: 3,
+    FIGHTER_W: 24, FIGHTER_H: 34,
+    ACCEL_GROUND: 0.85, ACCEL_AIR: 0.5, MAX_RUN: 6.4,
+    FRICTION_GROUND: 0.80, FRICTION_AIR: 0.985,
+    JUMP_SPEED: 12.8, DOUBLE_JUMP_SPEED: 11.8,
+    GRAVITY_RISE: 0.52, GRAVITY_FALL: 0.78, MAX_FALL: 15,
+    COYOTE_TICKS: 6, BUFFER_TICKS: 8, JUMP_CUT: 0.48,
+    ATTACK_TICKS: 26, ATTACK_WINDUP: 4, ATTACK_ACTIVE: 7, ATTACK_DAMAGE: 12,
+    ATTACK_REACH: 35, ATTACK_W: 48, ATTACK_H: 42,
+    DASH_TICKS: 10, DASH_SPEED: 11.5, DASH_COOLDOWN: 55, DODGE_TICKS: 8,
+    RESPAWN_TICKS: 60, RESPAWN_INVULNERABLE: 90,
+  });
+  const profiles = freeze([
+    { id: 'nova', name: 'Nova', color: '#38E1FF', accent: '#9FF1FF', suit: '#F4F7FF' },
+    { id: 'moss', name: 'Moss', color: '#4EF07A', accent: '#BEFFA2', suit: '#D9F5DB' },
+    { id: 'flare', name: 'Flare', color: '#FFB454', accent: '#FFE59A', suit: '#FFF0D6' },
+    { id: 'luma', name: 'Luma', color: '#B87BFF', accent: '#E6C6FF', suit: '#EEE4FF' },
+  ]);
+  const arenas = freeze([
+    {
+      id: 'orbital-dock', name: 'Orbital Dock', description: 'A broad landing deck beneath three orbital gantries.',
+      width: 960, height: 600,
+      theme: { id: 'orbital', sky: '#060818', skyTop: '#060818', skyBottom: '#18264A', background: '#060818', accent: '#38E1FF', glow: '#9FF1FF', platform: '#192B48', platformTop: '#38E1FF', hazard: '#FF4F66', detail: '#456688' },
+      platforms: [
+        { id: 'dock', x: 150, y: 454, w: 660, h: 26 },
+        { id: 'port', x: 200, y: 336, w: 180, h: 16 },
+        { id: 'starboard', x: 580, y: 336, w: 180, h: 16 },
+        { id: 'gantry', x: 400, y: 238, w: 160, h: 16 },
+      ],
+      spawns: [{ x: 245, y: 420 }, { x: 691, y: 420 }, { x: 345, y: 420 }, { x: 591, y: 420 }],
+      bounds: { left: -150, right: 1110, top: -240, bottom: 760 },
+    },
+    {
+      id: 'bloom-reactor', name: 'Bloom Reactor', description: 'Twin garden rafts linked by a raised reactor bridge.',
+      width: 960, height: 600,
+      theme: { id: 'bloom', sky: '#061817', skyTop: '#061817', skyBottom: '#173C36', background: '#061817', accent: '#4EF07A', glow: '#BDFFA2', platform: '#173F38', platformTop: '#4EF07A', hazard: '#FFB454', detail: '#3B7561' },
+      platforms: [
+        { id: 'garden-left', x: 145, y: 464, w: 270, h: 25 },
+        { id: 'garden-right', x: 545, y: 464, w: 270, h: 25 },
+        { id: 'reactor', x: 390, y: 357, w: 180, h: 20 },
+        { id: 'canopy-left', x: 220, y: 264, w: 160, h: 16 },
+        { id: 'canopy-right', x: 580, y: 264, w: 160, h: 16 },
+      ],
+      spawns: [{ x: 220, y: 430 }, { x: 716, y: 430 }, { x: 335, y: 430 }, { x: 601, y: 430 }],
+      bounds: { left: -150, right: 1110, top: -240, bottom: 770 },
+    },
+    {
+      id: 'ember-foundry', name: 'Ember Foundry', description: 'A high furnace crown with staggered cooling shelves.',
+      width: 960, height: 600,
+      theme: { id: 'ember', sky: '#1A0C20', skyTop: '#1A0C20', skyBottom: '#46202D', background: '#1A0C20', accent: '#FFB454', glow: '#FFE59A', platform: '#4A2C3B', platformTop: '#FFB454', hazard: '#FF4F66', detail: '#825061' },
+      platforms: [
+        { id: 'hearth', x: 155, y: 490, w: 650, h: 28 },
+        { id: 'cooler-left', x: 175, y: 380, w: 170, h: 18 },
+        { id: 'cooler-right', x: 615, y: 350, w: 170, h: 18 },
+        { id: 'furnace', x: 400, y: 286, w: 160, h: 22 },
+        { id: 'crown', x: 395, y: 172, w: 170, h: 16 },
+      ],
+      spawns: [{ x: 240, y: 456 }, { x: 696, y: 456 }, { x: 345, y: 456 }, { x: 591, y: 456 }],
+      bounds: { left: -150, right: 1110, top: -260, bottom: 790 },
+    },
+  ]);
+  const difficulties = freeze({
+    easy: { reaction: 15, attackDelay: 39, dodge: 0.12 },
+    normal: { reaction: 9, attackDelay: 29, dodge: 0.35 },
+    hard: { reaction: 5, attackDelay: 26, dodge: 0.60 },
+  });
+
+  function getArena(id) { return arenas.find((arena) => arena.id === id) || arenas[0]; }
+  function normalizeCommand(input) {
+    const c = input && typeof input === 'object' ? input : {};
+    return {
+      moveX: clamp(finite(c.moveX, 0), -1, 1),
+      moveY: clamp(finite(c.moveY, 0), -1, 1),
+      jumpPressed: c.jumpPressed === true || c.jumpPressed === 1,
+      jumpHeld: c.jumpHeld === true || c.jumpHeld === 1,
+      attackPressed: c.attackPressed === true || c.attackPressed === 1,
+      dashPressed: c.dashPressed === true || c.dashPressed === 1,
+    };
+  }
+  // All random draws have explicit, serializable ownership. Controller call order
+  // cannot change another controller's random stream.
+  function random(owner) {
+    owner.rngState = (owner.rngState + 0x6D2B79F5) >>> 0;
+    let t = owner.rngState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+  function resetBody(actor, spawn) {
+    Object.assign(actor, {
+      x: spawn.x, y: spawn.y, px: spawn.x, py: spawn.y, vx: 0, vy: 0,
+      onGround: true, supportId: null, damage: 0, stun: 0,
+      jumpCount: 0, coyoteTicks: constants.COYOTE_TICKS, jumpBufferTicks: 0,
+      jumpHeldLast: false, attackTicks: 0, attackDirX: actor.facing, attackDirY: 0,
+      attackHitIds: [], dashTicks: 0, dashCooldown: 0, airDashAvailable: true,
+      dropTicks: 0, dropPlatformId: null, respawnTicks: 0,
+      invulnerable: constants.RESPAWN_INVULNERABLE, lastHitBy: null,
+    });
+  }
+  function create(options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const arena = getArena(opts.arenaId);
+    const format = ['duel', 'ffa', 'teams'].includes(opts.format) ? opts.format : 'duel';
+    const difficulty = Object.hasOwn(difficulties, opts.difficulty) ? opts.difficulty : 'normal';
+    const seed = Math.trunc(finite(opts.seed, 1)) >>> 0;
+    const state = {
+      version: constants.VERSION, tick: 0, phase: 'countdown',
+      countdownTicks: constants.COUNTDOWN_TICKS, timeLeftTicks: constants.MATCH_TICKS,
+      arenaId: arena.id, format, difficulty, seed, rngState: seed,
+      actors: [], events: [], result: null,
+    };
+    const count = format === 'duel' ? 2 : 4;
+    for (let index = 0; index < count; index++) {
+      const profile = profiles[index];
+      const actor = {
+        id: index + 1, profileId: profile.id, name: profile.name, color: profile.color,
+        accent: profile.accent, suit: profile.suit,
+        team: format === 'teams' ? (index < 2 ? 0 : 1) : index,
+        controller: index === 0 ? 'human' : 'cpu',
+        w: constants.FIGHTER_W, h: constants.FIGHTER_H, facing: index % 2 ? -1 : 1,
+        stocks: constants.STOCKS, deaths: 0, kos: 0, attackSerial: 0,
+        ai: {
+          rngState: Math.floor(random(state) * 4294967296) >>> 0,
+          aggression: 0.75 + random(state) * 0.5,
+          reactionOffset: Math.floor(random(state) * 4),
+          nextThinkTick: 0, nextJumpTick: 0, nextAttackTick: 0,
+          targetId: null, goalPlatformId: null, lastTick: -1,
+          intent: normalizeCommand(), cachedCommand: normalizeCommand(),
+        },
+      };
+      // Teams begin on opposite halves; each pair is together.
+      const spawnIndex = format === 'teams' ? [0, 2, 1, 3][index] : index;
+      resetBody(actor, arena.spawns[spawnIndex]);
+      actor.supportId = supportAt(arena, actor).id;
+      state.actors.push(actor);
+    }
+    return state;
+  }
+
+  function centerX(actor) { return actor.x + actor.w / 2; }
+  function centerY(actor) { return actor.y + actor.h / 2; }
+  function enemies(state, a, b) { return a.id !== b.id && (state.format !== 'teams' || a.team !== b.team); }
+  function supportAt(arena, actor) {
+    return arena.platforms.find((p) => actor.x + actor.w > p.x && actor.x < p.x + p.w && Math.abs(actor.y + actor.h - p.y) < 1.5) || null;
+  }
+  function platformBelow(arena, actor) {
+    const cx = centerX(actor), feet = actor.y + actor.h;
+    let best = null;
+    for (const p of arena.platforms) {
+      if (cx >= p.x - 8 && cx <= p.x + p.w + 8 && p.y >= feet - 14 && (!best || p.y < best.y)) best = p;
+    }
+    return best;
+  }
+  function aim(command, facing) {
+    let x = command.moveX, y = command.moveY;
+    if (Math.abs(x) < 0.25) x = 0;
+    if (Math.abs(y) < 0.25) y = 0;
+    if (!x && !y) x = facing;
+    const length = Math.sqrt(x * x + y * y);
+    return { x: x / length, y: y / length };
+  }
+  function attackBox(actor) {
+    if (actor.attackTicks <= 0) return null;
+    const dx = actor.attackDirX, dy = actor.attackDirY;
+    const vertical = Math.abs(dy) > Math.abs(dx);
+    const w = vertical ? constants.ATTACK_H : constants.ATTACK_W;
+    const h = vertical ? constants.ATTACK_W : constants.ATTACK_H;
+    const elapsed = constants.ATTACK_TICKS - actor.attackTicks;
+    return {
+      x: centerX(actor) + dx * constants.ATTACK_REACH - w / 2,
+      y: centerY(actor) + dy * constants.ATTACK_REACH - h / 2, w, h,
+      active: elapsed >= constants.ATTACK_WINDUP && elapsed < constants.ATTACK_WINDUP + constants.ATTACK_ACTIVE,
+    };
+  }
+  function overlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+  function emit(state, type, actor, extra) {
+    state.events.push(Object.assign({ type, actorId: actor.id, x: centerX(actor), y: centerY(actor) }, extra));
+  }
+  function startJump(state, actor) {
+    const groundJump = actor.onGround || actor.coyoteTicks > 0;
+    if (!groundJump && actor.jumpCount >= 2) return false;
+    actor.jumpCount = groundJump ? 1 : Math.max(1, actor.jumpCount) + 1;
+    actor.vy = -(groundJump ? constants.JUMP_SPEED : constants.DOUBLE_JUMP_SPEED);
+    actor.onGround = false; actor.supportId = null; actor.coyoteTicks = 0;
+    actor.jumpBufferTicks = 0; actor.jumpHeldLast = true;
+    emit(state, 'jump', actor, { double: !groundJump });
+    return true;
+  }
+  function beginAttack(state, actor, command) {
+    const direction = aim(command, actor.facing);
+    actor.attackDirX = direction.x; actor.attackDirY = direction.y;
+    actor.attackTicks = constants.ATTACK_TICKS; actor.attackSerial++;
+    actor.attackHitIds = [];
+    // A spawn shield is defensive, not a free unanswerable attack.
+    actor.invulnerable = 0;
+    emit(state, 'attack', actor, { directionX: direction.x, directionY: direction.y });
+  }
+  function moveActor(state, actor, command, arena) {
+    actor.px = actor.x; actor.py = actor.y;
+    for (const field of ['stun', 'invulnerable', 'attackTicks', 'dashTicks', 'dashCooldown', 'dropTicks', 'jumpBufferTicks']) {
+      if (actor[field] > 0) actor[field]--;
+    }
+    if (!actor.dropTicks) actor.dropPlatformId = null;
+    if (actor.onGround) actor.coyoteTicks = constants.COYOTE_TICKS;
+    else if (actor.coyoteTicks > 0) actor.coyoteTicks--;
+    if (command.jumpPressed) actor.jumpBufferTicks = constants.BUFFER_TICKS;
+
+    if (!actor.stun) {
+      if (command.moveX) actor.facing = sign(command.moveX);
+      if (actor.jumpBufferTicks > 0 && !actor.dashTicks) {
+        if (actor.onGround && command.moveY > 0.6) {
+          actor.dropTicks = 18; actor.dropPlatformId = actor.supportId;
+          actor.y += 3; actor.onGround = false; actor.supportId = null;
+          actor.coyoteTicks = 0; actor.jumpCount = 1; actor.jumpBufferTicks = 0;
+          actor.vy = 1;
+        } else startJump(state, actor);
+      }
+      if (command.dashPressed && !actor.dashCooldown && !actor.attackTicks && (actor.onGround || actor.airDashAvailable)) {
+        const direction = aim(command, actor.facing);
+        actor.dashTicks = constants.DASH_TICKS; actor.dashCooldown = constants.DASH_COOLDOWN;
+        actor.invulnerable = Math.max(actor.invulnerable, constants.DODGE_TICKS);
+        actor.vx = direction.x * constants.DASH_SPEED; actor.vy = direction.y * constants.DASH_SPEED;
+        if (!actor.onGround) actor.airDashAvailable = false;
+        actor.onGround = false; actor.supportId = null;
+      }
+      if (command.attackPressed && !actor.attackTicks && !actor.dashTicks) beginAttack(state, actor, command);
+    }
+
+    if (!actor.dashTicks) {
+      const input = actor.stun ? command.moveX * 0.10 : command.moveX;
+      const accel = actor.onGround ? constants.ACCEL_GROUND : constants.ACCEL_AIR;
+      if (input) {
+        const desired = input * constants.MAX_RUN;
+        // Never clamp away knockback. Inputs brake it gradually, like normal movement.
+        if (Math.abs(actor.vx) <= constants.MAX_RUN || sign(input) !== sign(actor.vx)) {
+          const change = clamp(desired - actor.vx, -accel, accel);
+          actor.vx += change * (actor.stun ? 0.18 : 1);
+        }
+        actor.vx *= 0.995;
+      } else actor.vx *= actor.onGround ? constants.FRICTION_GROUND : constants.FRICTION_AIR;
+      if (!command.jumpHeld && actor.jumpHeldLast && actor.vy < -2 && !actor.stun) actor.vy *= constants.JUMP_CUT;
+      actor.vy = Math.min(constants.MAX_FALL, actor.vy + (actor.vy < 0 ? constants.GRAVITY_RISE : constants.GRAVITY_FALL));
+    }
+    actor.jumpHeldLast = command.jumpHeld;
+    const oldFeet = actor.y + actor.h;
+    actor.x += actor.vx; actor.y += actor.vy;
+    actor.onGround = false; actor.supportId = null;
+    if (actor.vy >= 0) {
+      let landed = null;
+      for (const p of arena.platforms) {
+        if (actor.dropTicks && actor.dropPlatformId === p.id) continue;
+        if (oldFeet <= p.y + 0.01 && actor.y + actor.h >= p.y && actor.x + actor.w > p.x && actor.x < p.x + p.w && (!landed || p.y < landed.y)) landed = p;
+      }
+      if (landed) {
+        actor.y = landed.y - actor.h; actor.vy = 0;
+        actor.onGround = true; actor.supportId = landed.id;
+        actor.jumpCount = 0; actor.coyoteTicks = constants.COYOTE_TICKS;
+        actor.airDashAvailable = true;
+      }
+    }
+  }
+
+  function resolveAttacks(state) {
+    const pending = [];
+    for (const attacker of state.actors) {
+      if (attacker.stocks <= 0 || attacker.respawnTicks || attacker.stun) continue;
+      const box = attackBox(attacker);
+      if (!box || !box.active) continue;
+      for (const target of state.actors) {
+        if (!enemies(state, attacker, target) || target.stocks <= 0 || target.respawnTicks || target.invulnerable || attacker.attackHitIds.includes(target.id)) continue;
+        if (overlap(box, target)) {
+          attacker.attackHitIds.push(target.id);
+          pending.push({ attacker, target });
+        }
+      }
+    }
+    // Capture every hit before applying any, then group by stable target ID.
+    // Simultaneous pulses add damage but average their launch vectors at the
+    // resulting damage: knockback stays bounded to a single equal-damage strike,
+    // and opposite pulses cancel horizontally. Canonical ID order also makes
+    // floating-point sums/events stable when the actor array is permuted.
+    pending.sort((a, b) => a.target.id - b.target.id || a.attacker.id - b.attacker.id);
+    for (const actor of state.actors) actor.attackHitIds.sort((a, b) => a - b);
+    for (let index = 0; index < pending.length;) {
+      const b = pending[index].target, hits = [];
+      while (index < pending.length && pending[index].target.id === b.id) hits.push(pending[index++]);
+      b.damage = Math.min(999, b.damage + constants.ATTACK_DAMAGE * hits.length);
+      const force = 5.8 + b.damage * 0.105;
+      let vx = 0, vy = 0;
+      for (const hit of hits) {
+        const a = hit.attacker;
+        const launchX = Math.abs(a.attackDirX) < 0.12 ? (centerX(b) >= centerX(a) ? 0.14 : -0.14) : a.attackDirX;
+        vx += launchX * force * 1.15;
+        vy += a.attackDirY > 0.3 ? a.attackDirY * force : a.attackDirY * force - 5.2 - force * 0.20;
+        emit(state, 'hit', a, { targetId: b.id, x: centerX(b), y: centerY(b), damage: constants.ATTACK_DAMAGE, knockback: force });
+      }
+      b.vx = vx / hits.length; b.vy = vy / hits.length;
+      b.stun = Math.min(50, 15 + Math.floor(b.damage * 0.13));
+      b.attackTicks = 0; b.dashTicks = 0; b.onGround = false; b.supportId = null;
+      // Equal-strength simultaneous contributors tie by stable actor ID for KO
+      // credit only; that cosmetic statistic never breaks a match-result tie.
+      b.coyoteTicks = 0; b.lastHitBy = hits[0].attacker.id;
+    }
+  }
+  function outOfBounds(actor, bounds) {
+    return actor.x + actor.w < bounds.left || actor.x > bounds.right || actor.y + actor.h < bounds.top || actor.y > bounds.bottom;
+  }
+  function loseStock(state, actor) {
+    actor.stocks = Math.max(0, actor.stocks - 1); actor.deaths++;
+    // Damage belongs to the stock just lost, not the fresh stock waiting to
+    // respawn. A timeout during that wait must use the same score as after it.
+    actor.damage = 0;
+    const credit = state.actors.find((other) => other.id === actor.lastHitBy);
+    if (credit && enemies(state, actor, credit)) credit.kos++;
+    actor.vx = 0; actor.vy = 0; actor.attackTicks = 0; actor.dashTicks = 0;
+    actor.respawnTicks = actor.stocks > 0 ? constants.RESPAWN_TICKS : 0;
+    actor.onGround = false; actor.supportId = null;
+    emit(state, 'ringout', actor, { targetId: credit ? credit.id : null, stocks: actor.stocks });
+  }
+  function respawn(state, actor, arena) {
+    let best = arena.spawns[(actor.id + actor.deaths) % arena.spawns.length], score = -Infinity;
+    for (let i = 0; i < arena.spawns.length; i++) {
+      const spawn = arena.spawns[(i + actor.id + actor.deaths) % arena.spawns.length];
+      let nearest = 1e9;
+      for (const other of state.actors) {
+        if (!enemies(state, actor, other) || other.stocks <= 0 || other.respawnTicks) continue;
+        const dx = other.x - spawn.x, dy = other.y - spawn.y;
+        nearest = Math.min(nearest, dx * dx + dy * dy);
+      }
+      if (nearest > score) { score = nearest; best = spawn; }
+    }
+    resetBody(actor, best);
+    actor.supportId = supportAt(arena, actor).id;
+    actor.ai.nextThinkTick = state.tick; actor.ai.nextJumpTick = state.tick;
+    actor.ai.intent = normalizeCommand(); actor.ai.lastTick = -1;
+    emit(state, 'respawn', actor);
+  }
+  function finish(state, reason) {
+    const groups = [];
+    for (const actor of state.actors) {
+      const id = state.format === 'teams' ? actor.team : actor.id;
+      let group = groups.find((item) => item.id === id);
+      if (!group) { group = { id, stocks: 0, damage: 0, actorIds: [] }; groups.push(group); }
+      group.stocks += actor.stocks;
+      group.damage += actor.stocks > 0 ? actor.damage : 0;
+      group.actorIds.push(actor.id);
+    }
+    groups.sort((a, b) => b.stocks - a.stocks || a.damage - b.damage || a.id - b.id);
+    const top = groups[0];
+    const winners = top.stocks === 0 ? [] : groups.filter((group) => group.stocks === top.stocks && (reason !== 'time' || group.damage === top.damage));
+    const tie = winners.length !== 1;
+    state.phase = 'over';
+    state.result = {
+      winnerIds: winners.flatMap((group) => group.actorIds).sort((a, b) => a - b),
+      winnerTeam: state.format === 'teams' && !tie ? winners[0].id : null,
+      tie, reason,
+    };
+    state.events.push({ type: 'finish', actorId: state.result.winnerIds[0] || 0, x: 480, y: 300, reason });
+  }
+  function step(state, commandsById) {
+    state.events = [];
+    if (state.phase === 'over') return state;
+    state.tick++;
+    if (state.phase === 'countdown') {
+      state.countdownTicks = Math.max(0, state.countdownTicks - 1);
+      if (state.countdownTicks === 0) state.phase = 'playing';
+      return state;
+    }
+    const arena = getArena(state.arenaId);
+    const commands = commandsById && typeof commandsById === 'object' ? commandsById : {};
+    for (const actor of state.actors) {
+      if (actor.stocks <= 0) continue;
+      if (actor.respawnTicks > 0) {
+        actor.respawnTicks--;
+        if (!actor.respawnTicks) respawn(state, actor, arena);
+        continue;
+      }
+      moveActor(state, actor, normalizeCommand(commands[actor.id]), arena);
+    }
+    resolveAttacks(state);
+    for (const actor of state.actors) {
+      if (actor.stocks > 0 && !actor.respawnTicks && outOfBounds(actor, arena.bounds)) loseStock(state, actor);
+    }
+    state.timeLeftTicks = Math.max(0, state.timeLeftTicks - 1);
+    const alive = state.actors.filter((actor) => actor.stocks > 0);
+    const remaining = state.format === 'teams' ? new Set(alive.map((actor) => actor.team)).size : alive.length;
+    if (remaining <= 1) finish(state, 'stocks');
+    else if (state.timeLeftTicks === 0) finish(state, 'time');
+    return state;
+  }
+
+  // A tiny platform graph is enough for these hand-authored stages. Edges use
+  // conservative double-jump reach, not line-of-sight chasing across a pit.
+  function platformGap(a, b) { return Math.max(0, a.x - (b.x + b.w), b.x - (a.x + a.w)); }
+  function nextPlatform(arena, from, to) {
+    if (!from || !to || from.id === to.id) return to;
+    const distance = {}, first = {}, visited = new Set();
+    distance[from.id] = 0;
+    for (let n = 0; n < arena.platforms.length; n++) {
+      let current = null;
+      for (const p of arena.platforms) {
+        if (!visited.has(p.id) && distance[p.id] !== undefined && (!current || distance[p.id] < distance[current.id])) current = p;
+      }
+      if (!current) break;
+      if (current.id === to.id) return first[current.id] || to;
+      visited.add(current.id);
+      for (const p of arena.platforms) {
+        const rise = current.y - p.y, gap = platformGap(current, p);
+        if (p.id === current.id || rise > 235 || gap > 235 || (rise > 150 && gap > 150)) continue;
+        const cost = distance[current.id] + 1 + gap / 200 + Math.max(0, rise) / 240;
+        if (distance[p.id] === undefined || cost < distance[p.id]) {
+          distance[p.id] = cost; first[p.id] = first[current.id] || p;
+        }
+      }
+    }
+    return null;
+  }
+  function recoveryPlatform(arena, actor) {
+    let best = null, bestScore = Infinity;
+    for (const p of arena.platforms) {
+      const x = clamp(centerX(actor), p.x + 28, p.x + p.w - 28);
+      const rise = actor.y + actor.h - p.y;
+      // Favor an attainable low ledge; spending both jumps on a high decorative
+      // shelf is worse than landing safely and climbing via the graph.
+      const score = Math.abs(centerX(actor) - x) + Math.max(0, rise) * 1.8 + Math.max(0, -rise) * 0.25;
+      if (score < bestScore) { best = p; bestScore = score; }
+    }
+    return best;
+  }
+  function cpuDecision(state, actor) {
+    const ai = actor.ai, arena = getArena(state.arenaId), difficulty = difficulties[state.difficulty];
+    const c = normalizeCommand();
+    const candidates = state.actors.filter((other) => enemies(state, actor, other) && other.stocks > 0 && !other.respawnTicks);
+    let target = null, bestScore = Infinity;
+    for (const other of candidates) {
+      const score = Math.abs(centerX(other) - centerX(actor)) + Math.abs(centerY(other) - centerY(actor)) * 0.9 + (other.invulnerable ? 70 : 0) - (other.id === ai.targetId ? 28 : 0);
+      if (score < bestScore) { target = other; bestScore = score; }
+    }
+    ai.targetId = target ? target.id : null;
+    const support = arena.platforms.find((p) => p.id === actor.supportId) || (actor.onGround ? supportAt(arena, actor) : null);
+    const below = platformBelow(arena, actor);
+    const targetPlatform = target && (arena.platforms.find((p) => p.id === target.supportId) || platformBelow(arena, target));
+    let goal = support && targetPlatform ? nextPlatform(arena, support, targetPlatform) : targetPlatform;
+    const lowest = Math.max(...arena.platforms.map((p) => p.y));
+    const offstage = !below && (!support || actor.y + actor.h > lowest - 75);
+    if (offstage || (!support && !goal)) goal = recoveryPlatform(arena, actor);
+    if (!goal) goal = support || recoveryPlatform(arena, actor);
+    ai.goalPlatformId = goal.id;
+    const samePlatform = support && targetPlatform && support.id === targetPlatform.id;
+    const hunting = target && !offstage && (samePlatform || (below && targetPlatform && below.id === targetPlatform.id));
+    let destination = hunting ? centerX(target) : goal.x + goal.w / 2;
+    // Stand at striking distance, rather than crossing through the opponent
+    // during windup. Proportional steering also breaks synchronized chase loops.
+    if (hunting && Math.abs(centerY(target) - centerY(actor)) < 42) destination -= sign(centerX(target) - centerX(actor) || actor.facing) * 39;
+    // Pursuit always aims for a safe landing zone, even if the target just fell.
+    destination = clamp(destination, goal.x + 24, goal.x + goal.w - 24);
+    const dxGoal = destination - centerX(actor);
+    c.moveX = Math.abs(dxGoal) > 8 ? clamp(dxGoal / (actor.onGround ? 55 : 38), -1, 1) : 0;
+    // Brake before a landing rather than overshooting it at full run speed.
+    if (sign(dxGoal) === sign(actor.vx) && Math.abs(dxGoal) < Math.abs(actor.vx) * (actor.onGround ? 3.0 : 3.8)) c.moveX = actor.onGround ? 0 : -sign(actor.vx) * 0.5;
+    c.jumpHeld = true;
+    const feet = actor.y + actor.h;
+    const needRise = goal.y < feet - 24;
+    const gapAhead = support && goal.id !== support.id && platformGap(support, goal) > 0;
+    const approachingEdge = support && ((c.moveX > 0 && actor.x + actor.w + Math.max(22, actor.vx * 8) > support.x + support.w) || (c.moveX < 0 && actor.x - Math.max(22, -actor.vx * 8) < support.x));
+    if (state.tick >= ai.nextJumpTick) {
+      const launch = actor.onGround && (needRise || gapAhead || (approachingEdge && !samePlatform));
+      const recover = !actor.onGround && actor.jumpCount < 2 && actor.vy > -2.5 && (offstage || needRise || (goal.y <= feet + 15 && Math.abs(dxGoal) > 65));
+      if (launch || recover) { c.jumpPressed = true; ai.nextJumpTick = state.tick + 13; }
+    }
+    // Drop through a one-way ledge to reach a lower opponent; never drop over a
+    // void. This also keeps a bot from camping forever on the furnace crown.
+    if (support && targetPlatform && targetPlatform.y > support.y + 45 && centerX(actor) > targetPlatform.x + 25 && centerX(actor) < targetPlatform.x + targetPlatform.w - 25 && state.tick >= ai.nextJumpTick) {
+      c.moveY = 1; c.jumpPressed = true; ai.nextJumpTick = state.tick + 20;
+    }
+    if (target) {
+      const dx = centerX(target) - centerX(actor), dy = centerY(target) - centerY(actor);
+      if (!offstage && Math.abs(dx) < 68 && Math.abs(dy) < 60 && !target.invulnerable && state.tick >= ai.nextAttackTick && !actor.stun && !actor.attackTicks && !actor.dashTicks) {
+        c.attackPressed = true;
+        // Aim through the target. Directional attacks still use the same axes
+        // as a human, including the resulting ordinary movement that tick.
+        c.moveX = Math.abs(dx) > 12 ? sign(dx) : 0;
+        c.moveY = Math.abs(dy) > 23 ? sign(dy) : 0;
+        if (!c.moveX && !c.moveY) c.moveX = actor.facing;
+        ai.nextAttackTick = state.tick + Math.round(difficulty.attackDelay / ai.aggression);
+      }
+      const safeDash = support && actor.x > support.x + 90 && actor.x + actor.w < support.x + support.w - 90;
+      if (safeDash && !actor.dashCooldown && !actor.attackTicks && target.attackTicks > 0 && Math.abs(dx) < 95 && Math.abs(dy) < 55 && random(ai) < difficulty.dodge) {
+        c.dashPressed = true; c.attackPressed = false; c.moveX = -sign(dx || actor.facing); c.moveY = 0;
+      }
+    }
+    return c;
+  }
+  function cpuInput(state, actorId) {
+    const actor = state.actors.find((item) => item.id === actorId);
+    if (!actor || actor.controller !== 'cpu') return normalizeCommand();
+    const ai = actor.ai;
+    if (ai.lastTick === state.tick) return Object.assign({}, ai.cachedCommand);
+    let command = normalizeCommand();
+    if (state.phase === 'playing' && actor.stocks > 0 && !actor.respawnTicks) {
+      if (state.tick >= ai.nextThinkTick) {
+        command = cpuDecision(state, actor);
+        ai.intent = Object.assign({}, command, { jumpPressed: false, attackPressed: false, dashPressed: false });
+        if (command.attackPressed && actor.onGround) { ai.intent.moveX = 0; ai.intent.moveY = 0; }
+        ai.nextThinkTick = state.tick + difficulties[state.difficulty].reaction + ai.reactionOffset;
+      } else command = Object.assign({}, ai.intent);
+    }
+    ai.lastTick = state.tick; ai.cachedCommand = command;
+    return Object.assign({}, command);
+  }
+
+  function snapshot(state) { return JSON.parse(JSON.stringify(state)); }
+  function restore(saved) {
+    if (!saved || saved.version !== constants.VERSION || !arenas.some((a) => a.id === saved.arenaId) || !['duel', 'ffa', 'teams'].includes(saved.format) || !Object.hasOwn(difficulties, saved.difficulty) || !['countdown', 'playing', 'over'].includes(saved.phase)) throw new TypeError('Invalid arena snapshot');
+    if (!Number.isInteger(saved.tick) || saved.tick < 0 || !Number.isInteger(saved.rngState) || !Number.isInteger(saved.countdownTicks) || !Number.isInteger(saved.timeLeftTicks) || !Array.isArray(saved.events) || !Array.isArray(saved.actors) || saved.actors.length !== (saved.format === 'duel' ? 2 : 4)) throw new TypeError('Invalid arena snapshot state');
+    const ids = new Set();
+    for (const actor of saved.actors) {
+      if (!actor || !Number.isInteger(actor.id) || actor.id < 1 || ids.has(actor.id) || !actor.ai || !Number.isInteger(actor.ai.rngState) || !actor.ai.intent || !actor.ai.cachedCommand || !Array.isArray(actor.attackHitIds)) throw new TypeError('Invalid arena snapshot actor');
+      ids.add(actor.id);
+      for (const key of ['x', 'y', 'px', 'py', 'vx', 'vy', 'w', 'h', 'stocks', 'damage', 'stun', 'invulnerable', 'attackTicks', 'dashTicks', 'respawnTicks']) {
+        if (!Number.isFinite(actor[key])) throw new TypeError('Invalid arena snapshot number');
+      }
+    }
+    return snapshot(saved);
+  }
+
+  return freeze({ constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, step, cpuInput, attackBox, snapshot, restore });
+});

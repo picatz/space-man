@@ -33,3 +33,15 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Check preview paths, caches, and saves without a relay
         run: npm run test:previews
+      - name: Check arena controls, match flow, and runner return without a relay
+        run: npm run test:arena
+        env:
+          SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/arena-screenshots
+      - name: Keep arena browser screenshots for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arena-browser-screenshots
+          path: ${{ runner.temp }}/arena-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 3
