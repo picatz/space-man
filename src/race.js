@@ -10,6 +10,7 @@
   const TAU = Math.PI * 2, STEP = 1 / 60;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const finite = (v, fallback = 0) => Number.isFinite(v) ? v : fallback;
+  const pressed = v => v === true || v === 1;
   const angle = a => Math.atan2(Math.sin(a), Math.cos(a));
   const wrap = (a, n) => ((a % n) + n) % n;
   function freeze(o) { Object.values(o).forEach(v => { if (v && typeof v === 'object') freeze(v); }); return Object.freeze(o); }
@@ -45,8 +46,9 @@
       if(d<dist){dist=d;best={x:px,y:py,tx:g.tx,ty:g.ty,s:g.start+t*g.length,distance:Math.sqrt(d)};}}
     return best;
   }
-  function command(raw={}) { return {steer:clamp(finite(raw.steer),-1,1),throttle:clamp(finite(raw.throttle),0,1),brake:!!raw.brake,boost:!!raw.boost,recover:!!raw.recover}; }
+  function command(raw={}) { raw=raw&&typeof raw==='object'?raw:{}; return {steer:clamp(finite(raw.steer),-1,1),throttle:clamp(finite(raw.throttle),0,1),brake:pressed(raw.brake),boost:pressed(raw.boost),recover:pressed(raw.recover)}; }
   function create(options={}) {
+    options=options&&typeof options==='object'?options:{};
     const c=course(options.trackId), difficulty=['easy','normal','hard'].includes(options.difficulty)?options.difficulty:'normal';
     const count=clamp(Math.floor(finite(options.count,5)),1,6), actors=[];
     for(let i=0;i<count;i++) {const spawn=at(c,38-Math.floor(i/2)*52),side=(i%2===0?-1:1)*30;
@@ -60,19 +62,20 @@
   }
   function recover(state,a,c) {
     // Explicit rescue returns to the last verified gate, never a forward jump.
-    const s=(a.passed%20)*c.length/20+12,p=at(c,s);a.x=p.x;a.y=p.y;a.heading=Math.atan2(p.ty,p.tx);a.vx=a.vy=a.speed=0;a.fuel=Math.max(0,a.fuel-25);a.recoveryTicks=90;a.recoveries++;a.lastProgressTick=state.raceTick;state.events.push({type:'recover',id:a.id});
+    const s=(a.passed%20)*c.length/20+12,p=at(c,s);a.x=p.x;a.y=p.y;a.heading=Math.atan2(p.ty,p.tx);a.vx=a.vy=a.speed=0;a.fuel=Math.max(0,a.fuel-25);a.boosting=false;a.padTicks=0;a.offroad=false;a.progress=a.passed+12/(c.length/20);a.recoveryTicks=90;a.recoveries++;a.lastProgressTick=state.raceTick;state.events.push({type:'recover',id:a.id});
   }
   function step(state,inputs={}) {
+    inputs=inputs&&typeof inputs==='object'?inputs:{};
     state.events=[]; if(state.phase==='finished')return state;
     state.tick++;
     if(state.phase==='countdown'){if(--state.countdown<=0){state.phase='racing';state.events.push({type:'go'});}return state;}
-    state.raceTick++; const c=course(state.trackId);
+    state.raceTick++; const c=course(state.trackId), previous=new Map();
     for(const a of state.actors){
       if(a.finishTick!==null)continue;
       const input=command(inputs[a.id]);
       if(input.recover&&!a.recoverHeld&&a.recoveryTicks===0)recover(state,a,c);a.recoverHeld=input.recover;
       if(a.recoveryTicks>0){a.recoveryTicks--;continue;}
-      const oldX=a.x,oldY=a.y,n=nearest(c,a.x,a.y);a.offroad=n.distance>c.width/2;
+      const n=nearest(c,a.x,a.y);previous.set(a.id,{x:a.x,y:a.y});a.offroad=n.distance>c.width/2;
       if(a.padCooldown>0)a.padCooldown--;if(a.padTicks>0)a.padTicks--;
       a.boosting=input.boost&&a.fuel>1&&!a.offroad&&!input.brake;
       a.fuel=clamp(a.fuel+(a.boosting?-0.72:.17),0,100);
@@ -85,7 +88,12 @@
       a.vx=fx*velocity-fy*slide;a.vy=fy*velocity+fx*slide;a.x+=a.vx;a.y+=a.vy;a.speed=Math.hypot(a.vx,a.vy);
       if(n.distance>c.width*3){recover(state,a,c);continue;}
       if(!a.offroad&&a.padCooldown===0&&c.pads.some(p=>Math.abs(angle((n.s/c.length-p)*TAU))*c.length/TAU<23)) {a.padTicks=45;a.padCooldown=95;state.events.push({type:'pad',id:a.id});}
-      const gate=c.gates[a.nextGate],before=(oldX-gate.x)*gate.tx+(oldY-gate.y)*gate.ty,after=(a.x-gate.x)*gate.tx+(a.y-gate.y)*gate.ty;
+
+    }
+    // Resolve soft contacts before swept checkpoint tests so bumps cannot strand a pilot past an uncredited gate.
+    for(let i=0;i<state.actors.length;i++)for(let j=i+1;j<state.actors.length;j++){const a=state.actors[i],b=state.actors[j];if(a.finishTick!==null||b.finishTick!==null||a.recoveryTicks||b.recoveryTicks)continue;const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<29){const nx=d>.01?dx/d:1,ny=d>.01?dy/d:0,push=(29-d)*.5;a.x-=nx*push;a.y-=ny*push;b.x+=nx*push;b.y+=ny*push;const rel=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;if(rel>0){a.vx-=nx*rel*.35;a.vy-=ny*rel*.35;b.vx+=nx*rel*.35;b.vy+=ny*rel*.35;}}}
+    for(const a of state.actors){const old=previous.get(a.id);if(!old||a.finishTick!==null||a.recoveryTicks)continue;const n=nearest(c,a.x,a.y);a.speed=Math.hypot(a.vx,a.vy);
+      const gate=c.gates[a.nextGate],before=(old.x-gate.x)*gate.tx+(old.y-gate.y)*gate.ty,after=(a.x-gate.x)*gate.tx+(a.y-gate.y)*gate.ty;
       const lateralGate=Math.abs(-(a.x-gate.x)*gate.ty+(a.y-gate.y)*gate.tx);
       if(before<=0&&after>0&&lateralGate<c.width/2+18){
         a.passed++;a.nextGate=(a.nextGate+1)%20;a.lastProgressTick=state.raceTick;
@@ -96,9 +104,8 @@
       let delta=wrap(n.s-segmentStart,c.length);if(delta>c.length*.5)delta=0;
       a.progress=a.passed+clamp(delta/(c.length/20),0,.999);
     }
-    // Soft kart contacts never award gates; only normal movement can cross one.
-    for(let i=0;i<state.actors.length;i++)for(let j=i+1;j<state.actors.length;j++){const a=state.actors[i],b=state.actors[j];if(a.finishTick!==null||b.finishTick!==null||a.recoveryTicks||b.recoveryTicks)continue;const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d<29){const nx=d>.01?dx/d:1,ny=d>.01?dy/d:0,push=(29-d)*.5;a.x-=nx*push;a.y-=ny*push;b.x+=nx*push;b.y+=ny*push;const rel=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;if(rel>0){a.vx-=nx*rel*.35;a.vy-=ny*rel*.35;b.vx+=nx*rel*.35;b.vy+=ny*rel*.35;}}}
-    if(state.actors.every(a=>a.finishTick!==null)||state.actors.find(a=>a.controller==='human')?.finishTick!==null&&state.actors.some(a=>a.controller==='human')||state.raceTick>=60*300){state.phase='finished';state.results=standings(state).map((a,i)=>({id:a.id,name:a.name,position:i+1,time:a.finishTick===null?null:a.finishTick*STEP,finished:a.finishTick!==null}));}
+    const human=state.actors.find(a=>a.controller==='human');
+    if(state.actors.every(a=>a.finishTick!==null)||(human&&human.finishTick!==null)||state.raceTick>=60*300){state.phase='finished';state.results=standings(state).map((a,i)=>({id:a.id,name:a.name,position:i+1,time:a.finishTick===null?null:a.finishTick*STEP,finished:a.finishTick!==null}));}
     return state;
   }
   function standings(state){return state.actors.slice().sort((a,b)=>a.finishTick!==null&&b.finishTick!==null?a.finishTick-b.finishTick:a.finishTick!==null?-1:b.finishTick!==null?1:b.progress-a.progress||a.id.localeCompare(b.id));}

@@ -1,0 +1,41 @@
+name: Star Circuit browser checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  racing-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - name: Install pinned browser
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Exercise real racing, controls, interruption and responsive UI
+        run: node --test race.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.browser }}
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/race-screenshots
+      - name: Keep screenshots for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: race-${{ matrix.browser }}-screenshots
+          path: ${{ runner.temp }}/race-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 5
