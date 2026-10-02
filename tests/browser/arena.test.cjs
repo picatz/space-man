@@ -13,7 +13,7 @@ async function launch(t, device = {}, init) {
       const pathname = new URL(req.url, 'http://localhost').pathname;
       const file = path.resolve(ROOT, '.' + decodeURIComponent(pathname) + (pathname.endsWith('/') ? 'index.html' : ''));
       if (!file.startsWith(ROOT + path.sep)) return res.writeHead(400).end();
-      const type = { '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.json': 'application/json' }[path.extname(file)] || 'text/plain';
+      const type = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/javascript', '.png': 'image/png', '.json': 'application/json' }[path.extname(file)] || 'text/plain';
       const bytes = await fs.readFile(file);
       res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }).end(bytes);
     } catch (_) { res.writeHead(404).end(); }

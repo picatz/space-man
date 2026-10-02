@@ -1,0 +1,54 @@
+name: Shared visual language
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  theme-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+          path: theme-before
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+        working-directory: tests/browser
+      - name: Install browser
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+        working-directory: tests/browser
+      - name: Cross-mode layout, focus, saved settings and before-after screenshots
+        run: node --test theme.test.cjs
+        working-directory: tests/browser
+        env:
+          SPACE_MAN_THEME_BROWSER: ${{ matrix.browser }}
+          SPACE_MAN_THEME_BASE_ROOT: ${{ github.workspace }}/theme-before
+          SPACE_MAN_THEME_SCREENSHOTS: ${{ runner.temp }}/theme-screenshots
+      - name: Existing Arena touch, controller and viewport regressions
+        if: always()
+        run: node --test arena.test.cjs
+        working-directory: tests/browser
+        env:
+          SPACE_MAN_ARENA_BROWSER: ${{ matrix.browser }}
+          SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/arena-screenshots
+      - name: Keep real-browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: theme-${{ matrix.browser }}-screenshots
+          path: |
+            ${{ runner.temp }}/theme-screenshots/*.png
+            ${{ runner.temp }}/arena-screenshots/*.png
+          retention-days: 5
