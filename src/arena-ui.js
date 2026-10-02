@@ -161,7 +161,7 @@
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
-    let touchEdges = { jump: false, attack: false, dash: false }, resumeTap = null;
+    let touchEdges = { jump: false, attack: false, dash: false }, recoveryTap = null;
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
     let audio = null, audioGain = null, lastSfx = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     const listeners = [];
@@ -249,7 +249,7 @@
       // Touch cancellation must never release a keyboard or controller hold.
       const previousTouches = Array.from(touches);
       touches.clear(); stick = null; moveX = moveY = 0;
-      resumeTap = null;
+      recoveryTap = null;
       if (clearEdges) touchEdges = { jump: false, attack: false, dash: false };
       for (const [id, data] of previousTouches) { data.el.classList.remove('arena-pressed'); try { if (data.el.hasPointerCapture(id)) data.el.releasePointerCapture(id); } catch (_) {} }
       if (stickBase) { stickBase.classList.remove('arena-stick-active'); stickBase.style.removeProperty('left'); stickBase.style.removeProperty('top'); stickKnob.style.transform = 'translate(-50%,-50%)'; }
@@ -373,6 +373,23 @@
         jumpPressed: jumpEdge || touchEdges.jump, jumpHeld: actionHeld('jump') || pad.jump || Array.from(touches.values()).some(t => t.action === 'jump'), attackPressed: attackEdge || touchEdges.attack, dashPressed: dashEdge || touchEdges.dash };
       jumpEdge = attackEdge = dashEdge = false; touchEdges = { jump: false, attack: false, dash: false }; return c;
     }
+    // Only guarded, idempotent menu actions use this fallback. Native browsers
+    // can omit a compatibility click after a captured drag is interrupted.
+    function recoveryButton(text, cls, action) {
+      const n = button(text, cls, action);
+      n.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary && activeModal) recoveryTap = { el: n, id: e.pointerId, x: e.clientX, y: e.clientY }; });
+      n.addEventListener('pointermove', e => { if (recoveryTap && recoveryTap.el === n && recoveryTap.id === e.pointerId && Math.hypot(e.clientX - recoveryTap.x, e.clientY - recoveryTap.y) > 10) recoveryTap = null; });
+      for (const type of ['pointercancel', 'lostpointercapture']) n.addEventListener(type, e => { if (recoveryTap && recoveryTap.el === n && recoveryTap.id === e.pointerId) recoveryTap = null; });
+      n.addEventListener('pointerup', e => {
+        const tap = recoveryTap;
+        if (!tap || tap.el !== n || tap.id !== e.pointerId) return;
+        recoveryTap = null;
+        if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) return;
+        const r = n.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) action();
+      });
+      return n;
+    }
     function build() {
       if (built) return;
       arena = root.SpaceManArena;
@@ -406,7 +423,7 @@
       touchEl.append(stickZone, touchActions); rootEl.append(touchEl);
       modal = el('div', 'arena-modal');
       lobby = el('div', 'arena-lobby arena-dialog'); lobby.setAttribute('role', 'dialog'); lobby.setAttribute('aria-labelledby', 'arena-lobby-title');
-      const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), button('← Back to runner', 'arena-text-button', close));
+      const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), recoveryButton('← Back to runner', 'arena-text-button', close));
       const lobbyGrid = el('div', 'arena-lobby-grid');
       const intro = el('div', 'arena-intro'); intro.append(el('span', 'arena-pill', 'LOCAL CPU BATTLES'));
       const h1 = el('h1', 'arena-title'); h1.id = 'arena-lobby-title'; h1.append(document.createTextNode('Small suits.'), el('br'), el('span', '', 'Big knockouts.'));
@@ -445,26 +462,11 @@
       pausePanel = el('div', 'arena-small-panel arena-dialog'); pausePanel.setAttribute('role', 'dialog'); pausePanel.setAttribute('aria-labelledby', 'arena-pause-title');
       const ph = el('h2', 'arena-panel-title', 'Taking a breather'); ph.id = 'arena-pause-title';
       const pauseReason = el('p', 'arena-panel-copy', 'Your match is paused.'); pauseReason.id = 'arena-pause-reason';
-      const resumeButton = button('Resume match', 'arena-primary', resumeMatch);
-      // An interrupted native drag can suppress the next compatibility click.
-      // A fresh, stationary touch release must still let the player resume.
-      // resumeMatch is idempotent; a later click keeps keyboard/mouse semantics
-      // without restarting or resuming a second time.
-      resumeButton.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary && paused) resumeTap = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
-      resumeButton.addEventListener('pointermove', e => { if (resumeTap && resumeTap.id === e.pointerId && Math.hypot(e.clientX - resumeTap.x, e.clientY - resumeTap.y) > 10) resumeTap = null; });
-      for (const type of ['pointercancel', 'lostpointercapture']) resumeButton.addEventListener(type, e => { if (resumeTap && resumeTap.id === e.pointerId) resumeTap = null; });
-      resumeButton.addEventListener('pointerup', e => {
-        const tap = resumeTap;
-        if (!tap || tap.id !== e.pointerId) return;
-        resumeTap = null;
-        if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) return;
-        const r = resumeButton.getBoundingClientRect();
-        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) resumeMatch();
-      });
-      pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, resumeButton, button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), button('Back to runner', 'arena-text-button', close)); modal.append(pausePanel);
+      const resumeButton = recoveryButton('Resume match', 'arena-primary', resumeMatch);
+      pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, resumeButton, button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('Back to runner', 'arena-text-button', close)); modal.append(pausePanel);
       resultPanel = el('div', 'arena-small-panel arena-result-panel arena-dialog'); resultPanel.setAttribute('role', 'dialog'); resultPanel.setAttribute('aria-labelledby', 'arena-result-title');
       resultTitle = el('h2', 'arena-panel-title'); resultTitle.id = 'arena-result-title'; resultText = el('p', 'arena-panel-copy'); resultRoster = el('div', 'arena-result-roster');
-      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), button('Back to runner', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
+      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('Back to runner', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
       live = el('div', 'arena-sr-only'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true'); rootEl.append(live);
       // Events stop at this overlay, before the runner's window-level handlers.
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel']) rootEl.addEventListener(type, e => e.stopPropagation(), { passive: type.startsWith('touch') || type === 'wheel' });
