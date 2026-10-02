@@ -161,7 +161,7 @@
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
-    let touchEdges = { jump: false, attack: false, dash: false }, recoveryTap = null;
+    let touchEdges = { jump: false, attack: false, dash: false }, recoveryTap = null, clearRecoveryClick = null;
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
     let audio = null, audioGain = null, lastSfx = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     const listeners = [];
@@ -375,6 +375,23 @@
     }
     // Only guarded, idempotent menu actions use this fallback. Native browsers
     // can omit a compatibility click after a captured drag is interrupted.
+    function guardRecoveryClick() {
+      if (clearRecoveryClick) clearRecoveryClick();
+      let timer;
+      const clear = () => {
+        root.removeEventListener('click', swallow, true); root.removeEventListener('pointerdown', clear, true);
+        root.clearTimeout(timer); if (clearRecoveryClick === clear) clearRecoveryClick = null;
+      };
+      const swallow = e => {
+        if (!e.isTrusted || e.detail === 0) return;
+        e.preventDefault(); e.stopImmediatePropagation(); clear();
+      };
+      // This bounded guard intentionally outlives close: WebKit can retarget
+      // the old finger's delayed click onto the runner below the removed dialog.
+      // A new physical press immediately releases it, so the next tap still works.
+      root.addEventListener('click', swallow, true); root.addEventListener('pointerdown', clear, true);
+      timer = root.setTimeout(clear, 700); clearRecoveryClick = clear;
+    }
     function recoveryButton(text, cls, action) {
       const n = button(text, cls, action);
       n.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary && activeModal) recoveryTap = { el: n, id: e.pointerId, x: e.clientX, y: e.clientY }; });
@@ -386,7 +403,7 @@
         recoveryTap = null;
         if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) return;
         const r = n.getBoundingClientRect();
-        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) action();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) { guardRecoveryClick(); action(); }
       });
       return n;
     }
@@ -821,7 +838,7 @@
       if (savedFocus && savedFocus.isConnected && typeof savedFocus.focus === 'function') savedFocus.focus({ preventScroll: true });
       if (typeof opts.onClose === 'function') opts.onClose();
     }
-    function destroy() { close(); destroyed = true; if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
+    function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
     return Object.freeze({ open, close, destroy, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
   }
   root.SpaceManArenaUI = Object.freeze({ create });
