@@ -291,6 +291,11 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   // CPU decisions or player state; knockback cannot mask a stuck-input failure.
   await page.evaluate(() => {
     const original = SpaceManArena;
+    window.inputEvents = [];
+    for (const type of ['pointerdown', 'pointerup', 'lostpointercapture', 'touchend', 'click', 'blur']) window.addEventListener(type, e => {
+      inputEvents.push({ type, id: e.pointerId, target: e.target.id || e.target.className || e.target.tagName, screen: window.arenaUI?.screen });
+      if (inputEvents.length > 35) inputEvents.shift();
+    }, true);
     window.SpaceManArena = { ...original, step(state, commands) {
       const human = state.actors.find(a => a.controller === 'human');
       window.lastHumanCommand = { ...commands[human.id] };
@@ -313,7 +318,12 @@ test('arena touch recovers from outside release, lost capture, interruptions and
     return p;
   }
   async function neutral() {
-    await page.waitForFunction(() => lastHumanCommand?.moveX === 0 && lastHumanCommand?.moveY === 0 && !lastHumanCommand?.jumpHeld);
+    try {
+      await page.waitForFunction(() => lastHumanCommand?.moveX === 0 && lastHumanCommand?.moveY === 0 && !lastHumanCommand?.jumpHeld, null, { timeout: 5000 });
+    } catch (error) {
+      t.diagnostic(JSON.stringify(await page.evaluate(() => ({ screen: arenaUI.screen, phase: arenaUI.snapshot()?.phase, command: lastHumanCommand, events: window.inputEvents, pending: __arenaRafPending }))));
+      throw error;
+    }
     assert.equal(await page.locator('.arena-stick-active,.arena-pressed').count(), 0);
   }
   let p = await dragStick();
