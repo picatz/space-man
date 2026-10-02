@@ -218,12 +218,19 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     if (await summary.count()) await summary.click();
     await c.page.locator('#raceHost').waitFor();
   }
-  async function join(c, invite, watch = false) {
+  async function join(c, invite, watch = false, initialScreen = 'lobby') {
     await open(c); await c.page.locator('#raceRoomInput').fill(invite);
     await c.page.locator(watch ? '#raceWatch' : '#raceJoin').click();
     await wait(c, () => SpaceManNet.active && SpaceManNet.info().mode === 'race' && SpaceManNet.roster().some(r => r.you));
     c.joined = true;
-    assert.equal(await c.page.locator('#raceRoomHint').isVisible(), true, 'joined-room status remains visible');
+    await screen(c, initialScreen);
+    if (initialScreen === 'lobby') {
+      assert.equal(await c.page.locator('#raceRoomHint').isVisible(), true, 'joined-lobby status remains visible');
+    } else {
+      // A late arrival enters the authoritative paused race, so the lobby and
+      // its room hint are correctly hidden. Check the visible pause status.
+      assert.equal(await c.page.getByText('The host paused the race. Everyone is safely parked.', {exact:true}).isVisible(), true, 'late watcher sees shared host-pause status');
+    }
   }
   async function roster(count) {
     const joined = clients.filter(c => c.joined);
@@ -359,7 +366,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     stage = 'host pause, late spectator admission and original-seat reconnect';
     await host.page.getByRole('button',{name:'Pause race',exact:true}).click(); await pausedAgreement(host,[guest,watcher]);
     assert.equal(await guest.page.locator('#raceResume').isDisabled(),true,'guest cannot resume shared pause');
-    const late = await client('late player'); await join(late,invite); await roster(4);
+    const late = await client('late player'); await join(late,invite,false,'pause'); await roster(4);
     assert.equal((await identity(late)).role,1,'late player watches current race');
     await pausedAgreement(host,[guest,watcher,late]);
     const socketsBefore = guest.sockets;
