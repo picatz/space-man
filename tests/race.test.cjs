@@ -383,7 +383,7 @@ test("boost pads trigger only on-road, boost temporarily and cannot retrigger du
   assert.equal(state.events.length, 0);
 });
 
-test("offroad caps speed and disables fuel boost without silently moving the kart", () => {
+test("offroad caps speed and disables fuel boost with bounded inward rail correction", () => {
   const state = playing(),
     a = state.actors[0],
     c = Race.course(state.trackId);
@@ -394,7 +394,7 @@ test("offroad caps speed and disables fuel boost without silently moving the kar
   assert.equal(a.offroad, true);
   assert.equal(a.boosting, false);
   assert.ok(a.speed <= 2.6 + EPSILON);
-  assert.ok(Math.hypot(a.x - old.x, a.y - old.y) <= 2.6 + EPSILON);
+  assert.ok(Math.hypot(a.x - old.x, a.y - old.y) <= 4.6 + EPSILON);
   assert.equal(a.recoveries, 0);
   close(a.fuel, 50 + 0.17);
 });

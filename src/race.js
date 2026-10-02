@@ -8,7 +8,9 @@
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
   const TAU = Math.PI * 2,
-    STEP = 1 / 60;
+    STEP = 1 / 60,
+    KART_RADIUS = 14,
+    OFFCOURSE_TICKS = 120;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const finite = (v, fallback = 0) => (Number.isFinite(v) ? v : fallback);
   const pressed = (v) => v === true || v === 1;
@@ -242,6 +244,8 @@
         dnf: false,
         progress: 0,
         offroad: false,
+        // Host-only bookkeeping; remote clients render authoritative snapshots.
+        offroadTicks: 0,
         recoveries: 0,
         recoveryTicks: 0,
         recoverHeld: false,
@@ -299,11 +303,34 @@
     a.boosting = false;
     a.padTicks = 0;
     a.offroad = false;
+    a.offroadTicks = 0;
     a.progress = a.passed + 12 / (c.length / 20);
     a.recoveryTicks = 90;
     a.recoveries++;
     a.lastProgressTick = state.raceTick;
     state.events.push({ type: "recover", id: a.id });
+  }
+  // A continuous road-relative rail, shared by CPU and human pilots. Remove
+  // only outward velocity (no bouncing); retain tangent motion around bends.
+  // Existing invalid/offcourse poses move inward by at most two units per tick
+  // until the explicit rescue takes over, rather than snapping to a nearby road.
+  function edgeContact(a, c, old) {
+    const n = nearest(c, a.x, a.y), limit = c.width / 2 - KART_RADIUS;
+    if (n.distance <= limit) return n;
+    const nx = (a.x - n.x) / n.distance, ny = (a.y - n.y) / n.distance;
+    const wasInside = nearest(c, old.x, old.y).distance <= limit + 0.01;
+    const correction = Math.min(n.distance - limit, wasInside ? 32 : 2);
+    a.x -= nx * correction;
+    a.y -= ny * correction;
+    const outward = a.vx * nx + a.vy * ny;
+    if (outward > 0) {
+      a.vx -= nx * outward;
+      a.vy -= ny * outward;
+    }
+    // Gentle rail friction, independent of rendered frame rate.
+    a.vx *= 0.94;
+    a.vy *= 0.94;
+    return nearest(c, a.x, a.y);
   }
   function step(state, inputs = {}) {
     inputs = inputs && typeof inputs === "object" ? inputs : {};
@@ -332,7 +359,16 @@
       }
       const n = nearest(c, a.x, a.y);
       previous.set(a.id, { x: a.x, y: a.y });
-      a.offroad = n.distance > c.width / 2;
+      // The inner shoulder warns and slows before the physical rail.
+      a.offroad = n.distance > c.width / 2 - KART_RADIUS - 12;
+      const trapped = n.distance > c.width / 2 - KART_RADIUS - 1 &&
+        a.speed < 0.75 && input.throttle > 0;
+      a.offroadTicks = n.distance > c.width / 2 || trapped
+        ? finite(a.offroadTicks) + 1 : 0;
+      if (n.distance > c.width / 2 + 120 || a.offroadTicks >= OFFCOURSE_TICKS) {
+        recover(state, a, c);
+        continue;
+      }
       if (a.padCooldown > 0) a.padCooldown--;
       if (a.padTicks > 0) a.padTicks--;
       a.boosting = input.boost && a.fuel > 1 && !a.offroad && !input.brake;
@@ -361,10 +397,6 @@
       a.x += a.vx;
       a.y += a.vy;
       a.speed = Math.hypot(a.vx, a.vy);
-      if (n.distance > c.width * 3) {
-        recover(state, a, c);
-        continue;
-      }
       if (
         !a.offroad &&
         a.padCooldown === 0 &&
@@ -417,15 +449,19 @@
     for (const a of state.actors) {
       const old = previous.get(a.id);
       if (!old || a.finishTick !== null || a.dnf || a.recoveryTicks) continue;
-      const n = nearest(c, a.x, a.y);
+      // Gate sweep uses actual driving/contact movement, never the rail's
+      // inward correction (which cannot turn a missed gate into progress).
+      const driven = { x: a.x, y: a.y };
+      const n = edgeContact(a, c, old);
+      a.offroad = n.distance > c.width / 2 - KART_RADIUS - 12;
       a.speed = Math.hypot(a.vx, a.vy);
       const gate = c.gates[a.nextGate],
         before = (old.x - gate.x) * gate.tx + (old.y - gate.y) * gate.ty,
-        after = (a.x - gate.x) * gate.tx + (a.y - gate.y) * gate.ty;
+        after = (driven.x - gate.x) * gate.tx + (driven.y - gate.y) * gate.ty;
       const crossed = before <= 0 && after > 0,
         fraction = crossed ? -before / (after - before) : 0;
-      const crossX = old.x + (a.x - old.x) * fraction,
-        crossY = old.y + (a.y - old.y) * fraction;
+      const crossX = old.x + (driven.x - old.x) * fraction,
+        crossY = old.y + (driven.y - old.y) * fraction;
       const lateralGate = Math.abs(
         -(crossX - gate.x) * gate.ty + (crossY - gate.y) * gate.tx,
       );
@@ -500,6 +536,8 @@
       STEP,
       GATES: 20,
       COUNTDOWN: 180,
+      KART_RADIUS,
+      OFFCOURSE_TICKS,
       FINISH_GRACE_TICKS: 60 * 30,
       MAX_RACE_TICKS: 60 * 300,
     }),
