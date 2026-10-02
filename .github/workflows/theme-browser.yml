@@ -38,7 +38,15 @@ jobs:
           SPACE_MAN_THEME_SCREENSHOTS: ${{ runner.temp }}/theme-screenshots
       - name: Existing Arena touch, controller and viewport regressions
         if: always()
-        run: node --test arena.test.cjs
+        run: |
+          if [ "${{ matrix.browser }}" = webkit ]; then
+            # These three tests send real multi-touch through Chromium's CDP.
+            # All other Arena tests (including controller and viewport input)
+            # run in WebKit; Chromium still runs every native-touch test.
+            node --test --test-skip-pattern='^(arena phone:|arena touch recovers|arena native touch)' arena.test.cjs
+          else
+            node --test arena.test.cjs
+          fi
         working-directory: tests/browser
         env:
           SPACE_MAN_ARENA_BROWSER: ${{ matrix.browser }}
