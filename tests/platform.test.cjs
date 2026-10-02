@@ -14,7 +14,7 @@ test('everything index.html and manifest.json reference is precached for offline
   const html = read('index.html'), manifest = JSON.parse(read('manifest.json'));
   const refs = [
     ...[...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]),
-    ...[...html.matchAll(/<link\s+rel="(?:manifest|icon|apple-touch-icon)"[^>]*\shref="([^"]+)"/g)].map((m) => m[1]),
+    ...[...html.matchAll(/<link\s+rel="(?:manifest|icon|apple-touch-icon|stylesheet)"[^>]*\shref="([^"]+)"/g)].map((m) => m[1]),
     ...manifest.icons.map((i) => i.src), ...manifest.screenshots.map((s) => s.src),
   ].filter((u) => !/^[a-z]+:/i.test(u));
   assert.ok(refs.filter((u) => u.startsWith('src/')).length >= 7, 'found the src/ scripts');

@@ -15,6 +15,7 @@ const LEGACY_PREFIX = 'sm2-shell-';
 const SHELL = [
   './',
   './index.html',
+  './src/space-theme.css',
   './src/build.js',
   './src/contracts.js',
   './src/save-schema.js',

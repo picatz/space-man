@@ -114,12 +114,12 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
   } else {
     server = http.createServer(async (req, res) => {
       const file = new URL(req.url, 'http://localhost').pathname.slice(1) || 'index.html';
-      if (!/^(?:index\.html|manifest\.json|favicon\.png|src\/[a-z-]+\.js|icons\/[a-z0-9-]+\.png)$/.test(file)) {
+      if (!/^(?:index\.html|manifest\.json|favicon\.png|src\/[a-z-]+\.(?:js|css)|icons\/[a-z0-9-]+\.png)$/.test(file)) {
         res.writeHead(404).end(); return;
       }
       try {
         const bytes = await fs.readFile(path.join(ROOT, file));
-        const type = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' }[path.extname(file)];
+        const type = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' }[path.extname(file)];
         res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }).end(bytes);
       } catch { res.writeHead(404).end(); }
     });
@@ -158,6 +158,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       ws.on('framereceived', event => { c.received++; if (Buffer.from(event.payload)[0] === 5) c.encryptedReceived++; });
     });
     await c.page.goto(baseURL); await c.page.locator('#btnRace').waitFor();
+    if (!process.env.SPACE_MAN_BASE_URL) assert.equal(await c.page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--sm-target').trim()), '44px', 'local browser checks load the shared stylesheet');
     await c.page.evaluate(() => {
       window.__raceRunnerBefore = G.player;
       window.__raceAcceptance = { inputs:{},snapshots:0,lifecycle:[],visibility:[],buttonEvents:{},maxPassed:{},boosts:{} };

@@ -26,7 +26,9 @@ async function launch(t, device = {}, init) {
           "Content-Type":
             path.extname(file) === ".js"
               ? "text/javascript"
-              : path.extname(file) === ".html"
+              : path.extname(file) === ".css"
+                ? "text/css"
+                : path.extname(file) === ".html"
                 ? "text/html"
                 : "application/octet-stream",
         })

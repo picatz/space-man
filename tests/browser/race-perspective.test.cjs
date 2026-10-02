@@ -28,7 +28,9 @@ async function launch(t, device = {}, init) {
               ? "text/javascript"
               : path.extname(file) === ".html"
                 ? "text/html"
-                : "application/octet-stream",
+                : path.extname(file) === ".css"
+                  ? "text/css"
+                  : "application/octet-stream",
         })
         .end(data);
     } catch (_) {

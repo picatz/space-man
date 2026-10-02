@@ -801,6 +801,7 @@
   .roster-actions-head { font-size: 12px; letter-spacing: 1px; color: var(--ui); margin-bottom: 10px; text-transform: uppercase; }
   .roster-actions-head .glyph { color: var(--cyan-lt); margin-right: 4px; }
 </style>
+<link rel="stylesheet" href="src/space-theme.css" />
 </head>
 <body>
 
@@ -810,16 +811,18 @@
 <div class="overlay attract-anchor" id="ovAttract">
   <div class="panel">
     <div class="attract-main">
-    <div id="attractBest" class="title-lg">BEST 0</div>
-    <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
+    <div class="launch-heading"><h1>Choose your adventure</h1><div id="attractBest" class="title-lg">BEST 0</div></div>
     <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
-    <button class="btn pulse" id="btnPlay">Tap to Start</button>
+    <div class="launch-modes" role="group" aria-label="Game modes">
+      <button class="btn mode-link" id="btnPlay" data-description="Outrun the flare · solo or friends" aria-label="Endless Run. Outrun the flare, solo or with friends.">Endless Run</button>
+      <button class="btn ghost mode-link" id="btnArena" data-description="Small suits. Big knockouts." aria-label="Orbital Arena. Battle CPUs or friends.">Orbital Arena</button>
+      <button class="btn ghost mode-link" id="btnRace" data-description="Carve the corners. Catch a boost." aria-label="Star Circuit. Arcade hover racing.">Star Circuit</button>
+    </div>
     <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
-    <button class="btn ghost" id="btnArena">Arena · CPU + Friends</button>
-    <button class="btn ghost" id="btnRace">Star Circuit · Racing</button>
     </div>
     <div class="attract-side">
+    <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
     <div class="control-guide desktop-guide" aria-label="Keyboard controls">
       <div><b>A D / ← →</b><span>MOVE</span></div>
       <div><b>SPACE</b><span>JUMP</span></div>
@@ -4776,12 +4779,12 @@ function drawWordmark() {
   ctx.fillStyle = '#9FF1FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.font = '700 ' + clamp(size * 0.2, 9, 13) + 'px ' + FONT;
   const tagY = cy + size * 0.62;
-  ctx.fillText('OUTRUN THE FLARE', view.w / 2, tagY);
+  ctx.fillText('RUN. BRAWL. RACE.', view.w / 2, tagY);
   // E7: one line of fiction under the tagline — alpha floor raised to 0.55 so
   // it never dims past legible (AR10's "illegible dim phase").
   ctx.globalAlpha = lessMotion() ? 0.7 : 0.55 + 0.25 * (0.5 + 0.5 * Math.sin(G.time * 2 + 1.7));
   ctx.fillStyle = '#9FB3E0'; ctx.font = '600 ' + clamp(size * 0.16, 10, 13) + 'px ' + FONT;
-  ctx.fillText('THE SUN LET GO. KEEP RUNNING.', view.w / 2, tagY + 16);
+  ctx.fillText('ONE SUIT. THREE ADVENTURES.', view.w / 2, tagY + 16);
   ctx.globalAlpha = 1;
 }
 
@@ -8427,12 +8430,12 @@ function doRosterBlock() {
 function doRosterKick() { const r = rosterActionTarget; hideAllOverlays(); if (G.mode === 'attract') showOverlay('ovRoom'); if (r) kickPlayer(r); }
 
 /* ---- death-card ROOM column + spectate + emote buttons ---- */
-// Run-start button copy per room state (§4.1, item 6). Solo / net-off keep their
-// existing labels byte-for-byte (so #shot goldens are unchanged); in a room the
-// copy says clearly when/how a run starts. No brand/vendor names.
+// Run-start button copy per room state (§4.1, item 6). The solo
+// mode name is explicit in the shared launcher; room copy still explains how
+// the shared round starts. The existing keyboard shortcut stays unchanged.
 function netLabelPlayButton() {
   const b = $('btnPlay'); if (!b) return;
-  if (!netLive() || NET.mockActive) { b.textContent = matchMedia('(pointer: coarse)').matches ? 'Tap to Start' : 'Press Space'; b.removeAttribute('aria-label'); return; }
+  if (!netLive() || NET.mockActive) { b.textContent = 'Endless Run'; b.setAttribute('aria-label', 'Endless Run. Outrun the flare, solo or with friends.'); return; }
   if (NET.info().isHost) { b.textContent = 'Start Round'; b.setAttribute('aria-label', 'Start the round — everyone runs this course together.'); }
   else if (netRoundActive()) { b.textContent = 'Join Round'; b.setAttribute('aria-label', 'Join the round already in progress.'); }
   else { b.textContent = 'Ready to Run'; b.setAttribute('aria-label', 'Wait at the start line for the host’s countdown.'); }
