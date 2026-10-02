@@ -121,7 +121,7 @@ test('the layout keeps every emote on screen and finger-sized, clear of the stri
     c.run('resize()');                               // the real portrait/landscape view for this window
     const L = c.run('emoteLayout()'), k = L.k, tag = `${w}x${h}`;
     assert.ok(Math.abs(k - w / c.run('view.w')) < 1e-9, tag + ': k is the real CSS-per-view scale');
-    assert.ok(L.button.y >= 12 + ins.top + 26, tag + ': the button sits under the race strip');
+    assert.ok(L.button.y * k >= (12 + 26) * k + ins.top, tag + ': the button sits under the race strip in CSS pixels');
     assert.ok((L.button.x + L.button.w) * k <= w - ins.right - 8, `${tag}: inside the right margin and notch (${(L.button.x + L.button.w) * k} vs ${w - ins.right})`);
     assert.ok(L.button.w * k >= 40 - 1e-6, tag + ': 40 CSS px button');
     assert.equal(L.items.length, 6);

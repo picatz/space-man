@@ -193,11 +193,20 @@ test('workflow trust boundaries stay explicit and deploy never executes reposito
   assert.match(assemble, /ref: \$\{\{ needs.discover.outputs.main_sha \}\}/);
   assert.match(assemble, /actions: read/);
   assert.doesNotMatch(assemble, /: write/);
-  const deploy = workflow.split('\n  deploy:')[1];
+  const deploy = workflow.split('\n  deploy:')[1].split('\n  comment:')[0];
   assert.match(deploy, /pages: write/);
   assert.match(deploy, /id-token: write/);
   assert.match(deploy, /uses: actions\/deploy-pages@v4/);
   assert.doesNotMatch(deploy, /uses: actions\/checkout|\n\s+run:|contents: write|pull-requests: write/);
+  const comment = workflow.split('\n  comment:')[1];
+  assert.match(comment, /needs: \[discover, assemble, deploy\]/);
+  assert.match(comment, /needs\.deploy\.result == 'success'/);
+  assert.match(comment, /pull-requests: write/);
+  assert.match(comment, /ref: \$\{\{ needs.discover.outputs.main_sha \}\}/);
+  assert.match(comment, /PREVIEW_MANIFEST: \$\{\{ needs.assemble.outputs.manifest \}\}/);
+  assert.match(comment, /persist-credentials: false/);
+  assert.doesNotMatch(comment, /contents: write|pages: write|id-token: write|actions: write|npm |download-artifact|matrix\.sha/);
+  assert.equal((workflow.match(/pull-requests: write/g) || []).length, 1);
 });
 
 test('real trusted builder receives both exact SHAs and ignores PR-provided build scripts', async t => {

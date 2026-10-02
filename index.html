@@ -24,6 +24,15 @@
   }
 
   :root {
+    /* All HUDs/overlays use --game-ui-* (canvas: safeInset). Passive
+       status goes in #gameStatusRail, which reserves space above every mode. */
+    --game-safe-top: env(safe-area-inset-top, 0px);
+    --game-safe-right: env(safe-area-inset-right, 0px);
+    --game-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --game-safe-left: env(safe-area-inset-left, 0px);
+    --game-status-height: 0px;
+    --game-ui-top: var(--game-safe-top); --game-ui-right: var(--game-safe-right);
+    --game-ui-bottom: var(--game-safe-bottom); --game-ui-left: var(--game-safe-left);
     --void: #060818;
     --nebula: #131A3A;
     --horizon: #2A2560;
@@ -82,6 +91,21 @@
     background: var(--void);
   }
 
+  /* A compact, non-interactive rail above the HUD, outside the thumb zone.
+     Future passive overlays join this rail instead of picking fixed corners. */
+  #gameStatusRail {
+    position: fixed; top: calc(var(--game-safe-top) + 4px);
+    left: calc(var(--game-safe-left) + 8px); right: calc(var(--game-safe-right) + 8px);
+    display: flex; justify-content: center; gap: 4px; z-index: 10000; pointer-events: none;
+  }
+  #gameStatusRail:empty { display: none; }
+  .game-status {
+    min-width: 0; max-width: 100%; padding: 2px 6px;
+    border: 1px solid #ffc93c; border-radius: 4px; background: #060818; color: #ffc93c;
+    font: 10px/14px monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .game-status-error { white-space: normal; }
+
   /* ---- DOM overlay screens ---- */
   .overlay {
     position: fixed;
@@ -92,7 +116,7 @@
     justify-content: center;
     z-index: 20;
     --oy: 20px;
-    padding: calc(env(safe-area-inset-top) + var(--oy)) calc(env(safe-area-inset-right) + 20px) calc(env(safe-area-inset-bottom) + var(--oy)) calc(env(safe-area-inset-left) + 20px);
+    padding: calc(var(--game-ui-top, env(safe-area-inset-top, 0px)) + var(--oy)) calc(var(--game-ui-right, env(safe-area-inset-right, 0px)) + 20px) calc(var(--game-ui-bottom, env(safe-area-inset-bottom, 0px)) + var(--oy)) calc(var(--game-ui-left, env(safe-area-inset-left, 0px)) + 20px);
     text-align: center;
   }
   .overlay.show { display: flex; }
@@ -141,7 +165,7 @@
      home bar and margin), scrolling inside itself when a screen is short — a phone on its side, a small desktop window,
      an iPad with the keyboard up. Nothing is ever cut off with no way to reach it. */
   .panel {
-    max-height: calc(100dvh - 2 * var(--oy) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 2 * var(--oy) - var(--game-ui-top, env(safe-area-inset-top, 0px)) - var(--game-ui-bottom, env(safe-area-inset-bottom, 0px)));
     overflow-y: auto; overflow-x: hidden;
     overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none;
   }
@@ -757,7 +781,7 @@
   .crew-win { font-size: 12px; letter-spacing: 1.5px; font-weight: 800; color: var(--gold); margin: 2px 0 6px; }
   .crew-row .nm .wins { color: var(--gold); font-weight: 800; }
   .crew-empty { font-size: 11px; opacity: 0.6; padding: 4px; }
-  #crewPanel { position: fixed; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 84px); width: min(330px, calc(100vw - 24px)); max-height: calc(100vh - 150px);
+  #crewPanel { position: fixed; right: 12px; top: calc(var(--game-ui-top, env(safe-area-inset-top, 0px)) + 84px); width: min(330px, calc(100vw - 24px)); max-height: calc(100vh - 150px);
     overflow-y: auto; padding: 10px 12px 12px; border-radius: 14px; background: rgba(6,12,30,0.88); border: 1px solid rgba(56,225,255,0.22);
     box-shadow: 0 10px 40px rgba(0,0,0,.45); pointer-events: none; z-index: 7; display: none; }
   #crewPanel.show { display: block; }
@@ -1037,6 +1061,7 @@
   </div>
 </div>
 
+<div id="gameStatusRail"></div>
 <pre id="errlog"></pre>
 <label class="hap-touch" id="hapTouch" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
 <label class="hap" id="hapLbl" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
@@ -4660,7 +4685,7 @@ function drawToast() {
   ctx.font = '700 9px ' + FONT;
   const glyph = gold ? G.toastGlyph : null;   // postcards carry a 16px inline icon
   const w = gold ? Math.max(176, ctx.measureText(G.toast).width + (glyph ? 52 : 26)) : 176;
-  const h = glyph ? 30 : 28, x = view.w / 2 - w / 2, y = 18 + safeInset('top');
+  const h = glyph ? 30 : 28, x = view.w / 2 - w / 2, y = 18 + viewInset('top');
   ctx.save(); ctx.globalAlpha = a;
   ctx.fillStyle = 'rgba(10,14,32,.88)'; roundRect(x, y, w, h, 10); ctx.fill();
   ctx.strokeStyle = gold ? 'rgba(255,201,60,.55)' : 'rgba(56,225,255,.38)'; ctx.lineWidth = 1; ctx.stroke();
@@ -5886,11 +5911,11 @@ function drawHudScrim(h, w) {
 }
 function drawHUD() {
   const us = uiScale();
-  drawHudScrim((netInRun() ? 32 : 0) + safeInset('top') + 110 * us, Math.min(view.w * 0.8, 330 * us) + safeInset('left'));
+  drawHudScrim((netInRun() ? 32 : 0) + viewInset('top') + 110 * us, Math.min(view.w * 0.8, 330 * us) + viewInset('left'));
   // Run Together: the race strip owns the topmost band, so the run HUD shifts
   // down by (strip 26 + 6 gap) while in a room (§10.1). Solo: netInRun() false → 0.
   const netBand = netInRun() ? 32 : 0;
-  const top = 12 + netBand + safeInset('top'), left = 12 + safeInset('left');
+  const top = 12 + netBand + viewInset('top'), left = 12 + viewInset('left');
 
   // pause + mute cluster — enclosed rounded squares so they read as tappable,
   // not as part of the odometer; hidden once the player is dead (the death
@@ -6062,15 +6087,42 @@ function readSafeInsets() {
     const key = vpW() > vpH() ? 'l' : 'p';
     if (t || r || b || l) { _insetMemo[key] = { top: t, right: r, bottom: b, left: l }; saveInsetMemo(); }
     else if (_insetMemo[key]) { const m = _insetMemo[key]; t = m.top; r = m.right; b = m.bottom; l = m.left; }
-    _safeInsets.top = t; _safeInsets.right = r; _safeInsets.bottom = b; _safeInsets.left = l;
+    // Browser chrome can shrink/pan the visible area without resizing the
+    // layout viewport. These occluded edges are transient, never persisted.
+    const vv = window.visualViewport;
+    if (vv) {
+      t = Math.max(t, vv.offsetTop || 0); l = Math.max(l, vv.offsetLeft || 0);
+      r = Math.max(r, vpW() - (vv.offsetLeft || 0) - vv.width);
+      b = Math.max(b, vpH() - (vv.offsetTop || 0) - vv.height);
+    }
+    const css = document.documentElement.style;
+    const insets = { top: t, right: r, bottom: b, left: l };
+    const rail = document.getElementById('gameStatusRail');
+    const statusHeight = rail ? rail.offsetHeight || 0 : 0;
+    css.setProperty('--game-status-height', (statusHeight ? statusHeight + 8 : 0) + 'px');
+    for (const side of ['top', 'right', 'bottom', 'left']) {
+      css.setProperty('--game-safe-' + side, insets[side] + 'px');
+      // One contract for runner canvas, arena DOM and future screen overlays.
+      _safeInsets[side] = insets[side] + (side === 'top' && statusHeight ? statusHeight + 8 : 0);
+      css.setProperty('--game-ui-' + side, _safeInsets[side] + 'px');
+    }
   } catch (e) {}
 }
 let _insetMemo = {};
 try { _insetMemo = JSON.parse(localStorage.getItem(BUILD.storageKey('sm2.insets')) || '{}') || {}; } catch (e) { _insetMemo = {}; }
 function saveInsetMemo() { try { localStorage.setItem(BUILD.storageKey('sm2.insets'), JSON.stringify(_insetMemo)); } catch (e) {} }
 ['pageshow', 'orientationchange', 'visibilitychange'].forEach((ev) => window.addEventListener(ev, () => setTimeout(readSafeInsets, 50)));
-if (window.visualViewport) window.visualViewport.addEventListener('resize', readSafeInsets);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', readSafeInsets);
+  window.visualViewport.addEventListener('scroll', readSafeInsets);
+}
+if (window.ResizeObserver) new ResizeObserver(readSafeInsets).observe(document.getElementById('gameStatusRail'));
 function safeInset(side) { return _safeInsets[side] || 0; }
+// DOM and touch controls use CSS pixels; the scaled runner HUD uses view pixels.
+// Convert at that boundary so a landscape HUD cannot shrink the reserved rail.
+function viewInset(side) {
+  return safeInset(side) * ((side === 'left' || side === 'right') ? view.w / vpW() : view.h / vpH());
+}
 
 /* ---- vignette / stingers ---- */
 function drawVignette() {
@@ -7917,7 +7969,7 @@ function drawGhostActor(g) {
 // World y that lands just under the race strip on screen, at world x, through whatever transform is live (interpolated
 // camera, punch/death zoom, shake, rotation), so plates can never end up beneath the strip. -Infinity when the strip isn't up.
 function raceFloorWorldY(wx) {
-  const stripBottom = 12 + safeInset('top') + 26 + 6;                          // view px
+  const stripBottom = 12 + viewInset('top') + 26 + 6;                          // view px
   const m = ctx.getTransform && ctx.getTransform();
   if (!m || !m.d) return G.camY + stripBottom;                                  // no matrix available: plain camera offset
   const target = stripBottom * (canvas.height / view.h);                        // device px
@@ -7979,7 +8031,7 @@ function drawLinkPill() {
   const us = uiScale(), text = away ? 'HOST AWAY · HOLDING YOUR SEAT' : q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
   ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
   const w = ctx.measureText(text).width + 22 * us, h = 18 * us;
-  let x = view.w - 12 - safeInset('right') - w, y = 12 + safeInset('top') + 32;
+  let x = view.w - 12 - viewInset('right') - w, y = 12 + viewInset('top') + 32;
   if (emoteAvailable()) { const b = emoteLayout().button; x = b.x - 8 - w; y = b.y + (b.h - h) / 2; }   // beside the emote button, never on it
   if (_crewHit) { const k = view.w ? vpW() / view.w : 1; x = Math.min(x, _crewHit.x0 / k - 8 - w); y = _crewHit.y0 / k + (_crewHit.y1 - _crewHit.y0) / k / 2 - h / 2; }   // and never on the crew chip
   ctx.fillStyle = 'rgba(10,14,32,0.72)'; roundRect(x, y, w, h, 6); ctx.fill();
@@ -8023,7 +8075,7 @@ function raceTickStep(span) {
 function drawRaceStrip() {
   // Live placement ("2nd / 4") rides the strip's right end once ≥2 ran this round.
   const place = roundPlace(), tag = place ? ordinal(place) + ' / ' + roundResults.size : '', tagW = tag ? 60 : 0;
-  const x = 12, y = 12 + safeInset('top'), w = view.w - 24 - tagW, h = 26;
+  const x = 12, y = 12 + viewInset('top'), w = view.w - 24 - tagW, h = 26;
   const runners = raceRunners(); if (!runners.length) return;
   const { left, span } = raceLayout(runners.map((r) => r.x), G.flare.x, performance.now() / 1000);
   const sx = (wx) => x + clamp((wx - left) / span, 0, 1) * w;
@@ -8181,8 +8233,8 @@ function drawCrewDirections() {
   }
 }
 function drawSpectatorHUD() {
-  const us = uiScale(), t = spectateTarget(), down = !!(t && t.dead), g = t && !down ? t : null, left = 12 + safeInset('left');
-  const y = 60 + safeInset('top');
+  const us = uiScale(), t = spectateTarget(), down = !!(t && t.dead), g = t && !down ? t : null, left = 12 + viewInset('left');
+  const y = 60 + viewInset('top');
   const st = crewGlance(), name = t ? (t.callsign || 'P' + t.p) : '';
   let head, sub;
   if (g) {
@@ -8198,7 +8250,7 @@ function drawSpectatorHUD() {
   ctx.fillText(sub, view.w / 2, y + 18 * us, view.w - 2 * left);
   const kx = vpW() / view.w, ky = vpH() / view.h;
   const labels = [['prev', '‹ PREV'], ['next', 'NEXT ›'], ['tour', spec.tour ? 'TOUR ON' : 'TOUR'], ['play', G.rolePending ? 'JOINING…' : 'JOIN RUN']];
-  const w = (view.w - 2 * left - 18) / 4, h = Math.max(32 * us, 44 / ky), by = view.h - safeInset('bottom') - h - 12;
+  const w = (view.w - 2 * left - 18) / 4, h = Math.max(32 * us, 44 / ky), by = view.h - viewInset('bottom') - h - 12;
   _specHits = {};
   labels.forEach(([key, label], i) => {
     const x = left + i * (w + 6);
@@ -8213,7 +8265,7 @@ function drawSpectatorHUD() {
 // One source for the banner's geometry (view px) and its LEAVE target (CSS px), so nothing that lays itself out around the
 // banner (the emote tray, the ammo readout, the teammate cue) depends on the order things were drawn in this frame.
 function unstableBannerGeom() {
-  const us = uiScale(), y = safeInset('top') + 76 * us, x = view.w / 2;   // below the strip + shifted HUD chain line
+  const us = uiScale(), y = viewInset('top') + 76 * us, x = view.w / 2;   // below the strip + shifted HUD chain line
   const bw = 150 * us, bh = 22 * us, bx = x - bw / 2, lx = bx + bw - 40 * us;
   return { us, y, bx, bw, bh, lx };
 }
@@ -8281,7 +8333,7 @@ function emoteAvailable() { return netInRun() && settings.netEmotes && !netSpect
 function emoteLayout() {
   const k = vpW() / view.w;
   const btn = EMOTE_BTN / k, gap = EMOTE_GAP / k, pad = 6 / k;
-  const right = view.w - 12 - safeInset('right') / k, top = 12 + safeInset('top') + 26 + 8;   // top matches the race strip; side insets are CSS px
+  const right = view.w - 12 - safeInset('right') / k, top = 12 + viewInset('top') + 26 + 8;   // top matches the race strip; side insets are CSS px
   const room = view.w - 24 - (safeInset('right') + safeInset('left')) / k;
   const item = Math.max(36 / k, Math.min(EMOTE_ITEM / k, (room - 2 * pad - 5 * gap) / 6));
   const trayW = 6 * item + 5 * gap + 2 * pad, trayH = item + 2 * pad;

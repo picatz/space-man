@@ -46,6 +46,16 @@ jobs:
           fi
       - name: Check preview paths, caches, and saves without a relay
         run: npm run test:previews
+        env:
+          SPACE_MAN_PREVIEW_SCREENSHOTS: ${{ runner.temp }}/preview-screenshots
+      - name: Keep preview mobile layout screenshots for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-mobile-screenshots
+          path: ${{ runner.temp }}/preview-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Check arena controls, match flow, and runner return without a relay
         run: npm run test:arena
         env:

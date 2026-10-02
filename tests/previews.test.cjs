@@ -163,3 +163,48 @@ test('preview metadata stamping accepts attributed/uppercase head tags and rejec
     await assert.rejects(buildPreview({ source, output: path.join(dir, name), pr: 27, sha: SHA, buildSha: BUILDER }), /exactly one head/);
   }
 });
+
+test('preview identity uses the shared compact status rail and keeps full revisions accessible', (t) => {
+  const p = identity(), c = client(relay(), { preview: p, pathname: p.basePath });
+  t.after(() => c.close());
+  const rail = c.elements.get('gameStatusRail'), badge = rail.children[0];
+  assert.equal(badge.id, 'previewBuild');
+  assert.equal(badge.className, 'game-status');
+  assert.equal(badge.textContent, 'PREVIEW · PR #27 · aaaaaaa');
+  assert.equal(badge.attrs.role, 'status');
+  assert.ok(badge.attrs['aria-label'].includes(p.sha));
+  assert.ok(badge.attrs['aria-label'].includes(p.buildSha));
+  assert.equal(c.context.document.body.children.includes(badge), false, 'no independent fixed corner overlay');
+});
+
+test('shared status rail reserves CSS and scaled HUD space without persisting browser chrome', (t) => {
+  for (const [width, height, hardware, visible] of [
+    [390, 844, [47, 0, 34, 0], { offsetTop: 52, offsetLeft: 0, width: 390, height: 680 }],
+    [844, 390, [0, 47, 21, 47], { offsetTop: 24, offsetLeft: 0, width: 844, height: 260 }],
+  ]) {
+    const p = identity(), storage = new Map();
+    const c = client(relay(), { width, height, preview: p, pathname: p.basePath, storage, hash: '#shot=play&touch=1' });
+    t.after(() => c.close());
+    c.elements.get('gameStatusRail').offsetHeight = 20;
+    c.context.visualViewport = visible;
+    c.context.getComputedStyle = () => ({ paddingTop: hardware[0] + 'px', paddingRight: hardware[1] + 'px', paddingBottom: hardware[2] + 'px', paddingLeft: hardware[3] + 'px', getPropertyValue: () => '0' });
+    const tokens = {};
+    c.context.document.documentElement.style.setProperty = (key, value) => { tokens[key] = value; };
+    c.run('readSafeInsets(); render(0)');
+    const top = Math.max(hardware[0], visible.offsetTop), bottom = Math.max(hardware[2], height - visible.offsetTop - visible.height);
+    assert.equal(c.run('safeInset("top")'), top + 28);
+    assert.equal(c.run('safeInset("bottom")'), bottom);
+    assert.equal(tokens['--game-status-height'], '28px');
+    assert.equal(tokens['--game-safe-top'], top + 'px');
+    assert.equal(tokens['--game-ui-top'], top + 28 + 'px');
+    assert.ok(Math.abs(c.run('viewInset("top") * vpH() / view.h') - (top + 28)) < 0.001, 'HUD reserve survives canvas scaling');
+    assert.ok(c.run('G._pauseHit.y0') >= top + 24, 'actual projected pause hit target clears badge bottom');
+    const memo = JSON.parse(storage.get(c.context.SpaceManBuild.storageKey('sm2.insets')));
+    assert.deepEqual(memo[width > height ? 'l' : 'p'], { top: hardware[0], right: hardware[1], bottom: hardware[2], left: hardware[3] });
+    c.context.visualViewport = { offsetTop: 0, offsetLeft: 0, width, height };
+    c.elements.get('gameStatusRail').offsetHeight = 0;
+    c.run('readSafeInsets()');
+    assert.equal(c.run('safeInset("top")'), hardware[0], 'removing rail and chrome releases the reservation');
+    assert.equal(c.run('safeInset("bottom")'), hardware[2]);
+  }
+});
