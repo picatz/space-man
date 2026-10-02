@@ -92,7 +92,8 @@
     } catch (_) {}
     function sync() {
       parent.dataset.camera = mode;
-      toggle.textContent = names[mode] + " ▾";
+      if (toggle.textContent !== names[mode] + " ▾")
+        toggle.textContent = names[mode] + " ▾";
       for (const b of buttons)
         b.setAttribute("aria-pressed", String(b.dataset.camera === mode));
     }
@@ -116,7 +117,8 @@
       base.hidden = false;
       parent.dataset.renderer = "2d-fallback";
       note.textContent = message || "3D unavailable · using top-down";
-      toggle.textContent = "2D fallback ▾";
+      if (toggle.textContent !== "2D fallback ▾")
+        toggle.textContent = "2D fallback ▾";
     }
     function init() {
       if (renderer || disposed || attempted) return;
@@ -184,6 +186,7 @@
         mesh = root.SpaceManRaceScene.actors(snapshot, {
           hideId: mode === "cockpit" ? a.id : null,
           calm: !!config.reduceMotion,
+          chaseActor: mode === "chase" ? a : null,
         });
         mesh.key = meshKey;
         lastTick = snapshot.tick;
@@ -217,7 +220,8 @@
       base.hidden = true;
       cockpit.hidden = mode !== "cockpit";
       parent.dataset.renderer = "webgl";
-      toggle.textContent = names[mode] + " ▾";
+      if (toggle.textContent !== names[mode] + " ▾")
+        toggle.textContent = names[mode] + " ▾";
       parent.dataset.quality = String(quality);
       return true;
     }

@@ -207,7 +207,7 @@ test(
       await page.locator(".race-root").getAttribute("data-camera"),
       "topdown",
     );
-    assert.equal(await page.locator(".race-canvas").isVisible(), true);
+    await page.locator(".race-canvas").waitFor({ state: "visible" });
     await capture(page, "perspective-topdown-desktop");
     await page.keyboard.press("c");
     await page.waitForFunction(
@@ -387,6 +387,7 @@ test(
     await capture(page, "perspective-complete-race");
     await menu(page, "Back to runner");
     assert.equal(await page.evaluate(() => raceUI.active), false);
+    await page.locator("#btnPlay").focus();
     await page.keyboard.press("Enter");
     await page.keyboard.down("d");
     await page.waitForFunction(() => G.mode === "play" && G.player.vx > 0);

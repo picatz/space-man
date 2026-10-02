@@ -77,12 +77,45 @@
           );
         }
     }
+    function ellipsoid(
+      x,
+      y,
+      z,
+      rx,
+      ry,
+      rz,
+      color,
+      heading = 0,
+      segments = 12,
+      rings = 5,
+    ) {
+      const co = Math.cos(heading),
+        si = Math.sin(heading);
+      const at = (a, b) => {
+        const f = rx * Math.cos(b) * Math.cos(a),
+          side = rz * Math.cos(b) * Math.sin(a);
+        return [
+          x + co * f - si * side,
+          y + ry * Math.sin(b),
+          z + si * f + co * side,
+        ];
+      };
+      for (let i = 0; i < segments; i++)
+        for (let j = 0; j < rings; j++) {
+          const a = (i * Math.PI * 2) / segments,
+            b = ((i + 1) * Math.PI * 2) / segments,
+            c = -Math.PI / 2 + (j * Math.PI) / rings,
+            d = c + Math.PI / rings;
+          quad(at(a, d), at(b, d), at(b, c), at(a, c), color);
+        }
+    }
     return {
       triangle,
       quad,
       box,
       crystal,
       sphere,
+      ellipsoid,
       mesh: () => ({ vertices: new Float32Array(v) }),
     };
   }
@@ -220,15 +253,15 @@
         0,
         p.y + p.tx * (half + 19) * side,
         13,
-        128,
+        210,
         13,
         shade(edge, 0.6),
         h,
       );
-    b.box(p.x, 125, p.y, 17, 14, c.width + 53, [0.17, 0.28, 0.37], h);
+    b.box(p.x, 207, p.y, 17, 14, c.width + 53, [0.17, 0.28, 0.37], h);
     b.box(
       p.x + Math.cos(h) * 10,
-      130,
+      212,
       p.y + Math.sin(h) * 10,
       3,
       5,
@@ -259,40 +292,111 @@
       fog: { color: rgb(c.sky), near: 1700, far: 6000 },
     };
   }
-  function actors(snapshot, { hideId = null, calm = false } = {}) {
+  function actors(
+    snapshot,
+    { hideId = null, calm = false, chaseActor = null } = {},
+  ) {
     const b = builder();
     for (const a of snapshot.actors) {
       if (a.id === hideId) continue;
+      // Nearby racers between the follow camera and its subject should not
+      // turn into giant foreground occluders, especially in portrait. This
+      // is visibility only: every pilot stays in the rules and minimap.
+      if (chaseActor && a.id !== chaseActor.id) {
+        const dx = a.x - chaseActor.x,
+          dz = a.y - chaseActor.y;
+        const behind =
+          dx * Math.cos(chaseActor.heading) + dz * Math.sin(chaseActor.heading);
+        const side =
+          -dx * Math.sin(chaseActor.heading) +
+          dz * Math.cos(chaseActor.heading);
+        if (behind < -25 && behind > -320 && Math.abs(side) < 95) continue;
+      }
       const h = a.heading,
         co = Math.cos(h),
         si = Math.sin(h),
         color = rgb(a.color),
         white = [0.86, 0.93, 0.97];
-      const part = (f, u, s, w, t, d, col) =>
-        b.box(a.x + co * f - si * s, u, a.y + si * f + co * s, w, t, d, col, h);
-      // Broad twin hover pods, angular fuselage, visible pilot helmet and spoiler.
-      part(-2, 5, 0, 39, 7, 24, [0.17, 0.27, 0.34]);
-      part(2, 10, 0, 35, 7, 20, white);
-      part(19, 9, 0, 16, 4, 14, color);
-      for (const s of [-17, 17]) {
-        part(-3, 5, s, 37, 8, 9, color);
-        part(0, 5, s, 25, 2, 10, [0.47, 0.91, 1]);
-        part(-21, 7, s, 3, 4, 7, [0.8, 0.98, 1]);
+      const p = (f, u, side) => [
+        a.x + co * f - si * side,
+        u,
+        a.y + si * f + co * side,
+      ];
+      const pod = (f, u, side, rx, ry, rz, col) =>
+        b.ellipsoid(...p(f, u, side), rx, ry, rz, col, h);
+      // An open, rounded hoverpod with twin nacelles and swept fins. The small
+      // suited pilot and wraparound visor retain Space-man's astronaut identity.
+      pod(1, 8, 0, 28, 5, 15, [0.1, 0.21, 0.28]);
+      pod(3, 11, 0, 27, 6, 14, white);
+      pod(17, 15, 0, 12, 1.3, 5, color);
+      for (const side of [-18, 18]) {
+        pod(-3, 8, side, 23, 4, 5.5, color);
+        pod(-1, 6, side, 18, 1.1, 5.8, [0.43, 0.9, 1]);
+        // Small swept stabilizers replace a rectangular full-width spoiler.
+        b.triangle(
+          p(-22, 10, side),
+          p(-9, 14, side),
+          p(-23, 16, side * 1.42),
+          color,
+        );
+        b.triangle(
+          p(-22, 10, side),
+          p(-23, 16, side * 1.42),
+          p(-25, 8, side * 1.18),
+          shade(color, 0.75),
+        );
+        // Bright rear engine discs remain readable even without boosting.
+        for (let i = 0; i < 10; i++) {
+          const a0 = (i * Math.PI) / 5,
+            a1 = ((i + 1) * Math.PI) / 5;
+          b.triangle(
+            p(-25.5, 8, side),
+            p(-25.5, 8 + 3 * Math.cos(a1), side + 3 * Math.sin(a1)),
+            p(-25.5, 8 + 3 * Math.cos(a0), side + 3 * Math.sin(a0)),
+            [0.8, 1, 1],
+          );
+        }
       }
-      part(-12, 18, 0, 7, 3, 43, color);
-      part(-13, 10, -13, 4, 9, 3, white);
-      part(-13, 10, 13, 4, 9, 3, white);
-      b.sphere(a.x - 3 * co, 21, a.y - 3 * si, 8, white, 10, 6);
-      part(2, 20, 0, 7, 7, 13, [0.025, 0.16, 0.23]);
-      part(6, 22, 0, 1, 2, 10, color);
-      // Ground contact shadow is geometry, avoiding a texture or per-frame asset.
-      b.quad(
-        [a.x - 24 * co + 23 * si, 0.15, a.y - 24 * si - 23 * co],
-        [a.x + 29 * co + 23 * si, 0.15, a.y + 29 * si - 23 * co],
-        [a.x + 29 * co - 23 * si, 0.15, a.y + 29 * si + 23 * co],
-        [a.x - 24 * co - 23 * si, 0.15, a.y - 24 * si + 23 * co],
-        [0.045, 0.08, 0.12],
-      );
+      pod(-7, 17, 0, 7, 6, 7, color);
+      b.sphere(...p(-5, 24, 0), 8.5, [0.96, 0.99, 1], 12, 7);
+      // Visor follows the helmet sphere rather than becoming a square box.
+      for (let i = 0; i < 10; i++) {
+        const a0 = -2.15 + i * 0.43,
+          a1 = a0 + 0.43;
+        const visor = (angle, y) =>
+          p(
+            -5 + Math.sqrt(8.65 ** 2 - (y - 24) ** 2) * Math.cos(angle),
+            y,
+            Math.sqrt(8.65 ** 2 - (y - 24) ** 2) * Math.sin(angle),
+          );
+        b.quad(
+          visor(a0, 21.5),
+          visor(a1, 21.5),
+          visor(a1, 27.5),
+          visor(a0, 27.5),
+          [0.025, 0.2, 0.3],
+        );
+        b.quad(
+          visor(a0, 27.5),
+          visor(a1, 27.5),
+          visor(a1, 28.3),
+          visor(a0, 28.3),
+          [0.38, 0.86, 0.95],
+        );
+      }
+      // Colored life-support panel at the rear of the suit/helmet.
+      pod(-12.6, 22, 0, 1.6, 4, 4, color);
+      // Soft-edged geometric contact shadow: no downloaded texture.
+      for (let i = 0; i < 16; i++) {
+        const a0 = (i * Math.PI) / 8,
+          a1 = ((i + 1) * Math.PI) / 8;
+        b.triangle(
+          p(0, 0.15, 0),
+          p(30 * Math.cos(a0), 0.15, 24 * Math.sin(a0)),
+          p(30 * Math.cos(a1), 0.15, 24 * Math.sin(a1)),
+          [0.045, 0.08, 0.12],
+        );
+      }
       if (a.boosting || a.padTicks > 0) {
         const length = calm ? 35 : 35 + (snapshot.tick % 5) * 3;
         for (const s of [-17, 17]) {

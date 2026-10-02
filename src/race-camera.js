@@ -44,7 +44,7 @@
         const desired = {
           mode,
           x: actor.x - fx * (cockpit ? -6 : 132 * portrait),
-          y: cockpit ? 22 : 94 + (portrait - 1) * 60,
+          y: cockpit ? 34 : 94 + (portrait - 1) * 60,
           z: actor.y - fz * (cockpit ? -6 : 132 * portrait),
           heading: h,
           fov:
@@ -67,7 +67,7 @@
           eye: [current.x, current.y, current.z],
           target: [
             current.x + Math.cos(current.heading) * look,
-            cockpit ? 17 : 4,
+            cockpit ? 25 : 4,
             current.z + Math.sin(current.heading) * look,
           ],
           fov: (current.fov * Math.PI) / 180,

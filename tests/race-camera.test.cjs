@@ -17,7 +17,7 @@ test("perspective cameras use snapshot position and preserve immutable simulatio
       100,
   );
   const cockpit = cam.update(a, c, R.at, { mode: "cockpit" });
-  assert.equal(cockpit.eye[1], 22);
+  assert.equal(cockpit.eye[1], 34);
   assert.ok(cockpit.target[1] < cockpit.eye[1]);
   const art = Scene.course(c, R.at),
     moving = Scene.actors(s);
@@ -92,4 +92,24 @@ test("portrait chase backs up enough to show the road and remains finite on resi
       Math.hypot(landscape.eye[0] - a.x, landscape.eye[2] - a.y),
   );
   assert.ok([...portrait.eye, ...portrait.target].every(Number.isFinite));
+});
+
+test("chase occlusion hides close rear pilots but keeps subject and rivals ahead", () => {
+  const s = R.snapshot(R.create()),
+    a = s.actors[0];
+  const culled = Scene.actors(s, { chaseActor: a }),
+    full = Scene.actors(s);
+  assert.ok(culled.vertices.length < full.vertices.length);
+  const solo = { ...s, actors: [a] };
+  assert.deepEqual(Scene.actors(solo, { chaseActor: a }), Scene.actors(solo));
+  const front = {
+    ...a,
+    id: "front",
+    x: a.x + Math.cos(a.heading) * 70,
+    y: a.y + Math.sin(a.heading) * 70,
+  };
+  assert.deepEqual(
+    Scene.actors({ ...s, actors: [a, front] }, { chaseActor: a }),
+    Scene.actors({ ...s, actors: [a, front] }),
+  );
 });
