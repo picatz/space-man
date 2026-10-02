@@ -22,7 +22,7 @@ async function launch(t) {
       const rel = decodeURIComponent(url.pathname).replace(/^\//, '') + (url.pathname.endsWith('/') ? 'index.html' : '');
       const file = path.resolve(site, rel);
       if (!file.startsWith(site + path.sep)) return res.writeHead(400).end();
-      const type = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' }[path.extname(file)] || 'text/plain';
+      const type = { '.css': 'text/css', '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png' }[path.extname(file)] || 'text/plain';
       const bytes = await fs.readFile(file);
       res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }).end(bytes);
     } catch (_) { res.writeHead(404).end(); }
