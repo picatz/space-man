@@ -393,8 +393,9 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   assert.equal(await page.evaluate(() => arenaUI.screen), 'pause', 'returning from real background requires resume');
   await tapControl(page.locator('#arenaResume')); await neutral();
   p = await dragStick(); await pause(page);
-  await tapControl(page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }));
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await tapControl(page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }));
+  assert.equal(await page.evaluate(() => arenaUI.active), false);
   assert.equal(await page.evaluate(() => input.left || input.right || input.jumpHeld), false);
   await tapControl(page.locator('#btnArena')); await tapControl(page.locator('.arena-launch')); await playing(page); await neutral();
 });
@@ -479,6 +480,14 @@ test('arena native touch can resume immediately after a held gesture is paused',
     n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 91, clientX: x + 20, clientY: y }));
   });
   assert.equal(await page.evaluate(() => arenaUI.screen), 'pause', 'a scrolling gesture is not a Resume tap');
+  await page.locator('#arenaResume').evaluate(n => {
+    const r = n.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 92, clientX: x, clientY: y }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', isPrimary: false, pointerId: 93, clientX: x, clientY: y }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', isPrimary: true, pointerId: 92, clientX: x, clientY: y }));
+  });
+  await screen(page, 'match');
+  await pause(page);
   await page.locator('#arenaResume').tap(); await screen(page, 'match');
   const cdp = await context.newCDPSession(page), box = await page.locator('.arena-stick-zone').boundingBox();
   const p = { id: 1, x: box.x + box.width / 2, y: box.y + box.height / 2 };

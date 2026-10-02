@@ -454,8 +454,10 @@
       resumeButton.addEventListener('pointermove', e => { if (resumeTap && resumeTap.id === e.pointerId && Math.hypot(e.clientX - resumeTap.x, e.clientY - resumeTap.y) > 10) resumeTap = null; });
       for (const type of ['pointercancel', 'lostpointercapture']) resumeButton.addEventListener(type, e => { if (resumeTap && resumeTap.id === e.pointerId) resumeTap = null; });
       resumeButton.addEventListener('pointerup', e => {
-        const tap = resumeTap; resumeTap = null;
-        if (!tap || tap.id !== e.pointerId || Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) return;
+        const tap = resumeTap;
+        if (!tap || tap.id !== e.pointerId) return;
+        resumeTap = null;
+        if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) return;
         const r = resumeButton.getBoundingClientRect();
         if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) resumeMatch();
       });
