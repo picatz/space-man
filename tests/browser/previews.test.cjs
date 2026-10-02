@@ -85,6 +85,9 @@ test('preview status stays outside runner and arena touch controls through phone
   const { browser, base, a } = await launch(t);
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await context.addInitScript(() => {
+    // Scenarios model different devices. Do not carry one device's cached
+    // notch fallback into the next device's fresh document.
+    try { localStorage.clear(); } catch (_) {}
     const native = window.visualViewport, viewport = new EventTarget();
     for (const name of ['width', 'height', 'offsetTop', 'offsetLeft', 'scale']) {
       Object.defineProperty(viewport, name, { get: () => window.__previewViewport?.[name] ?? native[name] });
@@ -107,7 +110,7 @@ test('preview status stays outside runner and arena touch controls through phone
   }
   const overlaps = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x &&
     a.y < b.y + b.height && a.y + a.height > b.y;
-  async function bounds(label, controls) {
+  async function bounds(label, controls, scenario) {
     const badge = await page.locator('#previewBuild').boundingBox();
     const metrics = await page.evaluate(() => ({
       top: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--game-safe-top')),
@@ -117,6 +120,8 @@ test('preview status stays outside runner and arena touch controls through phone
       uiTop: safeInset('top'), width: vpW(), height: vpH(),
       pointerEvents: getComputedStyle(document.getElementById('previewBuild')).pointerEvents,
     }));
+    assert.equal(metrics.left, scenario.safe.left, label + ': uses this device\'s left safe area');
+    assert.equal(metrics.right, scenario.safe.right, label + ': uses this device\'s right safe area');
     assert.ok(badge && badge.height <= 22 && badge.width <= 230, label + ': compact single-line badge');
     assert.ok(badge.x >= metrics.left && badge.y >= metrics.top, label + ': clears notch and top browser chrome');
     assert.ok(badge.x + badge.width <= metrics.width - metrics.right && badge.y + badge.height <= metrics.height - metrics.bottom, label + ': inside visible safe bounds');
@@ -159,7 +164,7 @@ test('preview status stays outside runner and arena touch controls through phone
         const hit = r => ({ x: r.x0, y: r.y0, width: r.x1 - r.x0, height: r.y1 - r.y0 });
         return { ...textBounds, pause: hit(G._pauseHit), mute: hit(G._muteHit), fire: disc(fire.cx, fire.cy, fire.r + 14), jump: disc(w * (lefty ? .26 : .74), h - bottom - 44, 29), move: disc(w * (lefty ? .78 : .22), h - bottom - (view.isTablet ? 92 : 76), 36) };
       }, lefty);
-      await bounds(scenario.name + (lefty ? ' runner-lefty' : ' runner'), controls);
+      await bounds(scenario.name + (lefty ? ' runner-lefty' : ' runner'), controls, scenario);
       for (const [name, text] of Object.entries(controls).filter(([name]) => name.startsWith('HUD text '))) {
         for (const button of ['pause', 'mute']) assert.equal(overlaps(text, controls[button]), false,
           scenario.name + ': ' + name + ' must clear the ' + button + ' hit target');
@@ -180,7 +185,7 @@ test('preview status stays outside runner and arena touch controls through phone
     await bounds(scenario.name + ' arena lobby', {
       'lobby header': await page.locator('.arena-lobby-top').boundingBox(),
       'back button': await page.locator('#arenaBack').boundingBox(),
-    });
+    }, scenario);
     await page.locator('.arena-launch').tap();
     await page.locator('.arena-root[data-screen="match"]').waitFor();
     await settleLayout();
@@ -194,7 +199,7 @@ test('preview status stays outside runner and arena touch controls through phone
       controls.pause = await page.getByRole('button', { name: 'Pause match', exact: true }).boundingBox();
       controls.HUD = await page.locator('.arena-hud').boundingBox();
       controls.roster = await page.locator('.arena-roster').boundingBox();
-      await bounds(scenario.name + (lefty ? ' arena-lefty' : ' arena'), controls);
+      await bounds(scenario.name + (lefty ? ' arena-lefty' : ' arena'), controls, scenario);
     }
     if (process.env.SPACE_MAN_PREVIEW_SCREENSHOTS) {
       await page.screenshot({ path: path.join(process.env.SPACE_MAN_PREVIEW_SCREENSHOTS, scenario.name + '-arena.png') });
@@ -205,7 +210,7 @@ test('preview status stays outside runner and arena touch controls through phone
     await bounds(scenario.name + ' arena pause', {
       'pause panel': await page.locator('.arena-small-panel:visible').boundingBox(),
       resume: await page.locator('#arenaResume').boundingBox(),
-    });
+    }, scenario);
   }
   assert.deepEqual(errors, [], 'no uncaught errors across resize and mode changes');
   assert.deepEqual(sockets, [], 'overlay checks make no relay connections');
