@@ -160,7 +160,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await c.page.goto(baseURL); await c.page.locator('#btnRace').waitFor();
     await c.page.evaluate(() => {
       window.__raceRunnerBefore = G.player;
-      window.__raceAcceptance = { inputs:{},snapshots:0,lifecycle:[],visibility:[],maxPassed:{},boosts:{} };
+      window.__raceAcceptance = { inputs:{},snapshots:0,lifecycle:[],visibility:[],buttonEvents:{},maxPassed:{},boosts:{} };
       const visibility = event => {
         const events = __raceAcceptance.visibility;
         events.push({event,hidden:document.hidden,state:document.visibilityState,focus:document.hasFocus()});
@@ -170,6 +170,25 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       window.addEventListener('focus',() => visibility('focus'));
       window.addEventListener('blur',() => visibility('blur'));
       visibility('initial');
+      const actionButton = event => {
+        const button = event.target?.closest?.('button');
+        if (!button) return null;
+        const id = button.id || (button.classList.contains('race-pause') ? 'racePause' : '');
+        if (!['racePause','raceResume','raceRestart','raceRematch','raceRoomRole','raceLobby'].includes(id)) return null;
+        const counts = __raceAcceptance.buttonEvents[id] ||= {pointerdown:0,pointerup:0,click:0,bubbledClick:0};
+        return {button,counts};
+      };
+      for (const type of ['pointerdown','pointerup','click']) document.addEventListener(type,event => {
+        const action = actionButton(event); if (!action) return;
+        action.counts[type]++;
+        action.counts.lastTrusted = !!event.isTrusted;
+        action.counts.lastDisabled = !!action.button.disabled;
+      },true);
+      window.addEventListener('click',event => {
+        const action = actionButton(event); if (!action) return;
+        action.counts.bubbledClick++;
+        action.counts.afterClickPlaying = document.querySelector('.race-root')?.dataset.screen === 'play';
+      });
       SpaceManNet.onEvent((event, data) => {
         const a = __raceAcceptance;
         if (['state','welcomed','join','rejoin','roster','role','leave','reconnecting','reconnected','hostaway','hostback','bye'].includes(event)) {
@@ -254,6 +273,20 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     }, expected)));
     await delay(250);
     for (const c of [host,...peers]) assert.equal((await snapshot(c)).tick, expected.tick, `${c.name}: host pause freezes shared simulation`);
+  }
+  async function stableButtonText(c, selector) {
+    // Holding a DOM node is read-only: snapshots must not replace the same text
+    // target between a user's pointerdown and pointerup on WebKit.
+    const initial = await c.page.evaluateHandle(selector => ({
+      node:document.querySelector(selector).firstChild,
+      revision:raceUI.roomStatus().current.revision,
+    }),selector);
+    try {
+      const revision = await initial.evaluate(value => value.revision);
+      await wait(c,revision => raceUI.roomStatus()?.current?.revision >= revision+3,revision);
+      assert.equal(await initial.evaluate((value,selector) => value.node === document.querySelector(selector).firstChild,selector),true,
+        `${selector}: repeated authoritative snapshots preserve the visible click target`);
+    } finally { await initial.dispose(); }
   }
   async function stopDriver(c) {
     await c.page.evaluate(() => {
@@ -359,12 +392,17 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     stage = 'guest interruption clears controls while host continues racing';
     await guest.page.keyboard.down('ArrowLeft'); await guest.page.keyboard.down('Space');
     await wait(host,p => __raceAcceptance.inputs[p]?.command.steer < 0 && __raceAcceptance.inputs[p]?.command.boost,guestIdentity.p);
+    stage = 'opening the guest local pause menu with held steering and boost';
     await guest.page.getByRole('button',{name:'Pause race',exact:true}).click(); await screen(guest,'pause');
     await guest.page.keyboard.up('ArrowLeft'); await guest.page.keyboard.up('Space');
+    stage = 'checking guest pause clears steering and boost while host advances';
     await wait(host,p => __raceAcceptance.inputs[p]?.command.steer === 0 && !__raceAcceptance.inputs[p]?.command.boost,guestIdentity.p);
     const menuTick = (await snapshot(host)).tick;
     await wait(host,tick => raceUI.snapshot().tick > tick+12,menuTick);
     assert.equal(await host.page.locator('.race-root').getAttribute('data-screen'),'play');
+    stage = 'checking repeated snapshots preserve the guest Resume click target';
+    await stableButtonText(guest,'#raceResume');
+    stage = 'resuming the guest local pause menu';
     await guest.page.locator('#raceResume').click(); await screen(guest,'play');
 
     stage = 'host pause, late spectator admission and original-seat reconnect';
@@ -411,12 +449,19 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     t.diagnostic(`${live ? 'Live' : 'Simulated'} relay (${name}): both human three-lap finishes, CPU fill, shared results, pause and same-seat reconnect passed.`);
 
     stage = 'shared rematch, lobby and spectator/driver role changes';
+    stage = 'starting the host rematch from shared results';
     await host.page.locator('#raceRematch').click();
     await Promise.all(clients.map(c => wait(c,() => raceUI.snapshot()?.phase === 'countdown')));
+    stage = 'returning the shared rematch to its room lobby';
     await host.page.getByRole('button',{name:'Pause race',exact:true}).click(); await host.page.locator('#raceLobby').click();
     await Promise.all(clients.map(c => screen(c,'lobby')));
+    stage = 'checking repeated lobby snapshots preserve role-button click targets';
+    await Promise.all([guest,watcher].map(c => stableButtonText(c,'#raceRoomRole')));
+    stage = 'switching the original guest from racer to watcher';
     await guest.page.locator('#raceRoomRole').click(); await wait(guest,() => SpaceManNet.info().role === 1);
+    stage = 'switching the original spectator into a racer seat';
     await watcher.page.locator('#raceRoomRole').click(); await wait(watcher,() => SpaceManNet.info().role === 0); await roster(4);
+    stage = 'launching the changed circuit with swapped player and watcher roles';
     await host.page.locator('[data-track="ember"]').click(); await host.page.locator('.race-launch').click();
     await Promise.all(clients.map(c => wait(c,() => raceUI.snapshot()?.trackId === 'ember')));
     assert.equal((await snapshot(host)).actors.length,5);
@@ -458,14 +503,25 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     t.diagnostic(`${live ? 'Live' : 'Simulated'} relay (${name}): role changes, host closure, room reuse and clean runner return passed.`);
   } catch (error) {
     // Playwright call logs and assertion values can contain private invites.
-    if (live) throw new Error(`Live racing acceptance failed while ${stage} (${error.name || 'Error'}). Private diagnostics suppressed.`);
+    if (live) {
+      for (const c of clients) {
+        const interaction = await c.page.evaluate(() => ({
+          hidden:document.hidden,focused:document.hasFocus(),
+          buttonEvents:window.__raceAcceptance?.buttonEvents || {},
+        })).catch(() => ({unavailable:true}));
+        // Only controlled button IDs, event counts and booleans. Never include
+        // invitation values, identity material, text, URLs, frames or traces.
+        t.diagnostic('Live-relay interaction diagnostic '+JSON.stringify({client:c.name,...interaction}));
+      }
+      throw new Error(`Live racing acceptance failed while ${stage} (${error.name || 'Error'}). Private diagnostics suppressed.`);
+    }
     const redact = value => String(value || '').replace(/https?:\/\/\S+/gi,'[url]').replace(/(?:#j=)?[A-Za-z0-9_=-]{40,}/g,'[redacted]').slice(0,350);
     for (const c of clients) {
       const state = await c.page.evaluate(() => {
         const n = window.SpaceManNet, info = n?.info(), a = window.__raceAcceptance;
         const s = typeof raceUI !== 'undefined' ? raceUI?.snapshot() : null;
         const current = typeof raceUI !== 'undefined' ? raceUI?.roomStatus()?.current : null;
-        return {screen:document.querySelector('.race-root')?.dataset.screen,hidden:document.hidden,visibilityState:document.visibilityState,hasFocus:document.hasFocus(),focusId:document.activeElement?.id || '',visibility:a?.visibility || [],hint:document.querySelector('#raceRoomHint')?.textContent || '',
+        return {screen:document.querySelector('.race-root')?.dataset.screen,hidden:document.hidden,visibilityState:document.visibilityState,hasFocus:document.hasFocus(),focusId:document.activeElement?.id || '',visibility:a?.visibility || [],buttonEvents:a?.buttonEvents || {},hint:document.querySelector('#raceRoomHint')?.textContent || '',
           active:!!n?.active,mode:info?.mode,p:info?.myP,role:info?.role,
           roster:n?.roster().map(r => ({p:r.p,role:r.role,host:!!r.host,you:!!r.you})),
           phase:s?.phase,tick:s?.tick,actors:s?.actors.map(r => ({id:r.id,peerP:r.peerP,controller:r.controller,passed:r.passed,finishTick:r.finishTick})),

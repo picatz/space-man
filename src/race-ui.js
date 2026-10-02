@@ -15,6 +15,14 @@
     n.addEventListener("click", action);
     return n;
   }
+  // Network snapshots arrive at 20Hz. Preserve DOM text nodes while their
+  // value is unchanged, including during an in-flight pointer click in WebKit.
+  function setText(node, value) {
+    if (node.textContent !== value) node.textContent = value;
+  }
+  function setDisabled(node, value) {
+    if (node.disabled !== !!value) node.disabled = !!value;
+  }
   function round(g, x, y, w, h, r) {
     g.beginPath();
     g.roundRect(x, y, w, h, r);
@@ -134,37 +142,48 @@
         host = room.isHost,
         busy = room.busy;
       for (const b of [...trackButtons, ...difficultyButtons])
-        b.disabled = busy || (online && !host);
+        setDisabled(b, busy || (online && !host));
       const launch = rootEl.querySelector(".race-launch");
-      launch.disabled = busy || (online && (!host || !!roomStatus?.connection));
-      launch.textContent = online
-        ? host
-          ? "Start together  ↗"
-          : "Waiting for host…"
-        : "Launch race  ↗";
-      for (const b of roomButtons) b.disabled = busy;
-      roomInput.disabled = busy;
+      setDisabled(
+        launch,
+        busy || (online && (!host || !!roomStatus?.connection)),
+      );
+      setText(
+        launch,
+        online
+          ? host
+            ? "Start together  ↗"
+            : "Waiting for host…"
+          : "Launch race  ↗",
+      );
+      for (const b of roomButtons) setDisabled(b, busy);
+      setDisabled(roomInput, busy);
       for (const id of ["raceRestart", "raceRematch", "raceNext"])
-        rootEl.querySelector("#" + id).disabled = online && !host;
+        setDisabled(rootEl.querySelector("#" + id), online && !host);
       const resume = rootEl.querySelector("#raceResume");
-      resume.disabled =
-        online && ((!host && roomPaused) || !!roomStatus?.connection);
-      resume.textContent = resume.disabled
-        ? "Waiting for host…"
-        : "Resume race";
-      rootEl.querySelector("#raceLobby").textContent = online
-        ? host
-          ? "Back to room lobby"
-          : "Leave race room"
-        : "Choose a circuit";
-      rootEl.querySelector(".race-setup > .race-local-note").textContent =
+      setDisabled(
+        resume,
+        online && ((!host && roomPaused) || !!roomStatus?.connection),
+      );
+      setText(resume, resume.disabled ? "Waiting for host…" : "Resume race");
+      setText(
+        rootEl.querySelector("#raceLobby"),
+        online
+          ? host
+            ? "Back to room lobby"
+            : "Leave race room"
+          : "Choose a circuit",
+      );
+      setText(
+        rootEl.querySelector(".race-setup > .race-local-note"),
         online
           ? "Shared laps, boost and collisions. Empty grid slots get CPUs."
-          : "Local CPU racing · or open Play with friends below";
+          : "Local CPU racing · or open Play with friends below",
+      );
       touch.hidden = view !== "play" || paused || (online && !canControl());
       watchTools.hidden = !online || view !== "play" || paused || !!ownActor();
       if (!watchTools.hidden)
-        watchName.textContent = "WATCHING " + (followActor()?.name || "RACE");
+        setText(watchName, "WATCHING " + (followActor()?.name || "RACE"));
     }
     function roomChanged(status) {
       if (!active || roomClosing) return;
@@ -174,24 +193,29 @@
       roomEntry.hidden = status.active;
       roomBox.hidden = !status.active;
       roomLeave.hidden = !status.active && !status.busy;
-      roomLeave.textContent = status.busy
-        ? "Cancel connecting"
-        : status.host
-          ? "Close race room"
-          : "Leave race room";
-      roomHint.textContent =
+      setText(
+        roomLeave,
+        status.busy
+          ? "Cancel connecting"
+          : status.host
+            ? "Close race room"
+            : "Leave race room",
+      );
+      setText(
+        roomHint,
         status.error ||
-        status.closedReason ||
-        (status.busy
-          ? "Connecting… You can cancel below."
-          : status.connection ||
-            (status.stale
-              ? "Waiting for host · controls released"
-              : status.active
-                ? status.host
-                  ? "You host the race. Keep this tab open; stepping away pauses everyone."
-                  : "The host chooses the circuit. Mid-race arrivals watch until the next lobby."
-                : "Up to 4 friends + 4 spectators. CPUs fill the five-pilot grid."));
+          status.closedReason ||
+          (status.busy
+            ? "Connecting… You can cancel below."
+            : status.connection ||
+              (status.stale
+                ? "Waiting for host · controls released"
+                : status.active
+                  ? status.host
+                    ? "You host the race. Keep this tab open; stepping away pauses everyone."
+                    : "The host chooses the circuit. Mid-race arrivals watch until the next lobby."
+                  : "Up to 4 friends + 4 spectators. CPUs fill the five-pilot grid.")),
+      );
       if (status.active) {
         const signature = JSON.stringify(
           status.roster.map((r) => [r.p, r.callsign, r.role]),
@@ -215,15 +239,21 @@
           status.host && typeof status.info.link === "string"
             ? status.info.link
             : "";
-        roomInvite.value = link;
+        if (roomInvite.value !== link) roomInvite.value = link;
         roomInvite.hidden = roomCopy.hidden = roomShare.hidden = !link;
-        roomCode.textContent =
+        setText(
+          roomCode,
           status.info.joinCode ||
-          (link ? "Invite link · same build" : "Friend race");
-        roomRole.textContent =
-          status.info.role === 1 ? "Join next race" : "Watch instead";
-        roomRole.disabled =
-          !status.current || status.current.status !== "lobby";
+            (link ? "Invite link · same build" : "Friend race"),
+        );
+        setText(
+          roomRole,
+          status.info.role === 1 ? "Join next race" : "Watch instead",
+        );
+        setDisabled(
+          roomRole,
+          !status.current || status.current.status !== "lobby",
+        );
         if (status.connection || status.stale) {
           keys.clear();
           resetTouch();
@@ -244,11 +274,15 @@
     function networkSnapshot(snapshot) {
       if (!active || roomClosing) return;
       const old = state,
-        next = snapshot.state;
+        next = snapshot.state,
+        choicesChanged =
+          selected.trackId !== next.trackId ||
+          selected.difficulty !== next.difficulty;
       selected.trackId = next.trackId;
       selected.difficulty = next.difficulty;
       if (snapshot.status === "lobby") {
-        if (view !== "lobby" || state) {
+        const enteringLobby = view !== "lobby" || !!state;
+        if (enteringLobby) {
           resetInput();
           state = null;
           view = "lobby";
@@ -256,7 +290,8 @@
           setPanel(lobby);
         }
         networkEpoch = -1;
-        syncChoices();
+        if (enteringLobby || choicesChanged) syncChoices();
+        else syncRoomChoices();
         return;
       }
       const newRound =
@@ -287,9 +322,12 @@
       if (roomPaused) {
         paused = true;
         resetInput();
-        pausePanel.querySelector("p").textContent = snapshot.isHost
-          ? "The whole race is paused. Resume when you’re ready."
-          : "The host paused the race. Everyone is safely parked.";
+        setText(
+          pausePanel.querySelector("p"),
+          snapshot.isHost
+            ? "The whole race is paused. Resume when you’re ready."
+            : "The host paused the race. Everyone is safely parked.",
+        );
         if (rootEl.dataset.screen !== "pause") setPanel(pausePanel);
       } else if (wasPaused && !localRoomMenu) {
         paused = false;
@@ -797,7 +835,7 @@
           String(b.dataset.difficulty === selected.difficulty),
         ),
       );
-      description.textContent = R.course(selected.trackId).subtitle;
+      setText(description, R.course(selected.trackId).subtitle);
       save();
       drawHero();
       syncRoomChoices();
@@ -1083,7 +1121,7 @@
       if (onlineActive()) {
         if (room.isHost) {
           localRoomMenu = false;
-          const next = {...selected};
+          const next = { ...selected };
           if (room.current?.status !== "lobby") room.lobby();
           room.configure(next);
           room.start();
@@ -1134,11 +1172,14 @@
       if (onlineActive()) {
         localRoomMenu = true;
         room.pause(true);
-        pausePanel.querySelector("p").textContent = room.isHost
-          ? "The whole race is paused. Resume when you’re ready."
-          : roomPaused
-            ? "The host paused the race. Everyone is safely parked."
-            : "The race keeps going. Your kart coasts while this menu is open.";
+        setText(
+          pausePanel.querySelector("p"),
+          room.isHost
+            ? "The whole race is paused. Resume when you’re ready."
+            : roomPaused
+              ? "The host paused the race. Everyone is safely parked."
+              : "The race keeps going. Your kart coasts while this menu is open.",
+        );
       }
       resetInput();
       last = 0;
@@ -1567,7 +1608,10 @@
       drawMap(mg, c, 340, 240, state.actors);
       position.replaceChildren(
         document.createTextNode(
-          String(state.results?.find((r) => r.id === a.id)?.position ?? (R.standings(state).findIndex((x) => x.id === a.id) + 1)),
+          String(
+            state.results?.find((r) => r.id === a.id)?.position ??
+              R.standings(state).findIndex((x) => x.id === a.id) + 1,
+          ),
         ),
         el("small", "", " / " + state.actors.length),
       );
