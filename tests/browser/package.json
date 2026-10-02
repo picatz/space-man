@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "test": "node --test relay.test.cjs",
-    "test:previews": "node --test previews.test.cjs"
+    "test:previews": "node --test previews.test.cjs",
+    "test:arena": "node --test arena.test.cjs"
   },
   "devDependencies": {
     "playwright": "1.63.0"

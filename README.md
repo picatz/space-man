@@ -38,6 +38,40 @@ Version 2.0 was a ground-up canvas rewrite designed and built by a Claude
 Fable 5 agent team. It's a fun research project exploring the capabilities
 of AI models for web game development.
 
+## Orbital Arena · CPU battles
+
+Choose **Arena · CPU Battles** from the title to enter a separate, opt-in
+platform-fighting mode. Pulse attacks build damage and launch rivals toward the
+edge of space. Double jump and dash to recover; each spacefarer has three lives.
+
+- **Duel:** you against one CPU
+- **Free-for-all:** you and three CPU rivals
+- **Team up:** you and a CPU wingmate against two CPUs, with friendly fire off
+- **Orbital Dock, Bloom Reactor, Ember Foundry:** three distinct, hand-authored
+  layouts with their own space-inspired visual treatments
+- Keyboard: A/D or arrows to move, Space/W/Up to jump, F/J to pulse,
+  Shift/K to dash, Escape to pause. Existing remapped movement/jump/fire keys
+  carry over. Controller: stick/D-pad, A, X, B/trigger, Menu. Touch: a floating
+  stick plus Jump, Pulse and Dash; handedness, motion, mute and power preferences
+  carry over
+
+These are local CPU battles. Online friend/group combat is the next milestone;
+Run Together continues to be the existing shared-course runner. Leave a room
+explicitly before opening Arena. Arena matches do not affect runner scores,
+missions or room state. Returning to the runner preserves its existing behavior.
+
+The simulation lives in `src/arena.js`, with device-independent commands,
+serializable state and CPU controllers using the same command interface. Its
+presentation is lazy-created in `src/arena-ui.js`. See
+[the foundation and next-milestone plan](docs/arena-foundation.md).
+
+Run pure simulation/integration tests with the normal regression command below.
+The additional `cd tests/browser && npm run test:arena` browser test exercises
+keyboard/touch controls, matches, pause/restart, layout and returning to the
+runner using local assets, without contacting a relay. Like the other browser
+tests, it requires `npm ci` and Playwright Chromium; an existing Chromium can be
+selected with `SPACE_MAN_CHROMIUM_PATH`.
+
 ## Daily Course and challenges
 
 **Daily Course** on the title screen (or Y / Triangle on a controller) runs the
