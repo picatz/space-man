@@ -44,13 +44,16 @@ async function launch(t) {
   await page.evaluate(() => {
     const api = SpaceManRaceAudio;
     const NativeContext = window.AudioContext || window.webkitAudioContext;
-    window.raceAudioProbe = { controllers: [], contexts: [], nodes: [] };
+    window.raceAudioProbe = { controllers: [], contexts: [], nodes: [], nonSuspendedStateChanges: 0 };
     window.SpaceManRaceAudio = {
       ...api,
       create(options) {
         function ObservedContext() {
           const context = new NativeContext();
           raceAudioProbe.contexts.push(context);
+          context.addEventListener("statechange", () => {
+            if (context.state !== "suspended") raceAudioProbe.nonSuspendedStateChanges++;
+          });
           for (const method of ["createGain", "createOscillator", "createBiquadFilter", "createDynamicsCompressor"]) {
             if (!context[method]) continue;
             const original = context[method].bind(context);
@@ -79,6 +82,7 @@ async function launch(t) {
       contexts: raceAudioProbe.contexts.length,
       nativeStates: raceAudioProbe.contexts.map((context) => context.state),
       nativeTime: raceAudioProbe.contexts[0]?.currentTime || 0,
+      nonSuspendedStateChanges: raceAudioProbe.nonSuspendedStateChanges,
       createdOscillators: raceAudioProbe.nodes.filter((node) => node.type === "createOscillator").length,
       connectedOscillators: raceAudioProbe.nodes.filter((node) => node.type === "createOscillator" && node.connected).length,
       connectedNodes: raceAudioProbe.nodes.filter((node) => node.connected).length,
@@ -116,17 +120,43 @@ async function audibleGraph(page, music = true, sfx = true) {
   }, { music, sfx });
 }
 async function quietGraph(page, suspended = true) {
+  const isQuiet = (p) => !p.scheduled && p.musicVoices === 0 && p.sfxVoices === 0 &&
+    p.engineVoices === 0 && p.connectedOscillators === 0;
   await page.waitForFunction((suspended) => {
     const p = raceAudioProbe.read();
     return !p.scheduled && p.musicVoices === 0 && p.sfxVoices === 0 && p.engineVoices === 0 &&
       p.connectedOscillators === 0 && (!suspended || p.contextState === "suspended");
   }, suspended);
-  const before = await page.evaluate(() => raceAudioProbe.read());
+  let before = await page.evaluate(() => raceAudioProbe.read());
+  if (suspended) {
+    // Native audio/control threads may retire their last render quanta after
+    // state first says suspended. Observe clock convergence without calling
+    // suspend() ourselves or changing the controller's production behavior.
+    const deadline = Date.now() + 3000, created = before.createdOscillators;
+    const stateChanges = before.nonSuspendedStateChanges;
+    let stableSince = Date.now();
+    for (;;) {
+      await page.waitForTimeout(40);
+      const next = await page.evaluate(() => raceAudioProbe.read());
+      assert.equal(next.contextState, "suspended", "native context remains suspended while settling");
+      assert.equal(next.nonSuspendedStateChanges, stateChanges, "no native resume during clock settling");
+      assert.equal(isQuiet(next), true, "no voices or scheduler during native-clock settling");
+      assert.equal(next.createdOscillators, created, "no notes created while native-clock settles");
+      if (next.nativeTime !== before.nativeTime) stableSince = Date.now();
+      before = next;
+      assert.ok(Date.now() < deadline, "suspended native audio clock settles within three seconds");
+      if (Date.now() - stableSince >= 120) break;
+    }
+  }
   await page.waitForTimeout(240);
   const after = await page.evaluate(() => raceAudioProbe.read());
   assert.equal(after.createdOscillators, before.createdOscillators, "no background note creation");
-  assert.equal(after.connectedOscillators, 0);
-  if (suspended) assert.equal(after.nativeTime, before.nativeTime, "native audio clock is suspended");
+  assert.equal(isQuiet(after), true, "no voices or scheduler after quiet interval");
+  if (suspended) {
+    assert.equal(after.contextState, "suspended");
+    assert.equal(after.nonSuspendedStateChanges, before.nonSuspendedStateChanges, "no native resume during quiet interval");
+    assert.equal(after.nativeTime, before.nativeTime, "native audio clock is suspended");
+  }
 }
 
 test("race native audio: gestures, pause, mute/music/volume, stop, reuse and destroy", { timeout: 60000 }, async (t) => {

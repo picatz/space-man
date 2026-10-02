@@ -176,30 +176,18 @@
     };
   }
   function nearest(c, x, y) {
-    let best = null,
-      dist = Infinity;
+    // This hot path serves steering and iterative contacts. Keep just the best
+    // scalars during the scan instead of allocating a new object per candidate.
+    let best = null, dist = Infinity, bestX = 0, bestY = 0, bestS = 0;
     for (const g of c.segments) {
-      const t = clamp(
-          ((x - g.x) * g.dx + (y - g.y) * g.dy) / (g.length * g.length),
-          0,
-          1,
-        ),
-        px = g.x + g.dx * t,
-        py = g.y + g.dy * t,
-        d = (x - px) ** 2 + (y - py) ** 2;
+      const t = clamp(((x-g.x)*g.dx + (y-g.y)*g.dy)/(g.length*g.length), 0, 1),
+        px = g.x + g.dx*t, py = g.y + g.dy*t,
+        d = (x-px)**2 + (y-py)**2;
       if (d < dist) {
-        dist = d;
-        best = {
-          x: px,
-          y: py,
-          tx: g.tx,
-          ty: g.ty,
-          s: g.start + t * g.length,
-          distance: Math.sqrt(d),
-        };
+        dist = d; best = g; bestX = px; bestY = py; bestS = g.start+t*g.length;
       }
     }
-    return best;
+    return best ? { x: bestX, y: bestY, tx: best.tx, ty: best.ty, s: bestS, distance: Math.sqrt(dist) } : null;
   }
   function command(raw = {}) {
     raw = raw && typeof raw === "object" ? raw : {};
@@ -322,11 +310,11 @@
   // only outward velocity (no bouncing); retain tangent motion around bends.
   // Existing invalid/offcourse poses move inward by at most two units per tick
   // until the explicit rescue takes over, rather than snapping to a nearby road.
-  function edgeContact(a, c, old, friction = true) {
+  function edgeContact(a, c, old, friction = true, readPosition = true) {
     const n = nearest(c, a.x, a.y), limit = c.width / 2 - KART_RADIUS;
     if (n.distance <= limit) return n;
     const nx = (a.x - n.x) / n.distance, ny = (a.y - n.y) / n.distance;
-    const wasInside = nearest(c, old.x, old.y).distance <= limit + 0.01;
+    const wasInside = old.inside || old.released;
     const correction = Math.min(n.distance - limit, wasInside ? 32 : 2);
     a.x -= nx * correction;
     a.y -= ny * correction;
@@ -337,7 +325,7 @@
     }
     // Gentle rail friction, independent of rendered frame rate.
     if (friction) { a.vx *= 0.94; a.vy *= 0.94; }
-    return nearest(c, a.x, a.y);
+    return readPosition ? nearest(c, a.x, a.y) : null;
   }
   function step(state, inputs = {}) {
     inputs = inputs && typeof inputs === "object" ? inputs : {};
@@ -446,7 +434,7 @@
       }
       for (const a of active) {
         const old = previous.get(a.id);
-        if (old.inside || old.released) edgeContact(a, c, old, pass === 0);
+        if (old.inside || old.released) edgeContact(a, c, old, pass === 0, false);
       }
       // Rail projection can introduce a new pair penetration even if no pair
       // overlapped before projection, so measure the final constrained poses.
