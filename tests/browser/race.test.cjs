@@ -416,3 +416,58 @@ test(
     await capture(page, "race-pause-phone");
   },
 );
+
+test(
+  "race mobile: shared preview/status rail and narrow safe insets leave controls clear",
+  { timeout: 30000 },
+  async (t) => {
+    const { page } = await launch(t, {
+      viewport: { width: 320, height: 664 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    await page.evaluate(() => {
+      const s = document.documentElement.style;
+      s.setProperty("--game-ui-top", "38px");
+      s.setProperty("--game-ui-bottom", "24px");
+      s.setProperty("--game-ui-left", "8px");
+      s.setProperty("--game-ui-right", "8px");
+      const rail = document.createElement("div");
+      rail.textContent = "PREVIEW · PR #32 · layout verification";
+      rail.style.cssText =
+        "position:fixed;z-index:2000;top:0;left:0;right:0;height:30px;padding:7px 12px;background:#191b31;color:#bccbdf;font:10px system-ui";
+      document.body.append(rail);
+    });
+    await page.locator(".race-launch").tap();
+    await playing(page);
+    const hud = await page.locator(".race-hud").boundingBox();
+    assert.ok(hud.y >= 49, "HUD clears shared status rail");
+    const boxes = [];
+    for (const action of ["left", "right", "brake", "boost"]) {
+      const b = await page.locator(`[data-action="${action}"]`).boundingBox();
+      assert.ok(
+        b.width >= 48 &&
+          b.height >= 48 &&
+          b.x >= 8 &&
+          b.x + b.width <= 312 &&
+          b.y + b.height <= 641,
+      );
+      boxes.push(b);
+    }
+    const rescue = await page.locator(".race-recover").boundingBox();
+    assert.ok(rescue.width >= 44);
+    for (const b of boxes)
+      assert.ok(
+        rescue.x + rescue.width <= b.x ||
+          rescue.x >= b.x + b.width ||
+          rescue.y + rescue.height <= b.y ||
+          rescue.y >= b.y + b.height,
+        "rescue does not cover another touch action",
+      );
+    await capture(page, "race-phone-preview-insets");
+    await page.getByRole("button", { name: "Pause race" }).tap();
+    await menu(page, "Choose a circuit");
+    await page.locator(".race-launch").scrollIntoViewIfNeeded();
+    await capture(page, "race-setup-small-phone");
+  },
+);

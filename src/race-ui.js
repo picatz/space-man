@@ -30,7 +30,7 @@
 .race-compact{width:min(430px,100%);padding:25px;background:#0d2035f5;border:1px solid #456174;border-radius:23px;box-shadow:0 18px 100px #0006}.race-compact h2{font-size:34px;letter-spacing:-.05em;line-height:1.08;margin:16px 0 12px}.race-compact p{color:#aac3d3;font-size:13px}.race-compact>.race-button{width:100%;margin-top:10px}.race-results{margin:20px 0}.race-result-row{display:flex;align-items:center;gap:14px;padding:10px 4px;border-bottom:1px solid #294054;color:#d2e6f3;font-size:12px}.race-result-row strong{flex:1}.race-result-row span:first-child{font-size:19px;color:#c7f47d;font-weight:800}.race-result-row span:last-child{font-variant-numeric:tabular-nums;color:#93b2c6}.race-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 @media(max-width:760px){.race-grid{gap:22px;grid-template-columns:1fr}.race-intro{display:grid;grid-template-columns:1fr .8fr;column-gap:10px;align-items:center}.race-intro>.race-pill{grid-column:1;justify-self:start;font-size:8px;letter-spacing:.1em;padding:6px 9px}.race-title{font-size:34px;line-height:1;margin:13px 0;grid-column:1}.race-lede{font-size:12px;margin:0;grid-column:1/-1;max-width:none}.race-hero{grid-column:2;grid-row:1/4;width:100%;margin:0}.race-facts{display:none}.race-lobby-header{margin-bottom:8px}.race-setup{padding:17px}.race-track{min-height:68px}.race-track canvas{width:85px;height:50px;flex-basis:85px}.race-options{margin-bottom:15px}.race-modal{padding:calc(var(--race-top) + 12px) calc(var(--race-right) + 16px) calc(var(--race-bottom) + 14px) calc(var(--race-left) + 16px)}.race-hud{left:calc(var(--race-left) + 12px);right:calc(var(--race-right) + 12px);top:calc(var(--race-top) + 12px);gap:7px}.race-hud-box{gap:13px;padding:10px 12px}.race-position{font-size:32px}.race-metric strong{font-size:15px}.race-time{font-size:14px;padding:11px 10px}.race-pause{width:44px;height:44px;min-height:44px}.race-touch-group{gap:7px}.race-touch-button{width:59px;height:63px}.race-steering{left:calc(var(--race-left) + 13px)}.race-actions{right:calc(var(--race-right) + 13px)}.race-recover{font-size:8px;padding:7px;bottom:calc(var(--race-bottom) + 31px)}.race-hint{max-width:60%;white-space:normal;text-align:center}.race-warning{top:calc(var(--race-top) + 85px)}}
 @media(max-height:520px) and (min-width:600px){.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:11px}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:48%;font-size:55px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
-@media(max-width:350px){.race-touch-button{width:54px;height:60px}.race-recover{width:55px;font-size:7px;padding:5px 2px}.race-hud-box{padding:9px 10px;gap:10px}.race-hud{gap:5px}.race-time{padding:10px 8px}}
+@media(max-width:350px){.race-touch-button{width:54px;height:60px}.race-recover{width:44px;font-size:0;padding:5px 2px}.race-recover:after{content:"↺";font-size:23px}.race-boostbar{width:100px}.race-root[data-touch=true] .race-minimap{width:100px;height:70px}.race-hud-box{padding:9px 10px;gap:10px}.race-hud{gap:5px}.race-time{padding:10px 8px}}
 @media(prefers-reduced-motion:reduce){.race-root *{transition:none!important}}
 `;
   function create(opts = {}) {
@@ -86,7 +86,7 @@
       listeners = [],
       trackButtons = [],
       difficultyButtons = [],
-      camera = { x: 0, y: 0 },
+      camera = { x: 0, y: 0, rotation: 0 },
       recoveryTap = null,
       recoveryClickCleanup = null;
     const fmt = (t) => {
@@ -725,7 +725,12 @@
       last = 0;
       acc = 0;
       const a = state.actors[0];
-      camera = { x: a.x, y: a.y };
+      camera = {
+        x: a.x,
+        y: a.y,
+        rotation:
+          height > width && !prefs.reduceMotion ? -a.heading - Math.PI / 2 : 0,
+      };
       setPanel(null);
       announce("Three laps. Auto-drive is on. Race starts in three.");
       tone(0.7);
@@ -1067,9 +1072,20 @@
         desiredY = a.y + Math.sin(a.heading) * 85;
       camera.x += (desiredX - camera.x) * 0.12;
       camera.y += (desiredY - camera.y) * 0.12;
+      // Portrait gets a forward-facing chase view: the useful road extends
+      // into the tall screen instead of spending most of its area on empty sky.
+      // Reduced-motion players keep the fixed-heading overview.
+      const followHeading = height > width && !prefs.reduceMotion;
+      const targetRotation = followHeading ? -a.heading - Math.PI / 2 : 0;
+      camera.rotation +=
+        Math.atan2(
+          Math.sin(targetRotation - camera.rotation),
+          Math.cos(targetRotation - camera.rotation),
+        ) * 0.1;
       g.save();
       g.translate(width / 2, height * 0.48);
       g.scale(zoom, zoom);
+      g.rotate(camera.rotation);
       g.translate(-camera.x, -camera.y);
       road(g, c);
       if (a.finishTick === null) {
@@ -1090,16 +1106,52 @@
       for (const actor of state.actors) {
         if (actor.recoveryTicks && state.tick % 12 < 5) continue;
         kart(g, actor);
-        g.font = "700 11px system-ui";
-        g.textAlign = "center";
-        g.fillStyle = actor.color;
-        g.fillText(
-          actor.controller === "human" ? "YOU" : actor.name,
-          actor.x,
-          actor.y - 27,
-        );
       }
       g.restore();
+      // Screen-space labels remain upright in the chase view. Keep YOU first
+      // and omit crowded CPU labels rather than stacking names over the grid.
+      const labels = [],
+        cos = Math.cos(camera.rotation),
+        sin = Math.sin(camera.rotation);
+      g.font = "700 11px system-ui";
+      g.textAlign = "center";
+      for (const actor of state.actors) {
+        const dx = actor.x - camera.x,
+          dy = actor.y - camera.y;
+        const x = width / 2 + (dx * cos - dy * sin) * zoom;
+        const y = height * 0.48 + (dx * sin + dy * cos) * zoom - 30;
+        const name = actor.controller === "human" ? "YOU" : actor.name;
+        const w = g.measureText(name).width + 10;
+        const box = {
+          left: x - w / 2,
+          right: x + w / 2,
+          top: y - 12,
+          bottom: y + 5,
+        };
+        if (
+          box.left < 5 ||
+          box.right > width - 5 ||
+          box.top < 83 ||
+          box.bottom > height - 100
+        )
+          continue;
+        if (
+          labels.some(
+            (b) =>
+              box.left < b.right + 6 &&
+              box.right > b.left - 6 &&
+              box.top < b.bottom + 5 &&
+              box.bottom > b.top - 5,
+          )
+        )
+          continue;
+        labels.push(box);
+        g.fillStyle = "#071626bb";
+        round(g, box.left, box.top, w, 18, 6);
+        g.fill();
+        g.fillStyle = actor.color;
+        g.fillText(name, x, y + 1);
+      }
       drawMap(mg, c, 340, 240, state.actors);
       position.replaceChildren(
         document.createTextNode(
