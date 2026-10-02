@@ -816,7 +816,7 @@
     <button class="btn pulse" id="btnPlay">Tap to Start</button>
     <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
-    <button class="btn ghost" id="btnArena">Arena · CPU Battles</button>
+    <button class="btn ghost" id="btnArena">Arena · CPU + Friends</button>
     </div>
     <div class="attract-side">
     <div class="control-guide desktop-guide" aria-label="Keyboard controls">
@@ -1081,6 +1081,8 @@
 <script src="src/anim.js"></script>
 <!-- Arena is opt-in: pure simulation + an inert, lazy-created presentation shell. -->
 <script src="src/arena.js"></script>
+<script src="src/arena-online.js"></script>
+<script src="src/arena-room.js"></script>
 <script src="src/arena-ui.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
@@ -7288,7 +7290,7 @@ function netHostBlocked(hostHex) {
   try { return NET.blocklist().some((b) => b.pubkey === hostHex); } catch (e) { return false; }
 }
 function resetJoinPrompt() {
-  $('joinTitle').textContent = 'Join This Run Together?';
+  $('joinTitle').textContent = joinPayload && NET.peekInvite(joinPayload).mode === 'arena' ? 'Join This Arena?' : 'Join This Run Together?';
   $('joinChoices').style.display = '';
   $('btnJoinNotNow').style.display = '';
   setJoinState('');
@@ -7324,6 +7326,7 @@ async function acceptInvite(role) {
   }
   joinOverride = false;                                    // override consumed (single-use)
   if (isOffline()) { setJoinState(OFFLINE_TOGETHER); return; }
+  if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
   $('joinChoices').style.display = 'none';
   // Cancel stays reachable the whole time: a slow relay or a host who never answers must not
@@ -8471,15 +8474,22 @@ $('btnRosterCancel').onclick = () => { hideAllOverlays(); if (G.mode === 'attrac
 $('btnPlay').onclick = () => { Audio.ensure(); Audio.resume(); startRun(); };
 $('btnArena').onclick = () => {
   if (netLive()) {
-    queueToast('Leave Run Together before opening a CPU arena.', 'sys');
-    announce('Leave Run Together before opening a CPU arena. Your room is still connected.');
+    queueToast('Leave Run Together before opening Arena.', 'sys');
+    announce('Leave Run Together before opening Arena. Your room is still connected.');
     return;
   }
   if (G.mode !== 'attract' || !window.SpaceManArenaUI) return;
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
     storageKey: BUILD.storageKey('sm2.arena.v1'),
+    net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    hostOptions() {
+      const relayDir = { mode: settings.netRelayMode };
+      if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
+      else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
+      return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
+    },
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
-    onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); $('btnArena').focus(); },
+    onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); hideAllOverlays(); showOverlay('ovAttract'); $('btnArena').focus(); },
   });
   clearInput(); Audio.suspend(); arenaUI.open();
 };
@@ -8531,6 +8541,7 @@ $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
+  if ((arenaUI && arenaUI.active) || NET.info().mode === 'arena') return;
   if (e === 'rotated' || e === 'round' || e === 'join' || e === 'rejoin' || e === 'ok') saveResume();   // keep the token current
   if (e === 'reconnecting') { announce('Connection lost. Reconnecting.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'reconnected') { announce('Reconnected.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
