@@ -20,14 +20,17 @@
   function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   function button(text, cls, fn) { const n = el('button', 'arena-button ' + (cls || ''), text); n.type = 'button'; if (fn) n.addEventListener('click', fn); return n; }
   const STYLES = `\n/* All arena rules are scoped. The runner's cascade stays untouched. */
-.arena-root{position:fixed;inset:0;z-index:1000;isolation:isolate;overflow:hidden;background:#060818;color:#CFE3FF;font-family:var(--font,ui-rounded,system-ui,sans-serif);font-size:14px;line-height:1.4;touch-action:none;-webkit-user-select:none;user-select:none;color-scheme:dark}
+.arena-root{position:fixed;inset:0 auto auto 0;width:100%;height:100%;height:100dvh;min-width:0;min-height:0;z-index:1000;isolation:isolate;overflow:hidden;background:#060818;color:#CFE3FF;font-family:var(--font,ui-rounded,system-ui,sans-serif);font-size:14px;line-height:1.4;touch-action:none;-webkit-user-select:none;user-select:none;color-scheme:dark}
 .arena-root [hidden],.arena-root[hidden]{display:none!important}
-.arena-root *{box-sizing:border-box}
+.arena-root,.arena-root *,.arena-root *:before,.arena-root *:after{box-sizing:border-box}
+/* The root uses visual-viewport coordinates. Translate the runner's shared
+   layout-viewport insets once, so browser chrome is never reserved twice. */
+.arena-root{--arena-safe-top:max(0px,calc(var(--game-ui-top,env(safe-area-inset-top,0px)) - var(--arena-vv-top,0px)));--arena-safe-right:max(0px,calc(var(--game-ui-right,env(safe-area-inset-right,0px)) - var(--arena-vv-right,0px)));--arena-safe-bottom:max(0px,calc(var(--game-ui-bottom,env(safe-area-inset-bottom,0px)) - var(--arena-vv-bottom,0px)));--arena-safe-left:max(0px,calc(var(--game-ui-left,env(safe-area-inset-left,0px)) - var(--arena-vv-left,0px)))}
+.arena-root :where(.arena-dialog,.arena-lobby-top,.arena-lobby-grid,.arena-intro,.arena-setup,.arena-choice-group,.arena-formats,.arena-stage-cards,.arena-format-copy,.arena-difficulty,.arena-segmented){min-width:0;min-height:0}
 .arena-root button,.arena-root summary{-webkit-tap-highlight-color:transparent}
-.arena-root :focus-visible{outline:3px solid #FFE59A!important;outline-offset:4px!important}
-.arena-root button{font:inherit}
+.arena-root :focus-visible{outline:3px solid #FFE59A!important;outline-offset:-3px!important}
 .arena-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none}
-.arena-button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;margin:0;padding:12px 18px;border:1px solid rgba(159,241,255,.23);border-radius:12px;background:#132239;color:#DBEFFF;font-size:13px;font-weight:700;line-height:1.3;text-align:center;text-decoration:none;letter-spacing:.01em;box-shadow:none;cursor:pointer;transition:background .15s,border-color .15s,transform .15s;appearance:none;-webkit-appearance:none}
+.arena-button{position:relative;min-width:0;max-width:100%;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;margin:0;padding:12px 18px;border:1px solid rgba(159,241,255,.23);border-radius:12px;background:#132239;color:#DBEFFF;font-size:13px;font-weight:700;line-height:1.3;text-align:center;text-decoration:none;letter-spacing:.01em;box-shadow:none;cursor:pointer;transition:background .15s,border-color .15s,transform .15s;appearance:none;-webkit-appearance:none}
 .arena-button:hover{background:#1C304C;border-color:rgba(159,241,255,.65)}
 .arena-button:active{transform:translateY(1px)}
 .arena-button:disabled{opacity:.5;cursor:default}
@@ -38,12 +41,12 @@
 .arena-eyebrow{font-size:10px;letter-spacing:.17em;font-weight:800;color:#8EAAC5;line-height:1.5}
 .arena-pill{display:inline-flex;align-items:center;align-self:flex-start;gap:7px;border:1px solid rgba(56,225,255,.28);border-radius:999px;padding:6px 10px;font:700 9px/1.3 system-ui,sans-serif;letter-spacing:.15em;background:rgba(56,225,255,.06);color:#9FF1FF}
 .arena-pill:before{content:'';width:5px;height:5px;border-radius:50%;background:#38E1FF}
-.arena-modal{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 22px) calc(env(safe-area-inset-right,0px) + 24px) calc(env(safe-area-inset-bottom,0px) + 22px) calc(env(safe-area-inset-left,0px) + 24px);background:rgba(4,8,20,.55);overflow:hidden}
+.arena-modal{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;padding:calc(var(--arena-safe-top) + 22px) calc(var(--arena-safe-right) + 24px) calc(var(--arena-safe-bottom) + 22px) calc(var(--arena-safe-left) + 24px);background:rgba(4,8,20,.55);overflow:hidden}
 .arena-root[data-screen=lobby] .arena-modal{background:linear-gradient(100deg,rgba(4,8,20,.85),rgba(4,8,20,.27))}
-.arena-dialog{scrollbar-width:thin;scrollbar-color:#32516C transparent;overscroll-behavior:contain;touch-action:pan-y}
-.arena-lobby{width:min(1130px,100%);max-height:100%;overflow:auto;padding:0 8px 6px}
+.arena-dialog{overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#32516C transparent;overscroll-behavior:contain;touch-action:pan-y}
+.arena-lobby{width:min(1130px,100%);max-height:100%;overflow-y:auto;padding:0 8px 6px}
 .arena-lobby-top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;min-height:44px}
-.arena-lobby-grid{display:grid;grid-template-columns:.95fr 1.1fr;gap:clamp(28px,5vw,72px);align-items:center}
+.arena-lobby-grid{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.1fr);grid-auto-rows:max-content;align-content:start;gap:clamp(28px,5vw,72px);align-items:center}
 .arena-intro{min-width:0;padding-bottom:10px}
 .arena-title{font-size:clamp(34px,3.75vw,52px);line-height:1.12;letter-spacing:-.045em;font-weight:900;color:#F4F7FF;margin:20px 0 18px;padding:0}
 .arena-title span{color:#9FF1FF}
@@ -58,7 +61,7 @@
 .arena-format-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;padding:12px 10px;min-height:100px;border-radius:12px;background:rgba(9,20,37,.76);overflow:hidden}
 .arena-format-card[aria-pressed=true]{border-color:#38E1FF;background:rgba(56,225,255,.10);box-shadow:inset 0 0 0 1px rgba(56,225,255,.15)}
 .arena-format-copy{display:flex;flex-direction:column;gap:5px}
-.arena-format-copy strong{font-size:12px;font-weight:800;letter-spacing:-.02em;white-space:nowrap}
+.arena-format-copy strong{font-size:12px;font-weight:800;letter-spacing:-.02em;white-space:normal;overflow-wrap:anywhere}
 .arena-format-copy small{font:600 8px/1.3 system-ui,sans-serif;letter-spacing:.04em;color:#8CAAC5}
 .arena-format-icon{font:700 13px/1 system-ui,sans-serif;letter-spacing:.02em;color:#7696B4;white-space:nowrap}
 .arena-format-card[aria-pressed=true] .arena-format-icon{color:#9FF1FF}
@@ -67,7 +70,7 @@
 .arena-stage-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .arena-stage-card{display:block;text-align:left;min-width:0;padding:0 0 10px;overflow:hidden;background:#0B1829;border-color:rgba(135,173,204,.18);min-height:114px;border-radius:10px}
 .arena-stage-card[aria-pressed=true]{border-color:#FFC66B;box-shadow:0 0 0 1px rgba(255,198,107,.18)}
-.arena-stage-preview{display:block;width:100%;height:auto;min-height:55px;object-fit:cover;border-bottom:1px solid rgba(159,241,255,.08)}
+.arena-stage-preview{display:block;min-width:0;max-width:100%;width:100%;height:auto;aspect-ratio:288/150;min-height:55px;object-fit:cover;border-bottom:1px solid rgba(159,241,255,.08)}
 .arena-stage-name{display:block;font-size:9px;font-weight:800;line-height:1.5;padding:9px 8px 0;letter-spacing:-.01em;color:#BED5E9}
 .arena-stage-card[aria-pressed=true] .arena-stage-name{color:#FFE3AF}
 .arena-stage-number{position:absolute;top:5px;left:7px;font:700 8px/1.3 system-ui,sans-serif;color:#B8D5EA;opacity:.7}
@@ -83,7 +86,7 @@
 .arena-controls-help summary{cursor:pointer;min-height:34px;width:fit-content;padding:5px 0;color:#B3CEE4}
 .arena-help-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px;padding-bottom:8px}
 .arena-help-grid p{margin:0}.arena-help-grid .arena-text-button{justify-self:start;min-height:44px;padding:9px 10px;border-color:#244561}
-.arena-hud{position:absolute;top:calc(env(safe-area-inset-top,0px) + 15px);left:calc(env(safe-area-inset-left,0px) + 22px);right:calc(env(safe-area-inset-right,0px) + 22px);z-index:3;pointer-events:none}
+.arena-hud{position:absolute;top:calc(var(--arena-safe-top) + 15px);left:calc(var(--arena-safe-left) + 22px);right:calc(var(--arena-safe-right) + 22px);z-index:3;pointer-events:none}
 .arena-hud-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px}.arena-match-brand{display:flex;flex-direction:column;gap:3px}.arena-match-name{font-size:11px;color:#B5D0E8;font-weight:700;letter-spacing:.015em}
 .arena-hud-tools{display:flex;align-items:center;gap:16px;pointer-events:auto}.arena-clock{font:700 20px/1.3 system-ui,sans-serif;font-variant-numeric:tabular-nums;color:#DAEDFF;letter-spacing:.04em}.arena-clock-urgent{color:#FFB454}
 .arena-icon-button{font:700 18px/1 system-ui,sans-serif;width:48px;height:48px;padding:10px;min-height:48px;border-radius:12px;background:rgba(11,26,45,.82)}
@@ -93,19 +96,58 @@
 .arena-player-helmet:after{content:'';position:absolute;left:8px;right:6px;bottom:-5px;height:5px;background:var(--fighter);border-radius:1px}
 .arena-player-info{display:grid;grid-template-columns:auto auto;gap:2px 5px;min-width:0;align-items:baseline;flex:1}.arena-player-name{font:700 11px/1.2 system-ui,sans-serif;color:#E4F0FB;overflow:hidden;text-overflow:ellipsis}.arena-player-tag{font:700 7px/1.2 system-ui,sans-serif;color:var(--fighter);white-space:nowrap}.arena-stocks{grid-column:1/-1;font:700 10px/1.2 system-ui,sans-serif;color:var(--fighter);letter-spacing:4px;margin-top:3px}.arena-damage{font:800 24px/1 system-ui,sans-serif;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:#EFF7FF;min-width:42px;text-align:right}.arena-player-out{opacity:.46}.arena-player-out .arena-damage{font-size:15px}
 .arena-countdown{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);z-index:4;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;pointer-events:none}.arena-countdown-value{font-size:clamp(70px,14vw,140px);font-weight:900;line-height:1;color:#F4F7FF;text-shadow:0 6px 0 #183650,0 0 55px rgba(56,225,255,.18)}.arena-countdown-label{font:700 10px/1.5 system-ui,sans-serif;letter-spacing:.2em;color:#9FF1FF;white-space:nowrap;padding:6px 10px;background:rgba(6,13,28,.8);border-radius:20px}
-.arena-bottom-hud{position:absolute;left:24px;right:24px;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);display:flex;align-items:center;justify-content:space-between;gap:16px;pointer-events:none;z-index:3}.arena-control-hint{font:500 10px/1.6 system-ui,sans-serif;word-spacing:4px;color:#7F9DB9}.arena-abilities{display:flex;gap:9px}.arena-ability{position:relative;overflow:hidden;display:flex;align-items:center;gap:7px;min-width:100px;padding:9px 11px 11px;border:1px solid rgba(133,184,220,.23);border-radius:9px;background:rgba(8,19,34,.85)}.arena-ability-key{font:700 9px/1.2 system-ui,sans-serif;color:#DCEEFF}.arena-ability-label{font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.1em;color:#A8C7E0}.arena-ability-meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:#38E1FF;transform-origin:left}.arena-ability:last-child .arena-ability-meter{background:#FFC66B}
-.arena-touch{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}.arena-root[data-touch=true] .arena-touch{display:block}.arena-stick-zone{position:absolute;bottom:0;left:0;width:48%;height:42%;min-height:140px;pointer-events:auto;touch-action:none}.arena-stick-base{position:absolute;left:76px;top:calc(100% - 88px - env(safe-area-inset-bottom,0px));width:94px;height:94px;border-radius:50%;border:1.5px solid rgba(159,241,255,.4);background:rgba(20,51,73,.18);transform:translate(-50%,-50%);opacity:.6;pointer-events:none}.arena-stick-base:before,.arena-stick-base:after{content:'';position:absolute;left:50%;top:50%;background:rgba(159,241,255,.12);transform:translate(-50%,-50%)}.arena-stick-base:before{width:76%;height:1px}.arena-stick-base:after{height:76%;width:1px}.arena-stick-knob{position:absolute;left:50%;top:50%;width:40px;height:40px;border:1px solid rgba(159,241,255,.58);border-radius:50%;background:rgba(56,225,255,.2);transform:translate(-50%,-50%)}.arena-stick-active{opacity:1;border-color:rgba(159,241,255,.8)}.arena-stick-label{position:absolute;left:76px;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translateX(-50%);font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.15em;color:#7796AD;pointer-events:none}
-.arena-touch-actions{position:absolute;right:calc(env(safe-area-inset-right,0px) + 17px);bottom:calc(env(safe-area-inset-bottom,0px) + 23px);width:192px;height:150px;pointer-events:none}.arena-touch-button{position:absolute;min-height:60px;min-width:60px;padding:8px;display:flex;flex-direction:column;gap:2px;border-radius:50%;pointer-events:auto;touch-action:none;box-shadow:0 4px 0 rgba(0,0,0,.3);background:rgba(20,44,67,.91);border:1.5px solid #6593B1;color:#CBEBFF}.arena-touch-symbol{font:700 23px/1 system-ui,sans-serif}.arena-touch-word{font:700 8px/1.3 system-ui,sans-serif;letter-spacing:.07em}.arena-touch-jump{width:76px;height:76px;right:0;bottom:0;color:#A9F1FF;border-color:#70DCEE;background:rgba(16,56,75,.92)}.arena-touch-attack{width:70px;height:70px;left:17px;bottom:27px;color:#FFE4B3;border-color:#E3AF62;background:rgba(70,49,38,.92)}.arena-touch-dash{width:58px;height:58px;right:20px;top:0}.arena-touch-button.arena-pressed{transform:translateY(3px) scale(.96);filter:brightness(1.2);box-shadow:none}.arena-touch-button.arena-cooling{opacity:.56}.arena-root[data-lefty=true] .arena-stick-zone{left:auto;right:0}.arena-root[data-lefty=true] .arena-stick-base{left:calc(100% - 76px)}.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 76px)}.arena-root[data-lefty=true] .arena-touch-actions{right:auto;left:calc(env(safe-area-inset-left,0px) + 17px);transform:scaleX(-1)}.arena-root[data-lefty=true] .arena-touch-button{transform:scaleX(-1)}.arena-root[data-lefty=true] .arena-touch-button.arena-pressed{transform:scaleX(-1) translateY(3px) scale(.96)}
-.arena-root[data-touch=true] .arena-bottom-hud{justify-content:center;bottom:calc(env(safe-area-inset-bottom,0px) + 8px)}.arena-root[data-touch=true] .arena-control-hint{display:none}.arena-root[data-touch=true] .arena-abilities{gap:6px}.arena-root[data-touch=true] .arena-ability{padding:4px 7px 6px;min-width:65px}.arena-root[data-touch=true] .arena-ability-key{display:none}.arena-root[data-touch=true] .arena-ability-label{font-size:7px}
+.arena-bottom-hud{position:absolute;left:calc(var(--arena-safe-left) + 24px);right:calc(var(--arena-safe-right) + 24px);bottom:calc(var(--arena-safe-bottom) + 18px);display:flex;align-items:center;justify-content:space-between;gap:16px;pointer-events:none;z-index:3}.arena-control-hint{font:500 10px/1.6 system-ui,sans-serif;word-spacing:4px;color:#7F9DB9}.arena-abilities{display:flex;gap:9px}.arena-ability{position:relative;overflow:hidden;display:flex;align-items:center;gap:7px;min-width:100px;padding:9px 11px 11px;border:1px solid rgba(133,184,220,.23);border-radius:9px;background:rgba(8,19,34,.85)}.arena-ability-key{font:700 9px/1.2 system-ui,sans-serif;color:#DCEEFF}.arena-ability-label{font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.1em;color:#A8C7E0}.arena-ability-meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:#38E1FF;transform-origin:left}.arena-ability:last-child .arena-ability-meter{background:#FFC66B}
+.arena-touch{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}.arena-root[data-touch=true] .arena-touch{display:block}.arena-stick-zone{position:absolute;bottom:0;left:var(--arena-safe-left);width:calc(48% - var(--arena-safe-left));height:42%;min-height:140px;pointer-events:auto;touch-action:none}.arena-stick-base{position:absolute;left:76px;top:calc(100% - 88px - var(--arena-safe-bottom));width:94px;height:94px;border-radius:50%;border:1.5px solid rgba(159,241,255,.4);background:rgba(20,51,73,.18);transform:translate(-50%,-50%);opacity:.6;pointer-events:none}.arena-stick-base:before,.arena-stick-base:after{content:'';position:absolute;left:50%;top:50%;background:rgba(159,241,255,.12);transform:translate(-50%,-50%)}.arena-stick-base:before{width:76%;height:1px}.arena-stick-base:after{height:76%;width:1px}.arena-stick-knob{position:absolute;left:50%;top:50%;width:40px;height:40px;border:1px solid rgba(159,241,255,.58);border-radius:50%;background:rgba(56,225,255,.2);transform:translate(-50%,-50%)}.arena-stick-active{opacity:1;border-color:rgba(159,241,255,.8)}.arena-stick-label{position:absolute;left:76px;bottom:calc(var(--arena-safe-bottom) + 24px);transform:translateX(-50%);font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.15em;color:#7796AD;pointer-events:none}
+.arena-touch-actions{position:absolute;right:calc(var(--arena-safe-right) + 17px);bottom:calc(var(--arena-safe-bottom) + 23px);width:192px;height:150px;pointer-events:none}.arena-touch-button{position:absolute;min-height:60px;min-width:60px;padding:8px;display:flex;flex-direction:column;gap:2px;border-radius:50%;pointer-events:auto;touch-action:none;box-shadow:0 4px 0 rgba(0,0,0,.3);background:rgba(20,44,67,.91);border:1.5px solid #6593B1;color:#CBEBFF}.arena-touch-symbol{font:700 23px/1 system-ui,sans-serif}.arena-touch-word{font:700 8px/1.3 system-ui,sans-serif;letter-spacing:.07em}.arena-touch-jump{width:76px;height:76px;right:0;bottom:0;color:#A9F1FF;border-color:#70DCEE;background:rgba(16,56,75,.92)}.arena-touch-attack{width:70px;height:70px;left:17px;bottom:27px;color:#FFE4B3;border-color:#E3AF62;background:rgba(70,49,38,.92)}.arena-touch-dash{width:58px;height:58px;right:20px;top:0}.arena-touch-button.arena-pressed{transform:translateY(3px) scale(.96);filter:brightness(1.2);box-shadow:none}.arena-touch-button.arena-cooling{opacity:.56}.arena-root[data-lefty=true] .arena-stick-zone{left:auto;right:var(--arena-safe-right);width:calc(48% - var(--arena-safe-right))}.arena-root[data-lefty=true] .arena-stick-base{left:calc(100% - 76px)}.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 76px)}.arena-root[data-lefty=true] .arena-touch-actions{right:auto;left:calc(var(--arena-safe-left) + 17px);transform:scaleX(-1)}.arena-root[data-lefty=true] .arena-touch-button{transform:scaleX(-1)}.arena-root[data-lefty=true] .arena-touch-button.arena-pressed{transform:scaleX(-1) translateY(3px) scale(.96)}
+.arena-root[data-touch=true] .arena-bottom-hud{justify-content:center;bottom:calc(var(--arena-safe-bottom) + 8px)}.arena-root[data-touch=true] .arena-control-hint{display:none}.arena-root[data-touch=true] .arena-abilities{gap:6px}.arena-root[data-touch=true] .arena-ability{padding:4px 7px 6px;min-width:65px}.arena-root[data-touch=true] .arena-ability-key{display:none}.arena-root[data-touch=true] .arena-ability-label{font-size:7px}
 .arena-root[data-screen=lobby] .arena-hud,.arena-root[data-screen=lobby] .arena-bottom-hud,.arena-root[data-screen=lobby] .arena-touch,.arena-root[data-screen=lobby] .arena-countdown,.arena-root[data-screen=pause] .arena-touch,.arena-root[data-screen=results] .arena-touch{display:none}
-.arena-small-panel{width:min(440px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:11px;text-align:center;padding:30px;border:1px solid rgba(115,197,230,.27);border-radius:22px;background:linear-gradient(160deg,#14293D,#0A1224 80%);box-shadow:0 22px 70px rgba(0,0,0,.55)}.arena-small-panel .arena-pill{align-self:center;margin-bottom:8px}.arena-panel-title{font-size:27px;font-weight:900;letter-spacing:-.025em;line-height:1.25;color:#F4F7FF;margin:0}.arena-panel-copy{font:400 14px/1.6 system-ui,sans-serif;color:#9FBBD2;margin:2px 0 14px}.arena-small-panel .arena-primary{margin-bottom:7px}.arena-small-panel>.arena-text-button{min-height:40px;padding:7px}.arena-result-roster{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}.arena-result-row{display:grid;grid-template-columns:1fr auto auto;gap:16px;align-items:center;text-align:left;padding:10px 12px;border-radius:8px;background:rgba(2,9,22,.45);border-left:2px solid var(--fighter);font:500 11px/1.4 system-ui,sans-serif;color:#8FAEC7}.arena-result-row strong{color:var(--fighter);font-weight:700}
+.arena-small-panel{width:min(440px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:11px;text-align:center;padding:30px;border:1px solid rgba(115,197,230,.27);border-radius:22px;background:linear-gradient(160deg,#14293D,#0A1224 80%);box-shadow:0 22px 70px rgba(0,0,0,.55)}.arena-small-panel .arena-pill{align-self:center;margin-bottom:8px}.arena-panel-title{font-size:27px;font-weight:900;letter-spacing:-.025em;line-height:1.25;color:#F4F7FF;margin:0}.arena-panel-copy{font:400 14px/1.6 system-ui,sans-serif;color:#9FBBD2;margin:2px 0 14px}.arena-small-panel .arena-primary{margin-bottom:7px}.arena-small-panel>.arena-text-button{min-height:40px;padding:7px}.arena-result-roster{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}.arena-result-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:16px;align-items:center;text-align:left;padding:10px 12px;border-radius:8px;background:rgba(2,9,22,.45);border-left:2px solid var(--fighter);font:500 11px/1.4 system-ui,sans-serif;color:#8FAEC7}.arena-result-row strong{color:var(--fighter);font-weight:700}
 .arena-root[data-calm=true] *, .arena-root[data-saver=true] *{transition:none!important;animation:none!important}.arena-root[data-saver=true] .arena-primary{box-shadow:none}
 .arena-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 @media(min-width:1400px) and (min-height:800px){.arena-setup{padding:30px}.arena-lobby-top{margin-bottom:32px}.arena-lobby-grid{gap:90px}.arena-formats{gap:10px}.arena-format-card{min-height:111px}.arena-stage-card{min-height:132px}.arena-title{font-size:55px}.arena-lobby-art{max-width:455px}.arena-stage-name{font-size:10px}}
-@media(max-width:850px){.arena-modal{padding:calc(env(safe-area-inset-top,0px) + 16px) calc(env(safe-area-inset-right,0px) + 16px) calc(env(safe-area-inset-bottom,0px) + 16px) calc(env(safe-area-inset-left,0px) + 16px)}.arena-lobby-grid{gap:25px;grid-template-columns:.8fr 1.2fr}.arena-title{font-size:35px}.arena-lede{font-size:13px}.arena-setup{padding:18px}.arena-format-card{padding:11px 8px}.arena-format-copy strong{font-size:10px}.arena-format-copy small{font-size:7px}.arena-stage-name{font-size:8px}.arena-roster{gap:6px}.arena-player-card{min-width:0;padding:8px;gap:7px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-damage{font-size:22px}.arena-player-info{grid-template-columns:1fr}.arena-player-tag{display:none}.arena-stocks{font-size:9px;letter-spacing:3px}}
-@media(max-width:650px){.arena-modal{padding-left:calc(env(safe-area-inset-left,0px) + 13px);padding-right:calc(env(safe-area-inset-right,0px) + 13px)}.arena-lobby{padding:0 3px 3px}.arena-lobby-top{margin-bottom:16px;gap:7px}.arena-lobby-top>.arena-eyebrow{font-size:8px;letter-spacing:.09em}.arena-lobby-top .arena-text-button{font-size:11px;padding:9px 5px;min-height:42px}.arena-lobby-grid{grid-template-columns:1fr;gap:20px}.arena-intro{position:relative;padding:0 0 0 1px;min-height:120px}.arena-title{font-size:32px;line-height:1.14;margin:13px 0 12px;position:relative;z-index:1;max-width:280px}.arena-lede{font-size:12px;line-height:1.6;max-width:310px;position:relative;z-index:1}.arena-intro>.arena-pill{font-size:8px;padding:4px 8px}.arena-lobby-art{position:absolute;width:174px;right:-30px;top:0;margin:0;opacity:.37;pointer-events:none}.arena-rules{margin-top:11px;font-size:9px;gap:6px 12px}.arena-rules span:last-child{display:none}.arena-setup{padding:18px 15px;border-radius:17px}.arena-format-card{min-height:87px;padding:11px 9px;gap:9px}.arena-format-copy strong{font-size:11px}.arena-format-copy small{font-size:7px}.arena-format-icon{font-size:11px}.arena-selected-dot{right:7px;top:8px;width:4px;height:4px}.arena-choice-group+.arena-choice-group{margin-top:20px}.arena-stage-card{min-height:105px}.arena-stage-name{font-size:8px;padding:9px 6px 0;line-height:1.5}.arena-stage-description{font-size:10px;min-height:30px;margin-top:8px}.arena-section-label{font-size:9px;margin-bottom:10px}.arena-setup-options{margin:9px 0 19px}.arena-segment{padding:7px 12px;min-height:35px}.arena-options-label{font-size:8px}.arena-local-note{margin-top:13px;font-size:9px;max-width:260px}.arena-launch{min-height:51px;font-size:12px}.arena-controls-help{margin-top:16px;font-size:10px;padding-top:8px}.arena-help-grid{grid-template-columns:1fr;gap:9px}.arena-hud{top:calc(env(safe-area-inset-top,0px) + 10px);left:calc(env(safe-area-inset-left,0px) + 13px);right:calc(env(safe-area-inset-right,0px) + 13px)}.arena-hud-top{margin-bottom:9px}.arena-match-brand .arena-eyebrow{font-size:8px}.arena-match-name{font-size:9px;max-width:255px}.arena-hud-tools{gap:10px}.arena-clock{font-size:17px}.arena-icon-button{width:44px;height:44px;min-height:44px;border-radius:10px}.arena-roster{gap:7px}.arena-player-card{padding:9px 8px;gap:7px;border-radius:9px;max-width:210px}.arena-player-name{font-size:10px}.arena-player-tag{display:block;font-size:6px}.arena-player-info{grid-template-columns:auto auto;gap:2px 4px}.arena-damage{font-size:22px;min-width:36px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-stocks{font-size:9px;letter-spacing:3px}.arena-root[data-format=ffa] .arena-roster,.arena-root[data-format=teams] .arena-roster{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-width:430px}.arena-root[data-format=ffa] .arena-player-card,.arena-root[data-format=teams] .arena-player-card{max-width:none;padding:7px 9px}.arena-root[data-format=ffa] .arena-damage,.arena-root[data-format=teams] .arena-damage{font-size:20px}.arena-root[data-format=ffa] .arena-player-helmet,.arena-root[data-format=teams] .arena-player-helmet{flex-basis:21px;height:22px}.arena-bottom-hud{left:14px;right:14px}.arena-control-hint{font-size:8px;max-width:140px}.arena-ability{min-width:70px;padding:8px 8px 10px;gap:5px}.arena-ability-key{font-size:7px}.arena-ability-label{font-size:7px}.arena-small-panel{padding:25px 22px;border-radius:19px}.arena-panel-title{font-size:24px}.arena-panel-copy{font-size:13px}.arena-countdown-value{font-size:104px}}
-@media(max-height:600px) and (min-width:651px){.arena-modal{padding-top:calc(env(safe-area-inset-top,0px) + 10px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)}.arena-lobby-top{margin-bottom:12px}.arena-lobby-grid{align-items:start}.arena-title{font-size:34px;margin:14px 0}.arena-lobby-art{max-width:280px}.arena-setup{padding:17px}.arena-format-card{min-height:78px;gap:6px;padding:9px}.arena-choice-group+.arena-choice-group{margin-top:16px}.arena-stage-card{min-height:94px}.arena-stage-preview{max-height:66px}.arena-setup-options{margin:5px 0 13px}.arena-local-note{margin-top:12px}.arena-controls-help{margin-top:14px}.arena-hud{top:calc(env(safe-area-inset-top,0px) + 8px);left:20px;right:20px}.arena-hud-top{margin-bottom:0}.arena-match-brand{position:absolute;top:6px;left:0}.arena-hud-tools{position:absolute;top:0;right:0}.arena-match-brand .arena-eyebrow{font-size:7px}.arena-match-name{font-size:8px;max-width:160px}.arena-roster{max-width:500px;padding:0 5px}.arena-player-card{padding:7px;max-width:124px;gap:5px}.arena-player-helmet{display:none}.arena-player-tag{display:none}.arena-player-name{font-size:9px}.arena-damage{font-size:20px;min-width:30px}.arena-clock{font-size:15px}.arena-hud-tools{gap:8px}.arena-icon-button{width:44px;height:44px;min-height:44px}.arena-touch-actions{height:120px;width:179px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px)}.arena-touch-jump{width:66px;height:66px}.arena-touch-attack{width:62px;height:62px;left:13px;bottom:19px}.arena-touch-dash{width:52px;height:52px;min-width:52px;min-height:52px;right:40px;top:0}.arena-stick-base{left:68px;top:calc(100% - 68px - env(safe-area-inset-bottom,0px));width:80px;height:80px}.arena-stick-label{left:68px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px)}.arena-root[data-lefty=true] .arena-stick-base,.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 68px)}.arena-countdown{top:48%}.arena-countdown-value{font-size:78px}.arena-countdown-label{font-size:8px}.arena-small-panel{max-width:420px;padding:20px;gap:8px}.arena-small-panel .arena-pill{margin-bottom:2px}.arena-panel-title{font-size:23px}.arena-panel-copy{font-size:12px;margin:0 0 6px}.arena-small-panel .arena-button{min-height:42px;padding:10px}.arena-small-panel>.arena-text-button{min-height:36px;padding:5px}.arena-result-row{padding:6px 10px;font-size:10px}}
-@media(max-width:360px){.arena-title{font-size:29px}.arena-setup{padding:15px 11px}.arena-format-card{padding:9px 7px}.arena-format-copy strong{font-size:10px}.arena-format-copy small{font-size:6px}.arena-stage-name{font-size:7px}.arena-segment{padding:7px 9px}.arena-player-helmet{display:none}.arena-player-card{gap:6px}.arena-touch-actions{right:9px;width:181px}.arena-stick-base,.arena-stick-label{left:65px}.arena-root[data-lefty=true] .arena-stick-base,.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 65px)}}
+@media(max-width:850px){.arena-modal{padding:calc(var(--arena-safe-top) + 16px) calc(var(--arena-safe-right) + 16px) calc(var(--arena-safe-bottom) + 16px) calc(var(--arena-safe-left) + 16px)}.arena-lobby-grid{gap:25px;grid-template-columns:.8fr 1.2fr}.arena-title{font-size:35px}.arena-lede{font-size:13px}.arena-setup{padding:18px}.arena-format-card{padding:11px 8px}.arena-format-copy strong{font-size:10px}.arena-format-copy small{font-size:7px}.arena-stage-name{font-size:8px}.arena-roster{gap:6px}.arena-player-card{min-width:0;padding:8px;gap:7px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-damage{font-size:22px}.arena-player-info{grid-template-columns:1fr}.arena-player-tag{display:none}.arena-stocks{font-size:9px;letter-spacing:3px}}
+/* A phone lobby is a content-sized vertical flow, not an auto-row grid.
+   Decorative desktop copy yields to the three choices and launch action. */
+@media(max-width:650px){
+.arena-root[data-screen=lobby] .arena-modal{align-items:flex-start;padding-top:calc(var(--arena-safe-top) + 8px);padding-bottom:calc(var(--arena-safe-bottom) + 8px)}
+.arena-modal{padding-left:calc(var(--arena-safe-left) + 12px);padding-right:calc(var(--arena-safe-right) + 12px)}
+.arena-lobby{padding:0 2px 4px}
+.arena-lobby-top{margin-bottom:8px;gap:8px;min-height:44px}
+.arena-lobby-top>.arena-eyebrow{font:700 10px/1.4 system-ui,sans-serif;letter-spacing:.08em;max-width:47%}
+.arena-lobby-top .arena-text-button{font:600 12px/1.3 system-ui,sans-serif;padding:10px 6px;min-height:44px;flex-shrink:0}
+.arena-lobby-grid{display:block}
+.arena-intro{position:relative;padding:0 0 0 1px;min-height:0}
+.arena-title{font-size:25px;line-height:1.12;margin:8px 0 0;position:relative;z-index:1;max-width:280px}
+.arena-intro>.arena-pill{font-size:9px;padding:4px 8px}
+.arena-lede,.arena-rules{display:none}
+.arena-lobby-art{position:absolute;width:138px;max-width:45%;right:0;top:0;margin:0;opacity:.35;pointer-events:none}
+.arena-setup{padding:12px;margin-top:14px;border-radius:17px}
+.arena-formats,.arena-stage-cards{gap:6px}
+.arena-format-card{min-height:74px;padding:9px 7px;gap:7px;justify-content:flex-start}
+.arena-format-copy{gap:4px;width:100%}
+.arena-format-copy strong{font:750 12px/1.2 system-ui,sans-serif;letter-spacing:0;overflow-wrap:normal}
+.arena-format-copy small{font-size:9px;line-height:1.25;letter-spacing:0}
+.arena-format-icon{font-size:12px}
+.arena-selected-dot{right:6px;top:7px;width:4px;height:4px}
+.arena-choice-group+.arena-choice-group{margin-top:14px}
+.arena-stage-card{min-height:80px;padding-bottom:8px}
+.arena-stage-preview{height:43px;min-height:0;object-fit:cover}
+.arena-stage-name{font:650 11px/1.25 system-ui,sans-serif;padding:7px 5px 0;overflow-wrap:normal}
+.arena-stage-number{font-size:9px}
+.arena-stage-description{font-size:11px;line-height:1.35;min-height:0;margin-top:7px}
+.arena-section-label{font-size:10px;letter-spacing:.1em;margin-bottom:8px}
+.arena-setup-options{margin:10px 0 12px}
+.arena-segmented{gap:2px;padding:2px}
+.arena-segment{font:650 12px/1.2 system-ui,sans-serif;padding:8px 11px;min-height:44px}
+.arena-options-label{font-size:10px;letter-spacing:.06em}
+.arena-local-note{display:none}
+.arena-launch{min-height:50px;font-size:13px}
+.arena-controls-help{margin-top:10px;font-size:12px;padding-top:0}
+.arena-controls-help summary{min-height:44px;padding:12px 0;font-size:11px}
+.arena-help-grid{grid-template-columns:minmax(0,1fr);gap:10px}
+.arena-hud{top:calc(var(--arena-safe-top) + 10px);left:calc(var(--arena-safe-left) + 13px);right:calc(var(--arena-safe-right) + 13px)}.arena-hud-top{margin-bottom:9px}.arena-match-brand .arena-eyebrow{font-size:8px}.arena-match-name{font-size:9px;max-width:255px}.arena-hud-tools{gap:10px}.arena-clock{font-size:17px}.arena-icon-button{width:44px;height:44px;min-height:44px;border-radius:10px}.arena-roster{gap:7px}.arena-player-card{padding:9px 8px;gap:7px;border-radius:9px;max-width:210px}.arena-player-name{font-size:10px}.arena-player-tag{display:block;font-size:6px}.arena-player-info{grid-template-columns:auto auto;gap:2px 4px}.arena-damage{font-size:22px;min-width:36px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-stocks{font-size:9px;letter-spacing:3px}.arena-root[data-format=ffa] .arena-roster,.arena-root[data-format=teams] .arena-roster{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-width:430px}.arena-root[data-format=ffa] .arena-player-card,.arena-root[data-format=teams] .arena-player-card{max-width:none;padding:7px 9px}.arena-root[data-format=ffa] .arena-damage,.arena-root[data-format=teams] .arena-damage{font-size:20px}.arena-root[data-format=ffa] .arena-player-helmet,.arena-root[data-format=teams] .arena-player-helmet{flex-basis:21px;height:22px}.arena-bottom-hud{left:calc(var(--arena-safe-left) + 14px);right:calc(var(--arena-safe-right) + 14px)}.arena-control-hint{font-size:8px;max-width:140px}.arena-ability{min-width:70px;padding:8px 8px 10px;gap:5px}.arena-ability-key{font-size:7px}.arena-ability-label{font-size:7px}.arena-small-panel{padding:25px 22px;border-radius:19px}.arena-panel-title{font-size:24px}.arena-panel-copy{font-size:13px}.arena-countdown-value{font-size:104px}}
+@media(max-height:600px) and (min-width:651px){.arena-modal{padding-top:calc(var(--arena-safe-top) + 10px);padding-bottom:calc(var(--arena-safe-bottom) + 10px)}.arena-lobby-top{margin-bottom:12px}.arena-lobby-grid{align-items:start}.arena-title{font-size:34px;margin:14px 0}.arena-lobby-art{max-width:280px}.arena-setup{padding:17px}.arena-format-card{min-height:78px;gap:6px;padding:9px}.arena-choice-group+.arena-choice-group{margin-top:16px}.arena-stage-card{min-height:94px}.arena-stage-preview{max-height:66px}.arena-setup-options{margin:5px 0 13px}.arena-local-note{margin-top:12px}.arena-controls-help{margin-top:14px}.arena-hud{top:calc(var(--arena-safe-top) + 8px);left:calc(var(--arena-safe-left) + 20px);right:calc(var(--arena-safe-right) + 20px)}.arena-hud-top{margin-bottom:0}.arena-match-brand{position:absolute;top:6px;left:0}.arena-hud-tools{position:absolute;top:0;right:0}.arena-match-brand .arena-eyebrow{font-size:7px}.arena-match-name{font-size:8px;max-width:160px}.arena-roster{max-width:500px;padding:0 5px}.arena-player-card{padding:7px;max-width:124px;gap:5px}.arena-player-helmet{display:none}.arena-player-tag{display:none}.arena-player-name{font-size:9px}.arena-damage{font-size:20px;min-width:30px}.arena-clock{font-size:15px}.arena-hud-tools{gap:8px}.arena-icon-button{width:44px;height:44px;min-height:44px}.arena-touch-actions{height:120px;width:179px;bottom:calc(var(--arena-safe-bottom) + 12px)}.arena-touch-jump{width:66px;height:66px}.arena-touch-attack{width:62px;height:62px;left:13px;bottom:19px}.arena-touch-dash{width:52px;height:52px;min-width:52px;min-height:52px;right:40px;top:0}.arena-stick-base{left:68px;top:calc(100% - 68px - var(--arena-safe-bottom));width:80px;height:80px}.arena-stick-label{left:68px;bottom:calc(var(--arena-safe-bottom) + 12px)}.arena-root[data-lefty=true] .arena-stick-base,.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 68px)}.arena-countdown{top:48%}.arena-countdown-value{font-size:78px}.arena-countdown-label{font-size:8px}.arena-small-panel{max-width:420px;padding:20px;gap:8px}.arena-small-panel .arena-pill{margin-bottom:2px}.arena-panel-title{font-size:23px}.arena-panel-copy{font-size:12px;margin:0 0 6px}.arena-small-panel .arena-button{min-height:42px;padding:10px}.arena-small-panel>.arena-text-button{min-height:36px;padding:5px}.arena-result-row{padding:6px 10px;font-size:10px}}
+@media(max-width:360px){.arena-modal{padding-left:calc(var(--arena-safe-left) + 8px);padding-right:calc(var(--arena-safe-right) + 8px)}.arena-setup{padding:10px}.arena-format-card{padding:9px 6px}.arena-segment{padding:8px 9px}.arena-player-helmet{display:none}.arena-player-card{gap:6px}.arena-touch-actions{right:calc(var(--arena-safe-right) + 9px);width:181px}.arena-stick-base,.arena-stick-label{left:65px}.arena-root[data-lefty=true] .arena-stick-base,.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 65px)}}
 `;
   function create(options) {
     const opts = options || {};
@@ -116,9 +158,10 @@
     let savedFocus = null, inertSiblings = [], savedBodyOverflow = '';
     let arena, state = null, view = 'lobby', paused = false, activeModal = null, selections = { arenaId: '', format: 'duel', difficulty: 'normal' };
     let frameId = 0, lastTime = 0, accumulator = 0, lastDraw = 0, lastHudTick = -1, lastCountdown = '', resultAt = 0, matchSerial = 0;
-    let width = 1, height = 1, dpr = 1, background = null, bgKey = '', resizeObserver = null;
+    let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
+    let touchEdges = { jump: false, attack: false, dash: false }, recoveryTap = null, clearRecoveryClick = null;
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
     let audio = null, audioGain = null, lastSfx = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     const listeners = [];
@@ -202,11 +245,18 @@
       g.gain.setValueAtTime(0.001, now); g.gain.exponentialRampToValueAtTime(kind === 'hit' ? .8 : .55, now + .012); g.gain.exponentialRampToValueAtTime(.001, now + v[2]);
       o.connect(g); g.connect(audioGain); o.start(now); o.stop(now + v[2] + .015); o.onended = () => { o.disconnect(); g.disconnect(); };
     }
-    function resetInput() {
-      held.clear(); jumpEdge = attackEdge = dashEdge = false; moveX = moveY = 0; pad = { moveX: 0, moveY: 0, jump: false }; padNeedsNeutral = true;
-      for (const [id, data] of touches) { try { if (data.el.hasPointerCapture(id)) data.el.releasePointerCapture(id); } catch (_) {} data.el.classList.remove('arena-pressed'); }
-      touches.clear(); stick = null;
+    function resetTouchInput(clearEdges = true) {
+      // Touch cancellation must never release a keyboard or controller hold.
+      const previousTouches = Array.from(touches);
+      touches.clear(); stick = null; moveX = moveY = 0;
+      recoveryTap = null;
+      if (clearEdges) touchEdges = { jump: false, attack: false, dash: false };
+      for (const [id, data] of previousTouches) { data.el.classList.remove('arena-pressed'); try { if (data.el.hasPointerCapture(id)) data.el.releasePointerCapture(id); } catch (_) {} }
       if (stickBase) { stickBase.classList.remove('arena-stick-active'); stickBase.style.removeProperty('left'); stickBase.style.removeProperty('top'); stickKnob.style.transform = 'translate(-50%,-50%)'; }
+    }
+    function resetInput() {
+      held.clear(); jumpEdge = attackEdge = dashEdge = false; pad = { moveX: 0, moveY: 0, jump: false }; padNeedsNeutral = true;
+      resetTouchInput();
     }
     function focusables() { return activeModal ? Array.from(activeModal.querySelectorAll('button:not([disabled]),summary,[href],input:not([disabled]),[tabindex="0"]')).filter(n => !n.hidden && n.getClientRects().length) : [pauseButton]; }
     function focusStep(direction) {
@@ -251,18 +301,32 @@
     }
     function guardPointer(e) {
       if (!active) return;
+      // Capture can fail or be lost when WebKit moves browser chrome. Recover
+      // releases before the runner-isolation guard discards outside events.
+      if (['pointerup', 'pointercancel', 'lostpointercapture'].includes(e.type)) releaseTouch(e);
+      if (e.type === 'pointerdown' && e.pointerType !== 'mouse' && e.isPrimary && touches.size && !touches.has(e.pointerId)) resetTouchInput();
       if (!rootEl.contains(e.target)) { e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); }
+    }
+    function onTouchEnd(e) {
+      // A completed tap still gets its one action if it ended between frames.
+      if (active && (e.type === 'touchcancel' || (e.touches && e.touches.length === 0))) resetTouchInput(e.type === 'touchcancel');
     }
     function buttonTouchDown(e, action) {
       if (!isRunning() || e.pointerType === 'mouse') return;
       e.preventDefault(); e.stopPropagation(); usingTouch = true; rootEl.dataset.touch = 'true';
       const n = e.currentTarget; try { n.setPointerCapture(e.pointerId); } catch (_) {}
       touches.set(e.pointerId, { action, el: n }); n.classList.add('arena-pressed');
-      if (action === 'jump') jumpEdge = true; if (action === 'attack') attackEdge = true; if (action === 'dash') dashEdge = true;
+      touchEdges[action] = true;
     }
     function releaseTouch(e) {
       const data = touches.get(e.pointerId);
-      if (data) { touches.delete(e.pointerId); data.el.classList.remove('arena-pressed'); try { if (data.el.hasPointerCapture(e.pointerId)) data.el.releasePointerCapture(e.pointerId); } catch (_) {} }
+      if (data) {
+        touches.delete(e.pointerId);
+        const remaining = Array.from(touches.values());
+        if (!remaining.some(t => t.el === data.el)) data.el.classList.remove('arena-pressed');
+        if (e.type !== 'pointerup' && !remaining.some(t => t.action === data.action)) touchEdges[data.action] = false;
+        try { if (data.el.hasPointerCapture(e.pointerId)) data.el.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
       if (stick && e.pointerId === stick.id) { stick = null; moveX = moveY = 0; stickBase.classList.remove('arena-stick-active'); stickBase.style.removeProperty('left'); stickBase.style.removeProperty('top'); stickKnob.style.transform = 'translate(-50%,-50%)'; }
     }
     function stickDown(e) {
@@ -306,8 +370,42 @@
       const keyboardX = (actionHeld('right') ? 1 : 0) - (actionHeld('left') ? 1 : 0);
       const keyboardY = (actionHeld('down') ? 1 : 0) - (actionHeld('jump') && (held.has('KeyW') || held.has('ArrowUp')) ? 1 : 0);
       const c = { moveX: clamp(keyboardX + moveX + pad.moveX, -1, 1), moveY: clamp(keyboardY + moveY + pad.moveY, -1, 1),
-        jumpPressed: jumpEdge, jumpHeld: actionHeld('jump') || pad.jump || Array.from(touches.values()).some(t => t.action === 'jump'), attackPressed: attackEdge, dashPressed: dashEdge };
-      jumpEdge = attackEdge = dashEdge = false; return c;
+        jumpPressed: jumpEdge || touchEdges.jump, jumpHeld: actionHeld('jump') || pad.jump || Array.from(touches.values()).some(t => t.action === 'jump'), attackPressed: attackEdge || touchEdges.attack, dashPressed: dashEdge || touchEdges.dash };
+      jumpEdge = attackEdge = dashEdge = false; touchEdges = { jump: false, attack: false, dash: false }; return c;
+    }
+    // Only guarded, idempotent menu actions use this fallback. Native browsers
+    // can omit a compatibility click after a captured drag is interrupted.
+    function guardRecoveryClick() {
+      if (clearRecoveryClick) clearRecoveryClick();
+      let timer;
+      const clear = () => {
+        root.removeEventListener('click', swallow, true); root.removeEventListener('pointerdown', clear, true);
+        root.clearTimeout(timer); if (clearRecoveryClick === clear) clearRecoveryClick = null;
+      };
+      const swallow = e => {
+        if (!e.isTrusted || e.detail === 0) return;
+        e.preventDefault(); e.stopImmediatePropagation(); clear();
+      };
+      // This bounded guard intentionally outlives close: WebKit can retarget
+      // the old finger's delayed click onto the runner below the removed dialog.
+      // A new physical press immediately releases it, so the next tap still works.
+      root.addEventListener('click', swallow, true); root.addEventListener('pointerdown', clear, true);
+      timer = root.setTimeout(clear, 700); clearRecoveryClick = clear;
+    }
+    function recoveryButton(text, cls, action) {
+      const n = button(text, cls, action);
+      n.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary && activeModal) recoveryTap = { el: n, id: e.pointerId, x: e.clientX, y: e.clientY }; });
+      n.addEventListener('pointermove', e => { if (recoveryTap && recoveryTap.el === n && recoveryTap.id === e.pointerId && Math.hypot(e.clientX - recoveryTap.x, e.clientY - recoveryTap.y) > 10) recoveryTap = null; });
+      for (const type of ['pointercancel', 'lostpointercapture']) n.addEventListener(type, e => { if (recoveryTap && recoveryTap.el === n && recoveryTap.id === e.pointerId) recoveryTap = null; });
+      n.addEventListener('pointerup', e => {
+        const tap = recoveryTap;
+        if (!tap || tap.el !== n || tap.id !== e.pointerId) return;
+        recoveryTap = null;
+        if (Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 10) return;
+        const r = n.getBoundingClientRect();
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) { guardRecoveryClick(); action(); }
+      });
+      return n;
     }
     function build() {
       if (built) return;
@@ -342,7 +440,7 @@
       touchEl.append(stickZone, touchActions); rootEl.append(touchEl);
       modal = el('div', 'arena-modal');
       lobby = el('div', 'arena-lobby arena-dialog'); lobby.setAttribute('role', 'dialog'); lobby.setAttribute('aria-labelledby', 'arena-lobby-title');
-      const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), button('← Back to runner', 'arena-text-button', close));
+      const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), recoveryButton('← Back to runner', 'arena-text-button', close));
       const lobbyGrid = el('div', 'arena-lobby-grid');
       const intro = el('div', 'arena-intro'); intro.append(el('span', 'arena-pill', 'LOCAL CPU BATTLES'));
       const h1 = el('h1', 'arena-title'); h1.id = 'arena-lobby-title'; h1.append(document.createTextNode('Small suits.'), el('br'), el('span', '', 'Big knockouts.'));
@@ -381,10 +479,11 @@
       pausePanel = el('div', 'arena-small-panel arena-dialog'); pausePanel.setAttribute('role', 'dialog'); pausePanel.setAttribute('aria-labelledby', 'arena-pause-title');
       const ph = el('h2', 'arena-panel-title', 'Taking a breather'); ph.id = 'arena-pause-title';
       const pauseReason = el('p', 'arena-panel-copy', 'Your match is paused.'); pauseReason.id = 'arena-pause-reason';
-      pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, button('Resume match', 'arena-primary', resumeMatch), button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), button('Back to runner', 'arena-text-button', close)); modal.append(pausePanel);
+      const resumeButton = recoveryButton('Resume match', 'arena-primary', resumeMatch);
+      pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, resumeButton, button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('Back to runner', 'arena-text-button', close)); modal.append(pausePanel);
       resultPanel = el('div', 'arena-small-panel arena-result-panel arena-dialog'); resultPanel.setAttribute('role', 'dialog'); resultPanel.setAttribute('aria-labelledby', 'arena-result-title');
       resultTitle = el('h2', 'arena-panel-title'); resultTitle.id = 'arena-result-title'; resultText = el('p', 'arena-panel-copy'); resultRoster = el('div', 'arena-result-roster');
-      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), button('Back to runner', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
+      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('Back to runner', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
       live = el('div', 'arena-sr-only'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true'); rootEl.append(live);
       // Events stop at this overlay, before the runner's window-level handlers.
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel']) rootEl.addEventListener(type, e => e.stopPropagation(), { passive: type.startsWith('touch') || type === 'wheel' });
@@ -472,7 +571,24 @@
     }
     function resize() {
       if (!active || !rootEl) return;
-      const r = rootEl.getBoundingClientRect(); width = Math.max(1, r.width); height = Math.max(1, r.height); dpr = saver() ? 1 : Math.min(root.devicePixelRatio || 1, 2);
+      const vv = root.visualViewport;
+      const layoutWidth = document.documentElement.clientWidth || root.innerWidth || 1;
+      const layoutHeight = document.documentElement.clientHeight || root.innerHeight || 1;
+      const box = { left: Math.max(0, vv ? vv.offsetLeft : 0), top: Math.max(0, vv ? vv.offsetTop : 0),
+        width: Math.max(1, vv ? vv.width : root.innerWidth || layoutWidth), height: Math.max(1, vv ? vv.height : root.innerHeight || layoutHeight) };
+      const moved = viewportBox && Object.keys(box).some(key => Math.abs(box[key] - viewportBox[key]) > 1);
+      if (moved) resetTouchInput();
+      viewportBox = box;
+      for (const key of ['left', 'top', 'width', 'height']) {
+        const value = box[key] + 'px'; if (rootEl.style[key] !== value) rootEl.style[key] = value;
+      }
+      const occlusion = { top: box.top, left: box.left, right: Math.max(0, layoutWidth - box.left - box.width), bottom: Math.max(0, layoutHeight - box.top - box.height) };
+      for (const side of Object.keys(occlusion)) rootEl.style.setProperty('--arena-vv-' + side, occlusion[side] + 'px');
+      // The CSS overlay and bitmap always measure the same rectangle. A
+      // ResizeObserver echo/viewport scroll must not clear an unchanged canvas.
+      const r = rootEl.getBoundingClientRect(), nextWidth = Math.max(1, r.width), nextHeight = Math.max(1, r.height), nextDpr = saver() ? 1 : Math.min(root.devicePixelRatio || 1, 2);
+      if (width === nextWidth && height === nextHeight && dpr === nextDpr && canvas.width === Math.round(width * dpr) && canvas.height === Math.round(height * dpr)) return;
+      width = nextWidth; height = nextHeight; dpr = nextDpr;
       canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); background = null; camera.initialized = false;
       if (view === 'lobby') paintLobby(); else paint(1);
     }
@@ -615,6 +731,11 @@
     function frame(now) {
       frameId = 0;
       if (!active || document.hidden) return;
+      // WebKit can dispatch resize before visualViewport exposes the settled
+      // rotation size. Reconcile changed viewport metrics on the next frame;
+      // unchanged frames avoid layout reads and canvas reallocation.
+      const vv = root.visualViewport;
+      if (vv && viewportBox && (Math.abs(vv.width - viewportBox.width) > 1 || Math.abs(vv.height - viewportBox.height) > 1 || Math.abs(vv.offsetLeft - viewportBox.left) > 1 || Math.abs(vv.offsetTop - viewportBox.top) > 1)) resize();
       updatePrefs(); pollGamepad();
       if (!active || document.hidden) return;
       const elapsed = lastTime ? Math.min(.1, Math.max(0, (now - lastTime) / 1000)) : 0; lastTime = now;
@@ -678,7 +799,20 @@
       if (document.hidden) { pauseMatch('You stepped away'); if (frameId) root.cancelAnimationFrame(frameId); frameId = 0; if (audio && audio.state === 'running') audio.suspend().catch(() => {}); }
       else { resize(); ensureFrame(); }
     }
-    function onBlur(e) { if (!active || e.target !== root) return; resetInput(); pauseMatch('You stepped away'); }
+    function onBlur(e) {
+      if (!active || e.target !== root) return;
+      resetInput();
+      // iOS in-app chrome may blur a still-visible game. Visibility/pagehide
+      // own mobile backgrounding; desktop window changes still pause at once.
+      const mobileChrome = !!(root.matchMedia && root.matchMedia('(pointer: coarse) and (hover: none)').matches);
+      if (document.hidden || !mobileChrome) pauseMatch('You stepped away');
+    }
+    function onPageHide() {
+      if (!active) return;
+      resetInput(); pauseMatch('You stepped away');
+      if (frameId) root.cancelAnimationFrame(frameId); frameId = 0;
+    }
+    function onPageShow() { if (active && !document.hidden) { resize(); ensureFrame(); } }
     function open() {
       if (active || destroyed) return;
       build(); active = true; savedFocus = document.activeElement; savedBodyOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
@@ -686,8 +820,10 @@
       inertSiblings.forEach(s => { s.node.inert = true; });
       rootEl.hidden = false; prefersReduced = !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
       usingTouch = !!(root.matchMedia && root.matchMedia('(pointer: coarse)').matches); rootEl.dataset.touch = String(usingTouch); updatePrefs();
-      listen(root, 'keydown', onKeyDown, true); listen(root, 'keyup', onKeyUp, true); listen(root, 'blur', onBlur); listen(document, 'visibilitychange', onVisibility, true); listen(root, 'resize', resize);
-      for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click']) listen(root, type, guardPointer, { capture: true, passive: false });
+      listen(root, 'keydown', onKeyDown, true); listen(root, 'keyup', onKeyUp, true); listen(root, 'blur', onBlur); listen(document, 'visibilitychange', onVisibility, true); listen(root, 'pagehide', onPageHide); listen(root, 'pageshow', onPageShow); listen(root, 'resize', resize);
+      if (root.visualViewport) { listen(root.visualViewport, 'resize', resize); listen(root.visualViewport, 'scroll', resize); }
+      listen(root, 'touchend', onTouchEnd, { capture: true, passive: true }); listen(root, 'touchcancel', onTouchEnd, { capture: true, passive: true });
+      for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'click']) listen(root, type, guardPointer, { capture: true, passive: false });
       if (root.ResizeObserver) { resizeObserver = new root.ResizeObserver(resize); resizeObserver.observe(rootEl); }
       resize(); showLobby(); ensureFrame();
     }
@@ -696,13 +832,13 @@
       resetInput(); active = false; if (frameId) root.cancelAnimationFrame(frameId); frameId = 0; lastTime = 0; accumulator = 0;
       for (const [target, type, fn, settings] of listeners.splice(0)) target.removeEventListener(type, fn, settings);
       if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
-      rootEl.hidden = true; activeModal = null; state = null; view = 'lobby'; paused = false; effects = [];
+      rootEl.hidden = true; viewportBox = null; activeModal = null; state = null; view = 'lobby'; paused = false; effects = [];
       inertSiblings.forEach(s => { if (s.node.isConnected) s.node.inert = s.inert; }); inertSiblings = []; document.body.style.overflow = savedBodyOverflow;
       if (audio && audio.state === 'running') audio.suspend().catch(() => {});
       if (savedFocus && savedFocus.isConnected && typeof savedFocus.focus === 'function') savedFocus.focus({ preventScroll: true });
       if (typeof opts.onClose === 'function') opts.onClose();
     }
-    function destroy() { close(); destroyed = true; if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
+    function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
     return Object.freeze({ open, close, destroy, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
   }
   root.SpaceManArenaUI = Object.freeze({ create });

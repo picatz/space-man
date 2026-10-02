@@ -46,6 +46,16 @@ jobs:
           fi
       - name: Check preview paths, caches, and saves without a relay
         run: npm run test:previews
+        env:
+          SPACE_MAN_PREVIEW_SCREENSHOTS: ${{ runner.temp }}/preview-screenshots
+      - name: Keep preview mobile layout screenshots for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-mobile-screenshots
+          path: ${{ runner.temp }}/preview-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Check arena controls, match flow, and runner return without a relay
         run: npm run test:arena
         env:
@@ -56,5 +66,35 @@ jobs:
         with:
           name: arena-browser-screenshots
           path: ${{ runner.temp }}/arena-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 3
+
+  arena-webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - name: Install the pinned WebKit engine and dependencies
+        run: npx playwright install --with-deps webkit
+      - name: Check constrained mobile setup in WebKit
+        run: node --test --test-name-pattern='arena mobile' arena.test.cjs
+        env:
+          SPACE_MAN_ARENA_BROWSER: webkit
+          SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/arena-webkit-screenshots
+      - name: Keep WebKit mobile screenshots for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arena-webkit-screenshots
+          path: ${{ runner.temp }}/arena-webkit-screenshots/*.png
           if-no-files-found: ignore
           retention-days: 3

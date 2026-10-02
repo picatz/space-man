@@ -97,6 +97,8 @@ jobs:
       contents: read
       pull-requests: read
       actions: read
+    outputs:
+      manifest: ${{ steps.assemble.outputs.manifest }}
     steps:
       # A fresh runner: the test jobs cannot rewrite these trusted scripts.
       - uses: actions/checkout@v4
@@ -107,7 +109,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Assemble production and successful current heads
+      - id: assemble
+        name: Assemble production and successful current heads
         run: node trusted/scripts/publish-pages.cjs assemble
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -139,3 +142,33 @@ jobs:
       - name: Deploy complete existing Pages site
         id: deployment
         uses: actions/deploy-pages@v4
+
+  comment:
+    needs: [discover, assemble, deploy]
+    if: >-
+      always() && !cancelled() &&
+      vars.SPACE_MAN_PREVIEWS_ENABLED == 'true' &&
+      needs.discover.result == 'success' && needs.assemble.result == 'success' &&
+      needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Only trusted default-branch code and assembly outputs enter this job.
+      # No PR checkout, dependency install, or PR-produced artifact is consumed.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.discover.outputs.main_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify live previews and update Actions comments
+        run: node scripts/comment-previews.cjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SPACE_MAN_PREVIEWS_ENABLED: ${{ vars.SPACE_MAN_PREVIEWS_ENABLED }}
+          PREVIEW_MANIFEST: ${{ needs.assemble.outputs.manifest }}
+          EXPECTED_MAIN_SHA: ${{ needs.discover.outputs.main_sha }}

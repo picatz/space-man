@@ -50,10 +50,17 @@
       if (!preview && !error) return;
       const el = root.document.createElement('div');
       el.id = 'previewBuild';
-      el.textContent = error || 'PREVIEW · PR #' + preview.pr + ' · ' + preview.sha.slice(0, 12);
+      el.textContent = error || 'PREVIEW · PR #' + preview.pr + ' · ' + preview.sha.slice(0, 7);
       el.setAttribute('role', error ? 'alert' : 'status');
-      el.style.cssText = 'position:fixed;bottom:6px;left:50%;transform:translateX(-50%);max-width:90vw;z-index:10000;padding:5px 9px;border:1px solid #ffc93c;border-radius:6px;background:#060818;color:#ffc93c;font:12px monospace;text-align:center;pointer-events:none';
-      root.document.body.appendChild(el);
+      el.className = 'game-status' + (error ? ' game-status-error' : '');
+      if (preview) {
+        const label = 'Preview PR #' + preview.pr + ' · source ' + preview.sha + ' · builder ' + preview.buildSha;
+        el.setAttribute('title', label);
+        el.setAttribute('aria-label', error || label);
+      }
+      // Passive status belongs in the shared reserved rail, never over the
+      // bottom thumb controls. Canvas and DOM HUDs consume its safe inset.
+      root.document.getElementById('gameStatusRail').appendChild(el);
     },
   };
   root.SpaceManBuild = Object.freeze(build);

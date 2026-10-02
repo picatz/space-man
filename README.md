@@ -221,7 +221,10 @@ one artifact: production from tested `main` at `/`, with playable development
 snapshots under `/pr/<number>/<full-head-sha>/<trusted-builder-sha>/`. The extra
 builder SHA prevents a later packaging change from reusing an old build URL.
 Each preview displays its PR/source identity and includes `preview-build.json`.
-Find links in the successful workflow's assembly summary or the site's `/pr/`
+After deployment, GitHub Actions posts a short **Play preview** comment on each
+eligible PR and updates that same bot comment when its preview changes. The
+comment links one exact source/builder revision and shows the source commit.
+Links also appear in the workflow's assembly summary and the site's `/pr/`
 index. Summary links are prepared links until the deployment job succeeds.
 
 This feature is **off by default**. Merging its code does not enable the custom
@@ -242,7 +245,8 @@ changes, including the service-worker migration described below.
    Actions** as the source, preserving the existing custom domain/HTTPS setup.
    Keep the `github-pages` environment restricted to trusted default-branch
    deployments. The workflow needs `pages: write` and `id-token: write` only in
-   its deployment job; it needs no PAT, provider account or new stored secret.
+   its deployment job, and `pull-requests: write` only in its post-deploy comment
+   job; it needs no PAT, provider account or new stored secret.
 4. Set repository Actions variable `SPACE_MAN_PREVIEWS_ENABLED` to exactly `true`
    and manually run **Pages and PR previews** from `main`. These settings and the
    first deployment are explicit activation steps, not part of preparing a PR.
@@ -266,8 +270,20 @@ changes, including the service-worker migration described below.
 - A failing or incompatible PR is omitted without blocking other passing
   previews. Production tests must pass. If `main` changes during verification,
   the run preserves the live site and waits for the queued reconciliation.
-  The only write-token job runs the official Pages deploy action, with no
-  checkout or repository script execution. No preview comments are posted.
+  The Pages write-token job runs only the official Pages deploy action, with no
+  checkout or repository script execution. A separate comment job checks out
+  the exact trusted default-branch revision and receives only contents-read and
+  PR-comment-write access. It accepts the trusted assembly manifest, checks the
+  publicly deployed manifest and each preview's build metadata, and rechecks
+  the open PR's author, repository, target and full head SHA immediately before
+  posting. It only updates comments bearing its marker and authored by
+  `github-actions[bot]`; human comments are left alone. A short, bounded retry
+  window tolerates Pages propagation. Failed/stale checks never post a link.
+- The shared Pages deployment belongs to `main`, so GitHub's branch deployment
+  panel may show no deployment for a PR branch. The bot's verified **Play preview**
+  comment is the PR entry point. A failed/omitted preview does not update its
+  previous comment; the visible source SHA identifies the old revision, whose
+  URL can expire on the next publication.
 - Publishing is serialized and always includes the full current live set.
   Superseded, closed, failing, or incompatible snapshots may be removed at the
   next publication; these links are revision-specific, not permanent archives.
@@ -289,7 +305,8 @@ changes, including the service-worker migration described below.
 ### Verification
 
 `node --test tests/*.test.cjs` includes packaging, trust filters, exact-SHA job
-outcomes, storage/invite isolation, and simulated service-worker regression
+outcomes, bot-comment ownership/idempotency and deployed metadata checks,
+storage/invite isolation, and simulated service-worker regression
 checks. The **Regression tests** workflow also runs a localhost-only Chromium
 check for production/preview navigation, caches and separate saves. It does not
 contact a relay. To run that browser check explicitly:
