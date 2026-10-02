@@ -91,6 +91,7 @@ test('arena desktop: launcher, real controls, pause, result/rematch, stage forma
   await page.locator('.arena-root[data-screen="results"]').waitFor({ timeout: 35000 });
   await page.keyboard.up('d');
   assert.equal(await page.evaluate(() => arenaUI.snapshot().phase), 'over');
+  await capture(page, 'arena-results-desktop');
   await page.getByRole('button', { name: 'Rematch', exact: true }).click();
   assert.equal(await page.evaluate(() => arenaUI.snapshot().phase), 'countdown');
   await pause(page);
@@ -102,6 +103,8 @@ test('arena desktop: launcher, real controls, pause, result/rematch, stage forma
     const snapshot = await page.evaluate(() => arenaUI.snapshot());
     assert.equal(snapshot.actors.length, 4); assert.equal(snapshot.format, format); assert.equal(snapshot.arenaId, stage);
     if (format === 'teams') assert.deepEqual(snapshot.actors.map(a => a.team), [0, 0, 1, 1]);
+    await playing(page); await page.waitForTimeout(750);
+    await capture(page, 'arena-stage-' + stage);
     await pause(page);
     await page.getByRole('button', { name: 'Choose a match', exact: true }).click();
   }
@@ -110,7 +113,9 @@ test('arena desktop: launcher, real controls, pause, result/rematch, stage forma
   assert.equal(await page.evaluate(() => G.player === window.runnerAtArenaLaunch), true);
   assert.equal(await page.evaluate(() => localStorage.getItem('sm2.best')), '4321');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'btnArena');
-  await page.locator('#btnPlay').click(); await page.keyboard.down('d');
+  // The existing runner CTA intentionally pulses forever; use its native
+  // keyboard activation rather than waiting for a motionless click target.
+  await page.locator('#btnPlay').focus(); await page.keyboard.press('Enter'); await page.keyboard.down('d');
   await page.waitForFunction(() => G.mode === 'play' && G.player.vx > 0);
   await page.keyboard.up('d');
 });
@@ -144,6 +149,7 @@ test('arena phone: readable controls, multi-touch movement/release, rotation and
   assert.equal(await page.locator('.arena-pressed').count(), 0, 'cancel clears touch capture and visual holds');
   await page.keyboard.press('q');
   await page.waitForFunction(() => arenaUI.snapshot().actors[0].jumpCount === 2);
+  await page.waitForTimeout(750); // photograph play after the brief GO overlay clears
   await capture(page, 'arena-match-phone');
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(100);
