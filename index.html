@@ -1091,6 +1091,7 @@
 <script src="src/race.js"></script>
 <script src="src/race-online.js"></script>
 <script src="src/race-room.js"></script>
+<script src="src/race-audio.js"></script>
 <script src="src/race-ui.js"></script>
 <!-- Run Together (multiplayer). All four are inert on load: they define globals
      only — no sockets, keys, crypto, or storage until RUN TOGETHER is tapped or a
@@ -8525,6 +8526,11 @@ $('btnRace').onclick = () => {
       return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
     },
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
+    onAudioSettings(changes) {
+      for (const key of ['muted', 'music', 'musicVol', 'sfxVol'])
+        if (Object.prototype.hasOwnProperty.call(changes, key)) settings[key] = changes[key];
+      Audio.syncChannels(); persistAll(); syncSettingsUI();
+    },
     onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); hideAllOverlays(); showOverlay('ovAttract'); $('btnRace').focus(); },
   });
   clearInput(); Audio.suspend(); raceUI.open();

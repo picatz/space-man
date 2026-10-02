@@ -41,7 +41,12 @@ function finishActor(h, index = 0) {
   a.passed = h.state.laps * C.GATES - 1; a.nextGate = 0; a.lap = h.state.laps;
   a.progress = a.passed;
   place(a, Race.course(h.state.trackId).gates[0]);
+  // This fixture isolates finish/grace accounting. With full-size hoverpods the
+  // starting grid is close enough to bump a teleported finishing CPU backwards.
+  const recovering = h.state.actors.map(p => p.recoveryTicks);
+  h.state.actors.forEach(p => { if (p !== a) p.recoveryTicks = 2; });
   h.step(clock(h));
+  h.state.actors.forEach((p, i) => { if (p !== a) p.recoveryTicks = recovering[i]; });
   assert.notEqual(a.finishTick, null);
 }
 function expectedStep(h, commands) {

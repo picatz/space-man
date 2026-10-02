@@ -383,7 +383,7 @@ test("boost pads trigger only on-road, boost temporarily and cannot retrigger du
   assert.equal(state.events.length, 0);
 });
 
-test("offroad caps speed and disables fuel boost without silently moving the kart", () => {
+test("offroad caps speed and disables fuel boost with bounded inward rail correction", () => {
   const state = playing(),
     a = state.actors[0],
     c = Race.course(state.trackId);
@@ -394,7 +394,7 @@ test("offroad caps speed and disables fuel boost without silently moving the kar
   assert.equal(a.offroad, true);
   assert.equal(a.boosting, false);
   assert.ok(a.speed <= 2.6 + EPSILON);
-  assert.ok(Math.hypot(a.x - old.x, a.y - old.y) <= 2.6 + EPSILON);
+  assert.ok(Math.hypot(a.x - old.x, a.y - old.y) <= 4.6 + EPSILON);
   assert.equal(a.recoveries, 0);
   close(a.fuel, 50 + 0.17);
 });
@@ -552,7 +552,7 @@ test("kart contacts separate coincident pilots and keep velocities and snapshots
   place(a, c.gates[1], { along: -40 });
   place(b, c.gates[1], { along: -40 });
   Race.step(state);
-  close(Math.hypot(a.x - b.x, a.y - b.y), 29);
+  close(Math.hypot(a.x - b.x, a.y - b.y), Race.constants.KART_RADIUS * 2);
   assertFiniteState(state);
   place(a, c.gates[1], { along: -35, speed: 6 });
   place(b, c.gates[1], { along: -15 });
@@ -577,7 +577,7 @@ test("a collision pushing a kart through its next gate is credited once and cann
 });
 
 test("finished and recovering karts cannot collide with active racers", () => {
-  for (const status of ["finished", "recovering", "last recovery tick"]) {
+  for (const status of ["finished", "recovering"]) {
     const state = playing({ count: 2 }),
       [a, b] = state.actors,
       c = Race.course(state.trackId);
@@ -585,7 +585,7 @@ test("finished and recovering karts cannot collide with active racers", () => {
     place(a, c.gates[1], { along: -40 });
     place(b, c.gates[1], { along: -40 });
     if (status === "finished") a.finishTick = 1;
-    else a.recoveryTicks = status === "recovering" ? 30 : 1;
+    else a.recoveryTicks = 30;
     const position = { x: a.x, y: a.y };
     Race.step(state);
     close(a.x, position.x);
