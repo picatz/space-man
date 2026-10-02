@@ -160,7 +160,12 @@ test('runner result card fixture shares chrome without clipping retry or score',
   for (const [width,height] of [[320,568],[390,640],[844,390],[1440,900]]) {
     await page.setViewportSize({ width,height });
     await reachable(page, '#btnAgain');
-    await fit(page, ['#ovDead .panel','#deadStats','.dead-cols']);
+    // The retry dock intentionally bleeds through the panel's horizontal
+    // padding; measure its actual panel boundary, not the inner column width.
+    await fit(page, ['#ovDead .panel','#deadStats','.dead-main']);
+    const dock = await page.locator('#ovDead .dock').boundingBox();
+    const panel = await page.locator('#ovDead .panel').boundingBox();
+    assert.ok(dock.x >= panel.x - 1 && dock.x + dock.width <= panel.x + panel.width + 1, 'retry dock stays inside the panel');
     await capture(page, `after-${width}x${height}-runner-results-fixture`);
   }
 });
