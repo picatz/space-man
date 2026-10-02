@@ -1,0 +1,37 @@
+name: Real relay browser smoke
+on:
+  workflow_dispatch:
+    inputs:
+      relay_host:
+        description: 'DERP relay hostname[:port] you are permitted to use (no scheme/path)'
+        required: true
+        type: string
+      base_url:
+        description: 'Optional deployed build/preview directory URL; blank tests the selected checkout'
+        required: false
+        type: string
+permissions:
+  contents: read
+jobs:
+  relay-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      SPACE_MAN_RELAY_HOST: ${{ inputs.relay_host }}
+      SPACE_MAN_BASE_URL: ${{ inputs.base_url }}
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Run explicitly requested real-relay smoke
+        run: |
+          test -n "$SPACE_MAN_RELAY_HOST"
+          npm test

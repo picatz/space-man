@@ -22,3 +22,6 @@ go.work
 
 # macOS
 .DS_Store
+
+# Optional real-browser regression dependencies
+tests/browser/node_modules/
