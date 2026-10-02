@@ -1,0 +1,93 @@
+name: Star Circuit friend-racing browser checks
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      live_relay:
+        description: Also run against an existing public relay (explicit opt-in)
+        type: boolean
+        default: false
+      relay_host:
+        description: 'default uses shipped discovery; or authorized hostname[:port]'
+        type: string
+        default: default
+      base_url:
+        description: Optional deployed build directory URL (live check only)
+        type: string
+        required: false
+permissions:
+  contents: read
+jobs:
+  simulated-relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Exercise real UI, driving, results and lifecycle with opaque simulated relay
+        run: node --test race-online.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.browser }}
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/race-online-screenshots
+      - name: Verify live relay test is opt-in
+        run: node --test race-live.test.cjs
+      - name: Keep redacted simulated-relay screenshots for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: race-online-${{ matrix.browser }}-screenshots
+          path: ${{ runner.temp }}/race-online-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 5
+  live-relay:
+    # One deliberate label event enables pre-merge acceptance before the
+    # workflow exists on main. Ordinary pushes never contact a public relay.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.live_relay) ||
+      (github.event.label.name == 'race-live-smoke' &&
+       github.event.pull_request.user.login == 'picatz' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Verify live public-relay racing without traces or screenshots
+        run: node --test race-live.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.browser }}
+          SPACE_MAN_RELAY_HOST: ${{ inputs.relay_host || 'default' }}
+          SPACE_MAN_BASE_URL: ${{ inputs.base_url }}

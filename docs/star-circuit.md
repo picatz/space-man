@@ -77,3 +77,34 @@ end-to-end tests. It must use the existing shared room transport instead of a
 second network stack. Arena packets cannot be treated as race packets. No online
 race capability should be advertised until those paths have been implemented
 and tested.
+
+## Friend racing (v3.23)
+
+Open **Star Circuit**, then **Play with friends**. Create a room and share its
+invite (or production room code), or choose Join race / Watch race. The host
+chooses the circuit and CPU pace and starts the grid. Up to four racers and four
+spectators share a five-kart race; CPUs fill unused racing slots.
+
+The existing encrypted room relay is reused with a separate race capability and
+invite mode. Runner, Arena and Star Circuit rooms cannot be accidentally mixed.
+The host owns the simulation: other racers send bounded steering/brake/boost/
+rescue commands, never positions, lap counts or results. Each player sees their
+own kart; spectators can switch the followed kart. A race waits for all humans,
+with a 30-second finish window after the first human finishes and a five-minute
+maximum. Disconnected racers coast without controls, have ten seconds to rejoin
+their same seat, then receive a did-not-finish result.
+
+The host's pause applies to everyone. A guest's menu only releases their own
+controls. Keep the host tab open; a suspended host pauses the race and closing
+it ends the room. New mid-race arrivals watch until the next lobby. There is no
+host migration or page-reload race restoration. Local CPU racing still works
+without a connection. The shared room has no voice or text chat.
+
+Verification: Node authority/codec/transport/coordinator tests and separate
+Chromium/WebKit multi-context acceptance cover real controls, laps/results,
+watchers, touch interruption, reconnect, host closure and runner return. The
+ordinary browser suite substitutes only the opaque relay hop. The separate
+`race-live.test.cjs` entrypoint requires explicit `SPACE_MAN_RELAY_HOST=default` (or an authorized relay hostname) and
+uses actual WebSockets to the existing relay; it never represents simulated
+relay results as a live-network pass. Physical iPhone/cellular testing remains
+separate.

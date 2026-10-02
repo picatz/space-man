@@ -30,6 +30,8 @@ const SHELL = [
   './src/arena-room.js',
   './src/arena-ui.js',
   './src/race.js',
+  './src/race-online.js',
+  './src/race-room.js',
   './src/race-ui.js',
   './src/callsigns.js',
   './src/crew.js',

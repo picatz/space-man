@@ -3111,10 +3111,14 @@
     roster() {
       if (!session) return [];
       const cs = (a, n, p) => callsignText(a, n) || ('P' + p);   // P-number fallback (Addendum C)
+      // Retain the curated wire indices for authoritative arcade seats. No text
+      // is accepted here; missing legacy/mock identity uses the wire sentinel.
+      const indexOrNone = (i) => i == null ? CALLSIGN_NONE : i;
       if (session.isHost) {
-        const out = [{ p: 1, tag: session.tag, you: true, host: true, role: session.role, spectator: session.role === ROLE_SPECTATOR, callsign: cs(session.adjIdx, session.nounIdx, 1), unverified: false }];
+        const out = [{ p: 1, tag: session.tag, you: true, host: true, role: session.role, spectator: session.role === ROLE_SPECTATOR, adjIdx: indexOrNone(session.adjIdx), nounIdx: indexOrNone(session.nounIdx), callsign: cs(session.adjIdx, session.nounIdx, 1), unverified: false }];
         for (const r of session.roster.values()) { if (r.absent) continue; out.push({
           p: r.p, tag: r.tag, role: r.role, spectator: r.role === ROLE_SPECTATOR,
+          adjIdx: indexOrNone(r.adjIdx), nounIdx: indexOrNone(r.nounIdx),
           callsign: cs(r.adjIdx, r.nounIdx, r.p), unverified: !!r.unverified, dimmed: !!r.unverified,
           pubHex: r.pub ? hex(r.pub) : undefined,   // for the hide/block/kick sheet (§7); guests can't see peer pubs
         }); }
@@ -3123,9 +3127,10 @@
       const out = [];
       for (const [p, e] of session.rosterMap) out.push({
         p, tag: e.tag, role: e.role, spectator: e.role === ROLE_SPECTATOR,
+        adjIdx: indexOrNone(e.adjIdx), nounIdx: indexOrNone(e.nounIdx),
         callsign: e.callsign || ('P' + p), you: p === session.p, host: p === 1,
       });
-      if (!out.length) for (const p of session.peers.keys()) out.push({ p, you: p === session.p, callsign: 'P' + p });
+      if (!out.length) for (const p of session.peers.keys()) out.push({ p, you: p === session.p, adjIdx: CALLSIGN_NONE, nounIdx: CALLSIGN_NONE, callsign: 'P' + p });
       return out.sort((a, b) => a.p - b.p);
     },
     // Live ghost samples for the render pool (N3): [{p, you, host, spectator,
