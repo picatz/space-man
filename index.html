@@ -1324,7 +1324,7 @@ function refreshCourse(c) {
    5. CANVAS + VIEW
    ------------------------------------------------------------------------- */
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d', { alpha: false });
+let ctx = canvas.getContext('2d', { alpha: false });   // let: drawGhostActor briefly points it at an offscreen layer to draw a runner as one piece
 const tmetaEl = document.getElementById('tmeta');   // eased every tick during a sector crossfade — cache the lookup
 const view = { w: 640, h: 360, scale: 1, dpr: 1, isTablet: false };
 // Shared HUD/text scale — shrinks on narrow (portrait) views. Used by both the
@@ -7825,6 +7825,21 @@ function drawGhosts(alpha, iCamX) {
   // Own emote bubble echoes locally over the live sprite (§4.6).
   if (selfEmote.t > 0 && G.player && !netSpectating()) drawEmoteBubble(G.player.x + G.player.w / 2, G.player.y - 30, selfEmote.id, selfEmote.t);
 }
+// One shared offscreen layer for translucent runners (a runner is ~40 units; the box leaves room for the hat, jetpack and shadow).
+const GHOST_BOX_W = 120, GHOST_BOX_H = 130;
+let _ghostLayer = null;
+function ghostLayerFor(a) {
+  try {
+    const S = view.scale, w = Math.ceil(GHOST_BOX_W * S), h = Math.ceil(GHOST_BOX_H * S);
+    if (!_ghostLayer || _ghostLayer.c.width !== w || _ghostLayer.c.height !== h) {
+      const c = makeCanvas(w, h), g = c.getContext('2d');
+      if (!g) return null;
+      _ghostLayer = { c, g, ox: 0, oy: 0 };
+    }
+    _ghostLayer.ox = a.x + a.w / 2 - GHOST_BOX_W / 2; _ghostLayer.oy = a.y + a.h / 2 - 80;
+    return _ghostLayer;
+  } catch (e) { return null; }
+}
 function drawGhostActor(g) {
   if (!ghostActor) {
     ghostActor = { w: CFG.pw, h: CFG.ph, px: 0, py: 0, x: 0, y: 0, vx: 0, vy: 0, onGround: true, facing: 1, sqX: 1, sqY: 1, landDip: 0, pose: 4, runCycle: 0, glint: 0, idle: 0, dead: false, groundPlat: null };
@@ -7839,10 +7854,22 @@ function drawGhostActor(g) {
   ghostCos.suit = g.suit; ghostCos.hat = g.hat;
   const sp = G.player, sc = G.cosmetics, sv = vigPose, sw = G.wave, sf = G.fireT, stw = G.twirlT, sh = G.holsterT, sgl = G.glanceT, sfr = SEASON.frost;
   G.player = a; G.cosmetics = ghostCos; vigPose = null; G.wave = 0; G.fireT = 0; G.twirlT = 0; G.holsterT = 0; G.glanceT = 0; SEASON.frost = false;
-  ctx.save();
-  ctx.globalAlpha *= clamp(settings.netGhosts, 0.25, 1) * g.alpha * (g.unverified ? 0.6 : 1);
-  drawPlayer(1);
-  ctx.restore();
+  const ga = clamp(settings.netGhosts, 0.25, 1) * g.alpha * (g.unverified ? 0.6 : 1);
+  const layer = ga < 0.97 ? ghostLayerFor(a) : null;
+  if (layer) {
+    // A translucent runner is drawn opaque into a small layer, then that layer is composited once at the ghost opacity.
+    // Drawing every part at the opacity instead lets the backpack show through the body and doubles the legs.
+    const main = ctx, S = view.scale;
+    layer.g.setTransform(1, 0, 0, 1, 0, 0); layer.g.clearRect(0, 0, layer.c.width, layer.c.height);
+    layer.g.setTransform(S, 0, 0, S, -layer.ox * S, -layer.oy * S);
+    ctx = layer.g;
+    try { drawPlayer(1); } finally { ctx = main; }
+    main.save(); main.globalAlpha *= ga;
+    main.drawImage(layer.c, layer.ox, layer.oy, layer.c.width / S, layer.c.height / S);
+    main.restore();
+  } else {
+    ctx.save(); ctx.globalAlpha *= ga; drawPlayer(1); ctx.restore();
+  }
   G.player = sp; G.cosmetics = sc; vigPose = sv; G.wave = sw; G.fireT = sf; G.twirlT = stw; G.holsterT = sh; G.glanceT = sgl; SEASON.frost = sfr;
   // badge + emote (world space, upright, no shadowBlur)
   ctx.save(); ctx.globalAlpha *= clamp(g.alpha, 0, 1);
