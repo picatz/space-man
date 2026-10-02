@@ -4,10 +4,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const http = require('node:http');
 const path = require('node:path');
-const { chromium } = require('playwright');
+const { chromium, webkit } = require('playwright');
 const ROOT = path.resolve(__dirname, '../..');
 
-async function launch(t, device = {}) {
+async function launch(t, device = {}, init) {
   const server = http.createServer(async (req, res) => {
     try {
       const pathname = new URL(req.url, 'http://localhost').pathname;
@@ -42,7 +42,8 @@ async function launch(t, device = {}) {
   const available = await fetch(base + '/src/arena.js');
   assert.equal(available.status, 200);
   assert.match(await available.text(), /SpaceManArena/);
-  browser = await chromium.launch(process.env.SPACE_MAN_CHROMIUM_PATH ? { executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : {});
+  const engine = process.env.SPACE_MAN_ARENA_BROWSER === 'webkit' ? webkit : chromium;
+  browser = await engine.launch(engine === chromium && process.env.SPACE_MAN_CHROMIUM_PATH ? { executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : {});
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block', ...device });
   await context.addInitScript(() => {
     const request = window.requestAnimationFrame.bind(window), cancel = window.cancelAnimationFrame.bind(window), pending = new Set();
@@ -52,6 +53,7 @@ async function launch(t, device = {}) {
     window.cancelAnimationFrame = id => { pending.delete(id); return cancel(id); };
     Object.defineProperty(window, '__arenaRafPending', { get: () => pending.size });
   });
+  if (init) await context.addInitScript(init);
   const page = await context.newPage(), errors = [], sockets = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('websocket', ws => sockets.push(ws.url()));
@@ -219,4 +221,161 @@ test('arena browser gamepad mapping and held-button mode-boundary guard', { time
   assert.equal(await page.evaluate(() => arenaUI.active), false, 'held A cannot reopen arena');
   await page.evaluate(() => { window.testPad.buttons[0].pressed = false; });
   await page.waitForFunction(() => !arenaPadNeutral);
+});
+
+// These dimensions include the short content area left by an in-app browser's
+// top/bottom chrome. A second pass independently constrains visualViewport.
+test('arena mobile setup fits short viewports without horizontal overflow', { timeout: 90000 }, async t => {
+  const { page } = await launch(t, { viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await page.locator('#btnArena').tap(); await screen(page, 'lobby');
+  async function noHorizontalOverflow() {
+    const overflow = await page.evaluate(() => Array.from(document.querySelectorAll('.arena-lobby, .arena-lobby-grid, .arena-setup, .arena-choice-group, .arena-formats, .arena-stage-cards, .arena-format-card, .arena-stage-card, .arena-difficulty'))
+      .filter(n => n.scrollWidth > n.clientWidth + 1).map(n => ({ class: n.className, width: n.clientWidth, scroll: n.scrollWidth })));
+    assert.deepEqual(overflow, [], 'no hidden or scrollable horizontal overflow in setup');
+  }
+  for (const [w, h] of [[390, 640], [320, 568], [375, 667], [430, 740], [844, 320]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.locator('.arena-lobby').evaluate(n => { n.scrollTop = 0; });
+    await noHorizontalOverflow();
+    const setup = await page.locator('.arena-setup').boundingBox();
+    if (w <= 650) assert.ok(setup.y < 190, 'phone setup starts near the top instead of below a decorative hero');
+    if (w === 390) {
+      const launchBox = await page.locator('.arena-launch').boundingBox();
+      assert.ok(launchBox.y + launchBox.height <= h, 'launch is visible in the initial short phone viewport');
+    }
+    for (const selector of ['.arena-format-card', '.arena-stage-card', '.arena-segment']) {
+      for (const control of await page.locator(selector).all()) {
+        await control.scrollIntoViewIfNeeded(); await control.tap();
+        assert.equal(await control.getAttribute('aria-pressed'), 'true');
+        const b = await control.boundingBox();
+        assert.ok(b.x >= -1 && b.x + b.width <= w + 1 && b.y >= -1 && b.y + b.height <= h + 1, 'selected control remains reachable');
+      }
+    }
+    await page.locator('.arena-format-card').first().focus();
+    await noHorizontalOverflow();
+    await page.locator('.arena-lobby').evaluate(n => { n.scrollTop = 0; });
+    await capture(page, `arena-setup-${process.env.SPACE_MAN_ARENA_BROWSER || 'chromium'}-${w}x${h}`);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    window.testVisual = { width: 390, height: 590, offsetLeft: 0, offsetTop: 28 };
+    for (const name of Object.keys(testVisual)) Object.defineProperty(visualViewport, name, { configurable: true, get: () => testVisual[name] });
+    visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await page.waitForTimeout(60);
+  await page.locator('.arena-lobby').evaluate(n => { n.scrollTop = 0; });
+  await noHorizontalOverflow();
+  for (const selector of ['#arenaBack', '.arena-format-card', '.arena-stage-card', '.arena-segment', '.arena-launch']) {
+    for (const control of await page.locator(selector).all()) {
+      await control.scrollIntoViewIfNeeded();
+      const b = await control.boundingBox();
+      assert.ok(b.x >= 0 && b.x + b.width <= 391 && b.y >= 27 && b.y + b.height <= 619, `${selector} fits the visible in-app area`);
+    }
+  }
+  await capture(page, `arena-setup-${process.env.SPACE_MAN_ARENA_BROWSER || 'chromium'}-in-app`);
+  await page.locator('.arena-launch').tap(); await screen(page, 'match');
+  await page.locator('[aria-label="Pause match"]').tap(); await screen(page, 'pause');
+  for (const control of await page.locator('.arena-small-panel:not([hidden]) button').all()) {
+    await control.scrollIntoViewIfNeeded(); const b = await control.boundingBox();
+    assert.ok(b.y >= 27 && b.y + b.height <= 619, 'pause actions remain reachable in the visual viewport');
+  }
+  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
+  assert.equal(await page.evaluate(() => arenaUI.active), false);
+  assert.equal(await page.locator('#btnArena').isVisible(), true);
+});
+
+test('arena touch recovers from outside release, lost capture, interruptions and mode changes', { timeout: 90000 }, async t => {
+  const { page, context } = await launch(t, { viewport: { width: 390, height: 640 }, isMobile: true, hasTouch: true });
+  // Observe real UI commands at the simulation seam, without changing physics,
+  // CPU decisions or player state; knockback cannot mask a stuck-input failure.
+  await page.evaluate(() => {
+    const original = SpaceManArena;
+    window.SpaceManArena = { ...original, step(state, commands) {
+      const human = state.actors.find(a => a.controller === 'human');
+      window.lastHumanCommand = { ...commands[human.id] };
+      window.humanEdges ||= { jump: 0, attack: 0, dash: 0 };
+      for (const action of ['jump', 'attack', 'dash']) if (lastHumanCommand[action + 'Pressed']) humanEdges[action]++;
+      return original.step(state, commands);
+    } };
+  });
+  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
+  const cdp = await context.newCDPSession(page);
+  let id = 0;
+  async function dragStick(direction = -1, captureFails = false) {
+    const zone = page.locator('.arena-stick-zone'); const box = await zone.boundingBox();
+    if (captureFails) await zone.evaluate(n => { n.originalCapture = n.setPointerCapture; n.setPointerCapture = () => { throw new Error('capture unavailable'); }; });
+    const p = { id: ++id, x: box.x + box.width * .5, y: box.y + box.height * .55 };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p] });
+    p.x += direction * 38;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] });
+    await page.waitForFunction(d => window.lastHumanCommand?.moveX * d > .5, direction);
+    return p;
+  }
+  async function neutral() {
+    await page.waitForFunction(() => lastHumanCommand?.moveX === 0 && lastHumanCommand?.moveY === 0 && !lastHumanCommand?.jumpHeld);
+    assert.equal(await page.locator('.arena-stick-active,.arena-pressed').count(), 0);
+  }
+  let p = await dragStick();
+  const jump = await page.locator('.arena-touch-jump').boundingBox(), q = { id: ++id, x: jump.x + jump.width / 2, y: jump.y + jump.height / 2 };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p, q] });
+  await page.waitForFunction(() => lastHumanCommand?.jumpHeld);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [p] });
+  await page.waitForFunction(() => !lastHumanCommand?.jumpHeld && lastHumanCommand.moveX < -.5);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await neutral();
+
+  // Complete a quick down/up in one task, before a simulation tick can sample
+  // it. End-of-touch recovery must preserve its one-shot jump command.
+  const jumpEdges = await page.evaluate(() => humanEdges.jump);
+  await page.locator('.arena-touch-jump').evaluate(n => {
+    n.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', pointerId: 999, isPrimary: true }));
+    n.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'touch', pointerId: 999, isPrimary: true }));
+    n.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] }));
+  });
+  await page.waitForFunction(before => humanEdges.jump > before, jumpEdges);
+  await neutral();
+  await page.keyboard.down('d');
+  await page.evaluate(() => window.dispatchEvent(new TouchEvent('touchcancel', { touches: [] })));
+  await page.waitForFunction(() => lastHumanCommand.moveX === 1);
+  await page.keyboard.up('d'); await neutral();
+
+  p = await dragStick(-1, true);
+  p.x = 380; p.y = 180; // Outside the joystick, with failed capture.
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await neutral();
+  await page.locator('.arena-stick-zone').evaluate(n => { n.setPointerCapture = n.originalCapture; });
+
+  await page.locator('.arena-stick-zone').evaluate(n => n.addEventListener('pointerdown', e => { n.lastPointer = e.pointerId; }));
+  p = await dragStick(1);
+  await page.locator('.arena-stick-zone').evaluate(n => n.releasePointerCapture(n.lastPointer));
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] }); await neutral();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  p = await dragStick();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] }); await neutral();
+
+  p = await dragStick();
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await neutral(); assert.equal(await page.evaluate(() => arenaUI.screen), 'play', 'visible touch browser blur is not proof of leaving');
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  p = await dragStick(); await page.setViewportSize({ width: 640, height: 390 }); await neutral();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+  p = await dragStick(); await pause(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.locator('#arenaResume').tap(); await neutral();
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await screen(page, 'pause');
+  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
+  await page.locator('#arenaResume').tap(); await neutral();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await screen(page, 'pause');
+  await page.evaluate(() => { delete document.hidden; document.dispatchEvent(new Event('visibilitychange')); });
+  assert.equal(await page.evaluate(() => arenaUI.screen), 'pause', 'returning from real background requires resume');
+  await page.locator('#arenaResume').tap(); await neutral();
+  p = await dragStick(); await pause(page);
+  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  assert.equal(await page.evaluate(() => input.left || input.right || input.jumpHeld), false);
+  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page); await neutral();
 });
