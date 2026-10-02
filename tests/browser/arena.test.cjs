@@ -75,9 +75,13 @@ test('arena desktop: launcher, real controls, pause, result/rematch, stage forma
   await page.keyboard.down('Space');
   await page.waitForFunction(() => arenaUI.snapshot().actors[0].vy < -2);
   await page.keyboard.up('Space');
-  await page.keyboard.press('f'); await page.waitForFunction(() => arenaUI.snapshot().actors[0].attackTicks > 0);
+  // Exercise dash while the initial spawn shield is still intact. A pulse
+  // deliberately drops that shield; testing dash afterward can legitimately
+  // reject the input during a CPU's hitstun, depending on its seeded behavior.
+  await page.keyboard.press('Shift'); await page.waitForFunction(() => arenaUI.snapshot().actors[0].dashCooldown > 0);
+  await page.waitForFunction(() => arenaUI.snapshot().actors[0].dashTicks === 0);
+  await page.keyboard.press('f'); await page.waitForFunction(() => arenaUI.snapshot().actors[0].attackSerial > 0);
   await page.waitForTimeout(500);
-  await page.keyboard.press('Shift'); await page.waitForFunction(() => arenaUI.snapshot().actors[0].dashTicks > 0);
   await capture(page, 'arena-match-desktop');
   await pause(page);
   const pausedTick = await page.evaluate(() => arenaUI.snapshot().tick);
