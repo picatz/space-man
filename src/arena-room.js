@@ -66,13 +66,13 @@
     }
     function step(command,time=now()){
       if(!active)return;submit(command,time);
-      if(host){host.step(time);steps++;present({state:host.state,seats:host.seats,status:host.status,epoch:host.epoch,revision:host.revision});if(steps%3===0)publish(false);}
+      if(host && !connection){host.step(time);steps++;present({state:host.state,seats:host.seats,status:host.status,epoch:host.epoch,revision:host.revision});if(steps%3===0)publish(false);}
     }
     function release(){if(active){submit(sim.normalizeCommand(),now());if(pending){net.sendArena(pending).catch(()=>{});pending=null;}}}
     function configure(config){if(!host)return false;const ok=host.configure(config);publish(true);return ok;}
     function setTeam(p,team){if(!host)return false;const ok=host.setTeam(p,team);publish(true);return ok;}
-    function start(seed){if(!host)return false;host.syncRoster(roster(),now());const ok=host.start(seed);if(ok){net.setArenaRoleLock(true);publish(true);}return ok;}
-    function pause(on){release();if(host){host.pause(on);publish(true);}return!!host;}
+    function start(seed){if(!host || connection)return false;host.syncRoster(roster(),now());const ok=host.start(seed);if(ok){net.setArenaRoleLock(true);publish(true);}return ok;}
+    function pause(on){release();if(host && !on && connection)return false;if(host){host.pause(on);publish(true);}return!!host;}
     function lobby(){if(!host)return false;host.lobby();net.setArenaRoleLock(false);host.syncRoster(roster(),now());publish(true);return true;}
     async function role(value){if(!active)return false;const ok=await net.setRole(value);sync();return ok;}
     function close(){cleanup();closedReason='';error='';connection='';changed();}

@@ -305,3 +305,62 @@ test('leaving a room settles a backpressured latest send instead of retaining it
   host.net.leave(); assert.equal(await pending, false);
   await until(() => guest.net._n1.session().byed !== null, 'host closed');
 });
+
+function delayedDirectory(c) {
+  let finish;
+  c.context.SpaceManRelayDir = { load() { return new Promise((resolve) => { finish = resolve; }); } };
+  return () => finish({ source: 'custom', map: { src: 'cancelled-directory', regions: [{ code: 'nyc', city: 'Cancelled', hosts: ['old.test'] }] } });
+}
+
+test('leave cancels a host waiting for a relay directory before any session exists', async (t) => {
+  const hub = relay(), c = client(hub, { game: false }); t.after(() => c.close());
+  const release = delayedDirectory(c), before = JSON.stringify(c.net.relayDirectory());
+  const pending = c.net.openRoom({ mode: 'arena', relayHost: 'relay.test', code: false, relayDir: { mode: 'custom' } });
+  const rejected = assert.rejects(pending, /Room cancelled/);
+  assert.equal(c.net._n1.session(), null, 'directory is pending before session construction');
+  c.net.leave(); release(); await rejected;
+  assert.equal(c.net._n1.session(), null); assert.equal(c.net.active, false);
+  assert.equal(JSON.stringify(c.net.relayDirectory()), before, 'cancelled directory result cannot change the map');
+});
+
+test('cancelled directory work cannot replace or close an immediate retry host', async (t) => {
+  for (const mode of ['arena', 'runner']) {
+    const hub = relay(), c = client(hub, { game: false }); t.after(() => c.close());
+    const release = delayedDirectory(c), before = JSON.stringify(c.net.relayDirectory());
+    const old = c.net.openRoom({ mode, relayHost: 'old.test', code: false, relayDir: { mode: 'custom' } });
+    const rejected = assert.rejects(old, /Room cancelled/);
+    c.net.leave();
+    await c.net.openRoom({ mode, relayHost: 'relay.test', code: false });
+    const current = c.net._n1.session(), link = c.net.info().link;
+    release(); await rejected;
+    assert.equal(c.net._n1.session(), current); assert.equal(c.net.info().link, link);
+    assert.equal(c.net.active, true); assert.equal(current.closed, undefined);
+    assert.equal(current.relay.state, 'established');
+    assert.equal(JSON.stringify(c.net.relayDirectory()), before);
+  }
+});
+
+test('a newer host supersedes a pending directory open without requiring leave', async (t) => {
+  const hub = relay(), c = client(hub, { game: false }); t.after(() => c.close());
+  const release = delayedDirectory(c);
+  const old = c.net.openRoom({ mode: 'arena', relayHost: 'old.test', code: false, relayDir: { mode: 'custom' } });
+  const rejected = assert.rejects(old, /Room cancelled/);
+  await c.net.openRoom({ mode: 'arena', relayHost: 'relay.test', code: false });
+  const current = c.net._n1.session(); release(); await rejected;
+  assert.equal(c.net._n1.session(), current); assert.equal(c.net.active, true);
+  assert.equal(current.relay.state, 'established');
+});
+
+test('acceptJoin invalidates an older directory open and its late result cannot close the guest', async (t) => {
+  const { host, hub, invite } = await room(t, { players: 0 });
+  const guest = client(hub, { game: false }); t.after(() => guest.close());
+  const release = delayedDirectory(guest), rx = collect(guest.net);
+  const old = guest.net.openRoom({ mode: 'arena', relayHost: 'old.test', code: false, relayDir: { mode: 'custom' } });
+  const rejected = assert.rejects(old, /Room cancelled/);
+  await guest.net.acceptJoin(invite, { mode: 'arena' });
+  const current = guest.net._n1.session(); release(); await rejected;
+  assert.equal(guest.net._n1.session(), current); assert.equal(guest.net.active, true);
+  assert.equal(guest.net.info().isHost, false); assert.equal(current.closed, false);
+  await host.net.sendArena(bytes(18, 77)); await until(() => rx.events.length === 1, 'new guest still receives authenticated packets');
+  assert.equal(rx.events[0].bytes[0], 77);
+});

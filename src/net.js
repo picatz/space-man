@@ -2873,8 +2873,19 @@
      the mock arrive in later stages; their slots exist so integrators can
      wire call sites once.
      ------------------------------------------------------------------------- */
-  let session = null;
+  let session = null, roomOperation = 0;
   const ev = emitter();
+  async function loadRelayDirectory(mode, o, operation) {
+    if (operation != null && operation !== roomOperation) throw new Error('Room cancelled');
+    const dir = root.SpaceManRelayDir;
+    if (!dir) return { source: 'seed', regions: activeMap().regions.length };
+    const r = await dir.load(Object.assign({ mode: mode || 'default', active: NET.active }, o || {}));
+    // A cancelled host's late directory response must not change the map used by
+    // a newer room, even though its fetch itself may be impossible to abort.
+    if (operation != null && operation !== roomOperation) throw new Error('Room cancelled');
+    setActiveMap(r.map);
+    return { source: r.source, regions: r.map.regions.length };
+  }
   const NET = {
     active: false,
     mockActive: false,
@@ -2883,31 +2894,29 @@
     // Relay directory (Addendum E). Loads via SpaceManRelayDir's fallback ladder
     // and installs the result as the active map. mode: 'default'|'custom'|'list'.
     // Only called intentionally (host, settings) — fetch/localStorage stay lazy.
-    async setRelayDirectory(mode, o) {
-      const dir = root.SpaceManRelayDir;
-      if (!dir) return { source: 'seed', regions: activeMap().regions.length };
-      const r = await dir.load(Object.assign({ mode: mode || 'default', active: NET.active }, o || {}));
-      setActiveMap(r.map);
-      return { source: r.source, regions: r.map.regions.length };
-    },
+    async setRelayDirectory(mode, o) { return loadRelayDirectory(mode, o); },
     relayDirectory() { const m = activeMap(); return { src: m.src, regions: m.regions.map((r) => ({ code: r.code, city: r.city, hosts: r.hosts.length })) }; },
 
     async openRoom(opts) {
       if (session) { if (modeName(opts) !== (session.mode || 'runner')) throw modeError(); return NET.info(); }
-      const o = opts || {};
+      const operation = ++roomOperation, o = opts || {};
+      // Reserve ownership before the first await: leave() must cancel this open
+      // even while directory lookup has not yet created a session to close.
       // Optional live directory refresh (host only) before picking a relay; the
       // baked copy already backs activeMap() so a failed fetch never blocks.
-      if (o.relayDir) { try { await NET.setRelayDirectory(o.relayDir.mode, o.relayDir); } catch (e) {} }
+      if (o.relayDir) { try { await loadRelayDirectory(o.relayDir.mode, o.relayDir, operation); } catch (e) {} }
+      if (operation !== roomOperation) throw new Error('Room cancelled');
       const next = session = HostSession(o);
       next.ev.on((e, d) => { if (session === next) ev.emit(e, d); });   // a closed session's late packets stay silent
       try { await next.open(); }
       catch (e) { next.close(); if (session === next) session = null; throw e; }
-      if (session !== next) { next.close(); throw new Error('Room cancelled'); }
+      if (operation !== roomOperation || session !== next) { next.close(); throw new Error('Room cancelled'); }
       NET.active = true;
       return NET.info();
     },
     async acceptJoin(payloadStr, opts) {
       if (session) { if (modeName(opts) !== (session.mode || 'runner')) throw modeError(); return NET.info(); }
+      const operation = ++roomOperation;
       const dec = decodeInvite(payloadStr);
       if (dec.err) {
         const msg = dec.err === 'version' ? 'update to play together'
@@ -2937,7 +2946,7 @@
       try { await Promise.all([next.join(), admitted]); }
       catch (e) { next.close(); if (session === next) session = null; throw e; }
       finally { clearTimeout(timer); unsubscribe(); next.cancelAdmit = null; }
-      if (session !== next) { next.close(); throw new Error('Join cancelled'); }
+      if (operation !== roomOperation || session !== next) { next.close(); throw new Error('Join cancelled'); }
       NET.active = true;
       return NET.info();
     },
@@ -2970,6 +2979,7 @@
       return NET.acceptJoin(invite, o);
     },
     leave() {
+      roomOperation++;
       if (session) session.close();
       session = null;
       NET.active = false;
