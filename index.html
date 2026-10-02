@@ -4773,12 +4773,12 @@ function drawWordmark() {
   ctx.fillStyle = '#9FF1FF'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   ctx.font = '700 ' + clamp(size * 0.2, 9, 13) + 'px ' + FONT;
   const tagY = cy + size * 0.62;
-  ctx.fillText('OUTRUN THE FLARE', view.w / 2, tagY);
+  ctx.fillText('RUN. BRAWL. RACE.', view.w / 2, tagY);
   // E7: one line of fiction under the tagline — alpha floor raised to 0.55 so
   // it never dims past legible (AR10's "illegible dim phase").
   ctx.globalAlpha = lessMotion() ? 0.7 : 0.55 + 0.25 * (0.5 + 0.5 * Math.sin(G.time * 2 + 1.7));
   ctx.fillStyle = '#9FB3E0'; ctx.font = '600 ' + clamp(size * 0.16, 10, 13) + 'px ' + FONT;
-  ctx.fillText('THE SUN LET GO. KEEP RUNNING.', view.w / 2, tagY + 16);
+  ctx.fillText('ONE SUIT. THREE ADVENTURES.', view.w / 2, tagY + 16);
   ctx.globalAlpha = 1;
 }
 
