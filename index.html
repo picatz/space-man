@@ -1042,6 +1042,7 @@
 <div id="crewPanel" class="crew" role="region" aria-label="Crew standings"></div>
 <div id="srAnnounce" aria-live="polite"></div>
 
+<script src="src/build.js"></script>
 <script src="src/contracts.js"></script>
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
@@ -1064,6 +1065,9 @@
 
 <script>
 "use strict";
+const BUILD = window.SpaceManBuild;
+BUILD.show();
+if (BUILD.error) throw new Error(BUILD.error);
 /* ============================================================================
    SPACE MAN 2.0 — a canvas arcade sprint.
    One file. Vanilla JS. Canvas 2D gameplay, DOM overlays for menus.
@@ -1210,8 +1214,8 @@ const rnd = (a, b) => a + (b - a) * rng();
    4. STORAGE — schema + legacy migration
    ------------------------------------------------------------------------- */
 const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries', achievements: 'sm2.achievements', autorunReset: 'sm2.autorunReset', daily: 'sm2.daily' };
-function loadJSON(key, fb) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
-function saveJSON(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+function loadJSON(key, fb) { try { const v = localStorage.getItem(BUILD.storageKey(key)); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
+function saveJSON(key, val) { try { localStorage.setItem(BUILD.storageKey(key), JSON.stringify(val)); } catch (e) {} }
 
 const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
@@ -6038,8 +6042,8 @@ function readSafeInsets() {
   } catch (e) {}
 }
 let _insetMemo = {};
-try { _insetMemo = JSON.parse(localStorage.getItem('sm2.insets') || '{}') || {}; } catch (e) { _insetMemo = {}; }
-function saveInsetMemo() { try { localStorage.setItem('sm2.insets', JSON.stringify(_insetMemo)); } catch (e) {} }
+try { _insetMemo = JSON.parse(localStorage.getItem(BUILD.storageKey('sm2.insets')) || '{}') || {}; } catch (e) { _insetMemo = {}; }
+function saveInsetMemo() { try { localStorage.setItem(BUILD.storageKey('sm2.insets'), JSON.stringify(_insetMemo)); } catch (e) {} }
 ['pageshow', 'orientationchange', 'visibilitychange'].forEach((ev) => window.addEventListener(ev, () => setTimeout(readSafeInsets, 50)));
 if (window.visualViewport) window.visualViewport.addEventListener('resize', readSafeInsets);
 function safeInset(side) { return _safeInsets[side] || 0; }
@@ -6988,11 +6992,12 @@ function renderRoomCard() {
     '</span> · spectators <span class="num">' + info.spectators + '/' + info.specCap + '</span>';
   // QR / link / code are host-only (guests don't re-share their own invite, §4.4).
   $('roomTop').style.display = isHost ? '' : 'none';
-  $('roomCodeBar').style.display = isHost ? '' : 'none';
+  $('roomCodeBar').style.display = isHost && !BUILD.preview ? '' : 'none';
   $('roomApproveRow').style.display = isHost ? '' : 'none';
   $('roomHostControls').style.display = isHost ? '' : 'none';
   if (isHost) {
     $('roomLink').textContent = shortLink(info.link);
+    $('roomLink').title = BUILD.preview ? 'Share this exact preview build with your crew' : '';
     $('roomCode').textContent = info.joinCode || '—';
     $('roomCodeNote').textContent = info.joinCode ? 'Friends type it under Run Together → Join, or scan the QR.' : 'This room is on a custom relay: friends join with the link or QR.';
     drawRoomQr(info.link);
@@ -7024,6 +7029,7 @@ function copyRoomLink() {
   copyText(link, 'Invite link', 'Copy the invite link');
 }
 function copyRoomCode() {
+  if (BUILD.preview) return;
   const code = netLive() ? NET.info().joinCode : '';
   if (!code) return;
   copyText(code, 'Room code', 'Copy the room code');
@@ -7031,7 +7037,7 @@ function copyRoomCode() {
 function shareRoomLink() {
   const info = netLive() ? NET.info() : null;
   if (info && info.link && navigator.share) {
-    try { navigator.share({ title: 'Space Man — Run Together', text: info.joinCode ? 'Join my run! Room code ' + info.joinCode : 'Join my run!', url: info.link }); } catch (e) {}
+    try { navigator.share({ title: 'Space Man — Run Together', text: BUILD.preview ? 'Join my Space Man preview! Use this exact build link.' : (info.joinCode ? 'Join my run! Room code ' + info.joinCode : 'Join my run!'), url: info.link }); } catch (e) {}
   }
 }
 function kickPlayer(r) {
@@ -7068,7 +7074,7 @@ async function openRoomFlow() {
     const relayDir = { mode: settings.netRelayMode };
     if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
     else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-    await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove, baseUrl: appBaseUrl() });
+    await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove, code: !BUILD.preview, baseUrl: appBaseUrl() });
     roomOpening = false;
     if (req !== joinReq) { try { NET.leave(); } catch (x) {} return; }   // they went Back meanwhile
     setTogetherBusy(false);
@@ -7094,7 +7100,7 @@ function syncOffline() {
   if ($('ovTogether').classList.contains('show') && !joinLookup) {
     for (const id of ['btnCreateRoom', 'btnJoinGo']) $(id).disabled = off;
     if (off) setTogetherHint(OFFLINE_TOGETHER, true);
-    else if ($('joinHint').textContent === OFFLINE_TOGETHER) setTogetherHint('Type the code your friend sees, or paste their invite link.');
+    else if ($('joinHint').textContent === OFFLINE_TOGETHER) setTogetherHint(BUILD.preview ? 'Paste the full invite link from this exact preview build.' : 'Type the code your friend sees, or paste their invite link.');
   }
 }
 window.addEventListener('offline', () => { syncOffline(); if (netLive() && !NET.mockActive) queueToast('Connection lost · reconnecting when it\'s back', 'net'); });
@@ -7130,7 +7136,7 @@ function openTogether() {
   hideAllOverlays();
   setTogetherBusy(false);
   $('joinInput').value = '';
-  setTogetherHint('Type the code your friend sees, or paste their invite link.');
+  setTogetherHint(BUILD.preview ? 'Paste the full invite link from this exact preview build.' : 'Type the code your friend sees, or paste their invite link.');
   showOverlay('ovTogether');
   syncOffline();
   // Desktop: land in the box so they can just type or paste. Phones keep the keyboard down until they tap it.
@@ -7157,7 +7163,9 @@ function beginJoin(payload) {
 async function submitJoin() {
   if (joinLookup) return;
   if (isOffline()) { setTogetherHint(OFFLINE_TOGETHER, true); return; }
-  const p = NET.parseJoin($('joinInput').value);
+  const joinTarget = BUILD.resolveJoin($('joinInput').value);
+  if (joinTarget.error) { setTogetherHint(joinTarget.error, true); return; }
+  const p = NET.parseJoin(joinTarget.value);
   if (p.kind === 'empty') { setTogetherHint('Type the room code, or paste the invite link.', true); return; }
   if (p.kind === 'bad') { setTogetherHint(badJoinMessage(p), true); return; }
   if (p.kind === 'invite') { beginJoin(p.payload); return; }
@@ -7165,7 +7173,7 @@ async function submitJoin() {
   setTogetherBusy(true);
   setTogetherHint('Looking for ' + p.display + '…');
   try {
-    const found = await NET.lookupCode($('joinInput').value);
+    const found = await NET.lookupCode(joinTarget.value);
     if (req !== joinReq) return;
     setTogetherBusy(false);
     beginJoin(found.invite);
@@ -7278,7 +7286,7 @@ async function acceptInvite(role) {
 /* ---- room resume: a reload, a crash or an accidental swipe must not cost anyone their room or seat ----
    The live session's token lives in this tab's sessionStorage only (it holds the room's private key): it survives a
    reload, dies with the tab, and is cleared the moment the room is left on purpose. */
-const RESUME_KEY = 'sm2.resume';
+const RESUME_KEY = BUILD.storageKey('sm2.resume');
 function saveResume() {
   if (SHOT || !NET || !netLive() || NET.mockActive) return;
   try { const t = NET.resumeToken(); if (t) sessionStorage.setItem(RESUME_KEY, JSON.stringify(t)); } catch (e) {}
@@ -7312,7 +7320,7 @@ async function resumeHosting(tok) {
   setJoinState('Reconnecting to the relay…');
   hideAllOverlays(); showOverlay('ovJoin');
   try {
-    await NET.openRoom({ ...netIdentity(), resume: tok, region: tok.region || undefined, relayHost: tok.relayHost || undefined, approve: !!tok.approve, baseUrl: appBaseUrl() });
+    await NET.openRoom({ ...netIdentity(), resume: tok, region: tok.region || undefined, relayHost: tok.relayHost || undefined, approve: !!tok.approve, code: !BUILD.preview, baseUrl: appBaseUrl() });
     if (req !== joinReq) { try { NET.leave(); } catch (x) {} return true; }
     stripInviteHash(); applyCallsignToNet(); saveResume();
     renderRoomCard(); hideAllOverlays(); showOverlay('ovRoom');
@@ -8486,7 +8494,7 @@ function netEmoteToast(d) {
 }
 $('btnReset').onclick = () => {
   if (!confirm('Erase all scores, stats, and settings?')) return;
-  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, LS.daily, 'highScores'].forEach((k) => localStorage.removeItem(k)); } catch (e) {}
+  try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, LS.daily, 'highScores'].forEach((k) => localStorage.removeItem(BUILD.storageKey(k))); } catch (e) {}
   location.reload();
 };
 $('installChip').onclick = () => {
@@ -8563,10 +8571,10 @@ function tickUpdate() {   // once per rAF; cheap until an update is actually wai
   // guarded attempt is deferred, not dropped — and only a real attempt stamps
   // the clock, or the 4s fallback reload could keep the update waiting forever.
   let last = 0;
-  try { last = +sessionStorage.getItem('sm2.swReload') || 0; } catch (e) {}
+  try { last = +sessionStorage.getItem(BUILD.storageKey('sm2.swReload')) || 0; } catch (e) {}
   const wait = 30000 - (Date.now() - last);
   if (wait > 0) { swu.readyAt = G.time + wait / 1000; return; }
-  try { sessionStorage.setItem('sm2.swReload', String(Date.now())); } catch (e) {}
+  try { sessionStorage.setItem(BUILD.storageKey('sm2.swReload'), String(Date.now())); } catch (e) {}
   swu.reloading = true;
   const waiting = swu.reg && swu.reg.waiting;
   if (waiting) {
@@ -8574,7 +8582,7 @@ function tickUpdate() {   // once per rAF; cheap until an update is actually wai
     setTimeout(() => location.reload(), 4000);   // fallback if activation never reports
   } else location.reload();
 }
-if ('serviceWorker' in navigator && !SHOT) {
+if ('serviceWorker' in navigator && !SHOT && !BUILD.preview) {
   const sw = navigator.serviceWorker;
   let hadController = !!sw.controller;
   sw.addEventListener('controllerchange', () => {

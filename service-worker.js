@@ -1,10 +1,13 @@
 // Space Man 2.0 service worker.
 // Bump VERSION in the same commit as any asset change or clients keep the old build.
-const VERSION = 'v3.19.1';
+const VERSION = 'v3.19.2';
 // 'sm2-app-' marks a complete, versioned app shell. Workers before v3.3 used
 // 'sm2-shell-' and served ./src/ cache-first next to a network-first page, which
 // paired a fresh index.html with stale scripts after a deploy.
-const SHELL_CACHE = `sm2-app-${VERSION}`;
+const APP_SCOPE = new URL('./', self.location.href || self.location.origin + '/').pathname;
+const CACHE_PREFIX = 'sm2-app-' + encodeURIComponent(APP_SCOPE) + '-';
+const SHELL_CACHE = CACHE_PREFIX + VERSION;
+const isLegacyCache = (key) => /^sm2-(?:app|shell)-v\d/.test(key);
 const LEGACY_PREFIX = 'sm2-shell-';
 
 // Everything the game loads. tests/platform.test.cjs fails if index.html or
@@ -12,6 +15,7 @@ const LEGACY_PREFIX = 'sm2-shell-';
 const SHELL = [
   './',
   './index.html',
+  './src/build.js',
   './src/contracts.js',
   './src/save-schema.js',
   './src/input-snapshot.js',
@@ -63,7 +67,7 @@ self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
     // Only a fully installed build ever activates, so dropping the others is safe.
     for (const key of await caches.keys()) {
-      if (key !== SHELL_CACHE) await caches.delete(key);
+      if (key !== SHELL_CACHE && (key.startsWith(CACHE_PREFIX) || isLegacyCache(key))) await caches.delete(key);
     }
     await self.clients.claim();
   })());
@@ -75,7 +79,11 @@ self.addEventListener('message', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  // Preview snapshots are network-only and must never receive the production shell.
+  if (req.method !== 'GET' || url.origin !== self.location.origin
+      || !url.pathname.startsWith(APP_SCOPE) || url.pathname === APP_SCOPE + 'pr'
+      || url.pathname.startsWith(APP_SCOPE + 'pr/')) return;
   e.respondWith((async () => {
     const cache = await caches.open(SHELL_CACHE);
     // Navigations (any query or #fragment: invites, challenges, the daily) all
