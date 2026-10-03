@@ -60,6 +60,7 @@
         a.controller = seat ? (own ? "human" : "remote") : "cpu";
         if (seat) {
           a.name = net.callsignText(seat.adjIdx,seat.nounIdx) || "PLAYER " + (seat.displayP || seat.p);
+          a.appearance = seat.connected && !seat.forfeited ? net.roster().find(r => r.p === seat.p && r.role === 0)?.appearance : undefined;
           a.peerP = seat.p;
           a.connected = seat.connected;
           a.forfeited = !!seat.forfeited;

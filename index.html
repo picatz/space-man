@@ -800,6 +800,26 @@
   #ovRosterActions .panel { max-width: 320px; }
   .roster-actions-head { font-size: 12px; letter-spacing: 1px; color: var(--ui); margin-bottom: 10px; text-transform: uppercase; }
   .roster-actions-head .glyph { color: var(--cyan-lt); margin-right: 4px; }
+
+  .wardrobe-panel { width:min(480px,100%); max-height:100%; overflow-y:auto; touch-action:pan-y; }
+  .ward-copy { margin:6px auto 8px; color:#91ACC5; font:400 11px/1.5 system-ui,sans-serif; letter-spacing:0; }
+  #wardPreview { display:block; width:240px; max-width:100%; height:116px; margin:0 auto 8px; }
+  .ward-tabs { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; margin:8px 0 12px; }
+  .ward-tab { min-width:0; min-height:44px; border:1px solid #29465D; border-radius:9px; padding:6px 3px; color:#B5CEE3; background:#0A1B2A; font:600 11px/1.3 system-ui,sans-serif; cursor:pointer; }
+  .ward-tab[aria-selected=true] { color:#FFE5B2; border-color:#FFB454; background:#332B29; }
+  @media (max-width:430px) { .ward-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .ward-choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+  .ward-choice { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-width:0; min-height:64px; padding:8px 5px; border:1px solid #29465D; border-radius:10px; color:#D8E8F4; background:#112438; font:600 10px/1.3 system-ui,sans-serif; cursor:pointer; }
+  .ward-choice.sel { border-color:#38E1FF; background:#163849; box-shadow:inset 0 0 0 1px #38E1FF; }
+  .ward-choice small { font-size:8px; letter-spacing:.08em; color:#A2BAD0; }
+  .ward-choice.sel small { color:#9FF1FF; } .ward-choice.locked { border-style:dashed; background:#0B1928; }
+  .ward-swatch { display:block; width:22px; height:22px; border-radius:50%; border:1px solid #D7EDFF55; }
+  .ward-choice canvas { width:30px!important; height:30px!important; }
+  .wardrobe-panel .ward-hint { min-height:30px; height:auto; white-space:normal; font:400 11px/1.4 system-ui,sans-serif; }
+  .ward-callsign { width:100%; min-height:44px; background:transparent; border:0; color:inherit; cursor:pointer; }
+  .wardrobe-panel .dock { position:sticky; bottom:-1px; padding:10px 0 0; background:linear-gradient(transparent,#091426 12px); z-index:2; }
+  @media (max-height:500px) and (min-width:550px) { #wardPreview { height:72px; width:149px; margin-bottom:0; } .ward-choices { grid-template-columns:repeat(5,minmax(0,1fr)); } .wardrobe-panel { width:min(640px,100%); } }
+
 </style>
 <link rel="stylesheet" href="src/space-theme.css" />
 <link rel="stylesheet" href="src/expedition.css" />
@@ -819,7 +839,8 @@
       <button class="btn ghost mode-link" id="btnArena" data-description="Small suits. Big knockouts." aria-label="Orbital Arena. Battle CPUs or friends.">Orbital Arena</button>
       <button class="btn ghost mode-link" id="btnRace" data-description="Carve the corners. Catch a boost." aria-label="Star Circuit. Arcade hover racing.">Star Circuit</button>
     </div>
-    <button class="btn ghost expedition-launch" id="btnExpedition"><span>Star Expedition<small>RUN → ARENA → RACE</small></span><span class="expedition-solo">SOLO</span></button>
+    <button class="btn ghost expedition-launch" id="btnExpedition"><span>Star Expedition<small>ONE CONTINUOUS ADVENTURE</small></span><span class="expedition-solo">SOLO</span></button>
+    <button class="btn ghost expedition-launch" id="btnExpeditionFriends"><span>Expedition with friends<small>SAME CREW · EVERY ENCOUNTER</small></span><span class="expedition-solo">CREW</span></button>
     <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
     </div>
@@ -852,24 +873,9 @@
   </div>
 </div>
 
-<!-- Solo connected itinerary: uses the runner's accessible overlay navigation. -->
-<div class="overlay" id="ovExpedition">
-  <section class="panel expedition-panel" role="dialog" aria-modal="true" aria-labelledby="expeditionTitle">
-    <div class="expedition-topline"><span>STAR EXPEDITION</span><span>SOLO · CPU RIVALS</span></div>
-    <ol class="expedition-route" aria-label="Expedition itinerary">
-      <li id="expeditionLeg0"><span>01</span><strong>RUN</strong></li>
-      <li id="expeditionLeg1"><span>02</span><strong>ARENA</strong></li>
-      <li id="expeditionLeg2"><span>03</span><strong>RACE</strong></li>
-    </ol>
-    <div class="expedition-destination" id="expeditionDestination"></div>
-    <h2 id="expeditionTitle">One trip. Three adventures.</h2>
-    <p class="expedition-copy" id="expeditionCopy"></p>
-    <ul class="expedition-receipt" id="expeditionReceipt" aria-label="Your expedition results"></ul>
-    <p class="expedition-controls" id="expeditionControls"></p>
-    <button class="btn" id="btnExpeditionContinue">Begin the escape</button>
-    <button class="btn ghost" id="btnExpeditionExit">Back to all modes</button>
-    <p class="expedition-note">No victory required to continue · Reloading starts a fresh expedition</p>
-  </section>
+<!-- Nonblocking orientation cue follows the active expedition scene. -->
+<div class="expedition-cue" id="expeditionCue" role="status" aria-live="polite" aria-atomic="true" hidden>
+  <span id="expeditionCueRoute"></span><strong id="expeditionCueTitle"></strong><span id="expeditionCueHelp"></span>
 </div>
 
 <!-- Pause -->
@@ -890,6 +896,7 @@
     </details>
     <button class="btn ghost" id="btnPauseSpectate" style="display:none;">Spectate This Round</button>
     <button class="btn ghost" id="btnQuit">Quit to Title</button>
+    <button class="btn ghost" id="btnJourneyCrew" hidden>Crew · seats & invite</button>
   </div>
 </div>
 
@@ -940,16 +947,18 @@
   </div>
 </div>
 
-<!-- Wardrobe — bottom-anchored so the live attract scene stays the preview -->
+<!-- Wardrobe — one compact category at a time; every equipped choice travels. -->
 <div class="overlay attract-anchor" id="ovWardrobe">
-  <div class="panel">
-    <div class="title-lg t-md">Your Spacefarer</div>
-    <div class="swatch-row" id="suitRow"></div>
-    <div class="ward-name" id="suitName"></div>
-    <div class="swatch-row" id="hatRow"></div>
-    <div class="ward-name" id="hatName"></div>
-    <div class="ward-hint" id="wardHint"></div>
-    <button class="btn" id="btnWardrobeDone">Done</button>
+  <div class="panel wardrobe-panel" role="dialog" aria-modal="true" aria-labelledby="wardTitle">
+    <div class="title-lg t-md" id="wardTitle">Your Spacefarer</div>
+    <p class="ward-copy">One look for every adventure. Just for fun, never extra power.</p>
+    <canvas id="wardPreview" width="240" height="116" role="img" aria-label="Your equipped Spacefarer"></canvas>
+    <div class="ward-tabs" id="wardTabs" role="tablist" aria-label="Customize your Spacefarer"></div>
+    <div class="ward-choices" id="wardChoices" role="tabpanel"></div>
+    <div class="ward-name" id="wardName"></div>
+    <div class="ward-hint" id="wardHint" role="status" aria-live="polite"></div>
+    <div class="ward-copy" id="wardCount"></div>
+    <div class="dock"><button class="btn" id="btnWardrobeDone">Done</button></div>
   </div>
 </div>
 
@@ -1096,6 +1105,7 @@
 
 <script src="src/build.js"></script>
 <script src="src/contracts.js"></script>
+<script src="src/cosmetics.js"></script>
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
 <script src="src/course.js"></script>
@@ -1131,6 +1141,9 @@
 <script src="src/qr.js"></script>
 <script src="src/netsmooth.js"></script>
 <script src="src/net.js"></script>
+<script src="src/journey-online.js"></script>
+<script src="src/journey-room.js"></script>
+<script src="src/journey-ui.js"></script>
 
 <script>
 "use strict";
@@ -1290,7 +1303,7 @@ const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
 // OS answer at load: only the DEFAULT for the in-game Reduce Motion switch.
 const osReducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
+const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), stats: loadJSON(LS.stats, null), flags: loadJSON(LS.flags, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
 let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, batterySaver: false, hapticsStrength: 1, hapticsSaver: true, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
@@ -1556,16 +1569,9 @@ visorGrad.addColorStop(0, '#61D9FF'); visorGrad.addColorStop(1, '#1479FF');
 
 /* ---- suit palettes: wardrobe, not a form. Silhouette, gait, and hitboxes never
    change; 'classic' resolves to the exact original literals (goldens stay bytewise). ---- */
-const PALETTES = {
- classic: {name:'CLASSIC',      suit:'#F4F7FF',legB:'#9FB3E0',legF:'#C6D4F5',arm:'#E4ECFF',pack:'#FFB454',visTop:'#61D9FF',visBot:'#1479FF',trail:'159,241,255,.6'},
- mint:    {name:'MINT COMET',   suit:'#C8F5DC',legB:'#8FC4A6',legF:'#AEE3C4',arm:'#B9EED0',pack:'#FFB454',visTop:'#7BF0C4',visBot:'#0E8A5F',trail:'123,240,196,.6'},
- rose:    {name:'ROSE NEBULA',  suit:'#FFD4E5',legB:'#D19BB4',legF:'#F0B8CD',arm:'#FFC6DC',pack:'#38E1FF',visTop:'#FF9ECF',visBot:'#C2247E',trail:'255,158,207,.6'},
- gold:    {name:'SOLAR GOLD',   suit:'#FFE8B0',legB:'#CBA96A',legF:'#EDD08F',arm:'#FFDF9A',pack:'#FF4F66',visTop:'#FFC93C',visBot:'#B4610A',trail:'255,201,60,.6'},
- lilac:   {name:'LILAC DRIFT',  suit:'#E4D4FF',legB:'#AC96D6',legF:'#CCB8EE',arm:'#D9C6FA',pack:'#FFC93C',visTop:'#C9A8FF',visBot:'#6A2FD0',trail:'201,168,255,.6'},
- coral:   {name:'CORAL BLAZE',  suit:'#FFC4AE',legB:'#CE8F76',legF:'#EFAC92',arm:'#FFB69C',pack:'#61D9FF',visTop:'#FF8A6B',visBot:'#C22B3A',trail:'255,138,107,.65'},
- aurora:  {name:'AURORA ICE',   suit:'#CFFAF0',legB:'#8FC9BC',legF:'#B2E4D8',arm:'#C0F0E3',pack:'#FF9ECF',visTop:'#6BF7E0',visBot:'#0C7C8C',trail:'107,247,224,.6'},
- graphite:{name:'GRAPHITE VOID',suit:'#9AA3B8',legB:'#6B7488',legF:'#848EA4',arm:'#8C96AC',pack:'#FFC93C',visTop:'#2B3A5E',visBot:'#0B1E42',trail:'154,163,184,.55'},
-};
+const COSMETICS = window.SpaceManCosmetics;
+// Local derived colors remain mutable; the shared canonical palettes are frozen.
+const PALETTES = Object.fromEntries(Object.entries(COSMETICS.PALETTES).map(([id, p]) => [id, { ...p }]));
 function hexRGB(h) { return parseInt(h.slice(1, 3), 16) + ',' + parseInt(h.slice(3, 5), 16) + ',' + parseInt(h.slice(5, 7), 16); }
 // Particle tints are prebuilt strings (per-site alphas preserved so classic
 // stays literal-identical): trail* = dust/skid/land, puff* = jetpack exhaust.
@@ -2266,9 +2272,9 @@ function inMuteHit(p) { const h = G._muteHit; return !!h && p.x >= h.x0 && p.x <
 /* ---- menu focus: keyboard Tab/Enter is native; a gamepad drives the same DOM
    focus (D-pad/stick moves, A activates, B backs out). Never active in a run. ---- */
 // Stacking order: later ids sit on top when two overlays are ever shown at once.
-const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovTogether', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions', 'ovExpedition'];
+const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovTogether', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'];
 const PRIMARY_OVERLAY = { attract: 'ovAttract', pause: 'ovPause', dead: 'ovDead' };
-const MENU_BACK = { ovExpedition: 'btnExpeditionExit', ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
+const MENU_BACK = { ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
 function topOverlayId() {
   for (let i = OVERLAY_IDS.length - 1; i >= 0; i--) if (document.getElementById(OVERLAY_IDS[i]).classList.contains('show')) return OVERLAY_IDS[i];
   return null;
@@ -4172,6 +4178,7 @@ function finalizeDeath(completed = false) {
   const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
   lastRunEnd = performance.now() / 1000;   // E13: restarts inside 60s never see a vignette
   stats.runs++;
+  earnCosmeticEvent({ type: 'runner', id: 'run:' + stats.runs });
   bestScore = Math.max(bestScore, fs);
   stats.bestScore = bestScore;
   stats.bestDist = Math.max(stats.bestDist, G.dist);
@@ -4263,8 +4270,11 @@ function update() {
     updateCamera();
     if (netSpectating()) netFollowCamera();   // spectator follows the watched runner, not the local bot
     updateDistance();
-    if (!G.player.dead && expeditionRunnerActive() && (G.dist >= SpaceManExpedition.legs[0].goal || G.frameCount >= SpaceManExpedition.legs[0].maxTicks)) {
-      G.finalScore = Math.floor(G.score); finalizeDeath(true); finishExpeditionRunner(G.dist >= SpaceManExpedition.legs[0].goal); return;
+    if (!G.player.dead && sharedRunnerActive() && !sharedRunnerBanked && G.dist >= sharedEncounter.goal) {
+      G.finalScore = Math.floor(G.score); finalizeDeath(true); finishSharedRunner(true); return;
+    }
+    if (!G.player.dead && expeditionRunnerActive() && (G.dist >= expedition.snapshot().current.goal || G.frameCount >= expedition.snapshot().current.maxTicks)) {
+      G.finalScore = Math.floor(G.score); finalizeDeath(true); finishExpeditionRunner(G.dist >= expedition.snapshot().current.goal); return;
     }
     // Run Together presence feed (§4.1): capture at 10Hz; no-op solo / spectating
     // / under the offline mock (NET.active is false there).
@@ -4413,7 +4423,8 @@ let acc = 0, lastT = 0, rafId = 0, shotFrozen = false;
 let arenaUI = null;
 let raceUI = null;
 let expedition = null, expeditionToken = 0;
-function modeOverlayActive() { return !!((arenaUI && arenaUI.active) || (raceUI && raceUI.active)); }
+let journeyUI = null, sharedEncounter = null, sharedEnding = false, sharedRunnerBanked = false, sharedRunnerParticipated = false;
+function modeOverlayActive() { return !!((journeyUI && journeyUI.active) || (arenaUI && arenaUI.active) || (raceUI && raceUI.active)); }
 let arenaPadNeutral = false;
 function frame(now) {
   rafId = requestAnimationFrame(frame);
@@ -4465,6 +4476,9 @@ function frame(now) {
     if (G.deathCardShown && G.hudFade > 0) G.hudFade = Math.max(0, G.hudFade - dt / 0.1);   // HUD fades over 100ms, doesn't hard-cut (E9.1)
   }
 
+  // A death rescue can synchronously transfer ownership to an arcade engine.
+  if (modeOverlayActive()) { acc = 0; lastT = 0; return; }
+
   // acc is untouched during freeze — hitstop re-renders the exact same frame.
   // The conductor still ticks: wall-clock scheduling is indifferent to hitstop.
   if (G.freeze > 0) { G.freeze -= dt; render(clamp(acc / STEP, 0, 1)); tickAudio(); return; }
@@ -4473,6 +4487,8 @@ function frame(now) {
   let steps = 0;
   while (acc >= STEP && steps < 6) {
     if (G.mode === 'play' || G.mode === 'attract') update();
+    // The encounter director may open another engine during this very tick.
+    if (modeOverlayActive()) { acc = 0; lastT = 0; return; }
     acc -= STEP; steps++;
   }
   // Drop unpayable debt after the step cap or a slow device spirals: 6 updates
@@ -5491,69 +5507,12 @@ function rrPath(c, x, y, w, h, r) {   // roundRect on an arbitrary context (thum
   c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
   c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
 }
-const HATS = {
-  none: { name: 'NO HAT', draw() {} },
-  antenna: { name: 'ANTENNA', draw(c) {
-    c.strokeStyle = '#C6D4F5'; c.lineWidth = 2; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(0, -11); c.lineTo(0, -17); c.stroke();
-    c.fillStyle = '#FFC93C'; c.beginPath(); c.arc(0, -18, 2.5, 0, TAU); c.fill();
-    c.fillStyle = 'rgba(255,201,60,.4)'; c.beginPath(); c.arc(0, -18, 4, 0, TAU); c.fill();   // pre-baked halo
-  } },
-  sprout: { name: 'SPROUT', draw(c) {
-    c.strokeStyle = '#35C46B'; c.lineWidth = 2; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(0, -10); c.quadraticCurveTo(1, -15, 3, -17); c.stroke();
-    c.fillStyle = '#4ADE87';
-    c.beginPath(); c.ellipse(0.5, -15, 3, 1.6, -0.6, 0, TAU); c.fill();
-    c.beginPath(); c.ellipse(4.5, -17.5, 3, 1.6, 0.5, 0, TAU); c.fill();
-  } },
-  beanie: { name: 'BEANIE', draw(c) {
-    c.fillStyle = '#FF6B8A'; c.beginPath(); c.arc(0, -8, 9.5, Math.PI, 0); c.closePath(); c.fill();   // dome
-    c.fillStyle = '#E14E6E'; rrPath(c, -9.5, -9, 19, 3.5, 1.75); c.fill();
-    c.fillStyle = '#FFF3F6'; c.beginPath(); c.arc(0, -18, 2.8, 0, TAU); c.fill();                     // pom
-  } },
-  halo: { name: 'HALO', draw(c) {
-    c.strokeStyle = 'rgba(255,233,168,.35)'; c.lineWidth = 4;
-    c.beginPath(); c.ellipse(0, -15, 8, 2.4, 0, 0, TAU); c.stroke();
-    c.strokeStyle = '#FFE9A8'; c.lineWidth = 1.8;
-    c.beginPath(); c.ellipse(0, -15, 8, 2.4, 0, 0, TAU); c.stroke();   // double-stroke glow
-  } },
-  crown: { name: 'CROWN', draw(c) {
-    c.fillStyle = '#FFC93C'; c.beginPath();
-    c.moveTo(-7, -9); c.lineTo(-7, -15); c.lineTo(-3.5, -12); c.lineTo(0, -17);
-    c.lineTo(3.5, -12); c.lineTo(7, -15); c.lineTo(7, -9); c.closePath(); c.fill();
-    c.fillStyle = '#FF4F66'; c.beginPath(); c.arc(0, -12, 1.3, 0, TAU); c.fill();
-  } },
-  cone: { name: 'PARTY CONE', draw(c) {
-    c.fillStyle = '#B87BFF'; c.beginPath();
-    c.moveTo(-5, -9); c.lineTo(5, -9); c.lineTo(0, -20); c.closePath(); c.fill();
-    c.strokeStyle = '#F4F7FF'; c.lineWidth = 1.5;
-    c.beginPath(); c.moveTo(-3.4, -12.5); c.lineTo(3.4, -12.5); c.moveTo(-1.9, -16); c.lineTo(1.9, -16); c.stroke();
-    c.fillStyle = '#FFC93C'; c.beginPath(); c.arc(0, -20, 2, 0, TAU); c.fill();
-  } },
-  catears: { name: 'STAR CAT', draw(c) {   // suit-colored ears, pink inner at 55% about the same centroid
-    const tri = (m, k) => {
-      const pts = [[-8.5, -7], [-3, -10], [-6.5, -16]], cx = -6, cy = -11;
-      c.beginPath();
-      pts.forEach(([x, y], i) => { const px = (cx + (x - cx) * k) * m, py = cy + (y - cy) * k; i ? c.lineTo(px, py) : c.moveTo(px, py); });
-      c.closePath(); c.fill();
-    };
-    c.fillStyle = palNow().suit; tri(1, 1); tri(-1, 1);
-    c.fillStyle = '#FF9ECF'; tri(1, 0.55); tri(-1, 0.55);
-  } },
-  phones: { name: 'HEADPHONES', draw(c) {
-    c.strokeStyle = '#38E1FF'; c.lineWidth = 2.5; c.lineCap = 'round';
-    c.beginPath(); c.arc(0, 0, 12.5, 1.15 * Math.PI, 1.85 * Math.PI); c.stroke();
-    c.fillStyle = '#1479FF'; rrPath(c, -14, -3, 4.5, 8, 2); c.fill(); rrPath(c, 9.5, -3, 4.5, 8, 2); c.fill();
-    c.fillStyle = '#9FF1FF';
-    c.beginPath(); c.arc(-11.75, 1, 1.2, 0, TAU); c.fill();
-    c.beginPath(); c.arc(11.75, 1, 1.2, 0, TAU); c.fill();
-  } },
-};
+const HATS = ART.characterHats;
 function drawHat(id, s, g) {
   const h = HATS[id];
   if (!h || id === 'none') return;
   g = g || ctx;
-  g.save(); g.scale(s, s); h.draw(g); g.restore();
+  ART.characterHat(g, id, s, palNow());
 }
 
 /* ---- arms + light pistol (E12): capsule strokes in the leg language.
@@ -5582,6 +5541,7 @@ function drawPlayer(alpha) {
   // no local crouch, stomp pop/ring, launch, blink or eye mood leaks onto peers.
   const R = p === rigPlayer ? rig : RIG_NEUTRAL;
   const PAL = PALETTES[G.cosmetics.suit] || PALETTES.classic;
+  const style = ART.characterStyle(G.cosmetics, null, PAL);
   const x = lerp(p.px, p.x, alpha) + p.w / 2;
   const y = lerp(p.py, p.y, alpha) + p.h / 2 + p.landDip;
   // Hit reaction: a white impact flash + shock ring at the fatal point, read over
@@ -5601,9 +5561,9 @@ function drawPlayer(alpha) {
     if (G.helmet) {
       ctx.save(); ctx.translate(lerp(G.helmet.px, G.helmet.x, alpha) + p.w / 2, lerp(G.helmet.py, G.helmet.y, alpha)); ctx.rotate(lerp(G.helmet.prot, G.helmet.rot, alpha));
       ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -20, 40, 40);
-      ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, 0, 9, 0, TAU); ctx.fill();
-      ctx.fillStyle = PAL.visBot; ctx.beginPath(); ctx.arc(2, 0, 5, 0, TAU); ctx.fill();
-      drawHat(G.cosmetics.hat, 9 / 11);   // welded to the detached helmet — tumbles and bounces free
+      ctx.save(); ctx.scale(9 / 11, 9 / 11);
+      ART.characterHelmet(ctx, 0, 0, style, { lid: 1, calm: true });
+      ctx.restore();
       ctx.restore();
     }
     if (G.pistol) {   // E12: the pistol is debris now — tumbles and lands like the helmet
@@ -5754,6 +5714,7 @@ function drawPlayer(alpha) {
   armCapsule(-5, -6 + bob, farA, 12, -1.8);
 
   ctx.fillStyle = PAL.suit; roundRect(-8, -4 + bob, 16, 16, 6); ctx.fill();
+  ART.suitDetails(ctx, 0, bob, style);
 
   ctx.strokeStyle = PAL.arm; ctx.lineWidth = 4;
   const hand = armCapsule(5, -6 + bob, nearA, 10, -1.8);
@@ -5782,34 +5743,13 @@ function drawPlayer(alpha) {
   const headDip = crouch * 0.8;
   ctx.save(); ctx.translate(0, -hh + 8 + bob * 0.35 + headDip); ctx.rotate(idleTilt - pop * 0.08); ctx.translate(0, hh - 8);
   ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -hh - 4, 40, 40);
-  ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, -hh + 8, 11, 0, TAU); ctx.fill();
-  // E4: the astronaut is afraid — mirrors the enemy lookX/lookY eye-tracking,
-  // offsetting the visor toward the flare's world direction. lookLocal folds
-  // the facing mirror back in so it always reads as "toward the flare" on
-  // screen regardless of which way the sprite is scaled.
   const lookLocal = clamp((G.flare.x - x) / 300, -1, 1) * p.facing * G.glanceT;
-  ctx.fillStyle = suitVisor(G.cosmetics.suit); ctx.beginPath(); ctx.ellipse(1 + lookLocal * 2.5, -hh + 8, 7.5, 6.5, 0, 0, TAU); ctx.fill();
-  // LED eyes behind the visor: blink on the rig's cadence, ^^ after a stomp or a
-  // banked chain, wide on the hit, sleepy after a long stargaze. Two tiny
-  // rounded strokes — the whole face budget.
-  {
-    const mood = ANIM.eyeMood(R, p.idle || 0), lid = ANIM.lidAmount(R);
-    const ex = 1.6 + lookLocal * 3 + (p.onGround ? 0 : 0.4), ey = -hh + 8.4 + (p.onGround ? 0 : (p.vy < 0 ? -0.5 : 0.5));
-    ctx.strokeStyle = 'rgba(232,252,255,0.95)'; ctx.lineCap = 'round';
-    for (const s of SGN) {
-      const cx = ex + s * 2.7;
-      ctx.beginPath();
-      if (mood === 1) { ctx.lineWidth = 1.3; ctx.arc(cx, ey + 1, 1.5, Math.PI * 1.1, Math.PI * 1.9); }
-      else {
-        const h = (mood === 2 ? 2.4 : mood === 3 ? 0.5 : 1.7) * (1 - lid);
-        ctx.lineWidth = mood === 2 ? 2 : 1.7;
-        ctx.moveTo(cx, ey - h / 2); ctx.lineTo(cx, ey + h / 2 + 0.01);
-      }
-      ctx.stroke();
-    }
-  }
-  const glx = Math.sin(p.glint * 1.2) * 3 + lookLocal * 3;
-  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(glx - 2, -hh + 5, 2, 3, -0.4, 0, TAU); ctx.fill();
+  // Arena's dark glass/LED read, with the runner's existing reaction rig.
+  ART.characterHelmet(ctx, 0, -hh + 8, style, {
+    mood: ANIM.eyeMood(R, p.idle || 0), lid: ANIM.lidAmount(R),
+    lookX: lookLocal, lookY: p.onGround ? 0 : (p.vy < 0 ? -.5 : .5),
+    tick: 10, calm: true,
+  }, false);
   if (SEASON.frost) {   // E13 seasonal: frost creeps in from the visor edge (render-only, off under SHOT)
     ctx.strokeStyle = 'rgba(228,248,255,0.9)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.ellipse(1, -hh + 8, 6.6, 5.6, 0, -2.8, -1.15); ctx.stroke();
@@ -6031,7 +5971,7 @@ function drawHUD() {
   }
 
   if (G.mission) {
-    const m = expeditionRunnerActive() ? { done: false, kind: 'expedition', label: 'LEG 1/3 · REACH 400m', progress: G.dist, target: SpaceManExpedition.legs[0].goal } : G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
+    const m = expeditionRunnerActive() ? { done: false, kind: 'expedition', label: 'ROUTE ' + (expedition.snapshot().index + 1) + ' · REACH ' + expedition.snapshot().current.goal + 'm', progress: G.dist, target: expedition.snapshot().current.goal } : G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
     ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 22 * us, 6 * us); ctx.fill();
     ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = fontStr(700, Math.max(9.5, 7.5 * us), FONT); ctx.textAlign = 'left';
     const label = m.done ? 'MISSION COMPLETE' : (view.w < 480 ? (MISSION_SHORT[m.kind] || m.label) : m.label);
@@ -6374,6 +6314,7 @@ function renderDailyCard() {
 function startDaily() { Audio.ensure(); Audio.resume(); startRun({ course: dailyCourse() }); }
 
 function togglePause() {
+  if (sharedRunnerActive() && journeyUI.room.isHost) journeyUI.room.pause(G.mode === 'play');
   if (G.mode === 'play') {
     if (G.player && G.player.dead) return;     // death sequence owns the screen
     clearInput();
@@ -6444,6 +6385,7 @@ function showDeathCard() {
   if (G.newBest) setTimeout(() => buzz('celebrate'), 250);   // a new best deserves a little fanfare in the hand
   G.trauma = Math.min(G.trauma, 0.3);   // rumble can't outlast the card
   finalizeDeath();
+  if (sharedRunnerActive()) { finishSharedRunner(false); return; }
   if (expeditionRunnerActive()) { finishExpeditionRunner(false); return; }
   G.mode = 'dead'; G.deadShownAt = G.time;
   cancelDeathAnim();
@@ -6611,25 +6553,28 @@ function showTrophy() {
 /* ---- wardrobe: suits, hats, unlocks ---- */
 const SUIT_ORDER = ['classic', 'mint', 'rose', 'gold', 'lilac', 'coral', 'aurora', 'graphite'];
 const HAT_ORDER = ['none', 'antenna', 'sprout', 'beanie', 'halo', 'crown', 'cone', 'catears', 'phones'];
-// D6: two players on the DEFAULT suit ('classic') would render as identical blue.
-// Give each slot a distinct default tint from the shipped palette (P1 first, all
-// non-classic so a default never collides with another default). This is a
-// render-side derivation from the peer's P# — every client knows every P# — and
-// NEVER overrides an explicitly chosen suit (only 'classic' is remapped). Applies
-// to self and ghosts consistently. Solo/net-off is unaffected (only used under a
-// live room), so #shot goldens stay pixel-identical.
-const DEFAULT_SLOT_SUITS = ['gold', 'coral', 'mint', 'lilac', 'aurora', 'rose', 'graphite'];
-function effectiveSuit(name, p) { return (name === 'classic' && p) ? DEFAULT_SLOT_SUITS[(p - 1) % DEFAULT_SLOT_SUITS.length] : name; }
-const UNLOCK_HINTS = {
-  rose: 'REACH A 750m BEST', gold: 'EARN A GOLD MEDAL', coral: 'SKIM THE FLARE FOR 3 SECONDS',
-  lilac: '10 RUNS PAST 600m', aurora: 'COMPLETE 5 MISSIONS', graphite: 'REACH LAST LIGHT',
-  sprout: 'PLAY ON 5 DIFFERENT DAYS', beanie: 'FINISH 25 RUNS', halo: '3 NEW BESTS IN A ROW',
-  crown: 'HOLD 1ST PLACE WITH YOUR INITIALS', cone: 'SPOT THE SAUCER 3 TIMES',
-  catears: 'STARGAZE A WHILE', phones: 'SURVIVE ONE FULL SONG',
-};
-function cosmeticName(id) { return (PALETTES[id] || HATS[id] || { name: id }).name; }
+// Equipped identity is literal in every mode. Player labels and team rings carry
+// team/slot colors instead of silently recoloring a friend's chosen suit.
+function effectiveSuit(name) { return COSMETICS.normalizeAppearance({ suit: name }).suit; }
+const UNLOCK_HINTS = Object.fromEntries(COSMETICS.SLOTS.flatMap(slot => COSMETICS.CATALOG[slot].map(item => [item.id, item.hint])));
+function cosmeticName(id) { const item = COSMETICS.item(id); return item ? item.name.toUpperCase() : ''; }
+function equippedAppearance() { return COSMETICS.getAppearance(G.cosmetics); }
+function earnCosmeticEvent(event) {
+  if (SHOT) return [];
+  const result = COSMETICS.reward(G.cosmetics, event);
+  if (!result.accepted) return [];
+  G.cosmetics = result.profile;
+  for (const id of result.unlocked) {
+    G.newCosmetics.push(id); queueToast('✦ FOUND — ' + cosmeticName(id), 'gold');
+  }
+  if (result.unlocked.length) { buzz('success'); updateWardrobeBadge(); }
+  // An arcade reward owns only the shared wardrobe. Do not rewrite runner
+  // records or settings, which may have changed in another tab meanwhile.
+  saveJSON(LS.cosmetics, G.cosmetics);
+  return result.unlocked;
+}
 function unlockCosmetic(id) {
-  if (SHOT || G.cosmetics.unlocked.indexOf(id) >= 0) return;   // QA bots never mutate the profile
+  if (SHOT || !COSMETICS.item(id) || G.cosmetics.unlocked.indexOf(id) >= 0) return;   // QA bots never mutate the profile
   G.cosmetics.unlocked.push(id);
   G.newCosmetics.push(id);
   // Mid-run/attract unlocks toast at the next calm beat; death-time unlocks are
@@ -6648,9 +6593,7 @@ function checkUnlocks() {
   if ((stats.deepRuns || 0) >= 10) unlockCosmetic('lilac');
   if ((stats.missionsDone || 0) >= 5) unlockCosmetic('aurora');
   if (stats.bestDist >= 2500) unlockCosmetic('graphite');
-  if ((flags.playDays || []).length >= 5) unlockCosmetic('sprout');
   if (stats.runs >= 25) unlockCosmetic('beanie');
-  if ((flags.bestStreak || 0) >= 3) unlockCosmetic('halo');
   if ((flags.ufoSeen || 0) >= 3) unlockCosmetic('cone');
   if (Audio.loopsCompleted >= 1) unlockCosmetic('phones');   // one full form without dying
 }
@@ -6667,37 +6610,51 @@ function hatThumb(id) {   // painted by drawHat itself — a thumbnail can never
   drawHat(id, id === 'phones' ? 1.2 : 1.6, g);
   return c;
 }
-function wardItem(id, cls, sel, apply) {
-  const b = document.createElement('button');
-  b.className = cls + (sel ? ' sel' : '');
-  const locked = G.cosmetics.unlocked.indexOf(id) < 0;
-  if (locked) {
-    b.classList.add('locked');
-    const lk = document.createElement('span'); lk.className = 'lock'; lk.textContent = '🔒';
-    b.appendChild(lk);
-    b.setAttribute('aria-label', cosmeticName(id) + ' locked');
-    b.onclick = () => { $('wardHint').textContent = cosmeticName(id) + ' — ' + (UNLOCK_HINTS[id] || '?'); Audio.sfx.ui(1); };
-  } else {
-    b.setAttribute('aria-label', cosmeticName(id));
-    b.onclick = () => { apply(); $('wardHint').textContent = ''; Audio.sfx.ui(3); persistAll(); buildWardrobe(); };
-  }
+let wardrobeSlot = 'suit';
+const WARDROBE_LABELS = { suit: 'Color', hat: 'Hat', eyes: 'Eyes', helmet: 'Helmet', detail: 'Suit', ship: 'Ship' };
+function wardrobePreview() {
+  const canvas = $('wardPreview'), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = 240 * dpr; canvas.height = 116 * dpr;
+  const c = canvas.getContext('2d'); c.scale(dpr, dpr); c.clearRect(0, 0, 240, 116);
+  if (ART.drawAvatar) ART.drawAvatar(c, 120, 57, 96, equippedAppearance(), { time: 0, reduceMotion: true, ship: wardrobeSlot === 'ship' });
+  else { c.fillStyle = PALETTES[G.cosmetics.suit].suit; c.beginPath(); c.arc(120, 48, 22, 0, TAU); c.fill(); c.fillRect(105, 71, 30, 28); }
+  canvas.setAttribute('aria-label', 'Your equipped Spacefarer: ' + COSMETICS.SLOTS.map(slot => cosmeticName(G.cosmetics[slot])).join(', '));
+}
+function wardItem(slot, item) {
+  const id = item.id, selected = G.cosmetics[slot] === id, locked = !G.cosmetics.unlocked.includes(id);
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'ward-choice' + (selected ? ' sel' : '') + (locked ? ' locked' : '');
+  b.dataset.cosmetic = id; b.dataset.slot = slot;
+  b.setAttribute('aria-pressed', String(selected));
+  b.setAttribute('aria-label', item.name + (selected ? ', equipped' : locked ? ', locked. ' + item.hint : ', ready to wear'));
+  if (slot === 'suit') { const swatch = document.createElement('span'); swatch.className = 'ward-swatch'; swatch.style.background = PALETTES[id].suit; b.appendChild(swatch); }
+  if (slot === 'hat') b.appendChild(hatThumb(id));
+  const label = document.createElement('span'); label.textContent = item.name; b.appendChild(label);
+  const state = document.createElement('small'); state.textContent = selected ? 'EQUIPPED' : locked ? 'TO FIND' : 'READY'; b.appendChild(state);
+  b.onclick = () => {
+    if (locked) { $('wardHint').textContent = item.name + ': ' + item.hint + '. No win required.'; Audio.sfx.ui(1); return; }
+    const result = COSMETICS.equip(G.cosmetics, slot, id); if (!result.equipped) return;
+    G.cosmetics = result.profile; refreshFaviconSkin();
+    if (NET && typeof NET.setAppearance === 'function') NET.setAppearance(equippedAppearance());
+    Audio.sfx.ui(3); saveJSON(LS.cosmetics, G.cosmetics); buildWardrobe();
+    $('wardHint').textContent = item.name + ' equipped in every mode';
+    const replacement = $('wardChoices').querySelector('[data-cosmetic="' + id + '"]'); if (replacement) replacement.focus();
+  };
   return b;
 }
 function buildWardrobe() {
-  const suits = $('suitRow'), hats = $('hatRow');
-  suits.innerHTML = ''; hats.innerHTML = '';
-  for (const id of SUIT_ORDER) {
-    const b = wardItem(id, 'swatch', G.cosmetics.suit === id, () => { G.cosmetics.suit = id; refreshFaviconSkin(); });
-    b.style.background = PALETTES[id].suit;
-    suits.appendChild(b);
-  }
-  for (const id of HAT_ORDER) {
-    const b = wardItem(id, 'hat-tile', G.cosmetics.hat === id, () => { G.cosmetics.hat = id; refreshFaviconSkin(); });
-    b.insertBefore(hatThumb(id), b.firstChild);
-    hats.appendChild(b);
-  }
-  $('suitName').textContent = cosmeticName(G.cosmetics.suit);
-  $('hatName').textContent = cosmeticName(G.cosmetics.hat);
+  const tabs = $('wardTabs'), choices = $('wardChoices'); tabs.innerHTML = ''; choices.innerHTML = '';
+  COSMETICS.SLOTS.forEach((slot, index) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'ward-tab'; b.textContent = WARDROBE_LABELS[slot]; b.id = 'wardTab-' + slot;
+    b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(wardrobeSlot === slot)); b.setAttribute('aria-controls', 'wardChoices');
+    b.onclick = () => { wardrobeSlot = slot; $('wardHint').textContent = ''; buildWardrobe(); $('wardTab-' + slot).focus(); };
+    b.onkeydown = e => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return; e.preventDefault(); e.stopPropagation(); const n = e.key === 'Home' ? 0 : e.key === 'End' ? COSMETICS.SLOTS.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + COSMETICS.SLOTS.length) % COSMETICS.SLOTS.length; wardrobeSlot = COSMETICS.SLOTS[n]; buildWardrobe(); $('wardTab-' + wardrobeSlot).focus(); };
+    tabs.appendChild(b);
+  });
+  choices.setAttribute('aria-labelledby', 'wardTab-' + wardrobeSlot);
+  for (const item of COSMETICS.CATALOG[wardrobeSlot]) choices.appendChild(wardItem(wardrobeSlot, item));
+  $('wardName').textContent = cosmeticName(G.cosmetics[wardrobeSlot]);
+  $('wardCount').textContent = G.cosmetics.unlocked.length + ' of ' + COSMETICS.SLOTS.reduce((n, slot) => n + COSMETICS.CATALOG[slot].length, 0) + ' keepsakes collected';
+  wardrobePreview();
 }
 function showWardrobe() {   // G.mode stays 'attract': the live idle scene IS the preview
   G.newCosmetics.length = 0;
@@ -6716,11 +6673,11 @@ function ensureWardrobeCallsign() {
   const panel = $('ovWardrobe').firstElementChild;
   let row = document.getElementById('wardCallsignRow');
   if (!row) {
-    row = document.createElement('div'); row.className = 'toggle-row'; row.id = 'wardCallsignRow';
+    row = document.createElement('button'); row.type = 'button'; row.className = 'toggle-row ward-callsign'; row.id = 'wardCallsignRow';
     row.innerHTML = '<span>Callsign</span>';
     const v = document.createElement('span'); v.className = 'net-val'; v.id = 'wardCallsignVal'; row.appendChild(v);
     row.onclick = () => showCallsign(() => showWardrobe());
-    panel.insertBefore(row, $('btnWardrobeDone'));
+    panel.insertBefore(row, $('btnWardrobeDone').parentNode);
   }
   const cs = getCallsign();
   $('wardCallsignVal').textContent = cs ? (NET.callsignText(cs[0], cs[1]) || 'Pick one') : 'Pick one';
@@ -6933,7 +6890,8 @@ function reopenPause() { hideAllOverlays(); syncSettingsUI(); showOverlay('ovPau
    is inert until the player taps RUN TOGETHER or accepts a #j= invite (net-spec
    §4.1 lazy gate). Nothing touches the sim, input, or the restart path.
    ------------------------------------------------------------------------- */
-const NET = window.SpaceManNet || null;
+const TRANSPORT = window.SpaceManNet || null;
+let NET = TRANSPORT;
 // net=0 hard-disables (A/B debugging + shot safety); no NET → surfaces stay dark.
 function netEnabled() { return !!NET && HASH.net !== '0'; }
 function netLive() { return !!NET && (NET.active || NET.mockActive); }
@@ -6951,7 +6909,7 @@ function applyCallsignToNet() { const c = getCallsign(); if (c && NET) NET.setCa
 function netIdentity() {
   const c = getCallsign();
   return { adjIdx: c ? c[0] : undefined, nounIdx: c ? c[1] : undefined,
-    suit: Math.max(0, SUIT_ORDER.indexOf(G.cosmetics.suit)), hat: Math.max(0, HAT_ORDER.indexOf(G.cosmetics.hat)) };
+    suit: Math.max(0, SUIT_ORDER.indexOf(G.cosmetics.suit)), hat: Math.max(0, HAT_ORDER.indexOf(G.cosmetics.hat)), appearance: equippedAppearance() };
 }
 
 let callsignSel = [0, 0];
@@ -7375,6 +7333,7 @@ async function acceptInvite(role) {
   }
   joinOverride = false;                                    // override consumed (single-use)
   if (isOffline()) { setJoinState(OFFLINE_TOGETHER); return; }
+  if (peek && peek.mode === 'journey') { hideAllOverlays(); await getJourneyUI().joinInvite(joinPayload, role); stripInviteHash(); return; }
   if (peek && peek.mode === 'race') { $('btnRace').onclick(); if (raceUI && raceUI.active) { hideAllOverlays(); await raceUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
   if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
@@ -7743,6 +7702,7 @@ function netSampleGhosts(now) {
     g.callsign = s.callsign; g.unverified = !!s.unverified; g.host = !!s.host;
     g.suit = effectiveSuit(PALETTES[SUIT_ORDER[s.suit]] ? SUIT_ORDER[s.suit] : 'classic', s.p);   // W-rule → classic (I8), then per-slot default tint (D6)
     g.hat = (HATS[HAT_ORDER[s.hat]] ? HAT_ORDER[s.hat] : 'none');
+    g.appearance = s.appearance ? COSMETICS.wireAppearance(s.appearance) : null;
     g.chain = s.chain; g.score = s.score; g.dist = s.dist; g.runId = s.runId;
     g.inRun = !!(s.state & 8); g.slip = !!(s.state & 16);
     g.onGround = !!(s.state & 2); g.facing = (s.state & 1) ? 1 : -1;
@@ -7990,7 +7950,7 @@ function drawGhostActor(g) {
   a.vy = g.onGround ? 0 : 30; a.pose = g.onGround ? 4 : 0;
   a.runCycle = g.rx * 0.03;                                 // deterministic gait from world-x — no rng, no per-ghost timer
   a.sqX = 1; a.sqY = 1; a.landDip = 0; a.glint = 0; a.idle = 0;
-  ghostCos.suit = g.suit; ghostCos.hat = g.hat;
+  Object.assign(ghostCos, COSMETICS.normalizeAppearance(g.appearance || { suit: g.suit, hat: g.hat }));
   const sp = G.player, sc = G.cosmetics, sv = vigPose, sw = G.wave, sf = G.fireT, stw = G.twirlT, sh = G.holsterT, sgl = G.glanceT, sfr = SEASON.frost;
   G.player = a; G.cosmetics = ghostCos; vigPose = null; G.wave = 0; G.fireT = 0; G.twirlT = 0; G.holsterT = 0; G.glanceT = 0; SEASON.frost = false;
   const ga = clamp(settings.netGhosts, 0.25, 1) * g.alpha * (g.unverified ? 0.6 : 1);
@@ -8535,7 +8495,8 @@ $('btnArena').onclick = () => {
 function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
     storageKey: BUILD.storageKey('sm2.arena.v1'),
-    net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions() {
       const relayDir = { mode: settings.netRelayMode };
       if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
@@ -8560,7 +8521,8 @@ $('btnRace').onclick = () => {
 function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
     storageKey: BUILD.storageKey('sm2.race.v1'),
-    net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions() {
       const relayDir = { mode: settings.netRelayMode };
       if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
@@ -8577,98 +8539,183 @@ function getRaceUI() {
   });
   return raceUI;
 }
-// Local journey director. It never opens, leaves or changes a room.
+// Continuous solo director. Shared journeys use the same deterministic encounters.
+let expeditionCueTimer = 0;
+const expeditionHeldKeys = new Set(), expeditionKeyGate = new Set();
+window.addEventListener('keydown', e => {
+  if ((expedition || sharedEncounter) && expeditionKeyGate.has(e.code) && e.code !== 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); }
+  expeditionHeldKeys.add(e.code);
+}, true);
+window.addEventListener('keyup', e => { expeditionHeldKeys.delete(e.code); expeditionKeyGate.delete(e.code); }, true);
+window.addEventListener('blur', () => { expeditionHeldKeys.clear(); expeditionKeyGate.clear(); });
+function releaseExpeditionInputs() {
+  // End native runner captures before an arcade's event guard takes ownership.
+  for (const id of input.downIds) {
+    try { if (canvas.hasPointerCapture && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id); } catch (_) {}
+  }
+  input.downIds.clear(); clearInput();
+}
 function expeditionRunnerActive() {
   const s = expedition && expedition.snapshot();
-  return !!s && s.phase === 'playing' && s.index === 0;
+  return !!s && s.phase === 'playing' && s.current.id === 'runner';
 }
 function closeModeOverlay(focusId) {
+  if (sharedEnding || sharedEncounter) return;
   clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
   Audio.resume(); hideAllOverlays();
   if (expedition) {
     if (expedition.snapshot().phase === 'playing') { exitExpedition(); return; }
-    showExpedition(); return;
+    launchExpeditionLeg(); return;
   }
   showOverlay('ovAttract'); $(focusId).focus();
 }
 function expeditionRecordText(r) {
-  if (r.id === 'runner') return (r.reached ? 'Rendezvous reached' : 'Rescue shuttle caught you') + ' · ' + r.distance + 'm · ' + r.score.toLocaleString() + ' points';
-  if (r.id === 'arena') return (r.tie ? 'Arena tied' : r.won ? 'Arena won' : 'Duel complete') + ' · ' + r.kos + ' KOs · ' + r.stocks + ' lives left';
-  return (r.finished ? 'Home in ' + r.position + (r.position === 1 ? 'st' : r.position === 2 ? 'nd' : r.position === 3 ? 'rd' : 'th') : 'Race complete · unfinished') + (r.time === null ? '' : ' · ' + r.time.toFixed(1) + 's');
+  if (r.id === 'runner') return (r.reached ? 'Rendezvous reached' : 'Rescue shuttle caught you') + ' · ' + r.distance + 'm';
+  if (r.id === 'arena') return (r.kind === 'boss' ? (r.won ? 'Guardian defeated' : 'Guardian escaped') : r.won ? 'Path cleared' : 'Shuttle extracted you');
+  return r.finished ? 'Sprint finished · ' + r.position + (r.position === 1 ? 'st' : r.position === 2 ? 'nd' : r.position === 3 ? 'rd' : 'th') : 'Race extraction complete';
 }
-function showExpedition() {
-  if (!expedition) return;
-  const s = expedition.snapshot(), finished = s.phase === 'complete';
-  const next = Math.min(2, s.index + (s.phase === 'debrief' ? 1 : 0));
-  const leg = SpaceManExpedition.legs[next];
-  clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
-  G.mode = 'attract';
-  hideAllOverlays();
-  $('expeditionTitle').textContent = finished ? 'You made the whole trip.' : s.records.length ? 'Next stop: ' + leg.name.toLowerCase() + '.' : 'One trip. Three adventures.';
-  $('expeditionDestination').textContent = finished ? 'EXPEDITION COMPLETE' : 'LEG ' + (next + 1) + ' OF 3 · ' + leg.destination;
-  $('expeditionCopy').textContent = finished ? 'From the flare to the finish line. Every leg is part of your story, whatever the result.' : leg.briefing;
-  $('expeditionControls').textContent = finished ? 'Take another trip, or explore each mode at your own pace.' : leg.controls;
-  $('expeditionReceipt').innerHTML = s.records.map(r => '<li>' + escapeHtml(expeditionRecordText(r)) + '</li>').join('');
-  $('expeditionReceipt').hidden = s.records.length === 0;
-  for (let i = 0; i < 3; i++) {
-    const el = $('expeditionLeg' + i); el.dataset.state = i < s.records.length ? 'done' : i === next ? 'next' : 'later';
-    if (!finished && i === next) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current');
-  }
-  $('btnExpeditionContinue').textContent = finished ? 'New expedition' : leg.action;
-  $('btnExpeditionExit').textContent = s.records.length && !finished ? 'Leave expedition' : 'Back to all modes';
-  showOverlay('ovExpedition'); $('btnExpeditionContinue').focus();
-  announce($('expeditionDestination').textContent + '. ' + $('expeditionCopy').textContent);
+function showExpeditionCue(leg, previous) {
+  const cue = $('expeditionCue');
+  clearTimeout(expeditionCueTimer);
+  const owner = document.querySelector(leg.id === 'arena' ? '.arena-root' : leg.id === 'race' ? '.race-root' : 'body') || document.body;
+  owner.appendChild(cue); cue.inert = false;
+  const arenaHud = leg.id === 'arena' && owner.querySelector('.arena-hud');
+  if (arenaHud) cue.style.top = Math.min(arenaHud.getBoundingClientRect().bottom + 10, window.innerHeight - 90) + 'px'; else cue.style.top = '';
+  cue.dataset.kind = leg.kind;
+  $('expeditionCueRoute').textContent = (previous ? expeditionRecordText(previous) + ' · ' : '') + 'SECTOR ' + leg.sector + ' · ROUTE ' + (leg.index + 1);
+  $('expeditionCueTitle').textContent = leg.name;
+  const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  $('expeditionCueHelp').textContent = touch ? leg.cue + ' · Use the on-screen controls' : leg.cue + ' · ' + leg.controls;
+  cue.hidden = false;
+  expeditionCueTimer = setTimeout(() => { cue.hidden = true; }, 4600);
 }
 function openExpedition() {
   if (modeOverlayActive() || G.mode !== 'attract' || expedition) return;
   if (netLive()) { announce('Leave your room before starting a solo expedition. Your room is still connected.'); queueToast('Leave your room before starting a solo expedition.', 'sys'); return; }
   expedition = SpaceManExpedition.create((Math.random() * 0xffffffff) >>> 0);
-  showExpedition();
+  launchExpeditionLeg();
+}
+function completeExpeditionEncounter(session, leg, record) {
+  if (expedition !== session || !session.finish(leg.id, leg.token, record)) return false;
+  if (typeof earnCosmeticEvent === 'function') earnCosmeticEvent({ type: 'encounter', id: 'solo:' + session.snapshot().seed + ':' + leg.index, mode: leg.id, kind: leg.kind });
+  if (leg.index % 5 === 4 && typeof earnCosmeticEvent === 'function') earnCosmeticEvent({ type: 'journey', id: 'solo:' + session.snapshot().seed + ':loop:' + Math.floor(leg.index / 5) });
+  return true;
 }
 function launchExpeditionLeg() {
   if (!expedition || netLive() || modeOverlayActive()) return;
-  const s = expedition.snapshot();
-  if (s.phase === 'complete') { expedition = SpaceManExpedition.create((Math.random() * 0xffffffff) >>> 0); showExpedition(); return; }
-  if (s.phase === 'debrief') expedition.advance();
+  const s = expedition.snapshot(), previous = s.records[s.records.length - 1];
+  if (s.phase === 'transition') expedition.advance();
   const leg = expedition.begin(); if (!leg) return;
   expeditionToken = leg.token;
-  hideAllOverlays(); clearInput();
+  for (const key of expeditionHeldKeys) expeditionKeyGate.add(key);
+  hideAllOverlays(); releaseExpeditionInputs(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
   if (leg.id === 'runner') {
-    $('btnQuit').textContent = 'Leave expedition';
+    $('btnQuit').textContent = 'Finish expedition';
     startRun({ course: { kind: 'seed', seed: leg.seed, gen: COURSE.GEN, beat: 0 } });
-    announce('Expedition leg one. Reach 400 meters. Your shuttle continues even if you fall.');
+    showExpeditionCue(leg, previous);
     return;
   }
+  G.mode = 'attract';
   const ui = leg.id === 'arena' ? getArenaUI() : getRaceUI();
   Audio.suspend();
   const session = expedition;
   const opened = ui.openSession(leg, (record) => {
-    if (expedition !== session || !session.finish(leg.id, leg.token, record)) return;
-    ui.close(); // Result is recorded before onClose chooses the next briefing.
+    if (!completeExpeditionEncounter(session, leg, record)) return;
+    ui.close(); // Release the old engine before synchronously starting the next.
   });
-  if (!opened) { exitExpedition(); announce('Could not start that expedition leg. Please try again.'); }
+  if (!opened) { exitExpedition(); announce('Could not start that route. Please try again.'); return; }
+  showExpeditionCue(leg, previous);
 }
 function finishExpeditionRunner(reached) {
   if (!expeditionRunnerActive()) return;
-  if (!expedition.finish('runner', expeditionToken, { reached, distance: G.dist, score: G.finalScore })) return;
+  const leg = expedition.snapshot().current;
+  if (!completeExpeditionEncounter(expedition, leg, { reached, distance: G.dist, score: G.finalScore })) return;
   cancelDeathAnim(); Audio.killSting(); G.deathCardShown = true; G.showPicker = false;
   $('btnQuit').textContent = 'Quit to Title';
-  showAttract(); showExpedition();
+  G.mode = 'attract';
+  launchExpeditionLeg();
 }
 function exitExpedition() {
   if (!expedition) return;
-  const runner = expeditionRunnerActive();
+  const runner = expeditionRunnerActive(), completed = expedition.snapshot().completed;
   if (runner && G.player && G.player.dead && !G.deathCardShown) { G.deathCardShown = true; finalizeDeath(); }
   expedition.cancel(); expedition = null; expeditionToken = 0;
+  clearTimeout(expeditionCueTimer); $('expeditionCue').hidden = true; document.body.appendChild($('expeditionCue'));
   if (arenaUI && arenaUI.active) arenaUI.close();
   if (raceUI && raceUI.active) raceUI.close();
-  cancelDeathAnim(); Audio.killSting(); Audio.resume(); clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
+  cancelDeathAnim(); Audio.killSting(); Audio.resume(); releaseExpeditionInputs(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
+  expeditionKeyGate.clear();
   $('btnQuit').textContent = 'Quit to Title';
   showAttract(); $('btnExpedition').focus();
+  if (completed) queueToast('Expedition complete · ' + completed + ' routes explored', 'sys');
 }
 $('btnExpedition').onclick = openExpedition;
-$('btnExpeditionContinue').onclick = launchExpeditionLeg;
-$('btnExpeditionExit').onclick = exitExpedition;
+
+function bankSharedRunner() {
+  if (!sharedRunnerActive() || sharedRunnerBanked || !sharedRunnerParticipated || !G.player) return false;
+  G.finalScore = Math.floor(G.score); finalizeDeath(true); sharedRunnerBanked = true; return true;
+}
+function sharedRunnerActive() { return !!sharedEncounter && sharedEncounter.id === 'runner' && !!journeyUI && journeyUI.room.active; }
+function finishSharedRunner(reached) {
+  if (!sharedRunnerActive() || sharedRunnerBanked) return;
+  sharedRunnerBanked = true;
+  const p = G.player;
+  journeyUI.room.runnerDone({ x: p.x + p.w / 2, y: p.y + p.h / 2, vx: p.vx * 10, vy: p.vy, state: (p.facing > 0 ? 1 : 0) | 8 | (reached ? 0 : 4), chain: G.chain, score: Math.max(0, Math.floor(G.finalScore || G.score)), dist: G.dist, frame: G.frameCount });
+  cancelDeathAnim(); Audio.killSting(); G.deathCardShown = false; G.showPicker = false; G.mode = 'play'; clearInput();
+  queueToast(reached ? 'Rendezvous reached · watching your crew' : 'Shuttle caught you · watching your crew', 'sys');
+}
+function getJourneyUI() {
+  if (!journeyUI) journeyUI = SpaceManJourneyUI.create({
+    net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    hostOptions() { return { relayDir: settings.netRelayList ? { mode: 'list', text: settings.netRelayList } : undefined, relayHost: settings.netRelay || undefined, approve: false }; },
+    onEncounter(leg, context, room) {
+      bankSharedRunner();
+      if (sharedEncounter && typeof earnCosmeticEvent === 'function' && context.index > sharedEncounter.index) {
+        earnCosmeticEvent({ type: 'encounter', id: 'shared:' + context.session + ':' + sharedEncounter.index, mode: sharedEncounter.id, kind: sharedEncounter.kind });
+        if (sharedEncounter.index % 5 === 4) earnCosmeticEvent({ type: 'journey', id: 'shared:' + context.session + ':loop:' + Math.floor(sharedEncounter.index / 5) });
+      }
+      for (const key of expeditionHeldKeys) expeditionKeyGate.add(key);
+      arenaUI?.closeSharedSession(); raceUI?.closeSharedSession();
+      NET = TRANSPORT; sharedEncounter = leg; sharedRunnerBanked = false; sharedRunnerParticipated = false; $('btnJourneyCrew').hidden = false;
+      cancelDeathAnim(); Audio.killSting(); hideAllOverlays(); releaseExpeditionInputs(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; G.mode = 'attract';
+      if (leg.id === 'runner') { NET = room.runnerNet; $('btnQuit').textContent = 'Leave expedition'; startRun({ sync: true, watch: NET.info().role === 1 }); }
+      else { Audio.suspend(); const ui = leg.id === 'arena' ? getArenaUI() : getRaceUI(); if (!ui.openSharedSession(leg, room.adapter)) throw new Error('Could not prepare encounter'); }
+      showExpeditionCue(leg); announce('Shared expedition. ' + leg.name + '. ' + leg.controls);
+    },
+    onChange(status) {
+      if (!sharedRunnerActive()) return;
+      if (status.journey?.index === sharedEncounter.index && ['running', 'paused'].includes(status.journey.phase) && status.info.role === 0 && TRANSPORT.info().role === 0) sharedRunnerParticipated = true;
+      if (status.connection || status.stale || status.journey?.phase === 'paused') clearInput();
+    },
+    onExit(reason) { endSharedJourney(reason); },
+    onClose() { showAttract(); $('btnExpeditionFriends').focus(); },
+  });
+  return journeyUI;
+}
+function openSharedJourney() {
+  if (expedition || modeOverlayActive() || G.mode !== 'attract') return;
+  if (TRANSPORT.active && TRANSPORT.info().mode !== 'journey') { announce('Leave your current room before opening a shared expedition. Your room is still connected.'); return; }
+  hideAllOverlays(); clearInput(); getJourneyUI().open();
+}
+function requestLeaveSharedJourney() {
+  if (!journeyUI) return;
+  const s = journeyUI.room.status();
+  if (s.host && s.info.players + s.info.spectators > 1 && !confirm('Close this expedition for everyone?')) return;
+  journeyUI.room.leave();
+}
+function endSharedJourney(reason) {
+  if (sharedEnding) return; sharedEnding = true;
+  arenaUI?.closeSharedSession(); raceUI?.closeSharedSession(); sharedEncounter = null; sharedRunnerBanked = false; sharedRunnerParticipated = false; NET = TRANSPORT; $('btnJourneyCrew').hidden = true;
+  clearTimeout(expeditionCueTimer); $('expeditionCue').hidden = true; document.body.appendChild($('expeditionCue'));
+  cancelDeathAnim(); Audio.killSting(); Audio.resume(); releaseExpeditionInputs(); expeditionKeyGate.clear(); acc = 0; lastT = 0;
+  $('btnQuit').textContent = 'Quit to Title'; showAttract(); $('btnExpeditionFriends').focus(); sharedEnding = false;
+  if (reason) announce(reason);
+}
+$('btnExpeditionFriends').onclick = openSharedJourney;
+$('btnJourneyCrew').onclick = () => getJourneyUI().open();
+window.addEventListener('blur', () => { if (sharedRunnerActive() && journeyUI.room.isHost) journeyUI.room.pause(true); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && sharedRunnerActive() && journeyUI.room.isHost) journeyUI.room.pause(true); });
+
 
 // Pointer clicks drop focus so a later Space still means start/retry; keyboard
 // activation (detail 0) keeps it where the player put it.
@@ -8683,6 +8730,7 @@ $('btnCloseSettings').onclick = () => (settingsFrom === 'pause' ? reopenPause() 
 $('btnCloseTrophy').onclick = () => showAttract();
 $('btnResume').onclick = () => togglePause();
 $('btnQuit').onclick = () => {
+  if (sharedEncounter) { requestLeaveSharedJourney(); return; }
   if (expedition) { exitExpedition(); return; }
   // Quitting mid-death-sequence must still bank the run (stats, medal, best).
   if (G.player && G.player.dead && !G.deathCardShown) { G.deathCardShown = true; finalizeDeath(); }
@@ -8719,7 +8767,7 @@ $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
-  if (modeOverlayActive() || ['arena','race'].includes(NET.info().mode)) return;
+  if (modeOverlayActive() || ['arena','race','journey'].includes(TRANSPORT.info().mode)) return;
   if (e === 'rotated' || e === 'round' || e === 'join' || e === 'rejoin' || e === 'ok') saveResume();   // keep the token current
   if (e === 'reconnecting') { announce('Connection lost. Reconnecting.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
   else if (e === 'reconnected') { announce('Reconnected.'); if (netLive() && $('ovRoom').classList.contains('show')) renderRoomCard(); }
@@ -8841,7 +8889,7 @@ function swUpdateReady() {
   queueToast('UPDATE READY', 'sys');
 }
 function swSafeMoment() {
-  if (modeOverlayActive() || expedition) return false;
+  if (modeOverlayActive() || expedition || (journeyUI && (journeyUI.room.active || journeyUI.room.busy))) return false;
   if (netLive()) return false;
   if (G.mode === 'attract') return $('ovAttract').classList.contains('show');
   return G.mode === 'dead' && $('ovDead').classList.contains('show');

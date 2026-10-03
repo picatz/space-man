@@ -1,6 +1,6 @@
 // Space Man 2.0 service worker.
 // Bump VERSION in the same commit as any asset change or clients keep the old build.
-const VERSION = 'v3.25.3';
+const VERSION = 'v3.27.0';
 // 'sm2-app-' marks a complete, versioned app shell. Workers before v3.3 used
 // 'sm2-shell-' and served ./src/ cache-first next to a network-first page, which
 // paired a fresh index.html with stale scripts after a deploy.
@@ -20,6 +20,7 @@ const SHELL = [
   './src/expedition.js',
   './src/build.js',
   './src/contracts.js',
+  './src/cosmetics.js',
   './src/save-schema.js',
   './src/input-snapshot.js',
   './src/course.js',
@@ -48,7 +49,7 @@ const SHELL = [
   './src/relay-directory.js',
   './src/qr.js',
   './src/netsmooth.js',
-  './src/net.js',
+  './src/net.js', './src/journey-online.js', './src/journey-room.js', './src/journey-ui.js',
   './manifest.json',
   './favicon.png',
   './screenshots/gameplay-wide.png',

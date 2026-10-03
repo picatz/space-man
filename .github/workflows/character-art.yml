@@ -1,0 +1,50 @@
+name: Character art browsers
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  characters:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - name: Inspect shared art and in-game phone, tablet and desktop pixels
+        run: node --test character-art.test.cjs
+        env:
+          SPACE_MAN_ART_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_ART_SCREENSHOTS: ${{ runner.temp }}/character-screenshots
+      - name: Verify engine-supported Arena keyboard, touch and standard gamepad behavior
+        run: |
+          if [ "$SPACE_MAN_ARENA_BROWSER" = "webkit" ]; then
+            # Three native multi-touch cases use Chromium-only CDP. WebKit runs
+            # its keyboard, gamepad, constrained layout and pointer cases here;
+            # the shared-art matrix above also exercises real phone taps.
+            node --test --test-name-pattern='^(arena desktop:|arena browser gamepad|arena mobile setup|arena mobile pointer|arena desktop focus)' arena.test.cjs
+          else
+            node --test arena.test.cjs
+          fi
+        env:
+          SPACE_MAN_ARENA_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/character-screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: character-${{ matrix.engine }}-screenshots
+          path: ${{ runner.temp }}/character-screenshots/*.png
+          retention-days: 5

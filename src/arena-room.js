@@ -12,7 +12,7 @@
     function changed(){if(opts.onChange)opts.onChange(status());}
     function present(snapshot){
       const s=sim.snapshot(snapshot.state),rows=roster(),local=info(),myP=local.myP;
-      for(const a of s.actors){const seat=snapshot.seats.find(p=>p.actorId===a.id),row=seat&&seat.connected&&rows.find(r=>r.p===seat.p&&r.role===0);a.controller=seat?(seat.p===myP&&local.role===0&&seat.connected?'human':'remote'):'cpu';if(seat){a.name=row&&row.callsign||('PLAYER '+seat.p);a.peerP=seat.p;a.connected=seat.connected;}}
+      for(const a of s.actors){const seat=snapshot.seats.find(p=>p.actorId===a.id),row=seat&&seat.connected&&rows.find(r=>r.p===seat.p&&r.role===0);a.controller=seat?(seat.p===myP&&local.role===0&&seat.connected?'human':'remote'):'cpu';if(seat){a.name=row&&row.callsign||('PLAYER '+seat.p);a.appearance=row&&row.appearance;a.peerP=seat.p;a.connected=seat.connected;}}
       if(opts.onSnapshot)opts.onSnapshot(Object.assign({},snapshot,{state:s,receivedAt:now(),isHost:!!host}));
     }
     function publish(force){

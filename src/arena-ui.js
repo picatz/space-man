@@ -95,6 +95,7 @@
 .arena-player-helmet:before{content:'';position:absolute;left:4px;right:2px;top:6px;height:9px;border-radius:4px;background:#132D46;border-top:2px solid var(--fighter)}
 .arena-player-helmet:after{content:'';position:absolute;left:8px;right:6px;bottom:-5px;height:5px;background:var(--fighter);border-radius:1px}
 .arena-player-info{display:grid;grid-template-columns:auto auto;gap:2px 5px;min-width:0;align-items:baseline;flex:1}.arena-player-name{font:700 11px/1.2 system-ui,sans-serif;color:#E4F0FB;overflow:hidden;text-overflow:ellipsis}.arena-player-tag{font:700 7px/1.2 system-ui,sans-serif;color:var(--fighter);white-space:nowrap}.arena-stocks{grid-column:1/-1;font:700 10px/1.2 system-ui,sans-serif;color:var(--fighter);letter-spacing:4px;margin-top:3px}.arena-damage{font:800 24px/1 system-ui,sans-serif;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:#EFF7FF;min-width:42px;text-align:right}.arena-player-out{opacity:.46}.arena-player-out .arena-damage{font-size:15px}
+.arena-player-card[data-boss=true] .arena-player-helmet{display:none}.arena-player-card[data-boss=true] .arena-player-info{grid-template-columns:minmax(0,1fr);gap:4px}.arena-player-card[data-boss=true] .arena-player-name{white-space:nowrap}.arena-player-card[data-boss=true] .arena-player-tag{overflow:hidden;text-overflow:ellipsis}.arena-player-card[data-boss=true] .arena-stocks{display:none}.arena-root .arena-player-card[data-boss=true] .arena-damage{font-size:18px;min-width:0;white-space:nowrap}
 .arena-countdown{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);z-index:4;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;pointer-events:none}.arena-countdown-value{font-size:clamp(70px,14vw,140px);font-weight:900;line-height:1;color:#F4F7FF;text-shadow:0 6px 0 #183650,0 0 55px rgba(56,225,255,.18)}.arena-countdown-label{font:700 10px/1.5 system-ui,sans-serif;letter-spacing:.2em;color:#9FF1FF;white-space:nowrap;padding:6px 10px;background:rgba(6,13,28,.8);border-radius:20px}
 .arena-bottom-hud{position:absolute;left:calc(var(--arena-safe-left) + 24px);right:calc(var(--arena-safe-right) + 24px);bottom:calc(var(--arena-safe-bottom) + 18px);display:flex;align-items:center;justify-content:space-between;gap:16px;pointer-events:none;z-index:3}.arena-control-hint{font:500 10px/1.6 system-ui,sans-serif;word-spacing:4px;color:#7F9DB9}.arena-abilities{display:flex;gap:9px}.arena-ability{position:relative;overflow:hidden;display:flex;align-items:center;gap:7px;min-width:100px;padding:9px 11px 11px;border:1px solid rgba(133,184,220,.23);border-radius:9px;background:rgba(8,19,34,.85)}.arena-ability-key{font:700 9px/1.2 system-ui,sans-serif;color:#DCEEFF}.arena-ability-label{font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.1em;color:#A8C7E0}.arena-ability-meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:#38E1FF;transform-origin:left}.arena-ability:last-child .arena-ability-meter{background:#FFC66B}
 .arena-touch{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}.arena-root[data-touch=true] .arena-touch{display:block}.arena-stick-zone{position:absolute;bottom:0;left:var(--arena-safe-left);width:calc(48% - var(--arena-safe-left));height:42%;min-height:140px;pointer-events:auto;touch-action:none}.arena-stick-base{position:absolute;left:76px;top:calc(100% - 88px - var(--arena-safe-bottom));width:94px;height:94px;border-radius:50%;border:1.5px solid rgba(159,241,255,.4);background:rgba(20,51,73,.18);transform:translate(-50%,-50%);opacity:.6;pointer-events:none}.arena-stick-base:before,.arena-stick-base:after{content:'';position:absolute;left:50%;top:50%;background:rgba(159,241,255,.12);transform:translate(-50%,-50%)}.arena-stick-base:before{width:76%;height:1px}.arena-stick-base:after{height:76%;width:1px}.arena-stick-knob{position:absolute;left:50%;top:50%;width:40px;height:40px;border:1px solid rgba(159,241,255,.58);border-radius:50%;background:rgba(56,225,255,.2);transform:translate(-50%,-50%)}.arena-stick-active{opacity:1;border-color:rgba(159,241,255,.8)}.arena-stick-label{position:absolute;left:76px;bottom:calc(var(--arena-safe-bottom) + 24px);transform:translateX(-50%);font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.15em;color:#7796AD;pointer-events:none}
@@ -168,6 +169,8 @@
     let pulseMeter, dashMeter, countdownEl, pauseButton, launchButton, resultTitle, resultText, resultRoster;
     let formatButtons = [], stageButtons = [], difficultyButtons = [], mirrorButton, stageDescription;
     let savedFocus = null, inertSiblings = [], savedBodyOverflow = '';
+    const cosmeticSession = Date.now().toString(36) + ':' + Math.random().toString(36).slice(2, 9);
+    let cosmeticRound = 0;
     let arena, state = null, view = 'lobby', paused = false, activeModal = null, selections = { arenaId: '', format: 'duel', difficulty: 'normal' };
     let frameId = 0, lastTime = 0, accumulator = 0, lastDraw = 0, lastHudTick = -1, lastCountdown = '', resultAt = 0, matchSerial = 0;
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
@@ -182,12 +185,13 @@
     const onlineActive = () => !!(room && room.active);
     const localActor = () => state && state.actors.find(a => a.controller === 'human');
     const canControl = () => !onlineActive() || !!(localActor() && localActor().stocks > 0 && !(roomStatus && (roomStatus.stale || roomStatus.connection)));
-    let localSession = null;
+    let localSession = null, sharedSession = null, inputSuspended = false;
     const listeners = [];
     const getSettings = () => { try { return (typeof opts.settings === 'function' ? opts.settings() : opts.settings) || {}; } catch (_) { return {}; } };
     const calm = () => typeof currentPrefs.reduceMotion === 'boolean' ? currentPrefs.reduceMotion : typeof currentPrefs.reducedMotion === 'boolean' ? currentPrefs.reducedMotion : prefersReduced;
     const saver = () => !!currentPrefs.batterySaver;
     const isMatch = () => view === 'match' && !!state;
+    const localRescue = () => !!localSession && !!state && state.actors.some(a => a.controller === 'human' && a.stocks <= 0);
     const isRunning = () => isMatch() && !paused && !roomPaused && state.phase !== 'over';
     const selectedArena = () => arena.getArena ? arena.getArena(selections.arenaId) : (arena.arenas.find(a => a.id === selections.arenaId) || arena.arenas[0]);
     const themeFor = (a) => {
@@ -200,7 +204,7 @@
     function listen(target, type, handler, settings) { target.addEventListener(type, handler, settings); listeners.push([target, type, handler, settings]); }
     function announce(text) { if (live) live.textContent = text; }
     function saveSelection() {
-      if (localSession) return; // Itinerary choices never replace standalone preferences.
+      if (localSession || sharedSession) return; // Itinerary choices never replace standalone preferences.
       try { root.localStorage.setItem(opts.storageKey || 'spaceman.arena.v1', JSON.stringify({ version: 1, arenaId: selections.arenaId, format: selections.format, difficulty: selections.difficulty })); } catch (_) { /* Private mode is playable. */ }
     }
     function loadSelection() {
@@ -280,6 +284,12 @@
       held.clear(); jumpEdge = attackEdge = dashEdge = false; pad = { moveX: 0, moveY: 0, jump: false }; padNeedsNeutral = true;
       resetTouchInput();
     }
+    function ownsInput() {
+      if (!active) return false;
+      const suspended = !!rootEl.inert;
+      if (suspended !== inputSuspended) { inputSuspended = suspended; resetInput(); }
+      return !suspended;
+    }
     function focusables() { return activeModal ? Array.from(activeModal.querySelectorAll('button:not([disabled]),summary,[href],input:not([disabled]),[tabindex="0"]')).filter(n => !n.hidden && n.getClientRects().length) : [pauseButton]; }
     function focusStep(direction) {
       const nodes = focusables(); if (!nodes.length) return;
@@ -292,11 +302,11 @@
     }
     function actionHeld(action) { for (const value of held.values()) if (value === action) return true; return false; }
     function onKeyDown(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       e.stopImmediatePropagation();
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return; escapeAction(); return; }
-      if (e.code === 'Tab') { e.preventDefault(); if (!activeModal && isMatch()) pauseMatch('Match paused'); else focusStep(e.shiftKey ? -1 : 1); return; }
+      if (e.code === 'Tab') { e.preventDefault(); if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; } if (!activeModal && isMatch()) pauseMatch('Match paused'); else focusStep(e.shiftKey ? -1 : 1); return; }
       if (activeModal) {
         if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) { if (e.key === 'Enter' && e.target === roomInput) { e.preventDefault(); roomJoin.click(); } return; }
         if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); if (!e.repeat && document.activeElement && activeModal.contains(document.activeElement)) document.activeElement.click(); }
@@ -307,6 +317,7 @@
       const action = actionForKey(e);
       if (action) {
         e.preventDefault();
+        if (e.repeat && !held.has(e.code)) return;
         if (!held.has(e.code) && !e.repeat) {
           if (action === 'jump') jumpEdge = true;
           if (action === 'fire') attackEdge = true;
@@ -315,8 +326,9 @@
         held.set(e.code, action);
       }
     }
-    function onKeyUp(e) { if (!active) return; e.stopImmediatePropagation(); if (actionForKey(e)) e.preventDefault(); held.delete(e.code); }
+    function onKeyUp(e) { if (!ownsInput()) return; e.stopImmediatePropagation(); if (actionForKey(e)) e.preventDefault(); held.delete(e.code); }
     function escapeAction() {
+      if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; }
       resetInput();
       if (view === 'lobby') close();
       else if (activeModal === resultPanel) showLobby();
@@ -324,7 +336,7 @@
       else pauseMatch('Match paused');
     }
     function guardPointer(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       // Capture can fail or be lost when WebKit moves browser chrome. Recover
       // releases before the runner-isolation guard discards outside events.
       if (['pointerup', 'pointercancel', 'lostpointercapture'].includes(e.type)) releaseTouch(e);
@@ -332,6 +344,7 @@
       if (!(e.target instanceof root.Node) || !rootEl.contains(e.target)) { e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); }
     }
     function onTouchEnd(e) {
+      if (!ownsInput()) return;
       // A completed tap still gets its one action if it ended between frames.
       if (active && (e.type === 'touchcancel' || (e.touches && e.touches.length === 0))) resetTouchInput(e.type === 'touchcancel');
     }
@@ -371,6 +384,7 @@
       stickKnob.style.transform = 'translate(calc(-50% + ' + (x * 32).toFixed(1) + 'px),calc(-50% + ' + (y * 32).toFixed(1) + 'px))';
     }
     function pollGamepad() {
+      if (!ownsInput()) return;
       let pads;
       try { pads = root.navigator.getGamepads && root.navigator.getGamepads(); } catch (_) { return; }
       const p = pads && Array.from(pads).find(p => p && p.connected && p.mapping === 'standard');
@@ -391,6 +405,7 @@
       padPrevious = raw;
     }
     function command() {
+      if (!ownsInput()) return arena.normalizeCommand();
       const keyboardX = (actionHeld('right') ? 1 : 0) - (actionHeld('left') ? 1 : 0);
       const keyboardY = (actionHeld('down') ? 1 : 0) - (actionHeld('jump') && (held.has('KeyW') || held.has('ArrowUp')) ? 1 : 0);
       const c = { moveX: clamp(keyboardX + moveX + pad.moveX, -1, 1), moveY: clamp(keyboardY + moveY + pad.moveY, -1, 1),
@@ -407,6 +422,7 @@
         root.clearTimeout(timer); if (clearRecoveryClick === clear) clearRecoveryClick = null;
       };
       const swallow = e => {
+        if (rootEl && rootEl.inert) { clear(); return; }
         if (!e.isTrusted || e.detail === 0) return;
         e.preventDefault(); e.stopImmediatePropagation(); clear();
       };
@@ -445,8 +461,8 @@
       const rematch = rootEl.querySelector('#arenaRematch'), next = rootEl.querySelector('#arenaNext');
       if (rematch) { rematch.disabled = online && !host; rematch.textContent = online ? (host ? 'Rematch together' : 'Waiting for host…') : 'Rematch'; }
       if (next) next.disabled = online && !host;
-      const restart = pausePanel && pausePanel.querySelectorAll('button')[1]; if (restart) restart.disabled = online && !host;
-      const back = rootEl.querySelector('#arenaLobby'); if (back) { back.hidden = !!localSession; back.textContent = localSession ? 'Leave expedition' : online ? (host ? 'Back to room lobby' : 'Leave arena room') : 'Choose a match'; }
+      const restart = pausePanel && pausePanel.querySelectorAll('button')[1]; if (restart) { restart.disabled = !!sharedSession || (online && !host); restart.hidden = !!sharedSession; }
+      const back = rootEl.querySelector('#arenaLobby'); if (back) { back.hidden = !!(localSession || sharedSession); back.textContent = (localSession || sharedSession) ? 'Finish expedition' : online ? (host ? 'Back to room lobby' : 'Leave arena room') : 'Choose a match'; }
       const resume = rootEl.querySelector('#arenaResume'); if (resume) { resume.disabled = (roomPaused && !host) || !!(roomStatus && roomStatus.connection); resume.textContent = roomStatus && roomStatus.connection ? 'Reconnecting…' : roomPaused && !host ? 'Waiting for host…' : 'Resume match'; }
     }
     function cycleWatch(direction) {
@@ -499,8 +515,9 @@
       if (!snapshot.isHost && old && !newRound) for (const a of state.actors) { const p = old.actors.find(p => p.id === a.id); if (p && p.stocks === a.stocks && p.respawnTicks === a.respawnTicks && Math.hypot(p.x-a.x,p.y-a.y)<220) { a.px=p.x;a.py=p.y; } }
       networkReceived = performance.now(); priorNetworkTick = state.tick;
       if (view !== 'match' || newRound) {
+        cosmeticRound++;
         resetInput(); view = 'match'; paused = false; localRoomMenu = false; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; resultAt = 0; effects = []; spectatorId = null; camera.initialized = false;
-        rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION 2/3 · ' : '') + selectedArena().name + ' · FRIEND ARENA'; setModal(null); unlockAudio();
+        rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION · ' : '') + selectedArena().name + ' · FRIEND ARENA'; setModal(null); unlockAudio();
       }
       const wasPaused = roomPaused; roomPaused = snapshot.status === 'paused';
       if (roomPaused) { resetInput(); paused = true; pausePanel.querySelector('#arena-pause-reason').textContent = snapshot.isHost ? 'The whole arena is paused. Resume when you’re ready.' : 'The host paused the arena. Everyone’s match is safely frozen.'; if (activeModal !== pausePanel) setModal(pausePanel); }
@@ -651,31 +668,40 @@
     }
     function actorColor(actor) { return state && state.format === 'teams' ? (actor.team === 0 ? '#38E1FF' : '#FFB454') : (actor.color || PLAYER_COLORS[(actor.id - 1) % 4]); }
     function astronaut(g, actor, x, y, tick, hero) {
-      const art = root.SpaceManArt, color = hero ? (actor.color || '#38E1FF') : actorColor(actor), w = actor.w || 24, h = actor.h || 34;
-      const speed = Math.min(Math.abs(actor.vx || 0) / 6.4, 1), phase = tick * .25 + actor.id, bob = calm() ? 0 : Math.sin(phase * 2) * speed * .9;
+      const art = root.SpaceManArt, color = hero ? (actor.color || '#38E1FF') : actorColor(actor);
+      const appearance = actor.appearance || ((hero || actor.id === localActor()?.id) && typeof opts.appearance === 'function' ? opts.appearance() : null);
+      const style = art.characterStyle(appearance, color), P = style.palette;
+      const aw = actor.w || 24, ah = actor.h || 34, boss = actor.boss;
+      const w = 24, h = 34, scale = boss ? Math.min(aw / w, ah / h) : 1;
+      const speed = Math.min(Math.abs(actor.vx || 0) / 6.4, 1), phase = tick * .25 + actor.id;
+      const bob = calm() ? 0 : Math.sin(phase * 2) * speed * .9;
       const facing = actor.facing || 1, attack = actor.attackTicks || 0;
-      g.save(); g.translate(x + w / 2, y + h / 2); if (!calm()) g.rotate(clamp((actor.vx || 0) * .012, -.10, .10)); g.scale(facing, 1);
-      if (art && !saver()) { g.globalAlpha = actor.invulnerable ? .42 : .18; g.drawImage(art.glow(32, color, .03), -30, -31, 60, 60); g.globalAlpha = 1; }
+      g.save(); g.translate(x + aw / 2, y + ah - h * scale / 2);
+      if (!calm()) g.rotate(clamp((actor.vx || 0) * .012, -.10, .10)); g.scale(facing * scale, scale);
+      if (!saver()) { g.globalAlpha = actor.invulnerable ? .42 : .18; g.drawImage(art.glow(32, color, .03), -30, -31, 60, 60); g.globalAlpha = 1; }
       if (actor.invulnerable > 0) { g.strokeStyle = color; g.lineWidth = 1; g.globalAlpha = .6; g.beginPath(); g.ellipse(0, -1, w * .82, h * .7, 0, 0, TAU); g.stroke(); g.globalAlpha = 1; }
       if (actor.dashTicks > 0) {
         g.fillStyle = color; g.globalAlpha = .45; rounded(g, -w * 1.7, -5, w * 1.1, 5, 2); g.fill(); g.globalAlpha = .22; rounded(g, -w * 2.1, 3, w * 1.4, 4, 2); g.fill(); g.globalAlpha = 1;
       }
       const stride = actor.onGround ? Math.sin(phase) * speed * 4 : actor.vy < 0 ? -3 : 2;
-      g.strokeStyle = '#87A4BA'; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(3, 7); g.lineTo(5 + stride, h / 2 - 2); g.stroke();
-      g.strokeStyle = '#D8E5EE'; g.beginPath(); g.moveTo(-3, 7); g.lineTo(-5 - stride, h / 2 - 2); g.stroke();
+      g.strokeStyle = P.legB; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(3, 7); g.lineTo(5 + stride, h / 2 - 2); g.stroke();
+      g.strokeStyle = P.legF; g.beginPath(); g.moveTo(-3, 7); g.lineTo(-5 - stride, h / 2 - 2); g.stroke();
       g.fillStyle = '#415D78'; rounded(g, -w / 2 - 3, -6 + bob, 8, 15, 3); g.fill(); g.fillStyle = color; g.fillRect(-w / 2 - 2, -3 + bob, 3, 6);
-      g.strokeStyle = '#9EBDD0'; g.lineWidth = 4.5; g.beginPath(); g.moveTo(-5, 0 + bob); g.lineTo(-10, 6 + bob); g.stroke();
-      g.fillStyle = actor.suit || '#F4F7FF'; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill();
-      g.fillStyle = '#243C57'; rounded(g, -4, -1 + bob, 8, 7, 2); g.fill(); g.fillStyle = color; rounded(g, -2.5, .5 + bob, 5, 2.5, 1); g.fill(); g.fillStyle = '#8DABC4'; g.fillRect(-7, 8 + bob, 14, 2);
-      // Oversized helmet, a blue visor and glint preserve the runner's silhouette.
-      g.fillStyle = actor.suit || '#F4F7FF'; g.beginPath(); g.arc(0, -9 + bob, 11, 0, TAU); g.fill();
-      g.strokeStyle = color; g.lineWidth = 1.7; g.beginPath(); g.arc(0, -9 + bob, 9.5, Math.PI * 1.1, Math.PI * 1.85); g.stroke();
-      g.fillStyle = '#102D49'; rounded(g, -5, -15 + bob, 14, 10, 4.5); g.fill(); g.fillStyle = color; g.globalAlpha = .58; rounded(g, -3, -14 + bob, 10, 3, 1.5); g.fill(); g.globalAlpha = 1;
-      const blink = !hero && ((tick + actor.id * 71) % 237 < 6);
-      g.fillStyle = '#BFEFFF'; if (blink) { g.fillRect(1, -9 + bob, 2, 1); g.fillRect(5, -9 + bob, 2, 1); } else { rounded(g, 1, -11 + bob, 1.6, 3.2, .8); g.fill(); rounded(g, 5, -11 + bob, 1.6, 3.2, .8); g.fill(); }
-      g.fillStyle = '#FFF'; g.globalAlpha = .8; g.beginPath(); g.ellipse(-5, -15 + bob, 2.5, 1.5, -.65, 0, TAU); g.fill(); g.globalAlpha = 1;
-      g.strokeStyle = color; g.lineWidth = 1.5; g.beginPath(); g.moveTo(-5, -19 + bob); g.lineTo(-7, -23 + bob); g.stroke(); g.fillStyle = color; g.beginPath(); g.arc(-7, -23 + bob, 2, 0, TAU); g.fill();
-      g.strokeStyle = '#E1EBF4'; g.lineWidth = 4.5; g.beginPath(); g.moveTo(6, -1 + bob); g.lineTo(attack ? 14 : 10, attack ? -3 + bob : 5 + bob); g.stroke();
+      g.strokeStyle = P.legB; g.lineWidth = 4.5; g.beginPath(); g.moveTo(-5, bob); g.lineTo(-10, 6 + bob); g.stroke();
+      g.fillStyle = P.suit; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill();
+      art.suitDetails(g, 0, bob, style);
+      if (boss) {
+        // Broader armored shoulders and three charge cells distinguish the
+        // guardian at a glance; authored encounter telegraphs live outside it.
+        g.fillStyle = P.legB; rounded(g, -12, -4 + bob, 6, 7, 2); g.fill(); rounded(g, 6, -4 + bob, 6, 7, 2); g.fill();
+        g.fillStyle = color; for (let i = 0; i < 3; i++) g.fillRect(-3 + i * 2.5, 7 + bob, 1.5, 2);
+      }
+      const reaction = art.arenaMood(actor);
+      const face = { tick: hero ? 20 : tick, id: actor.id, calm: calm() || hero,
+        mood: reaction, lookX: Math.min(speed, .8), lookY: actor.onGround ? 0 : (actor.vy < 0 ? -.5 : .5) };
+      const helmetStyle = boss?.phase === 'charging' ? { ...style, appearance: { ...style.appearance, eyes: 'determined' } } : style;
+      art.characterHelmet(g, 0, -9 + bob, helmetStyle, face);
+      g.strokeStyle = P.arm; g.lineWidth = 4.5; g.beginPath(); g.moveTo(6, -1 + bob); g.lineTo(attack ? 14 : 10, attack ? -3 + bob : 5 + bob); g.stroke();
       g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
       g.restore();
     }
@@ -757,6 +783,18 @@
       ctx.strokeStyle = t.accent; ctx.globalAlpha = .055; ctx.lineWidth = 1 / c.scale; ctx.beginPath(); ctx.ellipse(a.width / 2, 420, 445, 130, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
       a.platforms.forEach(p => platform(ctx, p, a, false));
       for (const actor of state.actors) {
+        const warning = actor.boss && arena.bossAttackBox && arena.bossAttackBox(actor);
+        if (warning) {
+          ctx.fillStyle = warning.active ? '#FF745788' : '#FFCA4630';
+          ctx.strokeStyle = warning.active ? '#FF9C8B' : '#FFE39A';
+          ctx.lineWidth = warning.active ? 3 : 2; ctx.setLineDash(warning.active ? [] : [9, 7]);
+          ctx.fillRect(warning.x, warning.y, warning.w, warning.h); ctx.strokeRect(warning.x, warning.y, warning.w, warning.h);
+          ctx.setLineDash([]);
+          ctx.font = '800 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#FFF3CE';
+          ctx.fillText(warning.move === 'shockwave' ? 'JUMP THE WAVE' : 'DASH CLEAR', warning.x + warning.w / 2, warning.y - 9);
+        }
+      }
+      for (const actor of state.actors) {
         if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
         const x = lerp(actor.px, actor.x, alpha), y = lerp(actor.py, actor.y, alpha);
         const under = a.platforms.filter(p => x + actor.w / 2 >= p.x && x + actor.w / 2 <= p.x + p.w && p.y >= y + actor.h - 3).sort((a, b) => a.y - b.y)[0];
@@ -789,7 +827,7 @@
       }
       ctx.globalAlpha = 1; ctx.restore();
       drawIndicators(c, alpha);
-      if (isMatch() && localActor() && localActor().stocks <= 0 && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText('You’re out · watching ' + watchedActor().name, width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
+      if (isMatch() && localActor() && localActor().stocks <= 0 && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText(localSession ? 'Rescue shuttle incoming' : 'You’re out · watching ' + watchedActor().name, width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
     }
     function drawIndicators(c, alpha) {
       for (const actor of state.actors) {
@@ -806,9 +844,9 @@
     function buildRoster() {
       rosterEl.replaceChildren();
       for (const actor of state.actors) {
-        const card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.style.setProperty('--fighter', actorColor(actor));
+        const card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.dataset.boss = String(!!actor.boss); card.style.setProperty('--fighter', actorColor(actor));
         const icon = el('span', 'arena-player-helmet'); icon.setAttribute('aria-hidden', 'true');
-        const info = el('div', 'arena-player-info'); const name = el('strong', 'arena-player-name', (state.format === 'teams' ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name); const tag = el('span', 'arena-player-tag', (actor.controller === 'human' ? 'YOU' : actor.controller === 'remote' ? (actor.connected ? 'FRIEND' : 'RECONNECTING') : 'CPU') + (state.format === 'teams' ? (actor.team === 0 ? ' · BLUE' : ' · GOLD') : ''));
+        const info = el('div', 'arena-player-info'); const name = el('strong', 'arena-player-name', (state.format === 'teams' && !actor.boss ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name); const tag = el('span', 'arena-player-tag', (actor.controller === 'human' ? 'YOU' : actor.controller === 'remote' ? (actor.connected ? 'FRIEND' : 'RECONNECTING') : 'CPU') + (state.format === 'teams' ? (actor.team === 0 ? ' · BLUE' : ' · GOLD') : ''));
         const lives = el('span', 'arena-stocks'); info.append(name, tag, lives); const damage = el('strong', 'arena-damage', '0%'); card.append(icon, info, damage); rosterEl.append(card);
       }
     }
@@ -818,9 +856,16 @@
       const seconds = Math.max(0, Math.ceil(state.timeLeftTicks / 60)); timerEl.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0'); timerEl.classList.toggle('arena-clock-urgent', seconds <= 30);
       for (const actor of state.actors) {
         const card = rosterEl.querySelector('[data-actor="' + actor.id + '"]'); if (!card) continue;
+        if (actor.boss) {
+          card.querySelector('.arena-player-tag').textContent = actor.boss.phase === 'recover' ? 'EXPOSED · PULSE' : actor.boss.phase === 'charging' ? (actor.boss.move === 'shockwave' ? 'JUMP WAVE' : 'DASH CLEAR') : 'GUARDIAN';
+          card.querySelector('.arena-damage').textContent = Math.max(0, Math.ceil(actor.boss.health)) + ' HP';
+          card.querySelector('.arena-stocks').textContent = 'CORE ' + Math.round(100 * actor.boss.health / actor.boss.maxHealth) + '%';
+          card.setAttribute('aria-label', actor.name + ', boss core ' + Math.round(actor.boss.health) + ' health, ' + actor.boss.phase);
+          continue;
+        }
         card.classList.toggle('arena-player-out', actor.stocks <= 0); card.querySelector('.arena-damage').textContent = actor.stocks <= 0 ? 'OUT' : Math.round(actor.damage) + '%';
         card.querySelector('.arena-damage').style.color = actor.damage >= 100 ? '#FF8E9A' : actor.damage >= 60 ? '#FFD180' : '';
-        card.querySelector('.arena-stocks').textContent = '●'.repeat(Math.max(0, actor.stocks)) + '○'.repeat(Math.max(0, (arena.constants.STOCKS || 3) - actor.stocks));
+        card.querySelector('.arena-stocks').textContent = '●'.repeat(Math.max(0, actor.stocks)) + '○'.repeat(Math.max(0, (state.encounter ? state.encounter.stocks : arena.constants.STOCKS || 3) - actor.stocks));
         card.setAttribute('aria-label', actor.name + (actor.controller === 'human' ? ', you' : '') + (state.format === 'teams' ? (actor.team === 0 ? ', blue team' : ', gold team') : '') + ', ' + actor.stocks + ' lives, ' + Math.round(actor.damage) + ' percent damage');
       }
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
@@ -840,6 +885,9 @@
       for (const event of state.events || []) {
         const who = state.actors.find(a => a.id === event.actorId), type = event.type;
         if (['hit', 'ringout', 'respawn', 'jump'].includes(type)) effects.push({ type, x: event.x, y: event.y, color: who ? actorColor(who) : '#FFE59A', life: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14, max: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14 });
+        if (type === 'boss-warning') { announce(event.move === 'shockwave' ? 'Guardian charging a ground wave. Jump!' : 'Guardian aiming. Dash out of the warning!'); sfx('countdown'); }
+        else if (type === 'boss-exposed') announce('Guardian core exposed. Pulse now!');
+        else if (type === 'boss-defeated') { announce('Guardian defeated!'); sfx('win'); }
         if (type === 'ringout' && who) { announce(who.name + (who.stocks > 0 ? ' has ' + who.stocks + ' lives left.' : ' is out.')); sfx('ko'); }
         else if (type === 'hit') sfx('hit');
         else if (who && who.controller === 'human' && ['jump', 'attack', 'dash'].includes(type)) sfx(type);
@@ -854,7 +902,7 @@
       arena.step(state, commands);
       if (!oldDash && human.dashTicks > 0) sfx('dash');
       effects.forEach(e => e.life--); effects = effects.filter(e => e.life > 0); consumeEvents(); updateHud(false);
-      if (state.phase === 'over' && !resultAt) { resultAt = performance.now() + 450; resetInput(); }
+      if ((state.phase === 'over' || localRescue()) && !resultAt) { resultAt = performance.now() + 450; resetInput(); }
     }
     function frame(now) {
       frameId = 0;
@@ -872,22 +920,24 @@
         while (accumulator >= 1 / 60 && steps < 6 && isRunning()) { step(); accumulator -= 1 / 60; steps++; }
         if (steps === 6) accumulator = Math.min(accumulator, 1 / 60);
       } else accumulator = 0;
-      if (isMatch() && state.phase === 'over' && !activeModal && resultAt && now >= resultAt) showResults();
+      if (isMatch() && (state.phase === 'over' || localRescue()) && !activeModal && resultAt && now >= resultAt) showResults();
       const renderGap = saver() ? 1000 / 30 : 1000 / 60;
       if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { paint(paused || state.phase === 'over' ? 1 : onlineActive() && !room.isHost ? clamp((now - networkReceived) / 50, 0, 1) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
       if (!frameId && active && !document.hidden) frameId = root.requestAnimationFrame(frame);
     }
     function ensureFrame() { if (active && !document.hidden && !frameId) { lastTime = 0; frameId = root.requestAnimationFrame(frame); } }
     function startMatch() {
-      if (!active) return;
+      if (!active || sharedSession) return;
       if (onlineActive()) { if (room.isHost) { if (room.current && room.current.status !== 'lobby') room.lobby(); room.configure(selections); room.start(((Date.now() >>> 0) ^ (++matchSerial * 2654435761)) >>> 0); } return; }
       unlockAudio(); resetInput(); saveSelection();
       // Seed ownership belongs to the pure simulation. No gameplay randomness
       // comes from frame time or presentation effects.
       matchSerial++; const seed = localSession ? localSession.seed : ((Date.now() >>> 0) ^ Math.imul(matchSerial, 2654435761)) >>> 0;
-      state = arena.create({ arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty });
+      state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty });
+      cosmeticRound++;
+      if (root.SpaceManCosmetics && typeof opts.appearance === 'function') { const human = state.actors.find(a => a.controller === 'human'); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       view = 'match'; paused = false; resultAt = 0; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; effects = []; spectatorId = null; camera.initialized = false;
-      rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION 2/3 · ' : '') + selectedArena().name + ' · ' + FORMATS.find(f => f.id === state.format).name;
+      rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION · ' : '') + selectedArena().name + ' · ' + FORMATS.find(f => f.id === state.format).name;
       buildRoster(); setModal(null); updateHud(true); paint(1); ensureFrame();
       if (typeof opts.onStart === 'function') opts.onStart({ arenaId: selections.arenaId, format: selections.format });
     }
@@ -908,7 +958,7 @@
     }
     function showLobby() {
       if (!active) return;
-      if (localSession) { close(); return; }
+      if (localSession || sharedSession) { close(); return; }
       if (onlineActive()) { if (!room.isHost) { leaveArenaRoom(); return; } room.lobby(); }
       resetInput(); state = null; view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; camera.initialized = false;
       syncChoices(); setModal(lobby, formatButtons.find(b => b.dataset.format === selections.format)); paintLobby(); announce('Choose your arena match');
@@ -916,21 +966,30 @@
     }
     function nextArena() { const i = arena.arenas.findIndex(a => a.id === selections.arenaId); selections.arenaId = arena.arenas[(i + 1) % arena.arenas.length].id; syncChoices(); startMatch(); }
     function showResults() {
-      if (!state || !state.result) return;
+      if (!state || (!state.result && !localRescue())) return;
+      if (sharedSession) { resetInput(); return; }
       updateHud(true); // The final stock loss must bypass the five-tick HUD throttle.
-      resetInput(); const result = state.result, human = state.actors.find(a => a.controller === 'human');
+      resetInput(); const result = state.result || { tie: false, winnerIds: [], winnerTeam: null }, human = state.actors.find(a => a.controller === 'human');
       const won = !!human && (result.winnerIds.includes(human.id) || (state.format === 'teams' && result.winnerTeam === human.team));
+      if (localSession) {
+        if (!localSession.reported) {
+          localSession.reported = true;
+          localSession.onResult({ won, tie: result.tie, kos: human ? human.kos : 0, stocks: human ? human.stocks : 0 });
+        }
+        return;
+      }
       resultTitle.textContent = result.tie ? 'A cosmic stalemate' : won ? (state.format === 'teams' ? 'Your crew wins!' : 'You held your orbit!') : 'One more orbit?';
       const winners = state.actors.filter(a => result.winnerIds.includes(a.id)).map(a => a.name).join(' & ');
       resultText.textContent = result.tie ? 'An even match among the stars. Ready for a tiebreaker?' : won ? 'Nice flying. The last launch belongs to you.' : (winners || 'The other crew') + ' took this round. A fresh launch is one tap away.';
       resultRoster.replaceChildren();
       for (const actor of state.actors) { const row = el('div', 'arena-result-row'); row.style.setProperty('--fighter', actorColor(actor)); row.append(el('strong', '', actor.name + (actor.controller === 'human' ? ' · YOU' : '')), el('span', '', (actor.kos || 0) + ' KO' + ((actor.kos || 0) === 1 ? '' : 's')), el('span', '', actor.stocks + ' lives')); resultRoster.append(row); }
       if (onlineActive() && !human && !result.tie) { resultTitle.textContent = winners + ' win!'; resultText.textContent = 'Shared match complete. The host can launch another round.'; }
-      syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent);
-      if (localSession && !localSession.reported) {
-        localSession.reported = true;
-        localSession.onResult({ won, tie: result.tie, kos: human ? human.kos : 0, stocks: human ? human.stocks : 0 });
+      if (human && typeof opts.onReward === 'function') {
+        const receipt = onlineActive() ? root.SpaceManCosmetics.roundReceipt('arena', opts.net.info().roomId, Number(rootEl.dataset.epoch)) : cosmeticSession + ':' + cosmeticRound;
+        const found = receipt ? opts.onReward({ type: 'arena', id: receipt }) || [] : [];
+        if (found.length) resultText.textContent += ' Found: ' + found.map(id => root.SpaceManCosmetics.item(id)?.name || '').join(', ') + '.';
       }
+      syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent);
     }
     function onVisibility() {
       if (!active) return;
@@ -966,8 +1025,15 @@
       if (root.ResizeObserver) { resizeObserver = new root.ResizeObserver(resize); resizeObserver.observe(rootEl); }
       resize(); showLobby(); if (room) roomChanged(room.status()); ensureFrame();
     }
-    function close() {
+    function close(options = {}) {
       if (!active) return;
+      const shared = sharedSession;
+      if (shared && !options.transition && shared.adapter.confirmLeave && !shared.adapter.confirmLeave()) return;
+      if (shared) {
+        const crewButton = pausePanel.querySelector('#arenaJourneyCrew'); if (crewButton) crewButton.hidden = true;
+        shared.detach?.(); sharedSession = null;
+        room.release(); room = shared.previousRoom; selections = shared.previous;
+      }
       if (room && (room.active || room.busy) && !leaveArenaRoom()) return;
       resetInput(); active = false; if (frameId) root.cancelAnimationFrame(frameId); frameId = 0; lastTime = 0; accumulator = 0;
       for (const [target, type, fn, settings] of listeners.splice(0)) target.removeEventListener(type, fn, settings);
@@ -981,20 +1047,37 @@
       pausePanel.querySelector('#arenaLobby').hidden = false;
       pausePanel.querySelector('#arenaLobby').textContent = 'Choose a match';
       pausePanel.querySelector('#arenaExit').textContent = 'All games';
-      if (typeof opts.onClose === 'function') opts.onClose();
+      const restart = pausePanel.querySelectorAll('button')[1]; if (restart) restart.hidden = false;
+      if (shared && !options.transition) shared.adapter.leave();
+      if (!options.transition && !shared && typeof opts.onClose === 'function') opts.onClose();
     }
+    function openSharedSession(config, adapter) {
+      if (active || destroyed || !adapter || typeof adapter.attach !== 'function') return false;
+      open();
+      sharedSession = { previousRoom: room, previous: { ...selections }, adapter, detach: null };
+      room = adapter;
+      selections = { arenaId: arena.getArena(config.arenaId).id, format: config.format || 'teams', difficulty: 'easy' };
+      rootEl.dataset.session = 'true';
+      pausePanel.querySelector('#arenaExit').textContent = 'Leave expedition';
+      let crewButton = pausePanel.querySelector('#arenaJourneyCrew');
+      if (!crewButton) { crewButton = button('Crew · seats & invite', 'arena-text-button', () => sharedSession?.adapter.openCrew?.()); crewButton.id = 'arenaJourneyCrew'; pausePanel.append(crewButton); }
+      crewButton.hidden = false;
+      sharedSession.detach = adapter.attach({ onChange: roomChanged, onSnapshot: networkSnapshot });
+      syncRoomChoices(); if (!state) { setModal(null); touchEl.hidden = true; } return true;
+    }
+    function closeSharedSession() { if (sharedSession) close({ transition: true }); }
     function openSession(config, onResult) {
       if (active || destroyed || (opts.net && opts.net.active) || typeof onResult !== 'function') return false;
       open();
-      localSession = { seed: config.seed >>> 0, previous: { ...selections }, onResult, reported: false };
-      selections = { arenaId: arena.getArena(config.arenaId).id, format: 'duel', difficulty: 'easy' };
+      localSession = { config: { ...config }, seed: config.seed >>> 0, previous: { ...selections }, onResult, reported: false };
+      selections = { arenaId: arena.getArena(config.arenaId).id, format: config.format === 'teams' ? 'teams' : 'duel', difficulty: 'easy' };
       rootEl.dataset.session = 'true';
-      pausePanel.querySelector('#arenaLobby').textContent = 'Leave expedition';
-      pausePanel.querySelector('#arenaExit').textContent = 'Leave expedition';
+      pausePanel.querySelector('#arenaLobby').textContent = 'Finish expedition';
+      pausePanel.querySelector('#arenaExit').textContent = 'Finish expedition';
       syncChoices(); startMatch(); return true;
     }
     function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
-    return Object.freeze({ open, openSession, close, destroy, joinInvite(payload, role) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true); }, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
+    return Object.freeze({ open, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true); }, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
   }
   root.SpaceManArenaUI = Object.freeze({ create });
 })(typeof window !== 'undefined' ? window : globalThis);

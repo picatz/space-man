@@ -51,7 +51,7 @@ function harness(options = {}) {
   };
   for (const name of ['compileShader', 'attachShader', 'linkProgram', 'deleteShader', 'deleteProgram',
     'deleteBuffer', 'enable', 'depthFunc', 'depthMask', 'disable', 'clearDepth', 'viewport', 'clearColor',
-    'clear', 'useProgram', 'uniformMatrix4fv', 'uniformMatrix3fv', 'uniform3fv', 'uniform2f',
+    'clear', 'useProgram', 'uniformMatrix4fv', 'uniformMatrix3fv', 'uniform3fv', 'uniform2f', 'uniform1f',
     'enableVertexAttribArray', 'vertexAttribPointer', 'drawArrays']) {
     gl[name] = (...args) => calls.push([name, ...args]);
   }
@@ -357,4 +357,13 @@ test('offscreen bounded meshes skip GPU uploads while unbounded geometry and vis
  renderer.draw({camera,meshes:[{vertices:v,static:true,bounds:behind,model}]});
  assert.equal(h.count('drawArrays'),1);assert.equal(h.count('bufferData'),1);
  renderer.draw({camera,meshes:[{vertices:v,static:true}]});assert.equal(h.count('drawArrays'),2);renderer.dispose();
+});
+
+test('only explicitly marked LED meshes bypass diffuse light and keep ordinary fog/depth', () => {
+  const h=harness(),renderer=Render3D.create(h.canvas),vertices=triangle();
+  assert.equal(renderer.draw({meshes:[{vertices},{vertices,emissive:true},{vertices},{vertices,emissive:1}]}),true);
+  assert.deepEqual(h.calls.filter(c=>c[0]==='uniform1f'&&c[1]==='uEmissive').map(c=>c[2]),[0,1,0,0]);
+  assert.match(h.gl.shaders[0].source,/mix\(0.42 \+ 0.58 \* diffuse, 1.0, uEmissive\)/);
+  assert.match(h.gl.shaders[1].source,/mix\(vColor, uFogColor, fog\)/);
+  assert.ok(h.calls.some(c=>c[0]==='enable'&&c[1]===h.gl.DEPTH_TEST));renderer.dispose();
 });

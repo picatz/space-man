@@ -4,10 +4,11 @@
     typeof module === "object" && module.exports
       ? require("./race-track-mesh.js")
       : root.SpaceManRaceTrackMesh,
+    typeof module === "object" && module.exports ? require("./art.js") : root.SpaceManArt,
   );
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.SpaceManRaceScene = api;
-})(typeof window !== "undefined" ? window : globalThis, function (TrackMesh) {
+})(typeof window !== "undefined" ? window : globalThis, function (TrackMesh, Art) {
   "use strict";
   const rgb = (h) =>
     [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
@@ -299,8 +300,9 @@
       const h = a.heading,
         co = Math.cos(h),
         si = Math.sin(h),
-        color = rgb(a.color),
-        white = [0.86, 0.93, 0.97];
+        style = Art.characterStyle(a.appearance, a.color),
+        P = style.palette, appearance = style.appearance,
+        color = rgb(style.accent), white = rgb(P.suit);
       const p = (f, u, side) => [
         a.x + co * f - si * side,
         u,
@@ -313,22 +315,28 @@
       pod(1, 8, 0, 28, 5, 15, [0.1, 0.21, 0.28]);
       pod(3, 11, 0, 27, 6, 14, white);
       pod(17, 15, 0, 12, 1.3, 5, color);
+      if (appearance.ship === 'orbit') {
+        // The ring is a geometric part, not a glowing texture or altered hitbox.
+        ring(b, p, -8, 9, 0, 20, 24, 2.5, color);
+      }
       for (const side of [-18, 18]) {
         pod(-3, 8, side, 23, 4, 5.5, color);
         pod(-1, 6, side, 18, 1.1, 5.8, [0.43, 0.9, 1]);
         // Small swept stabilizers replace a rectangular full-width spoiler.
+        if (appearance.ship !== 'orbit') {
         b.triangle(
           p(-22, 10, side),
-          p(-9, 14, side),
-          p(-23, 16, side * 1.42),
+          p(appearance.ship === "leaf" ? 7 : -9, 14, side),
+          p(appearance.ship === "leaf" ? -12 : -23, 16, side * (appearance.ship === "leaf" ? 1.65 : 1.42)),
           color,
         );
         b.triangle(
           p(-22, 10, side),
-          p(-23, 16, side * 1.42),
+          p(appearance.ship === "leaf" ? -12 : -23, 16, side * (appearance.ship === "leaf" ? 1.65 : 1.42)),
           p(-25, 8, side * 1.18),
           shade(color, 0.75),
         );
+        }
         // Bright rear engine discs remain readable even without boosting.
         for (let i = 0; i < 10; i++) {
           const a0 = (i * Math.PI) / 5,
@@ -341,32 +349,48 @@
           );
         }
       }
-      pod(-7, 17, 0, 7, 6, 7, color);
-      b.sphere(...p(-5, 24, 0), 8.5, [0.96, 0.99, 1], 12, 7);
-      // Visor follows the helmet sphere rather than becoming a square box.
-      for (let i = 0; i < 10; i++) {
-        const a0 = -2.15 + i * 0.43,
-          a1 = a0 + 0.43;
-        const visor = (angle, y) =>
-          p(
-            -5 + Math.sqrt(8.65 ** 2 - (y - 24) ** 2) * Math.cos(angle),
-            y,
-            Math.sqrt(8.65 ** 2 - (y - 24) ** 2) * Math.sin(angle),
-          );
-        b.quad(
-          visor(a0, 21.5),
-          visor(a1, 21.5),
-          visor(a1, 27.5),
-          visor(a0, 27.5),
-          [0.025, 0.2, 0.3],
-        );
-        b.quad(
-          visor(a0, 27.5),
-          visor(a1, 27.5),
-          visor(a1, 28.3),
-          visor(a0, 28.3),
-          [0.38, 0.86, 0.95],
-        );
+      // Suit, shoulder capsules, collar and instrument panel belong to the
+      // same astronaut used on foot. The helmet keeps a generous silhouette.
+      pod(-7, 17, 0, 7, 6, 7, white);
+      pod(-1, 18, -6.5, 4.5, 2, 2, rgb(P.arm));
+      pod(-1, 18, 6.5, 4.5, 2, 2, rgb(P.arm));
+      pod(-5, 18.5, 0, 6, 1.5, 6, rgb(P.legB));
+      b.box(...p(.1, 18, 0), 1.5, 3, 5, [0.14, 0.24, 0.34], h);
+      b.box(...p(1, 19, 0), .4, 1.1, 3, color, h);
+      const helmetRadius = appearance.helmet === 'round' ? 8.5 : 9.2;
+      if (appearance.helmet === 'retro') pod(-5, 24, 0, 8.2, 8, 9.1, white);
+      else b.sphere(...p(-5, 24, 0), helmetRadius, white, 12, 7);
+      // A tessellated outer glass shell. One tall chord used to intersect the
+      // helmet's different triangle grid, showing white teeth through the glass.
+      // Short 2px strips plus radial clearance keep every triangle outside it.
+      for (let i = 0; i < 20; i++) {
+        const range = appearance.helmet === 'bubble' ? 2.35 : 2.15;
+        const a0 = -range + i * range / 10, a1 = a0 + range / 10;
+        const visor = (angle, y) => p(
+          -5 + Math.sqrt((helmetRadius + .45) ** 2 - (y - 24) ** 2) * Math.cos(angle), y,
+          Math.sqrt((helmetRadius + .45) ** 2 - (y - 24) ** 2) * Math.sin(angle));
+        for (let band = 0; band < 3; band++) {
+          const bottom = 21.5 + band * 2, top = bottom + 2;
+          b.quad(visor(a0, bottom), visor(a0, top), visor(a1, top), visor(a1, bottom), [0.063, 0.176, 0.286]);
+        }
+        b.quad(visor(a0, 27.5), visor(a0, 28.3), visor(a1, 28.3), visor(a1, 27.5), rgb(P.visTop));
+      }
+      // Ear pods, precise rear gasket and short comms aerial make the chase
+      // silhouette recognizably Arena-derived without a fake rear-facing face.
+      for (const side of [-8, 8]) {
+        pod(-7, 24, side, 2, 2.5, 1.3, rgb(P.legB));
+        pod(-7, 24.5, side * 1.05, .8, .8, .8, color);
+      }
+      if (appearance.hat === 'none') {
+        b.box(...p(-8, 29, -3), 1, 2.5, 1, rgb(P.legB), h);
+        b.sphere(...p(-8, 31.7, -3), .9, color, 6, 3);
+      }
+      pilotHat(b, p, h, appearance.hat, P, color);
+      if (appearance.detail === 'stripe') {
+        b.box(...p(-5, 30, 0), 8, 1, 1.5, color, h);
+        for (const side of [-10, 10]) b.box(...p(10, 15.3, side), 15, .5, 1.5, color, h);
+      } else if (appearance.detail === 'stars') {
+        b.quad(p(12, 16.8, -2), p(14, 16.8, 0), p(12, 16.8, 2), p(10, 16.8, 0), color);
       }
       // Colored life-support panel at the rear of the suit/helmet.
       b.box(...p(-13, 18, 0), 3, 7, 7, [0.27, 0.43, 0.5], h);
@@ -407,59 +431,79 @@
     }
     return b.mesh();
   }
-  const kartModels = new Map();
+  function ring(b, p, f, y, z, rx, rz, thickness, color) {
+    for (let i = 0; i < 20; i++) {
+      const a = i * Math.PI / 10, n = (i + 1) * Math.PI / 10;
+      b.quad(p(f + rx * Math.cos(a), y, z + rz * Math.sin(a)),
+        p(f + rx * Math.cos(n), y, z + rz * Math.sin(n)),
+        p(f + (rx - thickness) * Math.cos(n), y, z + (rz - thickness) * Math.sin(n)),
+        p(f + (rx - thickness) * Math.cos(a), y, z + (rz - thickness) * Math.sin(a)), color);
+    }
+  }
+  function pilotHat(b, p, h, hat, P, color) {
+    const sphere = (f,y,z,r,c) => b.sphere(...p(f,y,z),r,c,8,4);
+    if (hat === 'antenna') {
+      b.box(...p(-5,32,0),1.2,5,1.2,rgb(P.legB),h); sphere(-5,38,0,2,rgb('#FFC93C'));
+    } else if (hat === 'sprout') {
+      b.box(...p(-5,32,0),.9,4,1,rgb('#35C46B'),h);
+      b.ellipsoid(...p(-4,36,-2),2.8,.8,1.7,rgb('#4ADE87'),h,8,3);
+      b.ellipsoid(...p(-6,35,2),2.8,.8,1.7,rgb('#4ADE87'),h,8,3);
+    } else if (hat === 'beanie') {
+      b.ellipsoid(...p(-5,31,0),8,4,8,rgb('#FF6B8A'),h,12,4);
+      ring(b,p,-5,31,0,8.6,8.6,1.3,rgb('#E14E6E')); sphere(-5,36,0,2.1,rgb('#FFF3F6'));
+    } else if (hat === 'halo') {
+      ring(b,p,-5,36,0,8.3,8.3,1.2,rgb('#FFE9A8'));
+    } else if (hat === 'crown') {
+      ring(b,p,-5,32,0,7,7,1.5,rgb('#FFC93C'));
+      for (let i=0;i<5;i++) { const a=i*Math.PI*2/5, n=a+.35; b.triangle(p(-5+7*Math.cos(a),32,7*Math.sin(a)),p(-5+7*Math.cos(n),37,7*Math.sin(n)),p(-5+7*Math.cos(a+.7),32,7*Math.sin(a+.7)),rgb('#FFC93C')); }
+      sphere(2,33,0,1.1,rgb('#FF4F66'));
+    } else if (hat === 'cone') {
+      b.crystal(...p(-5,31,0),5,12,rgb('#B87BFF'),8); sphere(-5,43,0,1.5,rgb('#FFC93C'));
+    } else if (hat === 'catears') {
+      for (const side of [-1,1]) { b.triangle(p(-3,30,side*4),p(-5,39,side*7),p(-7,30,side*10),rgb(P.suit)); b.triangle(p(-2.8,32,side*5),p(-4.8,37,side*7),p(-6.8,32,side*9),rgb('#FF9ECF')); }
+    } else if (hat === 'phones') {
+      for (const side of [-9,9]) b.ellipsoid(...p(-5,24,side),3,4,2,color,h,8,4);
+      ring(b,p,-5,31,0,8,10,1.6,color);
+    }
+  }
+  function faceMesh(appearance, pose) {
+    const b = builder(), r = (appearance.helmet === 'round' ? 8.5 : 9.2) + .7;
+    const point = (angle,y) => [-5+Math.sqrt(Math.max(0,r*r-(y-24)*(y-24)))*Math.cos(angle),y,Math.sqrt(Math.max(0,r*r-(y-24)*(y-24)))*Math.sin(angle)];
+    const patch = (angle,y,width,height) => b.quad(point(angle-width/2,y-height/2),point(angle-width/2,y+height/2),point(angle+width/2,y+height/2),point(angle+width/2,y-height/2),rgb('#DFFBFF'));
+    for (const side of [-1,1]) {
+      const a=side*.28+pose.lookX*.08, y=24.9-pose.lookY*.5;
+      if (pose.happy && !pose.closed) {
+        for(let i=0;i<4;i++) { const x=-1+i*.5; patch(a+x*.09,y+Math.sqrt(Math.max(0,1-x*x))*.65,.07,.6); }
+      } else if(pose.determined && !pose.closed) {
+        for(let i=0;i<3;i++) patch(a+(i-1)*.05,y+(i-1)*side*.2,.08,.65);
+      } else patch(a,y,pose.width*.11,Math.max(.6,pose.height*.78));
+    }
+    return b.mesh().vertices;
+  }
+  // Geometry caches are bounded. Animation swaps only a tiny visor mesh; it
+  // never rebuilds the full craft on a blink or on a fractional display frame.
+  const kartModels = new Map(), faceModels = new Map();
+  function cache(map, key, build, limit) {
+    if (!map.has(key)) { map.set(key, build()); if(map.size > limit) map.delete(map.keys().next().value); }
+    return map.get(key);
+  }
   function actorMeshes(snapshot, options = {}) {
     const out = [];
     for (const a of snapshot.actors) {
       if (!visibleActor(a, options)) continue;
-      const boosted = !!(a.boosting || a.padTicks > 0),
-        key = a.color + ":" + boosted;
-      let vertices = kartModels.get(key);
-      if (!vertices) {
-        const local = {
-          ...a,
-          x: 0,
-          y: 0,
-          heading: 0,
-          boosting: boosted,
-          padTicks: 0,
-        };
-        vertices = actors(
-          { tick: 0, actors: [local] },
-          { calm: true },
-        ).vertices;
-        kartModels.set(key, vertices);
-        if (kartModels.size > 24)
-          kartModels.delete(kartModels.keys().next().value);
-      }
-      const c = Math.cos(a.heading),
-        s = Math.sin(a.heading);
-      out.push({
-        vertices,
-        static: true,
-        actorId: a.id,
-        bounds: { min: [-72, 0, -30], max: [32, 34, 30] },
-        model: new Float32Array([
-          c,
-          0,
-          s,
-          0,
-          0,
-          1,
-          0,
-          0,
-          -s,
-          0,
-          c,
-          0,
-          a.x,
-          0,
-          a.y,
-          1,
-        ]),
-      });
+      const style = Art.characterStyle(a.appearance, a.color), appearance = style.appearance;
+      const boosted = !!(a.boosting || a.padTicks > 0);
+      const key = [style.accent, appearance.suit, appearance.helmet, appearance.hat, appearance.detail, appearance.ship, boosted].join(':');
+      const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, heading: 0, boosting: boosted, padTicks: 0 }] }, { calm: true }).vertices, 32);
+      const c = Math.cos(a.heading), s = Math.sin(a.heading);
+      const model = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,0,a.y,1]);
+      out.push({ vertices, static: true, actorId: a.id, bounds: { min: [-72,0,-32], max: [32,46,32] }, model });
+      const pose = Art.facePose({ eyes: appearance.eyes, tick: snapshot.tick, id: a.id, calm: options.calm, mood: a.recoveryTicks ? 2 : boosted ? 1 : 0 });
+      const faceKey = [appearance.helmet, pose.happy,pose.determined,pose.height,pose.width,pose.closed].join(':');
+      const faceVertices = cache(faceModels, faceKey, () => faceMesh(appearance,pose), 24);
+      out.push({ vertices: faceVertices, static: true, emissive: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[6,33,11] }, model });
     }
     return out;
   }
-  return Object.freeze({ rgb, builder, course, actors, actorMeshes });
+  return Object.freeze({ rgb, builder, course, actors, actorMeshes, faceMesh });
 });
