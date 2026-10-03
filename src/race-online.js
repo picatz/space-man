@@ -304,7 +304,7 @@
       s.recoverEdges = input.recoverEdges; s.seq = input.seq; s.command = input.command;
       // A validated neutral release is an interruption, even when a later input
       // arrives before the next host physics tick. It cannot cash a drift.
-      if (!input.command.throttle) Race.cancelControl(state, s.actorId);
+      if (!input.command.throttle || time - s.receivedAt >= INPUT_TTL_MS) Race.cancelControl(state, s.actorId);
       s.receivedAt = time; s.lastAcceptedTick = state.tick; return true;
     }
     function step(time) {

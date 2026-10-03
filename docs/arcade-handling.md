@@ -18,7 +18,8 @@ quality. Separate hosted Chromium/WebKit raster and input tests are required.
 - Calm the steering budget as speed rises, retaining prompt turn-in and immediate
   release. Keep the existing forgiving runoff, rescue cost, and ordered gates.
 - Holding Brake while steering at speed starts a controlled, speed-preserving
-  drift. Hold the same corner for 0.4 seconds, then release Brake for a short exit
+  drift. Hold the same full-steer corner for at least 0.4 seconds (partial analog
+  steering charges proportionally more slowly), then release Brake for a short exit
   boost. Brake alone still stops. Direction reversals, offroad, input expiry,
   rescue, and low speed discard the charge.
 - Use the existing host-authoritative boost duration and event representation for
@@ -37,3 +38,13 @@ Hosted browser tests must exercise real keyboard and touch holds, cancellation,
 portrait/landscape/tablet/desktop layouts, all camera modes, and friend rooms.
 Manual driving must be reported separately from controller-driven completion;
 neither an automated lap nor green CI establishes that the game is fun.
+
+## Verification so far
+
+The first complete pass has 855 passing pure regression tests. Independent
+review additionally reproduced and closed pause/cancel rewards, boost-strip
+braking, edge-crossing rewards, shallow analog reward farming and stale-input
+reacquisition before a host step. The fixed snapshot encoder and decoder remain
+byte-compatible; an old production decoder accepted the new reward and a new
+client accepted an old-host snapshot. Real browser and manual acceptance are
+still pending on the final revision.

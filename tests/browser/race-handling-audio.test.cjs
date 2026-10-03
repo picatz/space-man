@@ -446,7 +446,7 @@ for (const device of [
   await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
   const during=await page.evaluate(()=>raceUI.snapshot().actors[0]);
   assert.ok(during.drifting&&!during.offroad&&during.speed>4.5);
-  assert.equal(await page.locator('.race-drive-feedback').innerText(),'CARVING');
+  assert.equal(await page.locator('.race-drive-feedback').innerText(),'DRIFT');
   await page.keyboard.up('ArrowDown');await page.keyboard.up('ArrowRight');
   await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0);
   assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!');
@@ -477,6 +477,18 @@ for (const device of [
     await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
     await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks===0);
     assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].padTicks),0,'real touch cancellation is not brake release');
+    for(const releaseKind of ['brake-only','both-fingers']){
+      await page.keyboard.press('Escape');await screen(page,'pause');await menu(page,'Restart race');await playing(page);
+      await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(right,1),point(brake,2)]});
+      await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
+      if(releaseKind==='brake-only')await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[point(right,1)]});
+      else await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0);
+      assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!',releaseKind+' earns an actual authoritative exit boost');
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      assert.equal(await page.locator('.race-pressed').count(),0);
+    }
     await cdp.detach();
   }
 });

@@ -75,3 +75,11 @@ test('shallow analog steering must earn the same cornering amount as a full digi
   const s=ready(),a=s.actors[0];step(s,{throttle:1,brake:true,steer:.35},24);
   assert.ok(a.driftTicks<9);step(s,{throttle:1});assert.equal(a.padTicks,0);
 });
+test('a fresh packet after input expiry cannot cash charge before a delayed host step',()=>{
+  const Online=require('../src/race-online.js'),host=Online.createHost();
+  host.syncRoster([{p:1,role:0,identity:'test-host'}],0);host.start();
+  const send=(seq,time,command)=>host.receive(1,'test-host',Online.encodeInput({epoch:host.epoch,seq,tick:host.state.tick,recoverEdges:0,command}),time);
+  assert.ok(send(1,1,{throttle:1,steer:1,brake:true}));
+  const a=host.state.actors[0];Object.assign(a,{drifting:true,driftTicks:30,driftDirection:1});
+  assert.ok(send(2,501,{throttle:1}));assert.equal(a.driftTicks,0);assert.equal(a.drifting,false);
+});

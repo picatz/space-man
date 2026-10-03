@@ -918,7 +918,7 @@
       canvas.tabIndex = -1;
       canvas.setAttribute(
         "aria-label",
-        "Star Circuit. Auto acceleration. Left and right to steer, Down to brake, Space to boost, R to recover, Escape to pause.",
+        "Star Circuit. Auto acceleration. Left and right to steer, Down to brake; brake while turning to drift, release the brake after a corner for boost. Space to boost, R to recover, Escape to pause.",
       );
       g = canvas.getContext("2d", { alpha: false });
       rootEl.append(canvas);
@@ -1106,7 +1106,7 @@
         el(
           "p",
           "",
-          "Auto-drive is on. Steer with A/D or ←/→. Hold S/↓ while turning for 0.4 seconds to drift, then release the brake for an exit boost. Brake alone slows down. Space/Shift boosts; R rescues you to the last checkpoint with a 1.5-second stop. Escape pauses. Touch: steering on the left; hold Brake + a turn to drift, then release Brake. Boost is on the right. Controller: stick/D-pad, B/L2 brake/drift, A/R2 boost, X rescue, Menu pause. Friend-room handling follows the host build; everyone should refresh for drift rewards.",
+          "Auto-drive is on. Steer with A/D or ←/→. Hold S/↓ while turning to drift. Hold a full turn for at least 0.4 seconds, then release Brake for an exit boost. Brake alone slows down. Space/Shift boosts; R rescues you to the last checkpoint with a 1.5-second stop. Escape pauses. Touch: steering on the left; hold Brake + a turn to drift, then release Brake. Boost is on the right. Controller: stick/D-pad, B/L2 brake/drift, A/R2 boost, X rescue, Menu pause. Friend-room handling follows the host build; everyone should refresh for drift rewards.",
         ),
       );
       setup.append(
@@ -1744,12 +1744,12 @@
       driveFeedback.hidden = state.phase !== "racing" || a.recoveryTicks > 0 ||
         (!a.boosting && !a.padTicks && !sliding);
       driveFeedback.dataset.kind = a.boosting || a.padTicks ? "boost" : "drift";
-      setText(driveFeedback, a.boosting || a.padTicks ? "BOOST!" : "CARVING");
+      setText(driveFeedback, a.boosting || a.padTicks ? "BOOST!" : "DRIFT");
       banner.hidden = state.phase !== "countdown";
       if (!banner.hidden) {
         banner.replaceChildren(
           document.createTextNode(String(Math.ceil(state.countdown / 60))),
-          el("small", "", "AUTO DRIVE · GET READY"),
+          el("small", "", "BRAKE + TURN = DRIFT"),
         );
       }
       warning.hidden =
