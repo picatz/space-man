@@ -102,7 +102,7 @@
    bounded to its visible pod instead of stealing the bottom half of play. */
 .arena-touch{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}
 .arena-root[data-touch=true] .arena-touch{display:block}
-.arena-stick-zone{position:absolute;left:calc(var(--arena-safe-left) + 12px);bottom:calc(var(--arena-safe-bottom) + 16px);width:132px;height:148px;pointer-events:auto;touch-action:none}
+.arena-stick-zone{position:absolute;left:calc(var(--arena-safe-left) + 12px);bottom:calc(var(--arena-safe-bottom) + 16px);width:min(132px,calc(100% - 208px - var(--arena-safe-left) - var(--arena-safe-right)));height:148px;pointer-events:auto;touch-action:none}
 .arena-stick-base{position:absolute;left:50%;top:72px;width:96px;height:96px;border-radius:50%;border:1.5px solid #88C1DB88;background:radial-gradient(circle,#1C445C55,#091D3244);transform:translate(-50%,-50%);opacity:.8;pointer-events:none;box-shadow:inset 0 0 0 8px #81CBE908}
 .arena-stick-base:before,.arena-stick-base:after{content:'';position:absolute;left:50%;top:50%;background:#9FF1FF22;transform:translate(-50%,-50%)}
 .arena-stick-base:before{width:76%;height:1px}.arena-stick-base:after{height:76%;width:1px}
@@ -312,7 +312,9 @@
     function updatePrefs() {
       currentPrefs = getSettings();
       if (!rootEl) return;
-      rootEl.dataset.lefty = String(leftyOverride === null ? !!currentPrefs.lefty : leftyOverride);
+      const lefty = String(leftyOverride === null ? !!currentPrefs.lefty : leftyOverride);
+      if (rootEl.dataset.lefty !== lefty) { resetTouchInput(); thumbBounds = null; }
+      rootEl.dataset.lefty = lefty;
       rootEl.dataset.calm = String(calm()); rootEl.dataset.saver = String(saver());
       if (mirrorButton) mirrorButton.setAttribute('aria-pressed', rootEl.dataset.lefty);
       const allowed = currentPrefs.sfx !== false && !currentPrefs.muted;
@@ -840,9 +842,11 @@
       const touch = (usingTouch || rootEl.dataset.touch === 'true') && !touchEl.hidden;
       if (touch && !thumbBounds) {
         const origin = rootEl.getBoundingClientRect(), zones = [stickZone, rootEl.querySelector('.arena-touch-actions')].map(n => n.getBoundingClientRect());
-        thumbBounds = { top: Math.min(...zones.map(r => r.top - origin.top)), side: Math.max(...zones.map(r => r.width + Math.min(r.left - origin.left, origin.right - r.right))) + 14 };
+        // A resize may arrive while Pause hides the controls. Never cache
+        // empty rectangles and carry them into a resumed match.
+        if (zones.every(r => r.width > 0 && r.height > 0)) thumbBounds = { top: Math.min(...zones.map(r => r.top - origin.top)), side: Math.max(...zones.map(r => r.width + Math.min(r.left - origin.left, origin.right - r.right))) + 14 };
       }
-      const bottom = touch ? (portrait ? height - thumbBounds.top + 16 : 24) : 66;
+      const bottom = touch && thumbBounds ? (portrait ? height - thumbBounds.top + 16 : 24) : 66;
       const playHeight = Math.max(100, height - top - bottom), cy = top + playHeight / 2;
       let scale, x, y;
       if (portrait) {
@@ -850,7 +854,7 @@
         x = clamp(lerp(human.px, human.x, alpha) + human.w / 2 + human.facing * 28, span * .38, a.width - span * .38);
         y = clamp(lerp(human.py, human.y, alpha) + human.h / 2, 245, 460);
       } else {
-        const safeWidth = touch ? width - thumbBounds.side * 2 : width - 65;
+        const safeWidth = touch && thumbBounds ? width - thumbBounds.side * 2 : width - 65;
         scale = Math.min(safeWidth / 880, playHeight / 430, 1.7);
         // A wide phone shows the complete stage between the two thumb pods.
         // On narrower landscape screens, follow the pilot instead of reducing

@@ -537,6 +537,8 @@ test('arena thumb layout keeps comfortable targets and the pilot clear across ph
       assert.ok(pause.width >= 44 && pause.height >= 44); assert.match(await page.locator('#arenaPause').innerText(),/PAUSE/);
       const hud = await page.locator('.arena-hud').boundingBox();
       for(const b of [...controls,zone]) assert.equal(intersects(hud,b,8),false,'the HUD stays above the thumb pods');
+      const own = await page.evaluate(() => thumbFrame?.bodies.find(b => b.id === 1));
+      if (own) for (const b of [...controls,zone]) assert.equal(intersects({x:own.x,y:own.y,width:own.w,height:own.h},b),false,'the local pilot is visible outside the controls');
       await capture(page, `arena-thumbs-${width}x${height}-${lefty ? 'left' : 'right'}`);
     }
     // Restart a real match so CPUs cannot eliminate the stationary pilot while
