@@ -34,7 +34,8 @@ async function launch(t, device = {}) {
 async function capture(page, name) {
   if (!process.env.SPACE_MAN_EXPEDITION_SCREENSHOTS) return;
   await fs.mkdir(process.env.SPACE_MAN_EXPEDITION_SCREENSHOTS, { recursive: true });
-  await page.screenshot({ path: path.join(process.env.SPACE_MAN_EXPEDITION_SCREENSHOTS, name + '.png') });
+  await page.waitForFunction(() => { const panel = document.querySelector('#ovExpedition'); return !panel.classList.contains('show') || (panel.classList.contains('in') && getComputedStyle(panel).opacity === '1' && getComputedStyle(panel.querySelector('.panel')).opacity === '1'); });
+  await page.screenshot({ animations:'disabled', path: path.join(process.env.SPACE_MAN_EXPEDITION_SCREENSHOTS, name + '.png') });
 }
 async function briefing(page) { await page.locator('#ovExpedition.show').waitFor(); }
 async function loseRunner(page) {
@@ -53,7 +54,7 @@ test('desktop: full runner → duel → one-lap race, receipt, replay and standa
   assert.equal(await page.evaluate(() => arenaUI.snapshot().format), 'duel');
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('#arenaLobby').innerText(), 'Leave expedition');
-  assert.equal(await page.getByRole('button', {name:'Leave expedition',exact:true}).filter({visible:true}).count(), 2);
+  assert.equal(await page.getByRole('button', {name:'Leave expedition',exact:true}).filter({visible:true}).count(), 1);
   await page.getByRole('button', {name:'Restart match',exact:true}).click();
   assert.equal(await page.evaluate(() => arenaUI.snapshot().phase), 'countdown');
   await page.keyboard.press('Escape'); await page.locator('#arenaResume').click();
@@ -66,7 +67,7 @@ test('desktop: full runner → duel → one-lap race, receipt, replay and standa
   assert.equal(await page.evaluate(() => raceUI.snapshot().laps), 1);
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('#raceLobby').innerText(), 'Leave expedition');
-  assert.equal(await page.getByRole('button', {name:'Leave expedition',exact:true}).filter({visible:true}).count(), 2);
+  assert.equal(await page.getByRole('button', {name:'Leave expedition',exact:true}).filter({visible:true}).count(), 1);
   await page.locator('#raceRestart').click();
   assert.equal(await page.evaluate(() => raceUI.snapshot().phase), 'countdown');
   // The existing visibility handler must safely pause an expedition leg too.
@@ -118,6 +119,7 @@ for (const viewport of [{width:320,height:568},{width:390,height:844},{width:844
     const {page} = await launch(t, {viewport, hasTouch:true, isMobile:true});
     await page.locator('#btnExpedition').tap(); await briefing(page);
     assert.equal(await page.locator('.expedition-panel').evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'no horizontal clipping');
+    if (viewport.width > viewport.height) assert.equal(await page.locator('.expedition-panel').evaluate(el => el.scrollHeight <= el.clientHeight + 1), true, 'landscape briefing fits without scrolling');
     for (const id of ['btnExpeditionContinue','btnExpeditionExit']) {
       await page.locator('#'+id).scrollIntoViewIfNeeded();
       const box = await page.locator('#'+id).boundingBox(); assert.ok(box.height >= 44 && box.width >= 44);

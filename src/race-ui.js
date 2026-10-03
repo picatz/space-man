@@ -172,6 +172,7 @@
         online && ((!host && roomPaused) || !!roomStatus?.connection),
       );
       setText(resume, resume.disabled ? "Waiting for host…" : "Resume race");
+      rootEl.querySelector("#raceLobby").hidden = !!localSession;
       setText(
         rootEl.querySelector("#raceLobby"),
         localSession ? "Leave expedition" : online
@@ -1882,6 +1883,7 @@
       audio?.stop();
       if (localSession) { selected = localSession.previous; localSession = null; }
       rootEl.dataset.session = "false";
+      pausePanel.querySelector("#raceLobby").hidden = false;
       pausePanel.querySelector("#raceLobby").textContent = "Choose a circuit";
       pausePanel.querySelectorAll("button")[3].textContent = "Back to runner";
       opts.onClose?.();

@@ -446,7 +446,7 @@
       if (rematch) { rematch.disabled = online && !host; rematch.textContent = online ? (host ? 'Rematch together' : 'Waiting for host…') : 'Rematch'; }
       if (next) next.disabled = online && !host;
       const restart = pausePanel && pausePanel.querySelectorAll('button')[1]; if (restart) restart.disabled = online && !host;
-      const back = rootEl.querySelector('#arenaLobby'); if (back) back.textContent = localSession ? 'Leave expedition' : online ? (host ? 'Back to room lobby' : 'Leave arena room') : 'Choose a match';
+      const back = rootEl.querySelector('#arenaLobby'); if (back) { back.hidden = !!localSession; back.textContent = localSession ? 'Leave expedition' : online ? (host ? 'Back to room lobby' : 'Leave arena room') : 'Choose a match'; }
       const resume = rootEl.querySelector('#arenaResume'); if (resume) { resume.disabled = (roomPaused && !host) || !!(roomStatus && roomStatus.connection); resume.textContent = roomStatus && roomStatus.connection ? 'Reconnecting…' : roomPaused && !host ? 'Waiting for host…' : 'Resume match'; }
     }
     function cycleWatch(direction) {
@@ -978,6 +978,7 @@
       if (savedFocus && savedFocus.isConnected && typeof savedFocus.focus === 'function') savedFocus.focus({ preventScroll: true });
       if (localSession) { selections = localSession.previous; localSession = null; }
       rootEl.dataset.session = 'false';
+      pausePanel.querySelectorAll('button')[2].hidden = false;
       pausePanel.querySelectorAll('button')[2].textContent = 'Choose a match';
       pausePanel.querySelectorAll('button')[3].textContent = 'Back to runner';
       if (typeof opts.onClose === 'function') opts.onClose();
