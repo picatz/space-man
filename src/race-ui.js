@@ -95,7 +95,7 @@
       previousPose = null,
       renderDt = 1 / 60;
     const audioControls = [], audioOverrides = {};
-    let localSession = null, sharedSession = null;
+    let localSession = null, sharedSession = null, inputSuspended = false;
     let selected = { trackId: "starlight", difficulty: "normal" },
       keys = new Map(),
       touches = new Map(),
@@ -568,6 +568,7 @@
       audioControls.push({ mute, music, volume });
     }
     function unlockAudioGesture(e) {
+      if (!ownsInput()) return;
       if (!active || !e.isTrusted) return;
       raceAudio()?.unlock();
       if (view === "lobby" || paused) audio?.pause();
@@ -590,6 +591,12 @@
       pad = { steer: 0, boost: false, brake: false, recover: false };
       padNeutral = true;
     }
+    function ownsInput() {
+      if (!active) return false;
+      const suspended = !!rootEl.inert;
+      if (suspended !== inputSuspended) { inputSuspended = suspended; resetInput(); }
+      return !suspended;
+    }
     function release(e) {
       const t = touches.get(e.pointerId);
       if (!t) return;
@@ -602,7 +609,7 @@
       } catch (_) {}
     }
     function guard(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       if (["pointerup", "pointercancel", "lostpointercapture"].includes(e.type))
         release(e);
       if (
@@ -619,6 +626,7 @@
       }
     }
     function touchEnd(e) {
+      if (!ownsInput()) return;
       if (e.type === "touchcancel" || (e.touches && e.touches.length === 0))
         resetTouch();
     }
@@ -658,7 +666,7 @@
       else pause();
     }
     function keydown(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       e.stopImmediatePropagation();
       if (e.metaKey || e.altKey || e.ctrlKey) return;
       if (e.code === "Escape") {
@@ -696,12 +704,13 @@
       }
     }
     function keyup(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       e.stopImmediatePropagation();
       if (actionFor(e)) e.preventDefault();
       keys.delete(e.code);
     }
     function pollPad() {
+      if (!ownsInput()) return;
       let p;
       try {
         p = Array.from(root.navigator.getGamepads?.() || []).find(
@@ -760,6 +769,7 @@
       padPrevious = raw;
     }
     function input() {
+      if (!ownsInput()) return { steer: 0, throttle: 0, boost: false, brake: false, recover: false };
       const held = (a) =>
         Array.from(keys.values()).includes(a) ||
         Array.from(touches.values()).some((t) => t.action === a);
@@ -815,6 +825,7 @@
           recoveryClickCleanup = null;
         };
         const swallow = (e) => {
+          if (rootEl && rootEl.inert) { clear(); return; }
           if (!e.isTrusted || e.detail === 0) return;
           e.preventDefault();
           e.stopImmediatePropagation();

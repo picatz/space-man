@@ -95,6 +95,7 @@
 .arena-player-helmet:before{content:'';position:absolute;left:4px;right:2px;top:6px;height:9px;border-radius:4px;background:#132D46;border-top:2px solid var(--fighter)}
 .arena-player-helmet:after{content:'';position:absolute;left:8px;right:6px;bottom:-5px;height:5px;background:var(--fighter);border-radius:1px}
 .arena-player-info{display:grid;grid-template-columns:auto auto;gap:2px 5px;min-width:0;align-items:baseline;flex:1}.arena-player-name{font:700 11px/1.2 system-ui,sans-serif;color:#E4F0FB;overflow:hidden;text-overflow:ellipsis}.arena-player-tag{font:700 7px/1.2 system-ui,sans-serif;color:var(--fighter);white-space:nowrap}.arena-stocks{grid-column:1/-1;font:700 10px/1.2 system-ui,sans-serif;color:var(--fighter);letter-spacing:4px;margin-top:3px}.arena-damage{font:800 24px/1 system-ui,sans-serif;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:#EFF7FF;min-width:42px;text-align:right}.arena-player-out{opacity:.46}.arena-player-out .arena-damage{font-size:15px}
+.arena-player-card[data-boss=true] .arena-player-helmet{display:none}.arena-player-card[data-boss=true] .arena-player-info{grid-template-columns:minmax(0,1fr);gap:4px}.arena-player-card[data-boss=true] .arena-player-name{white-space:nowrap}.arena-player-card[data-boss=true] .arena-player-tag{overflow:hidden;text-overflow:ellipsis}.arena-player-card[data-boss=true] .arena-stocks{display:none}.arena-root .arena-player-card[data-boss=true] .arena-damage{font-size:18px;min-width:0;white-space:nowrap}
 .arena-countdown{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);z-index:4;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;pointer-events:none}.arena-countdown-value{font-size:clamp(70px,14vw,140px);font-weight:900;line-height:1;color:#F4F7FF;text-shadow:0 6px 0 #183650,0 0 55px rgba(56,225,255,.18)}.arena-countdown-label{font:700 10px/1.5 system-ui,sans-serif;letter-spacing:.2em;color:#9FF1FF;white-space:nowrap;padding:6px 10px;background:rgba(6,13,28,.8);border-radius:20px}
 .arena-bottom-hud{position:absolute;left:calc(var(--arena-safe-left) + 24px);right:calc(var(--arena-safe-right) + 24px);bottom:calc(var(--arena-safe-bottom) + 18px);display:flex;align-items:center;justify-content:space-between;gap:16px;pointer-events:none;z-index:3}.arena-control-hint{font:500 10px/1.6 system-ui,sans-serif;word-spacing:4px;color:#7F9DB9}.arena-abilities{display:flex;gap:9px}.arena-ability{position:relative;overflow:hidden;display:flex;align-items:center;gap:7px;min-width:100px;padding:9px 11px 11px;border:1px solid rgba(133,184,220,.23);border-radius:9px;background:rgba(8,19,34,.85)}.arena-ability-key{font:700 9px/1.2 system-ui,sans-serif;color:#DCEEFF}.arena-ability-label{font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.1em;color:#A8C7E0}.arena-ability-meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:#38E1FF;transform-origin:left}.arena-ability:last-child .arena-ability-meter{background:#FFC66B}
 .arena-touch{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}.arena-root[data-touch=true] .arena-touch{display:block}.arena-stick-zone{position:absolute;bottom:0;left:var(--arena-safe-left);width:calc(48% - var(--arena-safe-left));height:42%;min-height:140px;pointer-events:auto;touch-action:none}.arena-stick-base{position:absolute;left:76px;top:calc(100% - 88px - var(--arena-safe-bottom));width:94px;height:94px;border-radius:50%;border:1.5px solid rgba(159,241,255,.4);background:rgba(20,51,73,.18);transform:translate(-50%,-50%);opacity:.6;pointer-events:none}.arena-stick-base:before,.arena-stick-base:after{content:'';position:absolute;left:50%;top:50%;background:rgba(159,241,255,.12);transform:translate(-50%,-50%)}.arena-stick-base:before{width:76%;height:1px}.arena-stick-base:after{height:76%;width:1px}.arena-stick-knob{position:absolute;left:50%;top:50%;width:40px;height:40px;border:1px solid rgba(159,241,255,.58);border-radius:50%;background:rgba(56,225,255,.2);transform:translate(-50%,-50%)}.arena-stick-active{opacity:1;border-color:rgba(159,241,255,.8)}.arena-stick-label{position:absolute;left:76px;bottom:calc(var(--arena-safe-bottom) + 24px);transform:translateX(-50%);font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.15em;color:#7796AD;pointer-events:none}
@@ -182,7 +183,7 @@
     const onlineActive = () => !!(room && room.active);
     const localActor = () => state && state.actors.find(a => a.controller === 'human');
     const canControl = () => !onlineActive() || !!(localActor() && localActor().stocks > 0 && !(roomStatus && (roomStatus.stale || roomStatus.connection)));
-    let localSession = null, sharedSession = null;
+    let localSession = null, sharedSession = null, inputSuspended = false;
     const listeners = [];
     const getSettings = () => { try { return (typeof opts.settings === 'function' ? opts.settings() : opts.settings) || {}; } catch (_) { return {}; } };
     const calm = () => typeof currentPrefs.reduceMotion === 'boolean' ? currentPrefs.reduceMotion : typeof currentPrefs.reducedMotion === 'boolean' ? currentPrefs.reducedMotion : prefersReduced;
@@ -281,6 +282,12 @@
       held.clear(); jumpEdge = attackEdge = dashEdge = false; pad = { moveX: 0, moveY: 0, jump: false }; padNeedsNeutral = true;
       resetTouchInput();
     }
+    function ownsInput() {
+      if (!active) return false;
+      const suspended = !!rootEl.inert;
+      if (suspended !== inputSuspended) { inputSuspended = suspended; resetInput(); }
+      return !suspended;
+    }
     function focusables() { return activeModal ? Array.from(activeModal.querySelectorAll('button:not([disabled]),summary,[href],input:not([disabled]),[tabindex="0"]')).filter(n => !n.hidden && n.getClientRects().length) : [pauseButton]; }
     function focusStep(direction) {
       const nodes = focusables(); if (!nodes.length) return;
@@ -293,7 +300,7 @@
     }
     function actionHeld(action) { for (const value of held.values()) if (value === action) return true; return false; }
     function onKeyDown(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       e.stopImmediatePropagation();
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return; escapeAction(); return; }
@@ -317,7 +324,7 @@
         held.set(e.code, action);
       }
     }
-    function onKeyUp(e) { if (!active) return; e.stopImmediatePropagation(); if (actionForKey(e)) e.preventDefault(); held.delete(e.code); }
+    function onKeyUp(e) { if (!ownsInput()) return; e.stopImmediatePropagation(); if (actionForKey(e)) e.preventDefault(); held.delete(e.code); }
     function escapeAction() {
       resetInput();
       if (view === 'lobby') close();
@@ -326,7 +333,7 @@
       else pauseMatch('Match paused');
     }
     function guardPointer(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       // Capture can fail or be lost when WebKit moves browser chrome. Recover
       // releases before the runner-isolation guard discards outside events.
       if (['pointerup', 'pointercancel', 'lostpointercapture'].includes(e.type)) releaseTouch(e);
@@ -334,6 +341,7 @@
       if (!(e.target instanceof root.Node) || !rootEl.contains(e.target)) { e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); }
     }
     function onTouchEnd(e) {
+      if (!ownsInput()) return;
       // A completed tap still gets its one action if it ended between frames.
       if (active && (e.type === 'touchcancel' || (e.touches && e.touches.length === 0))) resetTouchInput(e.type === 'touchcancel');
     }
@@ -373,6 +381,7 @@
       stickKnob.style.transform = 'translate(calc(-50% + ' + (x * 32).toFixed(1) + 'px),calc(-50% + ' + (y * 32).toFixed(1) + 'px))';
     }
     function pollGamepad() {
+      if (!ownsInput()) return;
       let pads;
       try { pads = root.navigator.getGamepads && root.navigator.getGamepads(); } catch (_) { return; }
       const p = pads && Array.from(pads).find(p => p && p.connected && p.mapping === 'standard');
@@ -393,6 +402,7 @@
       padPrevious = raw;
     }
     function command() {
+      if (!ownsInput()) return arena.normalizeCommand();
       const keyboardX = (actionHeld('right') ? 1 : 0) - (actionHeld('left') ? 1 : 0);
       const keyboardY = (actionHeld('down') ? 1 : 0) - (actionHeld('jump') && (held.has('KeyW') || held.has('ArrowUp')) ? 1 : 0);
       const c = { moveX: clamp(keyboardX + moveX + pad.moveX, -1, 1), moveY: clamp(keyboardY + moveY + pad.moveY, -1, 1),
@@ -409,6 +419,7 @@
         root.clearTimeout(timer); if (clearRecoveryClick === clear) clearRecoveryClick = null;
       };
       const swallow = e => {
+        if (rootEl && rootEl.inert) { clear(); return; }
         if (!e.isTrusted || e.detail === 0) return;
         e.preventDefault(); e.stopImmediatePropagation(); clear();
       };
@@ -820,9 +831,9 @@
     function buildRoster() {
       rosterEl.replaceChildren();
       for (const actor of state.actors) {
-        const card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.style.setProperty('--fighter', actorColor(actor));
+        const card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.dataset.boss = String(!!actor.boss); card.style.setProperty('--fighter', actorColor(actor));
         const icon = el('span', 'arena-player-helmet'); icon.setAttribute('aria-hidden', 'true');
-        const info = el('div', 'arena-player-info'); const name = el('strong', 'arena-player-name', (state.format === 'teams' ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name); const tag = el('span', 'arena-player-tag', (actor.controller === 'human' ? 'YOU' : actor.controller === 'remote' ? (actor.connected ? 'FRIEND' : 'RECONNECTING') : 'CPU') + (state.format === 'teams' ? (actor.team === 0 ? ' · BLUE' : ' · GOLD') : ''));
+        const info = el('div', 'arena-player-info'); const name = el('strong', 'arena-player-name', (state.format === 'teams' && !actor.boss ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name); const tag = el('span', 'arena-player-tag', (actor.controller === 'human' ? 'YOU' : actor.controller === 'remote' ? (actor.connected ? 'FRIEND' : 'RECONNECTING') : 'CPU') + (state.format === 'teams' ? (actor.team === 0 ? ' · BLUE' : ' · GOLD') : ''));
         const lives = el('span', 'arena-stocks'); info.append(name, tag, lives); const damage = el('strong', 'arena-damage', '0%'); card.append(icon, info, damage); rosterEl.append(card);
       }
     }
@@ -833,7 +844,7 @@
       for (const actor of state.actors) {
         const card = rosterEl.querySelector('[data-actor="' + actor.id + '"]'); if (!card) continue;
         if (actor.boss) {
-          card.querySelector('.arena-player-tag').textContent = actor.boss.phase === 'recover' ? 'CORE EXPOSED · PULSE NOW' : actor.boss.phase === 'charging' ? 'WARNING · DODGE' : 'GUARDIAN';
+          card.querySelector('.arena-player-tag').textContent = actor.boss.phase === 'recover' ? 'EXPOSED · PULSE' : actor.boss.phase === 'charging' ? (actor.boss.move === 'shockwave' ? 'JUMP WAVE' : 'DASH CLEAR') : 'GUARDIAN';
           card.querySelector('.arena-damage').textContent = Math.max(0, Math.ceil(actor.boss.health)) + ' HP';
           card.querySelector('.arena-stocks').textContent = 'CORE ' + Math.round(100 * actor.boss.health / actor.boss.maxHealth) + '%';
           card.setAttribute('aria-label', actor.name + ', boss core ' + Math.round(actor.boss.health) + ' health, ' + actor.boss.phase);

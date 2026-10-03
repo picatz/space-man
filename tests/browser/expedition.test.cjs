@@ -191,3 +191,40 @@ test('solo team elimination catches the rescue shuttle instead of waiting for CP
   assert.equal(record.won,false,'extraction does not invent a victory');
   await stop(page);
 });
+
+for (const mode of ['arena','race']) test(mode+' input yields to an inert sibling crew dialog and restores safely',{timeout:25000},async t=>{
+  const {page}=await launch(t);
+  await page.locator(mode==='arena'?'#btnArena':'#btnRace').click();
+  await page.locator(mode==='arena'?'.arena-launch':'.race-launch').click();
+  await page.keyboard.press('Escape');
+  await page.evaluate(mode=>{
+    const game=document.querySelector(mode==='arena'?'.arena-root':'.race-root');
+    const panel=document.createElement('div');panel.id='crewDialogFixture';panel.setAttribute('role','dialog');
+    panel.style.cssText='position:fixed;inset:20px;z-index:9999;background:#102030;color:white;padding:30px';
+    panel.innerHTML='<input id="crewNameFixture" aria-label="Crew name"><button id="crewActionFixture">Crew action</button>';
+    window.fixtureClicks=0;window.fixtureEscapes=0;
+    panel.querySelector('button').onclick=()=>fixtureClicks++;
+    panel.addEventListener('keydown',e=>{if(e.code==='Escape')fixtureEscapes++;});
+    game.inert=true;document.body.appendChild(panel);panel.querySelector('input').focus();
+  },mode);
+  await page.getByLabel('Crew name').pressSequentially('Nova');
+  assert.equal(await page.getByLabel('Crew name').getAttribute('id'),'crewNameFixture');
+  assert.equal(await page.getByLabel('Crew name').evaluate(e=>e.value),'Nova');
+  await page.getByRole('button',{name:'Crew action',exact:true}).click();
+  assert.equal(await page.evaluate(()=>fixtureClicks),1,'old pointer guard must not swallow the sibling click');
+  await page.getByLabel('Crew name').click();
+  await page.evaluate(()=>{testPad.buttons[13].pressed=true;testPad.buttons[0].pressed=true;});
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'crewNameFixture','old gamepad menu must not steal dialog focus');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(()=>fixtureEscapes),1);
+  assert.equal(await page.evaluate(mode=>mode==='arena'?arenaUI.screen:raceUI.screen,mode),'pause');
+  await page.evaluate(mode=>{
+    testPad.buttons.forEach(b=>b.pressed=false);testPad.axes=[0,0];
+    document.querySelector('#crewDialogFixture').remove();
+    document.querySelector(mode==='arena'?'.arena-root':'.race-root').inert=false;
+  },mode);
+  await page.locator(mode==='arena'?'#arenaResume':'#raceResume').click();
+  assert.equal(await page.evaluate(mode=>mode==='arena'?arenaUI.screen:raceUI.screen,mode),'play');
+  await page.keyboard.press('Escape');await page.locator(mode==='arena'?'#arenaExit':'#raceExit').click();
+});
