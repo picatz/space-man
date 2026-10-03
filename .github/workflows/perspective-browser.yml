@@ -92,6 +92,11 @@ jobs:
         env:
           SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
           SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/deployed-screenshots
+      - name: Verify deployed road contacts and native race audio
+        run: node --test race-handling-audio.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/deployed-screenshots
       - uses: actions/upload-artifact@v4
         if: always()
         with:

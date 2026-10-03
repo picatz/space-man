@@ -31,6 +31,11 @@ jobs:
         env:
           SPACE_MAN_RACE_BROWSER: ${{ matrix.browser }}
           SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/race-screenshots
+      - name: Verify native race audio and road-bound handling
+        run: node --test race-handling-audio.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.browser }}
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/race-screenshots
       - name: Keep screenshots for visual review
         if: always()
         uses: actions/upload-artifact@v4

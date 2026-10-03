@@ -40,6 +40,7 @@
 @media(max-height:520px) and (min-width:600px){.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:11px}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:48%;font-size:55px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
 @media(max-width:350px){.race-touch-button{width:54px;height:60px}.race-root .race-recover{width:44px;font-size:0;padding:5px 2px}.race-recover:after{content:"↺";font-size:23px}.race-boostbar{width:100px}.race-root[data-touch=true] .race-minimap{width:100px;height:70px}.race-hud-box{padding:9px 10px;gap:10px}.race-hud{gap:5px}.race-time{padding:10px 8px}}
 .race-online-panel{margin-top:18px;padding:13px 18px;border:1px solid #38536b;border-radius:16px;background:#10263be8}.race-online-panel>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750;color:#d6efbf}.race-online-entry{display:grid;gap:10px}.race-online-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.race-room-input{width:100%;min-height:46px;border:1px solid #547183;border-radius:10px;background:#071c2e;color:#e1f5ff;font:inherit;padding:10px;user-select:text;touch-action:auto}.race-room-members{padding-left:20px;color:#c7e2ef;font-size:12px}.race-room-code{font-size:18px;letter-spacing:.08em}.race-watch-tools{position:absolute;bottom:calc(var(--race-bottom) + 18px);left:50%;transform:translateX(-50%);z-index:4;background:#10263be8;border:1px solid #38536b;border-radius:12px;display:flex;align-items:center;gap:8px;max-width:95%;font-size:10px}.race-watch-tools>.race-button{width:44px;min-width:44px;height:44px;padding:8px;flex:0 0 44px}.race-watch-tools>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-root button:disabled{opacity:.5;cursor:default}.race-root[data-online=true] .race-hint{display:none}
+.race-audio-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.race-audio-volume{display:flex;gap:8px;align-items:center;font-size:11px;color:#a9bed0}.race-audio-volume input{max-width:140px;min-height:44px;touch-action:pan-x}.race-compact .race-audio-controls{border-top:1px solid #294054;padding-top:12px}
 @media(prefers-reduced-motion:reduce){.race-root *{transition:none!important}}
 `;
   function create(opts = {}) {
@@ -93,6 +94,7 @@
       perspective = null,
       previousPose = null,
       renderDt = 1 / 60;
+    const audioControls = [], audioOverrides = {};
     let selected = { trackId: "starlight", difficulty: "normal" },
       keys = new Map(),
       touches = new Map(),
@@ -320,7 +322,7 @@
           rotation: height > width && !calm() ? -a.heading - Math.PI / 2 : 0,
         };
         setPanel(null);
-        tone(0.7);
+
       }
       const wasPaused = roomPaused;
       roomPaused = snapshot.status === "paused";
@@ -343,6 +345,7 @@
         localRoomMenu = false;
         results();
       }
+      if (!paused && !document.hidden) audio?.update(state, followActor());
       syncRoomChoices();
       ensureFrame();
     }
@@ -493,7 +496,8 @@
     const calm = () =>
       prefs.reduceMotion === undefined ? prefersReduced : !!prefs.reduceMotion;
     function preferences() {
-      prefs = typeof opts.settings === "function" ? opts.settings() : {};
+      prefs = { ...(typeof opts.settings === "function" ? opts.settings() : {}), ...audioOverrides };
+      syncAudioControls();
       prefersReduced = !!root.matchMedia?.("(prefers-reduced-motion: reduce)")
         .matches;
       rootEl.dataset.calm = String(calm());
@@ -521,39 +525,46 @@
         );
       } catch (_) {}
     }
-    function tone(freq = 0.5) {
-      if (
-        prefs.muted ||
-        prefs.mute ||
-        prefs.sfx === false ||
-        prefs.sound === false
-      )
-        return;
-      try {
-        if (!audio) {
-          const A = root.AudioContext || root.webkitAudioContext;
-          if (A) audio = new A();
-        }
-        if (!audio) return;
-        if (audio.state === "suspended") audio.resume().catch(() => {});
-        const o = audio.createOscillator(),
-          v = audio.createGain();
-        o.type = "sine";
-        o.frequency.value = 440 * freq;
-        v.gain.setValueAtTime(
-          0.055 * clamp(prefs.sfxVol ?? 1, 0, 1),
-          audio.currentTime,
-        );
-        v.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + 0.2);
-        o.connect(v);
-        v.connect(audio.destination);
-        o.start();
-        o.stop(audio.currentTime + 0.22);
-        o.onended = () => {
-          o.disconnect();
-          v.disconnect();
-        };
-      } catch (_) {}
+    function raceAudio() {
+      if (!audio && root.SpaceManRaceAudio) audio = root.SpaceManRaceAudio.create({
+        getSettings: () => ({ ...(typeof opts.settings === "function" ? opts.settings() : prefs), ...audioOverrides }),
+      });
+      return audio;
+    }
+    function syncAudioControls() {
+      for (const { mute, music, volume } of audioControls) {
+        setText(mute, prefs.muted ? "Sound off" : "Sound on");
+        mute.setAttribute("aria-pressed", String(!prefs.muted));
+        setText(music, prefs.music === false ? "Music off" : "Music on");
+        music.setAttribute("aria-pressed", String(prefs.music !== false));
+        volume.value = String(Math.round(Math.max(prefs.musicVol ?? .5, prefs.sfxVol ?? .5) * 100));
+      }
+    }
+    function audioSetting(changes) {
+      if (typeof opts.onAudioSettings === "function") opts.onAudioSettings(changes);
+      else Object.assign(audioOverrides, changes);
+      preferences();
+      if (isRunning()) raceAudio()?.unlock();
+      announce(prefs.muted ? "Race audio muted" : "Race audio updated");
+    }
+    function buildAudioControls(parent) {
+      const row = el("div", "race-audio-controls");
+      row.setAttribute("aria-label", "Race audio");
+      const mute = button("Sound on", "race-small", () => audioSetting({ muted: !prefs.muted }));
+      mute.setAttribute("aria-label", "Toggle race sound");
+      const music = button("Music on", "race-small", () => audioSetting({ music: prefs.music === false }));
+      music.setAttribute("aria-label", "Toggle race music");
+      const label = el("label", "race-audio-volume", "Volume"), volume = el("input");
+      volume.type = "range"; volume.min = "0"; volume.max = "100"; volume.step = "1";
+      volume.setAttribute("aria-label", "Race audio volume");
+      volume.addEventListener("input", () => audioSetting({ musicVol: Number(volume.value)/100, sfxVol: Number(volume.value)/100 }));
+      label.append(volume); row.append(mute, music, label); parent.append(row);
+      audioControls.push({ mute, music, volume });
+    }
+    function unlockAudioGesture(e) {
+      if (!active || !e.isTrusted) return;
+      raceAudio()?.unlock();
+      if (view === "lobby" || paused) audio?.pause();
     }
     function resetTouch() {
       const old = Array.from(touches);
@@ -812,6 +823,9 @@
       return n;
     }
     function setPanel(panel) {
+      if (panel === lobby) audio?.stop();
+      else if (panel === pausePanel || document.hidden) audio?.pause();
+      else if (!paused && state) audio?.resume();
       modal.hidden = !panel;
       for (const p of [lobby, pausePanel, resultPanel]) p.hidden = p !== panel;
       hud.hidden = view === "lobby";
@@ -1107,6 +1121,8 @@
       resultPanel.querySelectorAll("button")[0].id = "raceRematch";
       resultPanel.querySelectorAll("button")[1].id = "raceNext";
       buildRoomControls();
+      buildAudioControls(lobby);
+      buildAudioControls(pausePanel);
       modal.append(lobby, pausePanel, resultPanel);
       rootEl.append(modal);
       live = el("div", "race-sr");
@@ -1137,6 +1153,7 @@
     let rescueRequest = false;
     function start() {
       if (!active) return;
+      raceAudio()?.unlock();
       if (onlineActive()) {
         if (room.isHost) {
           localRoomMenu = false;
@@ -1165,7 +1182,7 @@
       };
       setPanel(null);
       announce("Three laps. Auto-drive is on. Race starts in three.");
-      tone(0.7);
+      audio?.update(state, followActor());
       ensureFrame();
     }
     function showLobby() {
@@ -1220,6 +1237,7 @@
         localRoomMenu = false;
         room.pause(false);
       }
+      raceAudio()?.unlock();
       resetInput();
       rescueRequest = false;
       paused = false;
@@ -1258,7 +1276,7 @@
           " of " +
           state.actors.length,
       );
-      tone(1.5);
+      audio?.update(state, followActor());
       syncRoomChoices();
     }
     function resize() {
@@ -1690,7 +1708,7 @@
               : a.recoveryTicks
                 ? "RESCUING · BACK TO LAST CHECKPOINT"
                 : a.offroad
-                  ? "OFF COURSE · FOLLOW THE CIRCUIT"
+                  ? "TRACK EDGE · STEER BACK INTO THE LANE"
                   : "";
     }
     function tick(now) {
@@ -1722,23 +1740,16 @@
             cmds[state.actors[0].id].recover = true;
             rescueRequest = false;
           }
-          const prev = state.countdown;
           previousPose = root.SpaceManRacePresentation?.capture(state);
           R.step(state, cmds);
+          audio?.update(state, followActor());
           acc -= 1 / 60;
-          if (
-            state.phase === "countdown" &&
-            Math.ceil(prev / 60) !== Math.ceil(state.countdown / 60)
-          )
-            tone(0.7);
           for (const e of state.events) {
-            if (e.type === "go") tone(1.7);
             if (
               e.id === state.actors[0].id &&
               e.type === "lap" &&
               state.phase !== "finished"
             ) {
-              tone(1.3);
               announce("Lap " + e.lap + " of " + state.laps);
             }
             if (e.id === state.actors[0].id && e.type === "recover")
@@ -1750,6 +1761,7 @@
           }
         }
       }
+      if (state && !paused) audio?.update(state, followActor());
       paint();
       ensureFrame();
     }
@@ -1762,6 +1774,7 @@
       last = 0;
       acc = 0;
       if (document.hidden) {
+        audio?.pause();
         pause();
         if (frameId) root.cancelAnimationFrame(frameId);
         frameId = 0;
@@ -1780,6 +1793,7 @@
         pause();
     }
     function pagehide() {
+      audio?.pause();
       resetInput();
       pause();
       if (frameId) root.cancelAnimationFrame(frameId);
@@ -1804,6 +1818,8 @@
         !!root.matchMedia?.("(pointer: coarse)").matches,
       );
       preferences();
+      listen(rootEl, "pointerdown", unlockAudioGesture, true);
+      listen(root, "keydown", unlockAudioGesture, true);
       listen(root, "keydown", keydown, true);
       listen(root, "keyup", keyup, true);
       listen(root, "blur", blur);
@@ -1856,7 +1872,7 @@
       inert = [];
       document.body.style.overflow = oldOverflow;
       if (savedFocus?.isConnected) savedFocus.focus({ preventScroll: true });
-      if (audio?.state === "running") audio.suspend().catch(() => {});
+      audio?.stop();
       opts.onClose?.();
     }
     function destroy() {
@@ -1865,7 +1881,7 @@
       recoveryClickCleanup?.();
       perspective?.destroy();
       rootEl?.remove();
-      audio?.close().catch(() => {});
+      audio?.destroy();
     }
     return Object.freeze({
       open,

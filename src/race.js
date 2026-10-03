@@ -8,7 +8,9 @@
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
   const TAU = Math.PI * 2,
-    STEP = 1 / 60;
+    STEP = 1 / 60,
+    KART_RADIUS = 28,
+    OFFCOURSE_TICKS = 120;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const finite = (v, fallback = 0) => (Number.isFinite(v) ? v : fallback);
   const pressed = (v) => v === true || v === 1;
@@ -174,30 +176,18 @@
     };
   }
   function nearest(c, x, y) {
-    let best = null,
-      dist = Infinity;
+    // This hot path serves steering and iterative contacts. Keep just the best
+    // scalars during the scan instead of allocating a new object per candidate.
+    let best = null, dist = Infinity, bestX = 0, bestY = 0, bestS = 0;
     for (const g of c.segments) {
-      const t = clamp(
-          ((x - g.x) * g.dx + (y - g.y) * g.dy) / (g.length * g.length),
-          0,
-          1,
-        ),
-        px = g.x + g.dx * t,
-        py = g.y + g.dy * t,
-        d = (x - px) ** 2 + (y - py) ** 2;
+      const t = clamp(((x-g.x)*g.dx + (y-g.y)*g.dy)/(g.length*g.length), 0, 1),
+        px = g.x + g.dx*t, py = g.y + g.dy*t,
+        d = (x-px)**2 + (y-py)**2;
       if (d < dist) {
-        dist = d;
-        best = {
-          x: px,
-          y: py,
-          tx: g.tx,
-          ty: g.ty,
-          s: g.start + t * g.length,
-          distance: Math.sqrt(d),
-        };
+        dist = d; best = g; bestX = px; bestY = py; bestS = g.start+t*g.length;
       }
     }
-    return best;
+    return best ? { x: bestX, y: bestY, tx: best.tx, ty: best.ty, s: bestS, distance: Math.sqrt(dist) } : null;
   }
   function command(raw = {}) {
     raw = raw && typeof raw === "object" ? raw : {};
@@ -218,7 +208,7 @@
     const count = clamp(Math.floor(finite(options.count, 5)), 1, 6),
       actors = [];
     for (let i = 0; i < count; i++) {
-      const spawn = at(c, 38 - Math.floor(i / 2) * 52),
+      const spawn = at(c, 38 - Math.floor(i / 2) * (KART_RADIUS * 3 + 4)),
         side = (i % 2 === 0 ? -1 : 1) * 30;
       actors.push({
         id: "pilot-" + i,
@@ -242,6 +232,8 @@
         dnf: false,
         progress: 0,
         offroad: false,
+        // Host-only bookkeeping; remote clients render authoritative snapshots.
+        offroadTicks: 0,
         recoveries: 0,
         recoveryTicks: 0,
         recoverHeld: false,
@@ -289,8 +281,16 @@
   }
   function recover(state, a, c) {
     // Explicit rescue returns to the last verified gate, never a forward jump.
-    const s = ((a.passed % 20) * c.length) / 20 + 12,
-      p = at(c, s);
+    const s = ((a.passed % 20) * c.length) / 20 + 12;
+    let p = at(c, s), back = 0;
+    // Keep repeated/simultaneous rescues clear before their visible release,
+    // searching only backwards from the verified gate (never a shortcut).
+    for (let slot = 0; slot <= state.actors.length; slot++) {
+      back = slot * (KART_RADIUS * 3 + 4);
+      p = at(c, s - back);
+      if (state.actors.every(other => other === a || other.dnf || other.finishTick !== null ||
+        Math.hypot(other.x-p.x, other.y-p.y) >= KART_RADIUS * 2 + 2)) break;
+    }
     a.x = p.x;
     a.y = p.y;
     a.heading = Math.atan2(p.ty, p.tx);
@@ -299,11 +299,33 @@
     a.boosting = false;
     a.padTicks = 0;
     a.offroad = false;
-    a.progress = a.passed + 12 / (c.length / 20);
+    a.offroadTicks = 0;
+    a.progress = a.passed + Math.max(0, 12-back) / (c.length / 20);
     a.recoveryTicks = 90;
     a.recoveries++;
     a.lastProgressTick = state.raceTick;
     state.events.push({ type: "recover", id: a.id });
+  }
+  // A continuous road-relative rail, shared by CPU and human pilots. Remove
+  // only outward velocity (no bouncing); retain tangent motion around bends.
+  // Existing invalid/offcourse poses move inward by at most two units per tick
+  // until the explicit rescue takes over, rather than snapping to a nearby road.
+  function edgeContact(a, c, old, friction = true, readPosition = true) {
+    const n = nearest(c, a.x, a.y), limit = c.width / 2 - KART_RADIUS;
+    if (n.distance <= limit) return n;
+    const nx = (a.x - n.x) / n.distance, ny = (a.y - n.y) / n.distance;
+    const wasInside = old.inside || old.released;
+    const correction = Math.min(n.distance - limit, wasInside ? 32 : 2);
+    a.x -= nx * correction;
+    a.y -= ny * correction;
+    const outward = a.vx * nx + a.vy * ny;
+    if (outward > 0) {
+      a.vx -= nx * outward;
+      a.vy -= ny * outward;
+    }
+    // Gentle rail friction, independent of rendered frame rate.
+    if (friction) { a.vx *= 0.94; a.vy *= 0.94; }
+    return readPosition ? nearest(c, a.x, a.y) : null;
   }
   function step(state, inputs = {}) {
     inputs = inputs && typeof inputs === "object" ? inputs : {};
@@ -328,11 +350,23 @@
       a.recoverHeld = input.recover;
       if (a.recoveryTicks > 0) {
         a.recoveryTicks--;
+        // The release frame is already visible as an active kart. Resolve
+        // contacts now, but keep the complete stationary recovery wait.
+        if (a.recoveryTicks === 0) previous.set(a.id, { x: a.x, y: a.y, released: true });
         continue;
       }
       const n = nearest(c, a.x, a.y);
-      previous.set(a.id, { x: a.x, y: a.y });
-      a.offroad = n.distance > c.width / 2;
+      previous.set(a.id, { x: a.x, y: a.y, inside: n.distance <= c.width / 2 - KART_RADIUS + 0.01 });
+      // The inner shoulder warns and slows before the physical rail.
+      a.offroad = n.distance > c.width / 2 - KART_RADIUS - 12;
+      const trapped = n.distance > c.width / 2 - KART_RADIUS - 1 &&
+        a.speed < 0.75 && input.throttle > 0;
+      a.offroadTicks = n.distance > c.width / 2 || trapped
+        ? finite(a.offroadTicks) + 1 : 0;
+      if (n.distance > c.width / 2 + 120 || a.offroadTicks >= OFFCOURSE_TICKS) {
+        recover(state, a, c);
+        continue;
+      }
       if (a.padCooldown > 0) a.padCooldown--;
       if (a.padTicks > 0) a.padTicks--;
       a.boosting = input.boost && a.fuel > 1 && !a.offroad && !input.brake;
@@ -361,10 +395,6 @@
       a.x += a.vx;
       a.y += a.vy;
       a.speed = Math.hypot(a.vx, a.vy);
-      if (n.distance > c.width * 3) {
-        recover(state, a, c);
-        continue;
-      }
       if (
         !a.offroad &&
         a.padCooldown === 0 &&
@@ -378,58 +408,62 @@
         state.events.push({ type: "pad", id: a.id });
       }
     }
-    // Resolve soft contacts before swept checkpoint tests so bumps cannot strand a pilot past an uncredited gate.
-    for (let i = 0; i < state.actors.length; i++)
-      for (let j = i + 1; j < state.actors.length; j++) {
-        const a = state.actors[i],
-          b = state.actors[j];
-        if (
-          a.finishTick !== null ||
-          b.finishTick !== null ||
-          a.dnf ||
-          b.dnf ||
-          a.recoveryTicks ||
-          b.recoveryTicks ||
-          !previous.has(a.id) ||
-          !previous.has(b.id)
-        )
-          continue;
-        const dx = b.x - a.x,
-          dy = b.y - a.y,
-          d = Math.hypot(dx, dy);
-        if (d < 29) {
-          const nx = d > 0.01 ? dx / d : 1,
-            ny = d > 0.01 ? dy / d : 0,
-            push = (29 - d) * 0.5;
-          a.x -= nx * push;
-          a.y -= ny * push;
-          b.x += nx * push;
-          b.y += ny * push;
-          const rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-          if (rel > 0) {
-            a.vx -= nx * rel * 0.35;
-            a.vy -= ny * rel * 0.35;
-            b.vx += nx * rel * 0.35;
-            b.vy += ny * rel * 0.35;
-          }
+    // Solve kart/rail constraints together: a single pair pass followed by a
+    // rail projection can squeeze a third kart back inside its neighbour.
+    const active = state.actors.filter(a => previous.has(a.id) &&
+      a.finishTick === null && !a.dnf && !a.recoveryTicks);
+    const driven = new Map(active.map(a => [a.id, { x: a.x, y: a.y }]));
+    for (let pass = 0; pass < 64; pass++) {
+      let overlap = 0;
+      for (let i = 0; i < active.length; i++) for (let j = i + 1; j < active.length; j++) {
+        const a = active[i], b = active[j], dx = b.x-a.x, dy = b.y-a.y,
+          d = Math.hypot(dx,dy);
+        if (d >= KART_RADIUS * 2) continue;
+        const nx = d > 0.01 ? dx / d : Math.cos(a.heading),
+          ny = d > 0.01 ? dy / d : Math.sin(a.heading),
+          push = (KART_RADIUS * 2 - d) * .5;
+        overlap = Math.max(overlap, push * 2);
+        a.x -= nx * push; a.y -= ny * push;
+        b.x += nx * push; b.y += ny * push;
+        // Apply contact momentum once, not once per positional solver pass.
+        const rel = (a.vx-b.vx)*nx + (a.vy-b.vy)*ny;
+        if (pass === 0 && rel > 0) {
+          a.vx -= nx*rel*.35; a.vy -= ny*rel*.35;
+          b.vx += nx*rel*.35; b.vy += ny*rel*.35;
         }
       }
+      for (const a of active) {
+        const old = previous.get(a.id);
+        if (old.inside || old.released) edgeContact(a, c, old, pass === 0, false);
+      }
+      // Rail projection can introduce a new pair penetration even if no pair
+      // overlapped before projection, so measure the final constrained poses.
+      overlap = 0;
+      for (let i = 0; i < active.length; i++) for (let j = i + 1; j < active.length; j++)
+        overlap = Math.max(overlap, KART_RADIUS * 2 - Math.hypot(active[i].x-active[j].x, active[i].y-active[j].y));
+      if (overlap < 0.001) break;
+    }
     for (const a of state.actors) {
       const old = previous.get(a.id);
       if (!old || a.finishTick !== null || a.dnf || a.recoveryTicks) continue;
-      const n = nearest(c, a.x, a.y);
+      // Ordinary on-road contacts are physical movement, including a rail
+      // contact at a bend. Invalid offcourse-pose correction is never progress.
+      const onroad = old.inside || old.released;
+      const n = onroad ? nearest(c, a.x, a.y) : edgeContact(a, c, old);
+      const swept = onroad ? a : driven.get(a.id);
+      a.offroad = n.distance > c.width / 2 - KART_RADIUS - 12;
       a.speed = Math.hypot(a.vx, a.vy);
       const gate = c.gates[a.nextGate],
         before = (old.x - gate.x) * gate.tx + (old.y - gate.y) * gate.ty,
-        after = (a.x - gate.x) * gate.tx + (a.y - gate.y) * gate.ty;
+        after = (swept.x - gate.x) * gate.tx + (swept.y - gate.y) * gate.ty;
       const crossed = before <= 0 && after > 0,
         fraction = crossed ? -before / (after - before) : 0;
-      const crossX = old.x + (a.x - old.x) * fraction,
-        crossY = old.y + (a.y - old.y) * fraction;
+      const crossX = old.x + (swept.x - old.x) * fraction,
+        crossY = old.y + (swept.y - old.y) * fraction;
       const lateralGate = Math.abs(
         -(crossX - gate.x) * gate.ty + (crossY - gate.y) * gate.tx,
       );
-      if (crossed && lateralGate < c.width / 2 + 18) {
+      if (!old.released && crossed && lateralGate < c.width / 2 + 18) {
         a.passed++;
         a.nextGate = (a.nextGate + 1) % 20;
         a.lastProgressTick = state.raceTick;
@@ -500,6 +534,8 @@
       STEP,
       GATES: 20,
       COUNTDOWN: 180,
+      KART_RADIUS,
+      OFFCOURSE_TICKS,
       FINISH_GRACE_TICKS: 60 * 30,
       MAX_RACE_TICKS: 60 * 300,
     }),
