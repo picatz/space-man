@@ -221,25 +221,34 @@
           h,
         );
       }
-    for (const side of [-1, 1])
-      b.box(
-        p.x - p.ty * (half + clearance) * side,
-        0,
-        p.y + p.tx * (half + clearance) * side,
-        13,
-        210,
-        13,
-        shade(edge, 0.6),
-        h,
-      );
-    b.box(p.x, 207, p.y, 17, 14, c.width + clearance * 2 + 15, [0.17, 0.28, 0.37], h);
+    // An offset from the start normal can land on a different branch of a
+    // hairpin. Search both supports against the entire driveable corridor.
+    const supports = [-1, 1].map((side) => {
+      const radius = 10, required = half + (c.runoff || 0) + 28 + radius + 8;
+      let offset = half + clearance, support;
+      for (let attempt = 0; attempt < 160; attempt++, offset += 16) {
+        const x = p.x - p.ty * offset * side,
+          z = p.y + p.tx * offset * side;
+        if (TrackMesh.distance(c, x, z) < required) continue;
+        support = { x, z, radius, type: "arch", offset };
+        break;
+      }
+      if (!support) throw new RangeError("No clear finish-arch support position");
+      clearances.push(support);
+      b.box(support.x, 0, support.z, 13, 210, 13, shade(edge, 0.6), h);
+      return support;
+    });
+    const archX = (supports[0].x + supports[1].x) / 2,
+      archZ = (supports[0].z + supports[1].z) / 2,
+      archSpan = supports[0].offset + supports[1].offset;
+    b.box(archX, 207, archZ, 17, 14, archSpan + 15, [0.17, 0.28, 0.37], h);
     b.box(
-      p.x + Math.cos(h) * 10,
+      archX + Math.cos(h) * 10,
       212,
-      p.y + Math.sin(h) * 10,
+      archZ + Math.sin(h) * 10,
       3,
       5,
-      c.width + clearance * 2 - 4,
+      archSpan - 4,
       accent,
       h,
     );

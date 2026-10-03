@@ -209,6 +209,7 @@ for (const track of Race.tracks) {
       }
     }
     const props = Scene.course(course, Race.at).clearances;
+    assert.equal(props.filter(prop => prop.type === 'arch').length,2,'both arch footprints participate in global clearance coverage');
     assert.ok(props.some(prop => prop.type === 'pylon') && props.some(prop => prop.type === 'landmark'));
     for (const prop of props) assert.ok(TrackMesh.distance(course, prop.x, prop.z) - prop.radius >= limit + C.KART_RADIUS,
       `${prop.type} overlaps the expanded drivable hull corridor`);
@@ -331,5 +332,26 @@ for (const track of Race.tracks) {
     assert.ok(minimumRadius > 60, `minimum sampled bend radius ${minimumRadius} is too tight for manual driving`);
     assert.ok(minimumRadius + course.width / 2 - C.KART_RADIUS > 6.4 / yawBudget(6.4),
       'the available asphalt line accommodates the human cruise turning radius');
+  });
+}
+
+
+for (const def of Race.tracks) for (const side of [-1, 1]) {
+  test(`${def.id}/${side}: releasing steering on runoff does not snap into opposite assistance`, () => {
+    const state = Race.create({ trackId: def.id, count: 1 }), actor = state.actors[0],
+      c = Race.course(def.id), p = Race.at(c, 200), offset = c.width / 2 + 24;
+    state.phase = 'racing';
+    Object.assign(actor, { x:p.x-p.ty*offset*side, y:p.y+p.tx*offset*side,
+      heading:Math.atan2(p.ty,p.tx)+side*.75, vx:p.tx*4.2, vy:p.ty*4.2, speed:4.2 });
+    for (let tick=0; tick<8; tick++) Race.step(state, { [actor.id]: { throttle:1, steer:side } });
+    const before = actor.heading;
+    Race.step(state, { [actor.id]: { throttle:1, steer:0 } });
+    const yaw = Math.atan2(Math.sin(actor.heading-before),Math.cos(actor.heading-before));
+    assert.equal(actor.steering,0,'manual steering releases immediately');
+    assert.ok(Math.abs(yaw)<.008,'neutral assistance starts gently instead of a full opposite turn');
+    assert.ok(actor.neutralAssist>0 && actor.neutralAssist<.09);
+    for(let tick=0;tick<11;tick++) Race.step(state,{[actor.id]:{throttle:1}});
+    assert.ok(actor.neutralAssist>.99,'neutral guidance fades back over 200 ms');
+    assert.equal(actor.recoveries,0);
   });
 }

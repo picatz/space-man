@@ -40,3 +40,28 @@ steering cleared 16 units in at most 333 ms; tested cruise/boost late entries
 retained at least 3.475 speed and returned to asphalt within 750 ms. All authored
 centerline radii are above 60 units. These are deterministic probes, not a human
 playability verdict. Browser/manual acceptance is still pending for this draft.
+
+## Review refinements
+
+Releasing manual steering on the apron now ramps neutral road assistance back
+in over 12 fixed ticks. This keeps release immediate without replacing it with
+a sudden full-strength opposite correction. Finish-arch supports are searched
+against the entire course, included in footprint coverage, and connected by an
+asymmetric beam when a neighboring branch makes a symmetric support unsafe.
+The browser safety-edge probe uses the real runoff boundary and physical
+position displacement rather than relying only on the speed field.
+
+The first published prototype was manually driven through ordinary timed keys
+in cloud Chrome's 2D fallback. An Ember apron excursion kept moving and returned
+to asphalt via steering corrections without rescue. That check did not validate
+3D camera feel or a physical touch device, and preceded the release/arch fixes.
+The final combined build remains subject to hosted and manual acceptance.
+
+A subsequent manual Ember check completed a full lap (LAP 2/3, third place,
+16.27 seconds simulation race time) with ordinary timed keys, boost strips,
+both hairpins and several apron re-entries, without rescue or a scripted driver.
+Most corrections used 80–230 ms taps; long holds could over-rotate. Sustained
+outward holds still moved at roughly 42–57 km/h and an opposite correction
+returned to asphalt. Pauses between bursts compensate for tool latency, so this
+establishes corner reachability and recoverable excursions rather than smooth
+continuous-play or 3D-camera validation.

@@ -10,6 +10,25 @@ const { validateRelayHost } = require('./arena-network-helper.cjs');
 const ROOT = path.resolve(__dirname, '../..');
 const STEP_MS = 30000;
 
+function networkErrorCategory(value) {
+  // Error text may contain endpoint or invitation URLs. Return only a fixed
+  // category; never retain the text, regex match or an unrecognized code.
+  const text = String(value), code = /\bnet::(ERR_[A-Z_]+)\b/.exec(text)?.[1];
+  const allowed = ['ERR_INTERNET_DISCONNECTED','ERR_CONNECTION_REFUSED','ERR_CONNECTION_RESET','ERR_CONNECTION_CLOSED',
+    'ERR_CONNECTION_FAILED','ERR_NETWORK_CHANGED','ERR_ADDRESS_UNREACHABLE','ERR_TIMED_OUT','ERR_FAILED','ERR_ABORTED',
+    'ERR_WS_PROTOCOL_ERROR','ERR_TEMPORARILY_THROTTLED','ERR_CONNECTION_TIMED_OUT','ERR_WS_THROTTLE_QUEUE_TOO_LARGE',
+    'ERR_NETWORK_ACCESS_DENIED','ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS',
+    'ERR_CACHED_IP_ADDRESS_SPACE_BLOCKED_BY_LOCAL_NETWORK_ACCESS_POLICY'];
+  if (allowed.includes(code)) return code;
+  if (/\boffline\b|internet disconnected/i.test(text)) return 'offline';
+  if (/\brefused\b/i.test(text)) return 'refused';
+  if (/\bthrottl/i.test(text)) return 'throttled';
+  if (/\baccess\b|\bblocked\b|\bsecurity\b/i.test(text)) return 'access';
+  if (/\bwebsocket\b|\bsocket\b/i.test(text)) return 'socket';
+  if (/\bnetwork\b/i.test(text)) return 'network';
+  return 'other';
+}
+
 // Use the same opaque in-memory DERP hop as arena acceptance. A CI-only
 // loopback WebSocket adapts native browser frames to harness.relay.Socket.
 // This avoids automation-RPC latency without replacing browser socket events,
@@ -19,6 +38,12 @@ async function simulatedRelay(context, c, hub) {
   const server = new WebSocketServer({host:'127.0.0.1',port:0,path:'/derp',perMessageDeflate:false,maxPayload:1024*1024});
   await new Promise((resolve,reject) => { server.once('listening',resolve); server.once('error',reject); });
   c.loopbackURL = `ws://127.0.0.1:${server.address().port}/derp`;
+  c.loopbackListening = () => server.address() !== null;
+  c.bridgeEvents = [];
+  const bridgeEvent = event => {
+    c.bridgeEvents.push({event,atMs:Date.now()-c.createdAt});
+    if (c.bridgeEvents.length > 30) c.bridgeEvents.shift();
+  };
   const sockets = new Map(); c.bridgeSockets = sockets;
   c.closeBridge = async () => {
     for (const ws of server.clients) ws.terminate();
@@ -27,7 +52,8 @@ async function simulatedRelay(context, c, hub) {
   };
   server.on('connection',ws => {
     c.sockets++;
-    if (c.offline) { ws.terminate(); return; }
+    bridgeEvent('connection');
+    if (c.offline) { bridgeEvent('offline-rejected'); ws.terminate(); return; }
     const relay = new hub.Socket(); sockets.set(ws,relay);
     const startup = []; let startupBytes = 0;
     relay.onopen = () => {
@@ -57,21 +83,46 @@ async function simulatedRelay(context, c, hub) {
         startup.push(frame); startupBytes += frame.length;
       } else if (relay.readyState === 1) relay.send(frame);
     });
-    ws.on('close',() => { sockets.delete(ws); if (!relay.closed) relay.close(); });
-    ws.on('error',() => { c.deliveryErrors++; });
+    ws.on('close',() => { bridgeEvent('close'); sockets.delete(ws); if (!relay.closed) relay.close(); });
+    ws.on('error',() => { bridgeEvent('error'); c.deliveryErrors++; });
   });
   await context.addInitScript(endpoint => {
     const NativeWebSocket = window.WebSocket;
     window.__raceUnexpectedSocketCount = 0;
+    // Bounded event categories only. In particular, never retain constructor
+    // arguments, error messages, close reasons, frame bytes or room identities.
+    const transport = window.__raceNativeTransport = {counts:Object.create(null),events:[]};
+    let nextId = 0;
+    const record = (event,id,extra = {}) => {
+      transport.counts[event] = (transport.counts[event] || 0)+1;
+      const state = window.SpaceManNet?._n1.session()?.relay?.state;
+      const relayState = ['idle','connecting','handshake','established','down','closed'].includes(state) ? state : 'none';
+      transport.events.push({event,id,atMs:Math.round(performance.now()),online:navigator.onLine,relayState,...extra});
+      if (transport.events.length > 40) transport.events.shift();
+    };
+    for (const event of ['online','offline']) window.addEventListener(event,() => record(event,0));
     class LocalRelaySocket extends NativeWebSocket {
       constructor(url,protocols) {
+        const id = ++nextId;
+        record('constructor',id);
         if (String(url) !== 'wss://relay.test/derp') {
           window.__raceUnexpectedSocketCount++;
+          record('endpoint-rejected',id);
           throw new DOMException('Unexpected simulated relay endpoint','SecurityError');
         }
         // The local test application is HTTP. This is a native loopback socket,
         // never a TLS exception or a fallback from the opt-in public relay path.
-        if (protocols === undefined) super(endpoint); else super(endpoint,protocols);
+        try {
+          if (protocols === undefined) super(endpoint); else super(endpoint,protocols);
+        } catch (error) {
+          const category = ['SecurityError','SyntaxError','InvalidStateError','TypeError'].includes(error?.name) ? error.name : 'other';
+          record('constructor-error',id,{category});
+          throw error;
+        }
+        record('created',id);
+        this.addEventListener('open',() => record('open',id));
+        this.addEventListener('error',() => record('error',id,{readyState:this.readyState}));
+        this.addEventListener('close',event => record('close',id,{code:event.code,clean:event.wasClean}));
       }
     }
     window.WebSocket = LocalRelaySocket;
@@ -131,7 +182,8 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
   async function client(label, options = {}) {
     const context = await browser.newContext({ viewport: { width:1280,height:800 }, serviceWorkers:'block', ...options });
     const c = { name:label,context,phone:!!options.isMobile,sockets:0,sent:0,received:0,encryptedSent:0,encryptedReceived:0,
-      unexpectedSockets:0,deliveryErrors:0,sentTypes:{},receivedTypes:{},errors:[],offline:false,joined:false };
+      unexpectedSockets:0,deliveryErrors:0,sentTypes:{},receivedTypes:{},errors:[],offline:false,joined:false,
+      socketEvents:[],socketAttempts:0,networkChanges:[],networkErrors:[],createdAt:Date.now() };
     if (!live) await simulatedRelay(context, c, hub);
     await context.addInitScript(host => {
       const preview = /^\/pr\/([1-9]\d*)\/([a-f0-9]{40})\/([a-f0-9]{40})\//.exec(location.pathname);
@@ -147,7 +199,22 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     }, relayHost);
     c.page = await context.newPage(); c.page.setDefaultTimeout(STEP_MS); clients.push(c);
     c.page.on('pageerror', () => c.errors.push('uncaught browser error'));
+    c.page.on('console',message => {
+      if (!['error','warning'].includes(message.type())) return;
+      const category = networkErrorCategory(message.text());
+      if (category === 'other') return;
+      c.networkErrors.push({category,atMs:Date.now()-c.createdAt});
+      if (c.networkErrors.length > 30) c.networkErrors.shift();
+    });
     c.page.on('websocket', ws => {
+      const id = ++c.socketAttempts;
+      const record = (event,category) => {
+        c.socketEvents.push({id,event,atMs:Date.now()-c.createdAt,...(category ? {category} : {})});
+        if (c.socketEvents.length > 40) c.socketEvents.shift();
+      };
+      record('created');
+      ws.on('close',() => record('close'));
+      ws.on('socketerror',error => record('error',networkErrorCategory(error)));
       if (!live) {
         if (ws.url() !== c.loopbackURL) c.unexpectedSockets++;
         return; // Native loopback server counts opaque frames without RPCs.
@@ -196,6 +263,12 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
           // Capabilities, identities and other raw payloads are never retained.
           const item = {event};
           if (['established','down'].includes(data.state)) item.state = data.state;
+          if (typeof data.why === 'string') {
+            const known = ['socket closed','connect timeout','handshake timeout','liveness','stale link',
+              'short server key','bad magic','server info reject','rx overflow','frame too large','frame backlog'];
+            item.category = known.includes(data.why) ? data.why : data.why.startsWith('ws ctor:') ? 'constructor' : data.why.startsWith('frame:') ? 'frame' : 'other';
+            item.online = navigator.onLine;
+          }
           for (const key of ['p','reason','detail']) if (Number.isInteger(data[key])) item[key] = data[key];
           a.lifecycle.push(item); if (a.lifecycle.length > 30) a.lifecycle.shift();
         }
@@ -222,6 +295,20 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     return c;
   }
   const wait = (c, fn, arg, timeout = STEP_MS) => c.page.waitForFunction(fn, arg, {timeout,polling:25});
+  async function network(c, offline) {
+    c.offline = offline;
+    const change = {requestedOffline:offline,phase:'requested',requestedAtMs:Date.now()-c.createdAt};
+    c.networkChanges.push(change);
+    if (c.networkChanges.length > 6) c.networkChanges.shift();
+    await c.context.setOffline(offline);
+    change.phase = 'protocol-acknowledged';
+    change.acknowledgedAtMs = Date.now()-c.createdAt;
+    // Confirm the native browser's network state instead of adding a delay or
+    // dispatching a synthetic online event. The game still reconnects itself.
+    await wait(c,online => navigator.onLine === online,!offline);
+    change.phase = 'browser-confirmed';
+    change.confirmedAtMs = Date.now()-c.createdAt;
+  }
   const screen = (c, value) => c.page.locator(`.race-root[data-screen="${value}"]`).waitFor();
   const snapshot = c => c.page.evaluate(() => raceUI.snapshot());
   const identity = c => c.page.evaluate(() => {
@@ -363,10 +450,12 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     const before = (await snapshot(host)).actors.find(a => a.peerP === guestIdentity.p).heading;
     if (name === 'chromium') {
       const cdp = await guest.context.newCDPSession(guest.page);
-      await cdp.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{id:0,x,y}]});
-      await wait(host,p => __raceAcceptance.inputs[p]?.command.steer > 0,guestIdentity.p);
-      await wait(host,({p,heading}) => Math.abs(raceUI.snapshot().actors.find(a => a.peerP === p).heading-heading) > .01,{p:guestIdentity.p,heading:before});
-      await cdp.send('Input.dispatchTouchEvent', {type:'touchCancel',touchPoints:[]});
+      try {
+        await cdp.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{id:0,x,y}]});
+        await wait(host,p => __raceAcceptance.inputs[p]?.command.steer > 0,guestIdentity.p);
+        await wait(host,({p,heading}) => Math.abs(raceUI.snapshot().actors.find(a => a.peerP === p).heading-heading) > .01,{p:guestIdentity.p,heading:before});
+        await cdp.send('Input.dispatchTouchEvent', {type:'touchCancel',touchPoints:[]});
+      } finally { await cdp.detach(); }
     } else {
       await right.dispatchEvent('pointerdown',{pointerId:18,pointerType:'touch',isPrimary:true,clientX:x,clientY:y});
       await wait(host,p => __raceAcceptance.inputs[p]?.command.steer > 0,guestIdentity.p);
@@ -413,11 +502,16 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     assert.equal((await identity(late)).role,1,'late player watches current race');
     await pausedAgreement(host,[guest,watcher,late]);
     const socketsBefore = guest.sockets;
-    guest.offline = true; await guest.context.setOffline(true);
+    stage = 'confirming the phone network is offline';
+    await network(guest,true);
     // Network interruption only; neither room/simulation state nor actor data changes.
     await guest.page.evaluate(() => SpaceManNet._n1.session().relay.ws.close());
+    stage = 'waiting for the disconnected phone to leave the host roster';
     await wait(host,p => !SpaceManNet.roster().some(r => r.p === p),guestIdentity.p);
-    guest.offline = false; await guest.context.setOffline(false); await roster(4);
+    stage = 'confirming the phone network is online again';
+    await network(guest,false);
+    stage = 'waiting for the original phone seat to reconnect';
+    await roster(4);
     const rejoined = await identity(guest);
     assert.ok(rejoined.p === guestIdentity.p && rejoined.role === guestIdentity.role && rejoined.key === guestIdentity.key,'reconnect preserves key, driver role and seat');
     assert.ok(guest.sockets > socketsBefore,'reconnect opens replacement socket');
@@ -488,7 +582,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await Promise.all([host,guest].map(c => wait(c,() => SpaceManNet.roster().length === 2)));
     await closeHost(host); await Promise.all([host,guest].map(c => wait(c,() => !SpaceManNet.active)));
     for (const c of clients) {
-      await c.page.getByRole('button',{name:'← Back to runner',exact:true}).click();
+      await c.page.getByRole('button',{name:'← All games',exact:true}).click();
       await wait(c,() => !raceUI.active);
       assert.equal(await c.page.evaluate(() => G.player === __raceRunnerBefore),true,'racing preserves runner object');
       assert.equal(await c.page.evaluate(() => !!(input.left || input.right || input.jumpHeld)),false,'racing controls do not leak into runner');
@@ -507,12 +601,13 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     if (live) {
       for (const c of clients) {
         const interaction = await c.page.evaluate(() => ({
-          hidden:document.hidden,focused:document.hasFocus(),
+          hidden:document.hidden,focused:document.hasFocus(),online:navigator.onLine,
           buttonEvents:window.__raceAcceptance?.buttonEvents || {},
         })).catch(() => ({unavailable:true}));
-        // Only controlled button IDs, event counts and booleans. Never include
+        // Only controlled IDs/categories, event counts, timing and booleans. Never include
         // invitation values, identity material, text, URLs, frames or traces.
-        t.diagnostic('Live-relay interaction diagnostic '+JSON.stringify({client:c.name,...interaction}));
+        t.diagnostic('Live-relay interaction diagnostic '+JSON.stringify({client:c.name,...interaction,
+          networkChanges:c.networkChanges,socketEvents:c.socketEvents,networkErrors:c.networkErrors}));
       }
       throw new Error(`Live racing acceptance failed while ${stage} (${error.name || 'Error'}). Private diagnostics suppressed.`);
     }
@@ -522,7 +617,12 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
         const n = window.SpaceManNet, info = n?.info(), a = window.__raceAcceptance;
         const s = typeof raceUI !== 'undefined' ? raceUI?.snapshot() : null;
         const current = typeof raceUI !== 'undefined' ? raceUI?.roomStatus()?.current : null;
+        const relay = n?._n1.session()?.relay;
         return {screen:document.querySelector('.race-root')?.dataset.screen,hidden:document.hidden,visibilityState:document.visibilityState,hasFocus:document.hasFocus(),focusId:document.activeElement?.id || '',visibility:a?.visibility || [],buttonEvents:a?.buttonEvents || {},hint:document.querySelector('#raceRoomHint')?.textContent || '',
+          online:navigator.onLine,nativeTransport:window.__raceNativeTransport,
+          nativeUnexpectedSockets:window.__raceUnexpectedSocketCount || 0,
+          relayState:['idle','connecting','handshake','established','down','closed'].includes(relay?.state) ? relay.state : 'none',
+          relaySocketState:relay?.ws?.readyState ?? null,relayAttempts:relay?.attempts ?? 0,
           active:!!n?.active,mode:info?.mode,p:info?.myP,role:info?.role,
           roster:n?.roster().map(r => ({p:r.p,role:r.role,host:!!r.host,you:!!r.you})),
           phase:s?.phase,tick:s?.tick,actors:s?.actors.map(r => ({id:r.id,peerP:r.peerP,controller:r.controller,passed:r.passed,finishTick:r.finishTick})),
@@ -534,6 +634,8 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       t.diagnostic('Simulated-relay diagnostic '+JSON.stringify({client:c.name,...state,sockets:c.sockets,sent:c.sent,received:c.received,
         encryptedSent:c.encryptedSent,encryptedReceived:c.encryptedReceived,unexpectedSockets:c.unexpectedSockets,
         deliveryErrors:c.deliveryErrors,transport:'native-loopback-websocket',maxRelayBufferedBytes:c.maxRelayBufferedBytes || 0,
+        loopbackListening:c.loopbackListening?.() ?? false,bridgeOffline:c.offline,
+        bridgeEvents:c.bridgeEvents,networkChanges:c.networkChanges,socketEvents:c.socketEvents,networkErrors:c.networkErrors,
         browserErrors:c.errors.length,relayPackets:hub?.packetCount || 0}));
     }
     throw new Error(`Simulated-relay racing acceptance: ${stage}: ${redact(error.message)}`);

@@ -220,6 +220,7 @@
         y: spawn.y + spawn.tx * side,
         heading: Math.atan2(spawn.ty, spawn.tx),
         steering: 0,
+        neutralAssist: 1,
         vx: 0,
         vy: 0,
         speed: 0,
@@ -297,6 +298,7 @@
     a.y = p.y;
     a.heading = Math.atan2(p.ty, p.tx);
     a.steering = 0;
+    a.neutralAssist = 1;
     a.vx = a.vy = a.speed = 0;
     a.fuel = Math.max(0, a.fuel - 25);
     a.boosting = false;
@@ -321,6 +323,10 @@
       rate = desired === 0 ? 1 : desired * current < 0 ? 0.28 : 0.18;
     // Release/cancel is immediate; buildup and direction reversals are eased.
     a.steering = current + clamp(desired - current, -rate, rate);
+    // Letting go must not instantly replace a manual turn with a full-strength
+    // opposite correction. Reintroduce neutral assistance over 200 ms.
+    a.neutralAssist = desired || input.brake || !input.throttle
+      ? 0 : Math.min(1, finite(a.neutralAssist, 1) + 1 / 12);
     const yawLimit = turnSpeed * (input.brake ? 1.22 : 1);
     let yaw = a.steering * yawLimit;
     const strength = clamp((n.distance - (c.width / 2 - KART_RADIUS - 6)) / 54, 0, 1);
@@ -330,7 +336,7 @@
         backwards = Math.cos(a.heading - tangent) < -0.35,
         target = at(c, n.s + (backwards ? -1 : 1) * (110 + a.speed * 6)),
         targetHeading = Math.atan2(target.y - a.y, target.x - a.x),
-        correction = clamp(angle(targetHeading - a.heading), -turnSpeed, turnSpeed) * strength;
+        correction = clamp(angle(targetHeading - a.heading), -turnSpeed, turnSpeed) * strength * (desired ? 1 : a.neutralAssist);
       if (!desired || correction * desired >= 0) yaw += correction;
       else yaw += Math.sign(correction) * Math.min(Math.abs(correction), Math.abs(yaw) * 0.3);
     }

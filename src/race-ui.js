@@ -109,7 +109,8 @@
       roomPaused = false,
       localRoomMenu = false,
       roomClosing = false;
-    let roomDetails,
+    let roomUtilities,
+      roomDetails,
       roomEntry,
       roomBox,
       roomInput,
@@ -157,9 +158,9 @@
         launch,
         online
           ? host
-            ? "Start together  ↗"
+            ? "Start together"
             : "Waiting for host…"
-          : "Launch race  ↗",
+          : "Launch race",
       );
       for (const b of roomButtons) setDisabled(b, busy);
       setDisabled(roomInput, busy);
@@ -183,7 +184,7 @@
         rootEl.querySelector(".race-setup > .race-local-note"),
         online
           ? "Shared laps, boost and collisions. Empty grid slots get CPUs."
-          : "Local CPU racing · or open Play with friends below",
+          : "3 laps · You + 4 CPU pilots",
       );
       touch.hidden = view !== "play" || paused || (online && !canControl());
       watchTools.hidden = !online || view !== "play" || paused || !!ownActor();
@@ -457,7 +458,7 @@
       roomLeave.id = "raceRoomLeave";
       roomLeave.hidden = true;
       roomDetails.append(roomEntry, roomBox, roomHint, roomLeave);
-      lobby.append(roomDetails);
+      roomUtilities.prepend(roomDetails);
       watchTools = el("div", "race-watch-tools");
       watchTools.hidden = true;
       const previous = button("←", "race-small", () => cycleWatch(-1));
@@ -549,6 +550,7 @@
     }
     function buildAudioControls(parent) {
       const row = el("div", "race-audio-controls");
+      row.setAttribute("role", "group");
       row.setAttribute("aria-label", "Race audio");
       const mute = button("Sound on", "race-small", () => audioSetting({ muted: !prefs.muted }));
       mute.setAttribute("aria-label", "Toggle race sound");
@@ -842,6 +844,9 @@
               ? "pause"
               : "play";
       if (panel) {
+        // A returned lobby or reopened pause menu must not focus an offscreen
+        // control left above the previous scroll position.
+        panel.scrollTop = 0;
         const b = panel.querySelector("button");
         b?.focus({ preventScroll: true });
       } else canvas.focus({ preventScroll: true });
@@ -976,17 +981,17 @@
       touch.append(steering, actions, rescue);
       rootEl.append(touch);
       modal = el("div", "race-modal");
-      lobby = el("div", "race-dialog");
+      lobby = el("div", "race-dialog race-lobby");
       lobby.setAttribute("role", "dialog");
       lobby.setAttribute("aria-label", "Choose your race");
       const header = el("div", "race-lobby-header");
       header.append(
         el("span", "race-kicker", "SPACE MAN / STAR CIRCUIT"),
-        recoveryButton("← Back to runner", "race-text race-small", close),
+        recoveryButton("← All games", "race-text race-small", close),
       );
       const grid = el("div", "race-grid"),
         intro = el("div", "race-intro");
-      const title = el("h1", "race-title", "Find your");
+      const title = el("h1", "race-title", "Find your ");
       title.append(el("span", "", "fast lane."));
       hero = el("canvas", "race-hero");
       hero.width = 780;
@@ -1003,12 +1008,12 @@
       }
       facts.lastChild.lastChild.textContent = "Until the next bend";
       intro.append(
-        el("span", "race-pill", "ORIGINAL ARCADE HOVER RACING"),
+        el("span", "race-pill", "STAR CIRCUIT"),
         title,
         el(
           "p",
           "race-lede",
-          "Carve the corners. Catch a boost strip. Leave a little stardust behind.",
+          "Steer into the bends. Catch a boost. Find your rhythm.",
         ),
         hero,
         facts,
@@ -1035,6 +1040,8 @@
       description = el("p", "race-track-description");
       const options = el("div", "race-options"),
         segments = el("div", "race-segments");
+      segments.setAttribute("role", "group");
+      segments.setAttribute("aria-label", "CPU pace");
       for (const [id, label] of [
         ["easy", "Chill"],
         ["normal", "Sport"],
@@ -1051,13 +1058,13 @@
       }
       options.append(el("span", "race-label", "CPU PACE"), segments);
       const launch = button(
-        "Launch race  ↗",
+        "Launch race",
         "race-primary race-launch",
         start,
       );
       const help = el("details", "race-help");
       help.append(
-        el("summary", "", "How to fly"),
+        el("summary", "", "Controls & tips"),
         el(
           "p",
           "",
@@ -1073,13 +1080,24 @@
         el(
           "p",
           "race-local-note",
-          "Local CPU racing · or open Play with friends below",
+          "3 laps · You + 4 CPU pilots",
         ),
-        help,
       );
-      grid.append(intro, setup);
+      roomUtilities = el("div", "race-utilities");
+      const preferences = el("section", "race-preferences");
+      preferences.setAttribute("aria-label", "Race preferences");
+      preferences.append(el("h2", "race-label", "YOUR FLIGHT DECK"));
+      if (perspective) {
+        preferences.append(el("p", "race-setting-label", "Camera"));
+        perspective.panel(preferences);
+      }
+      preferences.append(el("p", "race-setting-label", "Audio"));
+      buildAudioControls(preferences);
+      preferences.append(help);
+      roomUtilities.append(preferences);
+      grid.append(intro, setup, roomUtilities);
       lobby.append(header, grid);
-      pausePanel = el("div", "race-dialog race-compact");
+      pausePanel = el("div", "race-dialog race-compact race-pause-panel");
       pausePanel.setAttribute("role", "dialog");
       pausePanel.setAttribute("aria-label", "Race paused");
       pausePanel.append(
@@ -1089,11 +1107,19 @@
         recoveryButton("Resume race", "race-primary", resume),
         button("Restart race", "", start),
         button("Choose a circuit", "race-text", showLobby),
-        recoveryButton("Back to runner", "race-text", close),
+        recoveryButton("All games", "race-text", close),
       );
-      perspective?.panel(pausePanel);
-      perspective?.panel(setup);
-      resultPanel = el("div", "race-dialog race-compact");
+      const pauseCopy = el("div", "race-menu-copy");
+      for (const n of Array.from(pausePanel.children).slice(0, 3)) pauseCopy.append(n);
+      pausePanel.prepend(pauseCopy);
+      const pauseActions = el("div", "race-menu-actions");
+      for (const n of pausePanel.querySelectorAll("button")) pauseActions.append(n);
+      pausePanel.append(pauseActions);
+      const pausePreferences = el("div", "race-menu-preferences");
+      perspective?.panel(pausePreferences);
+      pausePanel.append(pausePreferences);
+
+      resultPanel = el("div", "race-dialog race-compact race-result-panel");
       resultPanel.setAttribute("role", "dialog");
       resultPanel.setAttribute("aria-label", "Race results");
       resultTitle = el("h2");
@@ -1113,16 +1139,21 @@
           start();
         }),
         button("Choose a circuit", "race-text", showLobby),
-        recoveryButton("Back to runner", "race-text", close),
+        recoveryButton("All games", "race-text", close),
       );
+      const resultActions = el("div", "race-menu-actions");
+      for (const n of resultPanel.querySelectorAll("button")) resultActions.append(n);
+      resultPanel.append(resultActions);
       pausePanel.querySelectorAll("button")[0].id = "raceResume";
       pausePanel.querySelectorAll("button")[1].id = "raceRestart";
       pausePanel.querySelectorAll("button")[2].id = "raceLobby";
+      pausePanel.querySelectorAll("button")[3].id = "raceExit";
+      resultPanel.querySelectorAll("button")[3].id = "raceResultExit";
       resultPanel.querySelectorAll("button")[0].id = "raceRematch";
       resultPanel.querySelectorAll("button")[1].id = "raceNext";
       buildRoomControls();
-      buildAudioControls(lobby);
-      buildAudioControls(pausePanel);
+
+      buildAudioControls(pausePreferences);
       modal.append(lobby, pausePanel, resultPanel);
       rootEl.append(modal);
       live = el("div", "race-sr");
@@ -1262,6 +1293,7 @@
             : "Time for a new orbit.";
       for (const r of state.results) {
         const row = el("div", "race-result-row");
+        row.dataset.you = String(r.id === ownActor()?.id);
         row.append(
           el("span", "", String(r.position)),
           el("strong", "", r.name + (r.id === ownActor()?.id ? " · YOU" : "")),
