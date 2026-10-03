@@ -123,10 +123,15 @@ test(
     // renderer may deliver fewer ticks while a fixed timeout is running.
     const brakeTick = await page.evaluate(() => raceUI.snapshot().tick);
     await page.waitForFunction(tick => raceUI.snapshot().tick >= tick + 18, brakeTick);
+    // Read the result while braking is still held. Releasing first permits
+    // auto-throttle (or a live boost strip) to accelerate before the assertion.
+    const braking = await page.evaluate(() => {
+      const s = raceUI.snapshot(), a = s.actors[0];
+      return { tick:s.tick, speed:a.speed, boosting:a.boosting, padTicks:a.padTicks,
+        offroad:a.offroad, neighbors:s.actors.slice(1).map(b => Math.hypot(a.x-b.x,a.y-b.y)) };
+    });
     await page.keyboard.up("ArrowDown");
-    assert.ok(
-      (await page.evaluate(() => raceUI.snapshot().actors[0].speed)) < 5,
-    );
+    assert.ok(braking.speed < 5, `held braking after ${braking.tick-brakeTick} ticks: ${JSON.stringify(braking)}`);
     await capture(page, "race-desktop-driving");
     await page.keyboard.press("Escape");
     await screen(page, "pause");
