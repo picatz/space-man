@@ -211,7 +211,7 @@ test("race native audio: gestures, pause, mute/music/volume, stop, reuse and des
   await screen(page, "lobby");
   await quietGraph(page);
   assert.equal(await page.evaluate(() => raceAudioProbe.read().phase), "lobby");
-  await menu(page, "← Back to runner");
+  await menu(page, "← All games");
   await quietGraph(page);
   assert.equal(await page.evaluate(() => raceUI.active), false);
   for (let i = 0; i < 2; i++) {
@@ -223,7 +223,7 @@ test("race native audio: gestures, pause, mute/music/volume, stop, reuse and des
       "reopening reuses one controller/context");
     await page.keyboard.press("Escape");
     await menu(page, "Choose a circuit");
-    await menu(page, "← Back to runner");
+    await menu(page, "← All games");
     await quietGraph(page);
     assert.equal(await page.evaluate(() => raceAudioProbe.read().connectedNodes), 4,
       "only three mix gains and the limiter remain connected while stopped");

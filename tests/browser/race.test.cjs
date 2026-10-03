@@ -154,7 +154,7 @@ test(
       await page.keyboard.press("Escape");
       await menu(page, "Choose a circuit");
     }
-    await menu(page, "← Back to runner");
+    await menu(page, "← All games");
     assert.equal(await page.evaluate(() => raceUI.active), false);
     assert.equal(
       await page.evaluate(() => document.activeElement.id),
@@ -162,7 +162,7 @@ test(
     );
     await page.locator("#btnRace").click();
     await screen(page, "lobby");
-    await menu(page, "← Back to runner");
+    await menu(page, "← All games");
     assert.equal(
       await page.locator(".race-root").count(),
       1,
@@ -226,6 +226,20 @@ test(
     assert.ok(s.actors[0].finishTick > 600);
     assert.equal(s.results.length, 5);
     await capture(page, "race-results-desktop");
+    for (const [width, height] of [[390,844], [844,390], [768,1024], [1440,900]]) {
+      await page.setViewportSize({ width, height });
+      for (const selector of ['#raceRematch', '#raceNext', '#raceResultExit']) {
+        const action = page.locator(selector);
+        await action.scrollIntoViewIfNeeded();
+        const b = await action.boundingBox();
+        assert.ok(b.height >= 44 && b.y >= -1 && b.y + b.height <= height + 1, 'result actions stay reachable');
+      }
+      const overflow = await page.locator('.race-results').evaluate(n => n.scrollWidth > n.clientWidth + 1);
+      assert.equal(overflow, false, 'result standings do not overflow');
+      assert.equal(await page.locator('.race-result-row[data-you=true]').count(), 1, 'your result is highlighted');
+      await page.locator('.race-compact:visible').evaluate(n => { n.scrollTop = 0; });
+      await capture(page, `race-results-${width}x${height}`);
+    }
     await menu(page, "Race again");
     assert.equal(
       await page.evaluate(() => raceUI.snapshot().phase),
@@ -340,7 +354,7 @@ test(
     }
     await page.getByRole("button", { name: "Pause race" }).tap();
     await page
-      .getByRole("button", { name: "Back to runner", exact: true })
+      .getByRole("button", { name: "All games", exact: true })
       .filter({ visible: true })
       .tap();
     assert.equal(await page.evaluate(() => raceUI.active), false);

@@ -245,7 +245,7 @@ test(
     );
     await menu(page, "Resume race");
     await page.getByRole("button", { name: "Pause race", exact: true }).click();
-    await menu(page, "Back to runner");
+    await menu(page, "All games");
     assert.equal(await page.evaluate(() => raceUI.active), false);
     await page.locator("#btnRace").click();
     await page.locator(".race-launch").click();
@@ -387,7 +387,7 @@ test(
     assert.equal(result.actors[0].recoveries, 0);
     assert.ok(result.actors[0].finishTick > 600);
     await capture(page, "perspective-complete-race");
-    await menu(page, "Back to runner");
+    await menu(page, "All games");
     assert.equal(await page.evaluate(() => raceUI.active), false);
     await page.locator("#btnPlay").focus();
     await page.keyboard.press("Enter");
