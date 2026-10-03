@@ -12,7 +12,7 @@ The figures below are concrete starting tuning, not measured fun or final balanc
 
 ## Verified foundation and constraints
 
-Baseline: merged PR #49 at `fa8a136fc3f95f3a90801f9b5e158a3654edd40e`. Recheck the source as implementation advances.
+Baseline: merged PR #50 at `93ed2aa468fe6daf71d6852359349316c25fb465`, including PR #49 handling, player identity, Arena thumb controls and stable Crew buttons. Recheck the source as implementation advances.
 
 - `src/race.js`: a 216-segment Catmull–Rom circuit, 60 Hz planar physics, width 180, kart radius 28, runoff 48, 20 ordered checkpoint planes. Starlight length is approximately 3,844.088 units; gates are 192.204 units apart. Current normal/boost speed ceilings are 6.4/9 units per tick. Existing strips are at lap fractions .14, .56, .85.
 - `src/race-online.js`: only the host steps physics. Current wire v1 has a 19-byte input, 30-byte header, five 64-byte actors, at most twelve 8-byte events; packet ceiling 1,024 bytes. Input freshness is 200 ms, snapshots 50 ms, seat rejoin 10 seconds. Events are a bounded presentation history, not reliable gameplay state.
