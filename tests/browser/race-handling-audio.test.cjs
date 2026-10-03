@@ -477,14 +477,16 @@ for (const device of [
     await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
     await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks===0);
     assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].padTicks),0,'real touch cancellation is not brake release');
-    for(const releaseKind of ['brake-only','both-fingers']){
+    for(const releaseKind of ['both-fingers','brake-only']){
       await page.keyboard.press('Escape');await screen(page,'pause');await menu(page,'Restart race');await playing(page);
       await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+      await page.evaluate(()=>{window.arcadeTouchEvents=[];for(const type of ['pointerdown','pointerup','pointercancel','lostpointercapture','touchstart','touchmove','touchend','touchcancel'])document.addEventListener(type,e=>{if(window.arcadeTouchEvents.length<32)window.arcadeTouchEvents.push({type,id:e.pointerId,active:e.touches?.length,action:e.target?.dataset?.action});},{capture:true,once:false});});
       await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(right,1),point(brake,2)]});
       await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
       if(releaseKind==='brake-only')await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[point(right,1)]});
       else await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-      await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0);
+      try {await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0,null,{timeout:2000});}
+      catch(error){t.diagnostic(JSON.stringify({releaseKind,...await page.evaluate(()=>{const a=raceUI.snapshot().actors[0];return{events:arcadeTouchEvents,command:raceDriveProbe.command,actor:{drifting:a.drifting,driftTicks:a.driftTicks,padTicks:a.padTicks,speed:a.speed,offroad:a.offroad}};})}));throw error;}
       assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!',releaseKind+' earns an actual authoritative exit boost');
       await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
       assert.equal(await page.locator('.race-pressed').count(),0);
