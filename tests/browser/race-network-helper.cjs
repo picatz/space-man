@@ -488,7 +488,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await Promise.all([host,guest].map(c => wait(c,() => SpaceManNet.roster().length === 2)));
     await closeHost(host); await Promise.all([host,guest].map(c => wait(c,() => !SpaceManNet.active)));
     for (const c of clients) {
-      await c.page.getByRole('button',{name:'← Back to runner',exact:true}).click();
+      await c.page.getByRole('button',{name:'← All games',exact:true}).click();
       await wait(c,() => !raceUI.active);
       assert.equal(await c.page.evaluate(() => G.player === __raceRunnerBefore),true,'racing preserves runner object');
       assert.equal(await c.page.evaluate(() => !!(input.left || input.right || input.jumpHeld)),false,'racing controls do not leak into runner');

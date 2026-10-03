@@ -127,7 +127,7 @@ test('arena desktop: launcher, real controls, pause, result/rematch, stage forma
     await pause(page);
     await page.getByRole('button', { name: 'Choose a match', exact: true }).click();
   }
-  await page.getByRole('button', { name: /Back to runner/ }).filter({ visible: true }).click();
+  await page.getByRole('button', { name: /All games/ }).filter({ visible: true }).click();
   assert.equal(await page.evaluate(() => arenaUI.active), false);
   assert.equal(await page.evaluate(() => G.player === window.runnerAtArenaLaunch), true);
   assert.equal(await page.evaluate(() => localStorage.getItem('sm2.best')), '4321');
@@ -180,7 +180,7 @@ test('arena phone: readable controls, multi-touch movement/release, rotation and
   assert.ok(tabletJump && tabletJump.width >= 48 && tabletJump.x + tabletJump.width <= 769 && tabletJump.y + tabletJump.height <= 1025);
   await capture(page, 'arena-match-tablet');
   await page.locator('[aria-label="Pause match"]').tap(); await screen(page, 'pause');
-  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
+  await page.getByRole('button', { name: 'All games', exact: true }).filter({ visible: true }).tap();
   assert.equal(await page.evaluate(() => arenaUI.active), false);
   assert.equal(await page.evaluate(() => input.left || input.right || input.jumpHeld), false);
 });
@@ -213,7 +213,7 @@ test('arena browser gamepad mapping and held-button mode-boundary guard', { time
   await page.evaluate(() => { window.testPad.buttons[0].pressed = false; }); await page.waitForTimeout(80);
   await page.evaluate(() => { window.testPad.buttons[9].pressed = true; }); await screen(page, 'pause');
   await page.evaluate(() => { window.testPad.buttons[9].pressed = false; }); await page.waitForTimeout(80);
-  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).focus();
+  await page.getByRole('button', { name: 'All games', exact: true }).filter({ visible: true }).focus();
   await page.evaluate(() => { window.testPad.buttons[0].pressed = true; });
   await page.waitForFunction(() => !arenaUI.active);
   await page.waitForTimeout(180);
@@ -280,7 +280,7 @@ test('arena mobile setup fits short viewports without horizontal overflow', { ti
     await control.scrollIntoViewIfNeeded(); const b = await control.boundingBox();
     assert.ok(b.y >= 27 && b.y + b.height <= 619, 'pause actions remain reachable in the visual viewport');
   }
-  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).tap();
+  await page.getByRole('button', { name: 'All games', exact: true }).filter({ visible: true }).tap();
   assert.equal(await page.evaluate(() => arenaUI.active), false);
   assert.equal(await page.locator('#btnArena').isVisible(), true);
   await page.locator('#btnArena').tap(); await screen(page, 'lobby');
@@ -398,7 +398,7 @@ test('arena touch recovers from outside release, lost capture, interruptions and
   await tapControl(page.locator('#arenaResume')); await neutral();
   p = await dragStick(); await pause(page);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await tapControl(page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }));
+  await tapControl(page.getByRole('button', { name: 'All games', exact: true }).filter({ visible: true }));
   assert.equal(await page.evaluate(() => arenaUI.active), false);
   assert.equal(await page.evaluate(() => input.left || input.right || input.jumpHeld), false);
   await tapControl(page.locator('#btnArena')); await tapControl(page.locator('.arena-launch')); await playing(page); await neutral();
