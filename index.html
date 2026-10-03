@@ -5538,7 +5538,7 @@ function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
 // A screen-space ownership marker survives matching outfits and busy scenery.
 // It is drawn once by the scene, never by drawPlayer's borrowed ghost/wardrobe rig.
 function drawRunnerIdentity(alpha) {
-  if (!['play', 'pause', 'resume'].includes(G.mode) || !G.player || (!netSpectating() && G.player.dead) || !ART.identityBadge) return;
+  if (!['play', 'pause', 'resume'].includes(G.mode) || !G.player || (!netSpectating() && G.player.dead) || !ART.identityCue) return;
   const watching = netSpectating(), target = watching ? ghosts.find(g => g.active && g.p === spec.watchP && g.alpha > .1) : null;
   if (watching && !target) return;
   if (!watching && vigPose && vigPose.a < .85) return;
@@ -5551,11 +5551,10 @@ function drawRunnerIdentity(alpha) {
   const top = hudBottom * view.scale / dpr + 8;
   if (x < -15 || x > w + 15 || y > h - 35 || y + p.h * scale < top) return;
   ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ART.identityBrackets(ctx, x, y + p.h * scale / 2, Math.max(34, p.w * scale + 11), Math.max(43, p.h * scale + 8));
-  const text = watching ? 'WATCHING' : 'YOU', bw = watching ? 86 : 44;
+  const role = watching ? 'watching' : 'you', bw = 20;
   const body = { id: 1, x: x - p.w * scale / 2 - 5, y: y - 7, w: p.w * scale + 10, h: p.h * scale + 7 };
-  const [badge] = ART.identityLayout([{ id: 1, x, y: y - 41, w: bw, h: 22, primary: true, priority: 2 }], { left: 8, right: w - 8, top, bottom: h - 35 }, [body]);
-  if (badge) ART.identityBadge(ctx, text, badge.x, badge.y, badge.w, { primary: true, pointerX: x, pointerY: y - 10 });
+  const [badge] = ART.identityLayout([{ id: 1, x, y: y - 32, w: bw, h: 16, primary: true, priority: 2 }], { left: 8, right: w - 8, top, bottom: h - 35 }, [body]);
+  if (badge) ART.identityCue(ctx, badge.x + badge.w / 2, badge.y + badge.h / 2, role, x, y - 9);
   ctx.restore();
 }
 

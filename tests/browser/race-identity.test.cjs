@@ -78,9 +78,15 @@ async function capture(page, name) {
   await page.screenshot({ path: path.join(dir, name + '.png') });
 }
 
+async function assertCueClearsCrafts(page) {
+  const data=await page.locator('.race-root').getAttribute('data-identity-cue');
+  const {cue,bodies}=JSON.parse(data);assert.ok(cue,'focused craft has a cue');
+  for(const b of bodies)assert.ok(cue.x+cue.w<=b.x||cue.x>=b.x+b.w||cue.y+cue.h<=b.y||cue.y>=b.y+b.h,'cue must not paint on another craft');
+}
 for (const [width, height] of [[320, 568], [390, 844], [844, 390], [1280, 800]]) {
   test(`local pilot identity across all cameras at ${width}x${height}`, { timeout: 45000 }, async t => {
     const { peer } = await launch(t), { page } = await peer('local', width, height);
+    if(width===390)await page.evaluate(()=>{G.cosmetics.hat='cone';});
     await page.locator('.race-launch').click();
     await page.waitForFunction(() => raceUI.snapshot()?.phase === 'racing');
     const id = await page.evaluate(() => raceUI.snapshot().actors.find(a => a.controller === 'human').id);
@@ -94,10 +100,15 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390], [1280, 800]])
       assert.ok(hud.x + hud.width <= right.x || hud.y >= right.y + right.height, 'identity does not cover pause or timer');
       assert.equal(await page.locator('.race-pilot-marker').isVisible(), mode === 'chase');
       if (mode === 'chase') {
-        assert.equal(await page.locator('.race-pilot-marker').textContent(), 'YOU');
+        assert.equal(await page.locator('.race-pilot-marker').getAttribute('data-role'), 'you');
+        assert.equal(await page.locator('.race-pilot-marker').evaluate(e => e.tagName), 'CANVAS');
         assert.equal(await page.locator('.race-pilot-marker').getAttribute('data-actor-id'), id);
+        const anchored=await page.locator('.race-pilot-marker').evaluate(e=>({box:e.getBoundingClientRect().toJSON(),anchor:JSON.parse(e.dataset.anchor),root:e.parentElement.getBoundingClientRect().toJSON(),events:getComputedStyle(e).pointerEvents}));
+        assert.equal(anchored.events,'none');
+        assert.ok(Math.abs(anchored.anchor.y-(anchored.box.bottom-anchored.root.top)-6)<1,'cue uses a small fixed pixel gap from the actual helmet/hat anchor');
       } else if (mode === 'topdown') {
-        await page.waitForFunction(() => identityLabels.at(-1) === 'YOU');
+        await page.waitForFunction(() => document.querySelector('.race-root').dataset.identity?.startsWith('YOU:'));
+        await assertCueClearsCrafts(page);
       }
       await capture(page, `race-identity-${width}-${mode}`);
     }
@@ -136,10 +147,10 @@ test('non-first-seat pilot and spectator keep distinct identity through watch cy
       await identity(watcher.page, 'watching', id);
       assert.equal(await watcher.page.locator('.race-pilot-marker').isVisible(), mode === 'chase');
       if (mode === 'chase') {
-        assert.equal(await watcher.page.locator('.race-pilot-marker').textContent(), 'WATCHING');
+        assert.equal(await watcher.page.locator('.race-pilot-marker').getAttribute('data-role'), 'watching');
         assert.equal(await watcher.page.locator('.race-pilot-marker').getAttribute('data-actor-id'), id);
       }
-      if (mode === 'topdown') await watcher.page.waitForFunction(() => identityLabels.at(-1) === 'WATCHING');
+      if (mode === 'topdown') { await watcher.page.waitForFunction(() => document.querySelector('.race-root').dataset.identity?.startsWith('WATCHING:')); await assertCueClearsCrafts(watcher.page); }
     }
     await capture(watcher.page, 'race-watching-' + mode);
   }

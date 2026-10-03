@@ -4,7 +4,7 @@
   const modes = ["chase", "cockpit", "topdown"],
     names = { chase: "Chase", cockpit: "Cockpit", topdown: "Top-down" };
   const CSS = `
-.race-world{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.race-pilot-marker{position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-100%);padding:5px 10px;border:2px solid #07111F;border-radius:9px;background:#FFF3CE;color:#101B29;box-shadow:0 0 0 1px #FFF3CE,0 2px 7px #0008;font:900 12px/1.2 system-ui,sans-serif;letter-spacing:.06em;white-space:nowrap}.race-pilot-marker:after{content:"";position:absolute;left:50%;bottom:-8px;transform:translateX(-50%);border-left:6px solid transparent;border-right:6px solid transparent;border-top:7px solid #FFF3CE}.race-view-controls{position:absolute;right:calc(var(--race-right) + 18px);top:calc(var(--race-top) + 78px);z-index:4;text-align:right}.race-view-toggle{background:#0b2033ed;min-width:103px;font-size:11px;min-height:44px}.race-view-menu{display:grid;gap:4px;padding:8px;margin-top:6px;width:175px;border:1px solid #4b6b80;border-radius:15px;background:#091c2ff5;box-shadow:0 8px 25px #0006}.race-view-menu .race-button{width:100%;text-align:left;min-height:44px}.race-view-menu [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4;background:#28403c}.race-view-note{font-size:9px;color:#a6c7d8;padding:4px 7px}.race-root[data-screen=lobby] .race-view-controls,.race-root[data-screen=results] .race-view-controls,.race-root[data-screen=pause]>.race-view-controls{display:none}.race-root[data-camera=chase] .race-warning,.race-root[data-camera=cockpit] .race-warning{top:calc(var(--race-top) + 134px)}.race-camera-options{display:flex;flex-wrap:wrap;gap:5px;margin:13px 0}.race-camera-options .race-button{flex:1;min-width:80px;padding:8px;font-size:10px}.race-camera-options [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4}.race-cockpit{pointer-events:none;position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(670px,75%);height:17%;z-index:1;border-radius:60% 60% 0 0 / 50% 50% 0 0;background:linear-gradient(180deg,#719dae 0%,#d8eff1 4%,#274555 8%,#0a192a 14%,#07121f 100%);border-top:2px solid #92e5ea;box-shadow:0 -8px 25px #07172566}.race-cockpit:before{content:'STAR CIRCUIT • FLIGHT SYSTEMS';position:absolute;left:25%;right:25%;top:18%;padding:9px 0;border:1px solid #416d7a;border-radius:8px;color:#90dfdc;background:#122b37;text-align:center;font:8px/1.4 ui-monospace,monospace;letter-spacing:.15em}.race-root[data-touch=true] .race-cockpit{height:13%;width:48%}
+.race-world{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.race-pilot-marker{position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-100%);width:20px;height:16px}.race-view-controls{position:absolute;right:calc(var(--race-right) + 18px);top:calc(var(--race-top) + 78px);z-index:4;text-align:right}.race-view-toggle{background:#0b2033ed;min-width:103px;font-size:11px;min-height:44px}.race-view-menu{display:grid;gap:4px;padding:8px;margin-top:6px;width:175px;border:1px solid #4b6b80;border-radius:15px;background:#091c2ff5;box-shadow:0 8px 25px #0006}.race-view-menu .race-button{width:100%;text-align:left;min-height:44px}.race-view-menu [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4;background:#28403c}.race-view-note{font-size:9px;color:#a6c7d8;padding:4px 7px}.race-root[data-screen=lobby] .race-view-controls,.race-root[data-screen=results] .race-view-controls,.race-root[data-screen=pause]>.race-view-controls{display:none}.race-root[data-camera=chase] .race-warning,.race-root[data-camera=cockpit] .race-warning{top:calc(var(--race-top) + 134px)}.race-camera-options{display:flex;flex-wrap:wrap;gap:5px;margin:13px 0}.race-camera-options .race-button{flex:1;min-width:80px;padding:8px;font-size:10px}.race-camera-options [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4}.race-cockpit{pointer-events:none;position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(670px,75%);height:17%;z-index:1;border-radius:60% 60% 0 0 / 50% 50% 0 0;background:linear-gradient(180deg,#719dae 0%,#d8eff1 4%,#274555 8%,#0a192a 14%,#07121f 100%);border-top:2px solid #92e5ea;box-shadow:0 -8px 25px #07172566}.race-cockpit:before{content:'STAR CIRCUIT • FLIGHT SYSTEMS';position:absolute;left:25%;right:25%;top:18%;padding:9px 0;border:1px solid #416d7a;border-radius:8px;color:#90dfdc;background:#122b37;text-align:center;font:8px/1.4 ui-monospace,monospace;letter-spacing:.15em}.race-root[data-touch=true] .race-cockpit{height:13%;width:48%}
 @media(max-width:600px){.race-view-controls{top:calc(var(--race-top) + 76px);right:calc(var(--race-right) + 12px)}.race-view-toggle{min-width:95px;padding:7px 10px}.race-view-menu{width:157px}.race-cockpit:before{font-size:6px;letter-spacing:0;left:15%;right:15%;padding:6px}}
 @media(max-height:520px){.race-view-controls{top:calc(var(--race-top) + 65px)}.race-view-menu{display:grid;grid-template-columns:1fr 1fr;width:245px}.race-view-note{grid-column:1/-1}.race-cockpit{height:20%}}
 @media(max-height:360px) and (min-width:480px){.race-view-menu{width:min(430px,calc(100vw - var(--race-left) - var(--race-right) - 24px));grid-template-columns:repeat(4,minmax(0,1fr))}.race-view-menu .race-button{font-size:10px;line-height:1.2;padding:6px;min-height:44px}}
@@ -38,7 +38,8 @@
     const style = document.createElement("style");
     style.textContent = CSS;
     parent.append(style, canvas);
-    const marker = document.createElement("div");
+    const marker = document.createElement("canvas");
+    marker.width = 40; marker.height = 32;
     marker.className = "race-pilot-marker";
     marker.setAttribute("aria-hidden", "true");
     marker.hidden = true;
@@ -235,16 +236,26 @@
         );
         // Anchor above the same interpolated pilot and camera used for this draw.
         // Cockpit deliberately has no floating self marker or hidden-craft proxy.
-        const point = math.project([a.x, 49, a.y], matrix);
+        // Project the actual helmet/accessory silhouette, then add a CSS-pixel
+        // gap. A fixed world-height label anchor floated far above small pilots.
+        const hatTop = { antenna: 40, sprout: 37, beanie: 38.1, halo: 37.2,
+          crown: 37, cone: 44.5, catears: 39, phones: 34 };
+        const pilotTop = hatTop[a.appearance?.hat] || 34;
+        const point = math.project([a.x - Math.cos(a.heading) * 5, pilotTop,
+          a.y - Math.sin(a.heading) * 5], matrix);
         if (point.visible) {
           const own = a.id === config.localActorId && a.controller === "human";
-          const label = own ? "YOU" : "WATCHING";
-          if (marker.textContent !== label) marker.textContent = label;
+          const role = own ? "you" : "watching";
+          if (marker.dataset.role !== role) {
+            const cue = marker.getContext('2d'); cue.clearRect(0, 0, 40, 32);
+            cue.save(); cue.scale(2, 2); root.SpaceManArt.identityCue(cue, 10, 8, role); cue.restore();
+          }
           marker.dataset.actorId = a.id;
           marker.dataset.role = own ? "you" : "watching";
-          const margin = own ? 31 : 54;
+          marker.dataset.anchor = JSON.stringify({x:(point.x+1)*w/2,y:(1-point.y)*h/2});
+          const margin = 14;
           marker.style.left = Math.max(margin, Math.min(w - margin, (point.x + 1) * w / 2)) + "px";
-          marker.style.top = Math.max(35, Math.min(h - 10, (1 - point.y) * h / 2 - 7)) + "px";
+          marker.style.top = Math.max(35, Math.min(h - 10, (1 - point.y) * h / 2 - 6)) + "px";
           marker.hidden = false;
         }
       }
