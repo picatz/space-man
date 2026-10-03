@@ -1,0 +1,37 @@
+name: Expedition browsers
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  expedition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - name: Play the complete solo expedition and check constrained layouts
+        run: node --test expedition.test.cjs
+        env:
+          SPACE_MAN_EXPEDITION_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_EXPEDITION_SCREENSHOTS: ${{ runner.temp }}/expedition-screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: expedition-${{ matrix.engine }}-screenshots
+          path: ${{ runner.temp }}/expedition-screenshots/*.png
+          retention-days: 3

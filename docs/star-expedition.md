@@ -1,10 +1,10 @@
 # Star Expedition
 
-## First playable slice (in development)
+## Solo itinerary
 
 An optional solo itinerary links three existing games without replacing their
-standalone menus: a short Endless Run, an Orbital Arena duel, then a Star Circuit
-race. Chapter briefings explain the next controls and keep the completed results
+standalone menus: a 400m Endless Run (60-second active-play limit), an Orbital Arena duel,
+then a one-lap Star Circuit race. Chapter briefings explain the next controls and keep the completed results
 visible. Finishing a leg, even without winning, advances the itinerary. Leaving
 an expedition is explicit; held controls, audio, focus and animation loops must
 be released between modes.
@@ -35,3 +35,26 @@ Required evidence before online release: real encrypted multi-client relay
 run→arena→race transitions; unchanged identities/roles; delayed/duplicated/out-of-
 order chapter packets; interruption at every transition; late join; role changes;
 reconnect before/after barrier; host closure; desktop/mobile and CPU-only fallback.
+
+## Lifecycle and checks
+
+`src/expedition.js` is a small, pure ordered itinerary. A monotonically increasing
+leg token rejects duplicate, delayed and wrong-leg results. The page owns the
+journey; the existing Arena/Racing UIs expose `openSession` for a bounded local
+round and a result callback. They release listeners, held controls, animation,
+audio and focus before handing back. Leaving a local chapter cancels the journey.
+Standalone selections are restored and never overwritten by itinerary defaults.
+
+Runner records are banked once when the leg ends. A successful rendezvous or
+60-second extraction is not counted as a quick-death mercy trigger. The existing
+mission, cosmetics and runner score rules still apply. The trip receipt is
+in-memory only, and the UI states that reload starts fresh. Service-worker
+updates wait until the player leaves the itinerary.
+
+Run `node --test tests/*.test.cjs`. Run `node --test expedition.test.cjs` from
+`tests/browser` after its existing `npm ci`/Playwright setup. The browser suite
+plays a genuine runner loss and arena loss and drives a complete one-lap race
+through standard gamepad commands; it never teleports racers or manufactures a
+result. It also covers four touch viewport sizes, leaving/reopening, temporary
+choices, complete receipts and standalone three-lap/runner return. CI checks
+Chromium and WebKit. Online continuity is deliberately not claimed by this suite.

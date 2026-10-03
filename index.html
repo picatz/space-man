@@ -802,6 +802,7 @@
   .roster-actions-head .glyph { color: var(--cyan-lt); margin-right: 4px; }
 </style>
 <link rel="stylesheet" href="src/space-theme.css" />
+<link rel="stylesheet" href="src/expedition.css" />
 </head>
 <body>
 
@@ -818,6 +819,7 @@
       <button class="btn ghost mode-link" id="btnArena" data-description="Small suits. Big knockouts." aria-label="Orbital Arena. Battle CPUs or friends.">Orbital Arena</button>
       <button class="btn ghost mode-link" id="btnRace" data-description="Carve the corners. Catch a boost." aria-label="Star Circuit. Arcade hover racing.">Star Circuit</button>
     </div>
+    <button class="btn ghost expedition-launch" id="btnExpedition"><span>Star Expedition<small>RUN → ARENA → RACE</small></span><span class="expedition-solo">SOLO</span></button>
     <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
     </div>
@@ -848,6 +850,26 @@
     <div id="offlineNote" class="offline-note" role="status" style="display:none">Offline · single player ready</div>
     </div>
   </div>
+</div>
+
+<!-- Solo connected itinerary: uses the runner's accessible overlay navigation. -->
+<div class="overlay" id="ovExpedition">
+  <section class="panel expedition-panel" role="dialog" aria-modal="true" aria-labelledby="expeditionTitle">
+    <div class="expedition-topline"><span>STAR EXPEDITION</span><span>SOLO · CPU RIVALS</span></div>
+    <ol class="expedition-route" aria-label="Expedition itinerary">
+      <li id="expeditionLeg0"><span>01</span><strong>RUN</strong></li>
+      <li id="expeditionLeg1"><span>02</span><strong>ARENA</strong></li>
+      <li id="expeditionLeg2"><span>03</span><strong>RACE</strong></li>
+    </ol>
+    <div class="expedition-destination" id="expeditionDestination"></div>
+    <h2 id="expeditionTitle">One trip. Three adventures.</h2>
+    <p class="expedition-copy" id="expeditionCopy"></p>
+    <ul class="expedition-receipt" id="expeditionReceipt" aria-label="Your expedition results"></ul>
+    <p class="expedition-controls" id="expeditionControls"></p>
+    <button class="btn" id="btnExpeditionContinue">Begin the escape</button>
+    <button class="btn ghost" id="btnExpeditionExit">Back to all modes</button>
+    <p class="expedition-note">No victory required to continue · Reloading starts a fresh expedition</p>
+  </section>
 </div>
 
 <!-- Pause -->
@@ -1084,6 +1106,7 @@
 <script src="src/art.js"></script>
 <script src="src/anim.js"></script>
 <!-- Arena is opt-in: pure simulation + an inert, lazy-created presentation shell. -->
+<script src="src/expedition.js"></script>
 <script src="src/arena.js"></script>
 <script src="src/arena-online.js"></script>
 <script src="src/arena-room.js"></script>
@@ -2243,9 +2266,9 @@ function inMuteHit(p) { const h = G._muteHit; return !!h && p.x >= h.x0 && p.x <
 /* ---- menu focus: keyboard Tab/Enter is native; a gamepad drives the same DOM
    focus (D-pad/stick moves, A activates, B backs out). Never active in a run. ---- */
 // Stacking order: later ids sit on top when two overlays are ever shown at once.
-const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovTogether', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'];
+const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovTogether', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions', 'ovExpedition'];
 const PRIMARY_OVERLAY = { attract: 'ovAttract', pause: 'ovPause', dead: 'ovDead' };
-const MENU_BACK = { ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
+const MENU_BACK = { ovExpedition: 'btnExpeditionExit', ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
 function topOverlayId() {
   for (let i = OVERLAY_IDS.length - 1; i >= 0; i--) if (document.getElementById(OVERLAY_IDS[i]).classList.contains('show')) return OVERLAY_IDS[i];
   return null;
@@ -4145,7 +4168,7 @@ function die(cause) {
   }
 }
 
-function finalizeDeath() {
+function finalizeDeath(completed = false) {
   const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
   lastRunEnd = performance.now() / 1000;   // E13: restarts inside 60s never see a vignette
   stats.runs++;
@@ -4156,7 +4179,7 @@ function finalizeDeath() {
   if (G.dist >= 600) stats.deepRuns = (stats.deepRuns || 0) + 1;                       // lilac-suit counter
   flags.bestStreak = fs > G.prevBest && fs > 0 ? (flags.bestStreak || 0) + 1 : 0;      // halo-hat streak
   // Quick death = short OR shallow: a 19s death at 250m is a decent run; a slow 90m death isn't.
-  if ((G.time - G.runStart) < 20 || G.dist < 150) stats.deadStreak++; else stats.deadStreak = 0;
+  if (!completed && ((G.time - G.runStart) < 20 || G.dist < 150)) stats.deadStreak++; else stats.deadStreak = 0;
   stats.mercy = stats.deadStreak >= 3;
   let medal = null;
   for (const md of MEDALS) if (fs >= md.v) { medal = md; break; }
@@ -4240,6 +4263,9 @@ function update() {
     updateCamera();
     if (netSpectating()) netFollowCamera();   // spectator follows the watched runner, not the local bot
     updateDistance();
+    if (!G.player.dead && expeditionRunnerActive() && (G.dist >= SpaceManExpedition.legs[0].goal || G.frameCount >= SpaceManExpedition.legs[0].maxTicks)) {
+      G.finalScore = Math.floor(G.score); finalizeDeath(true); finishExpeditionRunner(G.dist >= SpaceManExpedition.legs[0].goal); return;
+    }
     // Run Together presence feed (§4.1): capture at 10Hz; no-op solo / spectating
     // / under the offline mock (NET.active is false there).
     if (netLive() && !netSpectating() && G.frameCount % 6 === 0) {
@@ -4386,6 +4412,7 @@ function finishTick() {
 let acc = 0, lastT = 0, rafId = 0, shotFrozen = false;
 let arenaUI = null;
 let raceUI = null;
+let expedition = null, expeditionToken = 0;
 function modeOverlayActive() { return !!((arenaUI && arenaUI.active) || (raceUI && raceUI.active)); }
 let arenaPadNeutral = false;
 function frame(now) {
@@ -6004,7 +6031,7 @@ function drawHUD() {
   }
 
   if (G.mission) {
-    const m = G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
+    const m = expeditionRunnerActive() ? { done: false, kind: 'expedition', label: 'LEG 1/3 · REACH 400m', progress: G.dist, target: SpaceManExpedition.legs[0].goal } : G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
     ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 22 * us, 6 * us); ctx.fill();
     ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = fontStr(700, Math.max(9.5, 7.5 * us), FONT); ctx.textAlign = 'left';
     const label = m.done ? 'MISSION COMPLETE' : (view.w < 480 ? (MISSION_SHORT[m.kind] || m.label) : m.label);
@@ -6417,6 +6444,7 @@ function showDeathCard() {
   if (G.newBest) setTimeout(() => buzz('celebrate'), 250);   // a new best deserves a little fanfare in the hand
   G.trauma = Math.min(G.trauma, 0.3);   // rumble can't outlast the card
   finalizeDeath();
+  if (expeditionRunnerActive()) { finishExpeditionRunner(false); return; }
   G.mode = 'dead'; G.deadShownAt = G.time;
   cancelDeathAnim();
   input.deadIgnore = new Set(input.downIds);   // mash-guard (E9.6): fingers already down don't count as the retry tap
@@ -8493,14 +8521,18 @@ $('btnRosterCancel').onclick = () => { hideAllOverlays(); if (G.mode === 'attrac
 /* ---------------------------------------------------------------------------
    25. UI WIRING
    ------------------------------------------------------------------------- */
-$('btnPlay').onclick = () => { Audio.ensure(); Audio.resume(); startRun(); };
+$('btnPlay').onclick = () => { if (expedition) return; Audio.ensure(); Audio.resume(); startRun(); };
 $('btnArena').onclick = () => {
+  if (expedition) return;
   if (netLive()) {
     queueToast('Leave Run Together before opening Arena.', 'sys');
     announce('Leave Run Together before opening Arena. Your room is still connected.');
     return;
   }
   if (G.mode !== 'attract' || (raceUI && raceUI.active) || !window.SpaceManArenaUI) return;
+  clearInput(); Audio.suspend(); getArenaUI().open();
+};
+function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
     storageKey: BUILD.storageKey('sm2.arena.v1'),
     net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
@@ -8511,17 +8543,21 @@ $('btnArena').onclick = () => {
       return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
     },
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
-    onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); hideAllOverlays(); showOverlay('ovAttract'); $('btnArena').focus(); },
+    onClose() { closeModeOverlay('btnArena'); },
   });
-  clearInput(); Audio.suspend(); arenaUI.open();
-};
+  return arenaUI;
+}
 $('btnRace').onclick = () => {
+  if (expedition) return;
   if (netLive()) {
     queueToast('Leave your room before opening Star Circuit.', 'sys');
     announce('Leave your room before opening Star Circuit. Your room is still connected.');
     return;
   }
   if (G.mode !== 'attract' || (arenaUI && arenaUI.active) || !window.SpaceManRaceUI) return;
+  clearInput(); Audio.suspend(); getRaceUI().open();
+};
+function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
     storageKey: BUILD.storageKey('sm2.race.v1'),
     net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
@@ -8537,10 +8573,103 @@ $('btnRace').onclick = () => {
         if (Object.prototype.hasOwnProperty.call(changes, key)) settings[key] = changes[key];
       Audio.syncChannels(); persistAll(); syncSettingsUI();
     },
-    onClose() { clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; Audio.resume(); hideAllOverlays(); showOverlay('ovAttract'); $('btnRace').focus(); },
+    onClose() { closeModeOverlay('btnRace'); },
   });
-  clearInput(); Audio.suspend(); raceUI.open();
-};
+  return raceUI;
+}
+// Local journey director. It never opens, leaves or changes a room.
+function expeditionRunnerActive() {
+  const s = expedition && expedition.snapshot();
+  return !!s && s.phase === 'playing' && s.index === 0;
+}
+function closeModeOverlay(focusId) {
+  clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
+  Audio.resume(); hideAllOverlays();
+  if (expedition) {
+    if (expedition.snapshot().phase === 'playing') { exitExpedition(); return; }
+    showExpedition(); return;
+  }
+  showOverlay('ovAttract'); $(focusId).focus();
+}
+function expeditionRecordText(r) {
+  if (r.id === 'runner') return (r.reached ? 'Rendezvous reached' : 'Rescue shuttle caught you') + ' · ' + r.distance + 'm · ' + r.score.toLocaleString() + ' points';
+  if (r.id === 'arena') return (r.tie ? 'Arena tied' : r.won ? 'Arena won' : 'Duel complete') + ' · ' + r.kos + ' KOs · ' + r.stocks + ' lives left';
+  return (r.finished ? 'Home in ' + r.position + (r.position === 1 ? 'st' : r.position === 2 ? 'nd' : r.position === 3 ? 'rd' : 'th') : 'Race complete · unfinished') + (r.time === null ? '' : ' · ' + r.time.toFixed(1) + 's');
+}
+function showExpedition() {
+  if (!expedition) return;
+  const s = expedition.snapshot(), finished = s.phase === 'complete';
+  const next = Math.min(2, s.index + (s.phase === 'debrief' ? 1 : 0));
+  const leg = SpaceManExpedition.legs[next];
+  clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
+  G.mode = 'attract';
+  hideAllOverlays();
+  $('expeditionTitle').textContent = finished ? 'You made the whole trip.' : s.records.length ? 'Next stop: ' + leg.name.toLowerCase() + '.' : 'One trip. Three adventures.';
+  $('expeditionDestination').textContent = finished ? 'EXPEDITION COMPLETE' : 'LEG ' + (next + 1) + ' OF 3 · ' + leg.destination;
+  $('expeditionCopy').textContent = finished ? 'From the flare to the finish line. Every leg is part of your story, whatever the result.' : leg.briefing;
+  $('expeditionControls').textContent = finished ? 'Take another trip, or explore each mode at your own pace.' : leg.controls;
+  $('expeditionReceipt').innerHTML = s.records.map(r => '<li>' + escapeHtml(expeditionRecordText(r)) + '</li>').join('');
+  $('expeditionReceipt').hidden = s.records.length === 0;
+  for (let i = 0; i < 3; i++) {
+    const el = $('expeditionLeg' + i); el.dataset.state = i < s.records.length ? 'done' : i === next ? 'next' : 'later';
+    if (!finished && i === next) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current');
+  }
+  $('btnExpeditionContinue').textContent = finished ? 'New expedition' : leg.action + '  ↗';
+  $('btnExpeditionExit').textContent = s.records.length && !finished ? 'Leave expedition' : 'Back to all modes';
+  showOverlay('ovExpedition'); $('btnExpeditionContinue').focus();
+  announce($('expeditionDestination').textContent + '. ' + $('expeditionCopy').textContent);
+}
+function openExpedition() {
+  if (modeOverlayActive() || G.mode !== 'attract' || expedition) return;
+  if (netLive()) { announce('Leave your room before starting a solo expedition. Your room is still connected.'); queueToast('Leave your room before starting a solo expedition.', 'sys'); return; }
+  expedition = SpaceManExpedition.create((Math.random() * 0xffffffff) >>> 0);
+  showExpedition();
+}
+function launchExpeditionLeg() {
+  if (!expedition || netLive() || modeOverlayActive()) return;
+  const s = expedition.snapshot();
+  if (s.phase === 'complete') { expedition = SpaceManExpedition.create((Math.random() * 0xffffffff) >>> 0); showExpedition(); return; }
+  if (s.phase === 'debrief') expedition.advance();
+  const leg = expedition.begin(); if (!leg) return;
+  expeditionToken = leg.token;
+  hideAllOverlays(); clearInput();
+  if (leg.id === 'runner') {
+    $('btnQuit').textContent = 'Leave expedition';
+    startRun({ course: { kind: 'seed', seed: leg.seed, gen: COURSE.GEN, beat: 0 } });
+    announce('Expedition leg one. Reach 400 meters. Your shuttle continues even if you fall.');
+    return;
+  }
+  const ui = leg.id === 'arena' ? getArenaUI() : getRaceUI();
+  Audio.suspend();
+  const session = expedition;
+  const opened = ui.openSession(leg, (record) => {
+    if (expedition !== session || !session.finish(leg.id, leg.token, record)) return;
+    ui.close(); // Result is recorded before onClose chooses the next briefing.
+  });
+  if (!opened) { exitExpedition(); announce('Could not start that expedition leg. Please try again.'); }
+}
+function finishExpeditionRunner(reached) {
+  if (!expeditionRunnerActive()) return;
+  if (!expedition.finish('runner', expeditionToken, { reached, distance: G.dist, score: G.finalScore })) return;
+  cancelDeathAnim(); Audio.killSting(); G.deathCardShown = true; G.showPicker = false;
+  $('btnQuit').textContent = 'Quit to Title';
+  showAttract(); showExpedition();
+}
+function exitExpedition() {
+  if (!expedition) return;
+  const runner = expeditionRunnerActive();
+  if (runner && G.player && G.player.dead && !G.deathCardShown) { G.deathCardShown = true; finalizeDeath(); }
+  expedition.cancel(); expedition = null; expeditionToken = 0;
+  if (arenaUI && arenaUI.active) arenaUI.close();
+  if (raceUI && raceUI.active) raceUI.close();
+  cancelDeathAnim(); Audio.killSting(); Audio.resume(); clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
+  $('btnQuit').textContent = 'Quit to Title';
+  showAttract(); $('btnExpedition').focus();
+}
+$('btnExpedition').onclick = openExpedition;
+$('btnExpeditionContinue').onclick = launchExpeditionLeg;
+$('btnExpeditionExit').onclick = exitExpedition;
+
 // Pointer clicks drop focus so a later Space still means start/retry; keyboard
 // activation (detail 0) keeps it where the player put it.
 $('btnDaily').onclick = (e) => { e.currentTarget.blur(); startDaily(); };
@@ -8554,6 +8683,7 @@ $('btnCloseSettings').onclick = () => (settingsFrom === 'pause' ? reopenPause() 
 $('btnCloseTrophy').onclick = () => showAttract();
 $('btnResume').onclick = () => togglePause();
 $('btnQuit').onclick = () => {
+  if (expedition) { exitExpedition(); return; }
   // Quitting mid-death-sequence must still bank the run (stats, medal, best).
   if (G.player && G.player.dead && !G.deathCardShown) { G.deathCardShown = true; finalizeDeath(); }
   lastRunEnd = performance.now() / 1000;   // E13: a quit ends the run too — no vignette on the next quick start
@@ -8711,7 +8841,7 @@ function swUpdateReady() {
   queueToast('UPDATE READY', 'sys');
 }
 function swSafeMoment() {
-  if (modeOverlayActive()) return false;
+  if (modeOverlayActive() || expedition) return false;
   if (netLive()) return false;
   if (G.mode === 'attract') return $('ovAttract').classList.contains('show');
   return G.mode === 'dead' && $('ovDead').classList.contains('show');

@@ -95,6 +95,7 @@
       previousPose = null,
       renderDt = 1 / 60;
     const audioControls = [], audioOverrides = {};
+    let localSession = null;
     let selected = { trackId: "starlight", difficulty: "normal" },
       keys = new Map(),
       touches = new Map(),
@@ -173,7 +174,7 @@
       setText(resume, resume.disabled ? "Waiting for host…" : "Resume race");
       setText(
         rootEl.querySelector("#raceLobby"),
-        online
+        localSession ? "Leave expedition" : online
           ? host
             ? "Back to room lobby"
             : "Leave race room"
@@ -518,6 +519,7 @@
       } catch (_) {}
     }
     function save() {
+      if (localSession) return; // Expedition settings are temporary.
       try {
         root.localStorage.setItem(
           opts.storageKey || "sm2.race.v1",
@@ -1167,7 +1169,7 @@
       resetInput();
       rescueRequest = false;
       preferences();
-      state = R.create(selected);
+      state = R.create(localSession ? { ...selected, laps: 1, seed: localSession.seed } : selected);
       previousPose = null;
       perspective?.reset();
       view = "play";
@@ -1181,12 +1183,13 @@
         rotation: height > width && !calm() ? -a.heading - Math.PI / 2 : 0,
       };
       setPanel(null);
-      announce("Three laps. Auto-drive is on. Race starts in three.");
+      announce(localSession ? "Expedition finale. One lap home. Auto-drive is on. Race starts in three." : "Three laps. Auto-drive is on. Race starts in three.");
       audio?.update(state, followActor());
       ensureFrame();
     }
     function showLobby() {
       if (!active) return;
+      if (localSession) { close(); return; }
       if (onlineActive()) {
         if (!room.isHost) {
           leaveRaceRoom();
@@ -1278,6 +1281,10 @@
       );
       audio?.update(state, followActor());
       syncRoomChoices();
+      if (localSession && !localSession.reported) {
+        localSession.reported = true;
+        localSession.onResult({ position: me?.position || 5, finished: !!me?.finished, time: me?.time ?? null });
+      }
     }
     function resize() {
       if (!active) return;
@@ -1873,7 +1880,21 @@
       document.body.style.overflow = oldOverflow;
       if (savedFocus?.isConnected) savedFocus.focus({ preventScroll: true });
       audio?.stop();
+      if (localSession) { selected = localSession.previous; localSession = null; }
+      rootEl.dataset.session = "false";
+      pausePanel.querySelector("#raceLobby").textContent = "Choose a circuit";
+      pausePanel.querySelectorAll("button")[3].textContent = "Back to runner";
       opts.onClose?.();
+    }
+    function openSession(config, onResult) {
+      if (active || destroyed || opts.net?.active || typeof onResult !== "function") return false;
+      open();
+      localSession = { seed: config.seed >>> 0, previous: { ...selected }, onResult, reported: false };
+      selected = { trackId: R.tracks[0].id, difficulty: "easy" };
+      rootEl.dataset.session = "true";
+      pausePanel.querySelector("#raceLobby").textContent = "Leave expedition";
+      pausePanel.querySelectorAll("button")[3].textContent = "Leave expedition";
+      syncChoices(); start(); return true;
     }
     function destroy() {
       close();
@@ -1885,6 +1906,7 @@
     }
     return Object.freeze({
       open,
+      openSession,
       close,
       destroy,
       joinInvite(payload, role) {
