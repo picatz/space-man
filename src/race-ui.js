@@ -90,7 +90,10 @@
       padPrevious = {},
       pad = { steer: 0, boost: false, brake: false, recover: false },
       lastPad = null,
-      audio = null;
+      audio = null,
+      perspective = null,
+      previousPose = null,
+      renderDt = 1 / 60;
     const audioControls = [], audioOverrides = {};
     let selected = { trackId: "starlight", difficulty: "normal" },
       keys = new Map(),
@@ -304,6 +307,8 @@
       state = next;
       networkEpoch = snapshot.epoch;
       if (newRound) {
+        previousPose = null;
+        perspective?.reset();
         resetInput();
         view = "play";
         paused = roomPaused = localRoomMenu = false;
@@ -673,6 +678,11 @@
         }
         return;
       }
+      if (e.code === "KeyC" && !e.repeat && !actionFor(e)) {
+        e.preventDefault();
+        perspective?.cycle();
+        return;
+      }
       const a = actionFor(e);
       if (a) {
         e.preventDefault();
@@ -873,6 +883,13 @@
       );
       g = canvas.getContext("2d", { alpha: false });
       rootEl.append(canvas);
+      perspective = root.SpaceManRaceView?.create({
+        root: rootEl,
+        canvas,
+        storageKey: opts.storageKey,
+        settings: () => prefs,
+        announce,
+      });
       hud = el("div", "race-hud");
       const stats = el("div", "race-hud-box");
       position = el("div", "race-position");
@@ -1074,6 +1091,8 @@
         button("Choose a circuit", "race-text", showLobby),
         recoveryButton("Back to runner", "race-text", close),
       );
+      perspective?.panel(pausePanel);
+      perspective?.panel(setup);
       resultPanel = el("div", "race-dialog race-compact");
       resultPanel.setAttribute("role", "dialog");
       resultPanel.setAttribute("aria-label", "Race results");
@@ -1149,6 +1168,8 @@
       rescueRequest = false;
       preferences();
       state = R.create(selected);
+      previousPose = null;
+      perspective?.reset();
       view = "play";
       paused = false;
       last = 0;
@@ -1223,6 +1244,7 @@
       last = 0;
       acc = 0;
       setPanel(null);
+      previousPose = root.SpaceManRacePresentation?.capture(state);
       announce("Race resumed");
       ensureFrame();
     }
@@ -1287,6 +1309,7 @@
       dpr = prefs.batterySaver ? 1 : Math.min(2, root.devicePixelRatio || 1);
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
+      perspective?.resize(width, height, dpr);
       paint();
     }
     function road(g, c) {
@@ -1484,51 +1507,70 @@
     function paint() {
       if (!active || !g) return;
       const c = R.course(state?.trackId || selected.trackId);
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.fillStyle = c.sky;
-      g.fillRect(0, 0, width, height);
-      for (let i = 0; i < 100; i++) {
-        const x =
-            (((i * 137.1 - (calm() ? 0 : camera.x * 0.045)) % width) + width) %
-            width,
-          y =
-            (((i * i * 39.1 - (calm() ? 0 : camera.y * 0.045)) % height) +
-              height) %
-            height;
-        g.fillStyle = i % 4 ? "#c9e4ff60" : c.edge + "80";
-        g.fillRect(x, y, i % 7 ? 1 : 2, i % 7 ? 1 : 2);
+      const a = state ? followActor() : null;
+      const rendered3d =
+        a &&
+        perspective?.render(R.snapshot(state), {
+          actorId: a.id,
+          previous: onlineActive() ? null : previousPose,
+          network: onlineActive(),
+          paused: onlineActive() ? roomPaused : paused,
+          alpha: paused || state.phase === "finished" ? 1 : acc * 60,
+          dt: renderDt,
+          reduceMotion: calm(),
+        });
+      // The hidden fallback canvas does not need a second full-screen sky pass.
+      // Its camera stays warm below; redraw it fully only when it is presented.
+      if (!rendered3d) {
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.fillStyle = c.sky;
+        g.fillRect(0, 0, width, height);
+        for (let i = 0; i < 100; i++) {
+          const x =
+              (((i * 137.1 - (calm() ? 0 : camera.x * 0.045)) % width) +
+                width) %
+              width,
+            y =
+              (((i * i * 39.1 - (calm() ? 0 : camera.y * 0.045)) % height) +
+                height) %
+              height;
+          g.fillStyle = i % 4 ? "#c9e4ff60" : c.edge + "80";
+          g.fillRect(x, y, i % 7 ? 1 : 2, i % 7 ? 1 : 2);
+        }
+        const px = width * 0.78,
+          py = height * 0.28,
+          r = Math.min(width, height) * 0.25,
+          grad = g.createRadialGradient(
+            px - r * 0.3,
+            py - r * 0.4,
+            r * 0.1,
+            px,
+            py,
+            r,
+          );
+        grad.addColorStop(0, c.planet);
+        grad.addColorStop(1, c.sky);
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(px, py, r, 0, TAU);
+        g.fill();
+        g.strokeStyle = c.edge + "20";
+        g.lineWidth = 2;
+        g.beginPath();
+        g.ellipse(px, py, r * 1.55, r * 0.25, -0.4, 0, TAU);
+        g.stroke();
       }
-      const px = width * 0.78,
-        py = height * 0.28,
-        r = Math.min(width, height) * 0.25,
-        grad = g.createRadialGradient(
-          px - r * 0.3,
-          py - r * 0.4,
-          r * 0.1,
-          px,
-          py,
-          r,
-        );
-      grad.addColorStop(0, c.planet);
-      grad.addColorStop(1, c.sky);
-      g.fillStyle = grad;
-      g.beginPath();
-      g.arc(px, py, r, 0, TAU);
-      g.fill();
-      g.strokeStyle = c.edge + "20";
-      g.lineWidth = 2;
-      g.beginPath();
-      g.ellipse(px, py, r * 1.55, r * 0.25, -0.4, 0, TAU);
-      g.stroke();
       if (!state) {
+        perspective?.close();
         speed.parentNode.hidden = true;
         banner.hidden = true;
         warning.hidden = true;
         return;
       }
       speed.parentNode.hidden = false;
-      const a = followActor(),
-        zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
+      const zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
+      // Keep the fallback camera warm while WebGL is active, so switching view
+      // or losing the graphics context never flies back from an old position.
       const desiredX = a.x + Math.cos(a.heading) * 85,
         desiredY = a.y + Math.sin(a.heading) * 85;
       camera.x += (desiredX - camera.x) * 0.12;
@@ -1543,85 +1585,87 @@
           Math.sin(targetRotation - camera.rotation),
           Math.cos(targetRotation - camera.rotation),
         ) * 0.1;
-      g.save();
-      g.translate(width / 2, height * 0.48);
-      g.scale(zoom, zoom);
-      g.rotate(camera.rotation);
-      g.translate(-camera.x, -camera.y);
-      road(g, c);
-      if (a.finishTick === null) {
-        const gate = c.gates[a.nextGate];
+      if (!rendered3d) {
         g.save();
-        g.translate(gate.x, gate.y);
-        g.rotate(Math.atan2(gate.ty, gate.tx));
-        g.strokeStyle = c.accent + "48";
-        g.lineWidth = 3;
-        g.setLineDash([5, 9]);
-        g.beginPath();
-        g.moveTo(0, -c.width * 0.43);
-        g.lineTo(0, c.width * 0.43);
-        g.stroke();
-        g.setLineDash([]);
+        g.translate(width / 2, height * 0.48);
+        g.scale(zoom, zoom);
+        g.rotate(camera.rotation);
+        g.translate(-camera.x, -camera.y);
+        road(g, c);
+        if (a.finishTick === null) {
+          const gate = c.gates[a.nextGate];
+          g.save();
+          g.translate(gate.x, gate.y);
+          g.rotate(Math.atan2(gate.ty, gate.tx));
+          g.strokeStyle = c.accent + "48";
+          g.lineWidth = 3;
+          g.setLineDash([5, 9]);
+          g.beginPath();
+          g.moveTo(0, -c.width * 0.43);
+          g.lineTo(0, c.width * 0.43);
+          g.stroke();
+          g.setLineDash([]);
+          g.restore();
+        }
+        for (const actor of state.actors) {
+          if (!calm() && actor.recoveryTicks && state.tick % 12 < 5) continue;
+          kart(g, actor);
+        }
         g.restore();
-      }
-      for (const actor of state.actors) {
-        if (!calm() && actor.recoveryTicks && state.tick % 12 < 5) continue;
-        kart(g, actor);
-      }
-      g.restore();
-      // Screen-space labels remain upright in the chase view. Keep YOU first
-      // and omit crowded CPU labels rather than stacking names over the grid.
-      const topClip = Math.max(
-        83,
-        hud.getBoundingClientRect().bottom - (viewport?.top || 0) + 10,
-      );
-      const controlsTop =
-        rootEl.dataset.touch === "true" && !touch.hidden
-          ? touch.querySelector(".race-touch-group").getBoundingClientRect()
-              .top - (viewport?.top || 0)
-          : height;
-      const bottomClip = Math.min(height - 100, controlsTop - 16);
-      const labels = [],
-        cos = Math.cos(camera.rotation),
-        sin = Math.sin(camera.rotation);
-      g.font = "700 11px system-ui";
-      g.textAlign = "center";
-      for (const actor of state.actors) {
-        const dx = actor.x - camera.x,
-          dy = actor.y - camera.y;
-        const x = width / 2 + (dx * cos - dy * sin) * zoom;
-        const y = height * 0.48 + (dx * sin + dy * cos) * zoom - 30;
-        const name = actor.controller === "human" ? "YOU" : actor.name;
-        const w = g.measureText(name).width + 10;
-        const box = {
-          left: x - w / 2,
-          right: x + w / 2,
-          top: y - 12,
-          bottom: y + 5,
-        };
-        if (
-          box.left < 5 ||
-          box.right > width - 5 ||
-          box.top < topClip ||
-          box.bottom > bottomClip
-        )
-          continue;
-        if (
-          labels.some(
-            (b) =>
-              box.left < b.right + 6 &&
-              box.right > b.left - 6 &&
-              box.top < b.bottom + 5 &&
-              box.bottom > b.top - 5,
+        // Screen-space labels remain upright in the chase view. Keep YOU first
+        // and omit crowded CPU labels rather than stacking names over the grid.
+        const topClip = Math.max(
+          83,
+          hud.getBoundingClientRect().bottom - (viewport?.top || 0) + 10,
+        );
+        const controlsTop =
+          rootEl.dataset.touch === "true" && !touch.hidden
+            ? touch.querySelector(".race-touch-group").getBoundingClientRect()
+                .top - (viewport?.top || 0)
+            : height;
+        const bottomClip = Math.min(height - 100, controlsTop - 16);
+        const labels = [],
+          cos = Math.cos(camera.rotation),
+          sin = Math.sin(camera.rotation);
+        g.font = "700 11px system-ui";
+        g.textAlign = "center";
+        for (const actor of state.actors) {
+          const dx = actor.x - camera.x,
+            dy = actor.y - camera.y;
+          const x = width / 2 + (dx * cos - dy * sin) * zoom;
+          const y = height * 0.48 + (dx * sin + dy * cos) * zoom - 30;
+          const name = actor.controller === "human" ? "YOU" : actor.name;
+          const w = g.measureText(name).width + 10;
+          const box = {
+            left: x - w / 2,
+            right: x + w / 2,
+            top: y - 12,
+            bottom: y + 5,
+          };
+          if (
+            box.left < 5 ||
+            box.right > width - 5 ||
+            box.top < topClip ||
+            box.bottom > bottomClip
           )
-        )
-          continue;
-        labels.push(box);
-        g.fillStyle = "#071626bb";
-        round(g, box.left, box.top, w, 18, 6);
-        g.fill();
-        g.fillStyle = actor.color;
-        g.fillText(name, x, y + 1);
+            continue;
+          if (
+            labels.some(
+              (b) =>
+                box.left < b.right + 6 &&
+                box.right > b.left - 6 &&
+                box.top < b.bottom + 5 &&
+                box.bottom > b.top - 5,
+            )
+          )
+            continue;
+          labels.push(box);
+          g.fillStyle = "#071626bb";
+          round(g, box.left, box.top, w, 18, 6);
+          g.fill();
+          g.fillStyle = actor.color;
+          g.fillText(name, x, y + 1);
+        }
       }
       drawMap(mg, c, 340, 240, state.actors);
       position.replaceChildren(
@@ -1673,6 +1717,7 @@
       pollPad();
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
       last = now;
+      renderDt = dt;
       if (onlineActive() && view === "play") {
         acc += dt;
         let count = 0;
@@ -1695,6 +1740,7 @@
             cmds[state.actors[0].id].recover = true;
             rescueRequest = false;
           }
+          previousPose = root.SpaceManRacePresentation?.capture(state);
           R.step(state, cmds);
           audio?.update(state, followActor());
           acc -= 1 / 60;
@@ -1815,6 +1861,7 @@
       for (const [t, type, fn, settings] of listeners.splice(0))
         t.removeEventListener(type, fn, settings);
       rootEl.hidden = true;
+      perspective?.close();
       state = null;
       paused = false;
       view = "lobby";
@@ -1832,6 +1879,7 @@
       close();
       destroyed = true;
       recoveryClickCleanup?.();
+      perspective?.destroy();
       rootEl?.remove();
       audio?.destroy();
     }

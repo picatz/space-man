@@ -18,7 +18,7 @@ async function launch(t) {
         (pathname.endsWith("/") ? "index.html" : ""));
       if (!file.startsWith(ROOT + path.sep)) return res.writeHead(400).end();
       res.writeHead(200, { "Content-Type": path.extname(file) === ".js"
-        ? "text/javascript" : path.extname(file) === ".html" ? "text/html" : "application/octet-stream" });
+        ? "text/javascript" : path.extname(file) === ".html" ? "text/html" : path.extname(file) === ".css" ? "text/css" : "application/octet-stream" });
       res.end(await fs.readFile(file));
     } catch (_) { res.writeHead(404).end(); }
   });
@@ -37,7 +37,7 @@ async function launch(t) {
   const page = await context.newPage(), errors = [], sockets = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("websocket", (socket) => sockets.push(socket.url()));
-  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.goto(process.env.SPACE_MAN_BASE_URL || `http://127.0.0.1:${server.address().port}/`);
   // Install after production scripts loaded, before the lazy race UI is created.
   // Native AudioContext/nodes are retained, with passive bookkeeping around their
   // real connect/disconnect methods. No synthetic audio clock or fake nodes.
