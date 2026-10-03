@@ -19,3 +19,10 @@ test('identity painting preserves canvas state and uses shape plus high-contrast
  Art.identityBadge(c,'YOU',10,20,44,{primary:true,pointerX:32,pointerY:54});Art.identityBrackets(c,32,84,40,48);
  assert.equal(stack.length,0);assert.equal(c.globalAlpha,.2);assert.ok(calls.some(a=>a[0]==='fillText'&&a[1]==='YOU'));assert.ok(calls.some(a=>a[0]==='fillStyle'&&a[1]==='#FFF3CE'));assert.ok(calls.filter(a=>a[0]==='stroke').length>=6);
 });
+test('runner marker belongs to the scene, does not change outfits and never marks a spectator as YOU',()=>{
+ const {client,relay}=require('./harness.cjs'),c=client(relay());
+ try {
+  const got=JSON.parse(c.run(`(()=>{startRun();vigPose=null;G.player.dead=false;G.player.x=G.player.px=180;G.player.y=G.player.py=220;ctx.getTransform=()=>({a:view.dpr,b:0,c:0,d:view.dpr,e:0,f:0});const calls=[];const old=ART.identityBadge;ART.identityBadge=(...a)=>calls.push(a[1]);const appearance=JSON.stringify(G.cosmetics);drawRunnerIdentity(1);const solo=calls.splice(0);const spectating=netSpectating;netSpectating=()=>true;spec.watchP=2;ghosts.push({active:true,p:2,alpha:1,rx:170,ry:240});G.player.dead=true;drawRunnerIdentity(1);const watched=calls.splice(0);ghosts.length=0;drawRunnerIdentity(1);ART.identityBadge=old;netSpectating=spectating;return JSON.stringify({solo,watched,noTarget:calls,unchanged:appearance===JSON.stringify(G.cosmetics)});})()`));
+  assert.deepEqual(got,{solo:['YOU'],watched:['WATCHING'],noTarget:[],unchanged:true});
+ } finally {c.close();}
+});

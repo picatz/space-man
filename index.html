@@ -5547,7 +5547,8 @@ function drawRunnerIdentity(alpha) {
   const m = ctx.getTransform && ctx.getTransform(); if (!m || !Number.isFinite(m.a)) return;
   const dpr = view.dpr, x = (m.a * wx + m.c * wy + m.e) / dpr, y = (m.b * wx + m.d * wy + m.f) / dpr;
   const scale = Math.hypot(m.a, m.b) / dpr, w = vpW(), h = vpH();
-  const top = (viewInset('top') * view.scale / dpr) + (netInRun() ? 112 : 84);
+  const hudBottom = watching ? 60 + viewInset('top') + 23 * uiScale() : 12 + (netInRun() ? 32 : 0) + viewInset('top') + (G.mission ? 79 : 55) * uiScale();
+  const top = hudBottom * view.scale / dpr + 8;
   if (x < -15 || x > w + 15 || y > h - 35 || y + p.h * scale < top) return;
   ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ART.identityBrackets(ctx, x, y + p.h * scale / 2, Math.max(34, p.w * scale + 11), Math.max(43, p.h * scale + 8));

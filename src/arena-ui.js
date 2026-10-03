@@ -187,7 +187,7 @@
     let cosmeticRound = 0;
     let arena, state = null, view = 'lobby', paused = false, activeModal = null, selections = { arenaId: '', format: 'duel', difficulty: 'normal' };
     let frameId = 0, lastTime = 0, accumulator = 0, lastDraw = 0, lastHudTick = -1, lastCountdown = '', resultAt = 0, matchSerial = 0;
-    let identitySafeTop = 0;
+    let identitySafeTop = 0, identityHudBottom = 0, identityBoundsDirty = true;
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
@@ -745,6 +745,7 @@
       if (moved) resetTouchInput();
       viewportBox = box;
       identitySafeTop = Math.max(0, (parseFloat(getComputedStyle(rootEl).getPropertyValue('--game-ui-top')) || 0) - box.top);
+      identityBoundsDirty = true;
       for (const key of ['left', 'top', 'width', 'height']) {
         const value = box[key] + 'px'; if (rootEl.style[key] !== value) rootEl.style[key] = value;
       }
@@ -773,8 +774,15 @@
       return target;
     }
     function updateCamera(a, alpha) {
+      // Measure only after roster/viewport changes, once the populated HUD is
+      // visible. Boss and accessibility-sized rows must not hide pilot badges.
+      if (identityBoundsDirty && rosterEl) {
+        const hud = rosterEl.parentElement.getBoundingClientRect();
+        identityHudBottom = hud.height ? hud.bottom - (viewportBox?.top || 0) + 8 : 0;
+        identityBoundsDirty = false;
+      }
       const portrait = width < height * 1.15, human = watchedActor();
-      const top = (portrait ? (state.actors.length > 2 && width < 600 ? (state.actors.some(a => a.boss) ? 198 : 178) : 125) : 95) + identitySafeTop;
+      const top = Math.max(identityHudBottom, (portrait ? (state.actors.length > 2 && width < 600 ? (state.actors.some(a => a.boss) ? 198 : 178) : 125) : 95) + identitySafeTop);
       const bottom = usingTouch || rootEl.dataset.touch === 'true' ? (portrait ? 150 : 80) : 66;
       const playHeight = Math.max(170, height - top - bottom), cy = top + playHeight / 2;
       let scale, x, y;
@@ -884,6 +892,7 @@
       }
     }
     function buildRoster() {
+      identityBoundsDirty = true;
       rosterEl.replaceChildren();
       for (const actor of state.actors) {
         const identity = actorIdentity(actor), card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.dataset.boss = String(!!actor.boss); card.dataset.you = String(identity.role === 'you'); card.dataset.watching = String(identity.role === 'watching'); card.style.setProperty('--fighter', actorColor(actor));
@@ -1071,7 +1080,7 @@
       if (root.visualViewport) { listen(root.visualViewport, 'resize', resize); listen(root.visualViewport, 'scroll', resize); }
       listen(root, 'touchend', onTouchEnd, { capture: true, passive: true }); listen(root, 'touchcancel', onTouchEnd, { capture: true, passive: true });
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'click']) listen(root, type, guardPointer, { capture: true, passive: false });
-      if (root.ResizeObserver) { resizeObserver = new root.ResizeObserver(resize); resizeObserver.observe(rootEl); }
+      if (root.ResizeObserver) { resizeObserver = new root.ResizeObserver(resize); resizeObserver.observe(rootEl); resizeObserver.observe(rosterEl.parentElement); }
       resize(); showLobby(); if (room) roomChanged(room.status()); ensureFrame();
     }
     function close(options = {}) {
