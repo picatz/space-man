@@ -93,8 +93,9 @@ async function launch(t, device = {}) {
   assert.equal(await page.evaluate(() => raceAudioProbe.contexts.length), 0, "no race AudioContext before a gesture");
   await page.evaluate(() => {
     const race = SpaceManRace;
-    window.raceDriveProbe = { ticks: 0, contacts: 0, slow: 0, longestSlow: 0, maxDistance: 0, recoveries: 0, command: null };
+    window.raceDriveProbe = { ticks: 0, contacts: 0, slow: 0, longestSlow: 0, maxDistance: 0, recoveries: 0, minContactMotion: Infinity, command: null };
     window.SpaceManRace = { ...race, step(state, inputs) {
+      const before = { x: state.actors[0].x, y: state.actors[0].y };
       const result = race.step(state, inputs);
       if (state.phase === "racing") {
         const a = state.actors[0], c = race.course(state.trackId), p = raceDriveProbe;
@@ -102,8 +103,12 @@ async function launch(t, device = {}) {
         p.ticks++;
         const distance = race.nearest(c, a.x, a.y).distance;
         p.maxDistance = Math.max(p.maxDistance, distance);
-        if (distance >= c.width / 2 - race.constants.KART_RADIUS - .5) p.contacts++;
-        p.slow = distance >= c.width / 2 - race.constants.KART_RADIUS - 1 && a.speed < .75 ? p.slow + 1 : 0;
+        const motion = Math.hypot(a.x-before.x, a.y-before.y);
+        if (distance >= c.width / 2 + race.constants.RUNOFF - .5) {
+          p.contacts++;
+          p.minContactMotion = Math.min(p.minContactMotion, motion);
+        }
+        p.slow = distance >= c.width / 2 + race.constants.RUNOFF - 1 && motion < .75 ? p.slow + 1 : 0;
         p.longestSlow = Math.max(p.longestSlow, p.slow);
         p.recoveries = a.recoveries;
       }
@@ -285,7 +290,7 @@ test("race native audio: visibility/pagehide handlers stop voices until an expli
   await audibleGraph(page);
 });
 
-test("race road rails: genuine wrong steering and boost remain inside all circuits", { timeout: 90000 }, async (t) => {
+test("race road rails: genuine wrong steering and boost stay on supported road/runoff", { timeout: 90000 }, async (t) => {
   const { page } = await launch(t);
   for (const trackId of ["starlight", "ember", "bloom"]) {
     await page.locator(`[data-track="${trackId}"]`).click();
@@ -300,8 +305,8 @@ test("race road rails: genuine wrong steering and boost remain inside all circui
     }), true);
     await page.evaluate(() => {
       const course = SpaceManRace.course(raceUI.snapshot().trackId);
-      window.railProbe = { samples: 0, limit: course.width / 2 - SpaceManRace.constants.KART_RADIUS,
-        maxDistance: 0, maxPlayerDistance: 0, boosted: false, offroad: false, firstTick: raceUI.snapshot().tick, lastTick: 0 };
+      window.railProbe = { samples: 0, limit: course.width / 2 + SpaceManRace.constants.RUNOFF,
+        asphaltEdge: course.width / 2, maxDistance: 0, maxPlayerDistance: 0, boosted: false, offroad: false, firstTick: raceUI.snapshot().tick, lastTick: 0 };
       window.railTimer = setInterval(() => {
         const snapshot = raceUI.snapshot();
         if (!snapshot || snapshot.phase !== "racing") return;
@@ -332,9 +337,13 @@ test("race road rails: genuine wrong steering and boost remain inside all circui
       `${trackId}: enough real running frames: ${JSON.stringify(result)}`);
     assert.equal(result.boosted, true, `${trackId}: real boost command reached simulation`);
     assert.equal(result.offroad, true, `${trackId}: adversarial input reached the shoulder`);
-    assert.ok(result.maxPlayerDistance >= result.limit - 0.5, `${trackId}: physical rail was exercised`);
+    // Mixed turning/release should genuinely use the forgiving off-road area.
+    // The dedicated held-direction cases below separately require repeated
+    // contact with the farther outer safety edge and measure real displacement.
+    assert.ok(result.maxPlayerDistance >= result.asphaltEdge + 1,
+      `${trackId}: crossed the painted asphalt edge into visible runoff`);
     assert.ok(result.maxDistance <= result.limit + 0.05,
-      `${trackId}: all kart centers remain inside the rail: ${JSON.stringify(result)}`);
+      `${trackId}: all kart centers remain inside the outer apron safety edge: ${JSON.stringify(result)}`);
     t.diagnostic(`${trackId}: ${result.samples} samples, max road distance ${result.maxDistance.toFixed(3)} / ${result.limit}`);
     if (process.env.SPACE_MAN_RACE_SCREENSHOTS) {
       await fs.mkdir(process.env.SPACE_MAN_RACE_SCREENSHOTS, { recursive: true });
@@ -402,7 +411,7 @@ for (const device of [
   await page.waitForFunction(() => raceDriveProbe.command?.steer === -1 && raceDriveProbe.command?.boost);
   const start = await page.evaluate(() => raceUI.snapshot().raceTick);
   await page.waitForFunction((start) => raceUI.snapshot().raceTick >= start + 300, start);
-  const probe = await page.evaluate(() => ({ ...raceDriveProbe, limit: SpaceManRace.course(raceUI.snapshot().trackId).width / 2 - SpaceManRace.constants.KART_RADIUS }));
+  const probe = await page.evaluate(() => ({ ...raceDriveProbe, limit: SpaceManRace.course(raceUI.snapshot().trackId).width / 2 + SpaceManRace.constants.RUNOFF }));
   assert.ok(probe.contacts > 30, `held direction genuinely exercises the rail: ${JSON.stringify(probe)}`);
   assert.ok(probe.maxDistance <= probe.limit + .001);
   assert.ok(probe.longestSlow < 30, "rail contact cannot strand the driver for half a second");
@@ -419,5 +428,5 @@ for (const device of [
   await release(true);
   await page.waitForFunction(() => raceDriveProbe.command?.steer === 0);
   assert.equal(await page.locator(".race-pressed").count(), 0);
-  t.diagnostic(`${device.name}: ${probe.contacts} contact ticks, longest near-stall ${probe.longestSlow} ticks`);
+  t.diagnostic(`${device.name}: ${probe.contacts} contact ticks, longest near-stall ${probe.longestSlow} ticks, minimum contact motion ${probe.minContactMotion.toFixed(3)}`);
 });

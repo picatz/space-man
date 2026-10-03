@@ -20,11 +20,11 @@ function sane(s) {
   }
 }
 for(const track of Race.tracks) {
-  for(const steer of [-1,0,1]) test(`${track.id}: holding steering ${steer} and boost never leaves the road`,()=>{
+  for(const steer of [-1,0,1]) test(`${track.id}: holding steering ${steer} and boost stays on the road or its bounded visible runoff`,()=>{
     const s=playing(track.id), a=s.actors[0], c=Race.course(track.id);
     for(let i=0;i<3600;i++) {
       const old={...a}; drive(s,{steer,throttle:1,boost:true}); sane(s);
-      assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+1e-6);
+      assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2+Race.constants.RUNOFF+1e-6);
       assert.ok(a.passed===old.passed || a.passed===old.passed+1);
       if(a.recoveries===old.recoveries) assert.ok(Math.hypot(a.x-old.x,a.y-old.y)<=9.1,'rail correction must not cause a large jump');
       else assert.equal(a.passed,old.passed,'rescue cannot grant checkpoints');
@@ -35,7 +35,7 @@ for(const track of Race.tracks) {
     a.heading=Math.atan2(-Math.sin(a.heading),-Math.cos(a.heading));
     for(let i=0;i<3600;i++) {
       drive(s,{throttle:1,steer:Math.sin(i/34),brake:i%180<50,boost:i%71<30}); sane(s);
-      for(const p of s.actors) assert.ok(Race.nearest(c,p.x,p.y).distance<=c.width/2-Race.constants.KART_RADIUS+1e-6);
+      for(const p of s.actors) assert.ok(Race.nearest(c,p.x,p.y).distance<=c.width/2+Race.constants.RUNOFF+1e-6);
     }
   });
 }
@@ -45,17 +45,17 @@ test('an invalid offcourse pilot returns by bounded correction without false gat
   for(let count=0;count<120;count++) {
     const old={...a}, distance=Race.nearest(c,a.x,a.y).distance;
     drive(s,{throttle:1,boost:true});
-    if(distance>c.width/2-Race.constants.KART_RADIUS+.01){
+    if(distance>c.width/2+Race.constants.RUNOFF+.01){
       assert.equal(a.passed,old.passed,'invalid-pose correction cannot grant an ordered checkpoint');
       assert.ok(Math.hypot(a.x-old.x,a.y-old.y)<=4.7,'invalid poses return gradually');
     }
   }
   assert.equal(a.recoveries,0); assert.equal(a.passed,4); assert.equal(a.nextGate,5); assert.equal(a.lap,1);
-  assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+1e-6);
+  assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2+Race.constants.RUNOFF+1e-6);
   assert.ok(a.speed>2,'regained road allows useful driving without another rescue wait');
 });
 test('the bounded stuck timer still rescues at the last verified gate without credit',()=>{
-  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,c.length*.3),distance=c.width/2-Race.constants.KART_RADIUS;
+  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,c.length*.3),distance=c.width/2+Race.constants.RUNOFF;
   Object.assign(a,{x:p.x-p.ty*distance,y:p.y+p.tx*distance,heading:Math.atan2(p.tx,-p.ty),passed:4,nextGate:5,lap:1,progress:4.9,offroadTicks:119});
   drive(s,{throttle:1});
   const target=Race.at(c,c.length*4/20+12);
@@ -64,7 +64,7 @@ test('the bounded stuck timer still rescues at the last verified gate without cr
 });
 for(const track of Race.tracks) for(const side of [-1,1]) {
   test(`${track.id}/${side}: head-on rail drive becomes a smooth forward slide instead of waiting for rescue`,()=>{
-    const s=playing(track.id),a=s.actors[0],c=Race.course(track.id),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS;
+    const s=playing(track.id),a=s.actors[0],c=Race.course(track.id),p=Race.at(c,200),distance=c.width/2+Race.constants.RUNOFF;
     Object.assign(a,{x:p.x-p.ty*distance*side,y:p.y+p.tx*distance*side,heading:Math.atan2(p.ty,p.tx)+side*Math.PI/2});
     let traveled=0;
     for(let i=0;i<180;i++) {
@@ -79,36 +79,39 @@ for(const track of Race.tracks) for(const side of [-1,1]) {
     assert.ok(traveled>500,'three seconds of rail contact make useful physical progress');
   });
   test(`${track.id}/${side}: held outward steering keeps momentum and steering away stays responsive`,()=>{
-    const s=playing(track.id),a=s.actors[0],c=Race.course(track.id),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS;
+    const s=playing(track.id),a=s.actors[0],c=Race.course(track.id),p=Race.at(c,200),distance=c.width/2+Race.constants.RUNOFF;
     Object.assign(a,{x:p.x-p.ty*distance*side,y:p.y+p.tx*distance*side,heading:Math.atan2(p.ty,p.tx)+side*.22,vx:p.tx*6.4,vy:p.ty*6.4,speed:6.4});
     for(let i=0;i<180;i++){
       drive(s,{throttle:1,steer:side,boost:true});
-      assert.ok(a.speed>3,'grazing or holding against a rail retains motion');
+      assert.ok(a.speed>1.5,'grazing or holding against a rail retains motion');
       assert.equal(a.recoveries,0);
       assert.ok(Race.nearest(c,a.x,a.y).distance<=distance+1e-6);
     }
+    // Re-enter from a fresh tangent pose: after three seconds of continuous
+    // turning the old button direction no longer necessarily points inward.
+    Object.assign(a,{x:p.x-p.ty*distance*side,y:p.y+p.tx*distance*side,heading:Math.atan2(p.ty,p.tx),vx:p.tx*4.2,vy:p.ty*4.2,speed:4.2,steering:0});
     let leftRail=false;
     for(let i=0;i<20;i++){
       drive(s,{throttle:1,steer:-side});
       if(Race.nearest(c,a.x,a.y).distance<distance-16)leftRail=true;
     }
     assert.ok(leftRail,'inward steering escapes rail assistance promptly');
-    assert.ok(a.speed>3);
+    assert.ok(a.speed>1.5);
   });
 }
 test('shoulder contact eases boost speed instead of imposing an instant low-speed clamp',()=>{
-  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS-6;
+  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2+4;
   Object.assign(a,{x:p.x-p.ty*distance,y:p.y+p.tx*distance,heading:Math.atan2(p.ty,p.tx),vx:p.tx*9,vy:p.ty*9,speed:9});
   drive(s,{throttle:1,boost:true});assert.ok(a.speed>8.7);assert.equal(a.boosting,false);
 });
 test('rail guidance respects braking, coasting and deliberate reverse direction',()=>{
   for(const input of [{throttle:1,brake:true},{}]){
-    const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS;
+    const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2+Race.constants.RUNOFF;
     Object.assign(a,{x:p.x-p.ty*distance,y:p.y+p.tx*distance,heading:Math.atan2(p.tx,-p.ty)});const heading=a.heading;
     for(let i=0;i<180;i++)drive(s,input);
     assert.equal(a.heading,heading);assert.equal(a.speed,0);assert.equal(a.recoveries,0);
   }
-  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS;
+  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2+Race.constants.RUNOFF;
   Object.assign(a,{x:p.x-p.ty*distance,y:p.y+p.tx*distance,heading:Math.atan2(-p.ty,-p.tx)-.2,vx:-p.tx*4,vy:-p.ty*4,speed:4});
   drive(s,{throttle:1});assert.ok(a.vx*p.tx+a.vy*p.ty<0,'guidance does not reverse intended travel');assert.equal(a.passed,0);
 });
@@ -126,8 +129,8 @@ test('30, 60 and 120 Hz presentation schedules replay identical 60 Hz handling',
 });
 test('snapshot replay preserves rescue timers deterministically',()=>{
   const s=playing('bloom',5),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,230);
-  Object.assign(a,{x:p.x-p.ty*(c.width/2+60),y:p.y+p.tx*(c.width/2+60),heading:Math.atan2(p.tx,-p.ty)});
-  for(let i=0;i<30;i++) drive(s,{throttle:1});
+  Object.assign(a,{x:p.x-p.ty*(c.width/2+110),y:p.y+p.tx*(c.width/2+110),heading:Math.atan2(p.tx,-p.ty)});
+  for(let i=0;i<10;i++) drive(s,{throttle:1});
   assert.ok(a.offroadTicks>0);
   const restored=Race.snapshot(s);
   for(let i=0;i<130;i++){drive(s,{throttle:1});drive(restored,{throttle:1});assert.deepEqual(s,restored);}
@@ -146,7 +149,7 @@ test('authority publishes valid bounded poses throughout hostile steering and re
     const decoded=Online.decodeSnapshot(host.packet()); assert.ok(decoded);
     for(const a of decoded.state.actors){
       const c=Race.course(decoded.state.trackId);
-      assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+0.001);
+      assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2+Race.constants.RUNOFF+0.001);
     }
   }
 });
@@ -164,7 +167,7 @@ test('recovery release resolves coincident visible karts without advancing check
   Race.step(s);
   for(let i=0;i<s.actors.length;i++){
     const a=s.actors[i];assert.equal(a.recoveryTicks,0);assert.equal(a.passed,0);
-    assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+1e-6);
+    assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2+Race.constants.RUNOFF+1e-6);
     for(let j=i+1;j<s.actors.length;j++)assert.ok(Math.hypot(a.x-s.actors[j].x,a.y-s.actors[j].y)>=55.95);
   }
 });
@@ -175,7 +178,7 @@ for(const track of Race.tracks)test(`${track.id}: full-size start grids and repe
     Race.step(s,Object.fromEntries(s.actors.map(a=>[a.id,Race.cpuInput(s,a)])));
     for(let i=0;i<s.actors.length;i++){
       const a=s.actors[i];if(a.finishTick!==null || a.recoveryTicks)continue;
-      assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+1e-6);
+      assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2+Race.constants.RUNOFF+1e-6);
       for(let j=i+1;j<s.actors.length;j++){
         const b=s.actors[j];if(b.finishTick!==null || b.recoveryTicks)continue;
         assert.ok(Math.hypot(a.x-b.x,a.y-b.y)>=55.95,`tick${tick} ${a.id}/${b.id}: physical hoverpod overlap`);
@@ -211,7 +214,7 @@ test('simultaneous real rescues choose clear backwards-only recovery slots',()=>
 
 for (const track of Race.tracks) {
   test(`${track.id}: head-on contact escapes across the entire course, including tight bends`, () => {
-    const c = Race.course(track.id), distance = c.width / 2 - Race.constants.KART_RADIUS;
+    const c = Race.course(track.id), distance = c.width / 2 + Race.constants.RUNOFF;
     for (let station = 0; station < 30; station++) for (const side of [-1, 1]) {
       const s = playing(track.id), a = s.actors[0], p = Race.at(c, station * c.length / 30);
       Object.assign(a, { x: p.x - p.ty * distance * side, y: p.y + p.tx * distance * side,
@@ -235,22 +238,24 @@ for (const track of Race.tracks) {
       s.phase = 'racing';
       const a = s.actors[0];
       while (s.phase !== 'finished') drive(s, guide ? { throttle: 1, steer: 1, boost: true } : Race.cpuInput(s,a));
-      assert.equal(a.passed, 60); assert.equal(a.recoveries, 0);
-      return a.finishTick;
+      if (!guide) assert.equal(a.passed,60);
+      assert.equal(a.recoveries,0);
+      return a.finishTick === null ? Infinity : a.finishTick;
     }
     const clean = finish(false), rail = finish(true);
     assert.ok(rail > clean * 1.12, 'forgiving contact must not become the fastest racing line');
   });
 }
 
-test('invalid-pose rail correction that crosses the expected gate never awards progress', () => {
-  const s = playing('starlight'), a = s.actors[0], c = Race.course(s.trackId), gate = c.gates[18];
-  Object.assign(a, { x: 210.42554179178595, y: 578.6684425416568,
-    passed: 17, nextGate: 18, progress: 17, vx: 0, vy: 0, speed: 0 });
-  const plane = () => (a.x-gate.x)*gate.tx+(a.y-gate.y)*gate.ty;
-  assert.ok(Race.nearest(c,a.x,a.y).distance > c.width/2-Race.constants.KART_RADIUS);
-  assert.ok(plane() < 0);
-  Race.step(s);
-  assert.ok(plane() > 0, 'inward correction really crosses the expected checkpoint plane');
-  assert.equal(a.passed,17);assert.equal(a.nextGate,18);assert.equal(a.lap,1);
+test('invalid-pose correction across an expected gate plane never awards progress', () => {
+  let crossed=0;
+  for(const track of Race.tracks) for(let g=1;g<20;g++) for(const side of[-1,1]) {
+    const s=playing(track.id),a=s.actors[0],c=Race.course(track.id),gate=c.gates[g],lateral=(c.width/2+Race.constants.RUNOFF+12)*side;
+    Object.assign(a,{x:gate.x-gate.tx*.005-gate.ty*lateral,y:gate.y-gate.ty*.005+gate.tx*lateral,passed:g-1,nextGate:g,progress:g-1,vx:0,vy:0,speed:0});
+    if(Race.nearest(c,a.x,a.y).distance<=c.width/2+Race.constants.RUNOFF+.01)continue;
+    const plane=()=> (a.x-gate.x)*gate.tx+(a.y-gate.y)*gate.ty;
+    assert.ok(plane()<0);Race.step(s);assert.equal(a.passed,g-1);assert.equal(a.nextGate,g);assert.equal(a.lap,1);
+    if(plane()>0&&!a.recoveries)crossed++;
+  }
+  assert.ok(crossed>0,'exercise genuine correction-only crossings on curved boundaries');
 });

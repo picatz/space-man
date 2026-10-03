@@ -9,15 +9,15 @@ const source = fs.readFileSync(require.resolve('../src/net.js'), 'utf8');
 function peer(hub, legacy = false) {
   const c = client(hub, { game: false });
   if (legacy) {
-    assert.ok(source.includes('const CAP_RACE = 1 << 7,'), 'fixture tracks the current exclusive race capability');
-    c.run(source.replace('const CAP_RACE = 1 << 7,', 'const CAP_RACE = 1 << 6,'));
+    assert.ok(source.includes('const CAP_RACE = 1 << 8,'), 'fixture tracks the current exclusive race capability');
+    c.run(source.replace('const CAP_RACE = 1 << 8,', 'const CAP_RACE = 1 << '+(legacy === true ? 7 : legacy)+','));
     c.net = c.context.SpaceManNet;
   }
   return c;
 }
-for (const hostLegacy of [false,true]) for (const role of [0,1]) {
-  test(`${hostLegacy?'legacy':'current'} race host rejects ${hostLegacy?'current':'legacy'} ${role?'spectator':'player'} before admission`, async t => {
-    const hub = relay(), host = peer(hub,hostLegacy), guest = peer(hub,!hostLegacy);
+for (const revision of [6,7]) for (const hostLegacy of [false,true]) for (const role of [0,1]) {
+  test(`legacy bit ${revision}: ${hostLegacy?'legacy':'current'} race host rejects ${hostLegacy?'current':'legacy'} ${role?'spectator':'player'} before admission`, async t => {
+    const hub = relay(), host = peer(hub,hostLegacy ? revision : false), guest = peer(hub,hostLegacy ? false : revision);
     t.after(() => { host.close(); guest.close(); });
     await host.net.openRoom({ relayHost:'relay.test',code:false,mode:'race' });
     assert.notEqual(host.net._room.caps.CAP_RACE,guest.net._room.caps.CAP_RACE);
@@ -47,9 +47,9 @@ test('same revision race players and watchers still join, while runner and Arena
   assert.equal(host.net._room.CAPS,0x1f);
   assert.equal(host.net._room.caps.CAP_ARENA,1<<5);
   assert.equal(host.net._n1.PROTO,6);
-  assert.equal(host.net._room.caps.CAP_RACE,1<<7);
+  assert.equal(host.net._room.caps.CAP_RACE,1<<8);
   await host.net.openRoom({ relayHost:'relay.test',code:false,mode:'race' });
-  assert.equal(host.net.info().caps & (1<<6),0,'new geometry must not claim legacy compatibility');
+  assert.equal(host.net.info().caps & ((1<<6)|(1<<7)),0,'new geometry must not claim legacy compatibility');
   const invite = host.net.info().link.split('#j=')[1];
   await player.net.acceptJoin(invite,{mode:'race',role:0});
   await watcher.net.acceptJoin(invite,{mode:'race',role:1});
@@ -67,7 +67,7 @@ test('current race client rejects a legacy WELCOME even after a compatible admis
   const row=hs.roster.get(api.bytes.hex(gs.keys.pub));
   const legacy=api.frames.encWelcome(api.frames.makeScratch(),{
     yourP:row.p,seed:hs.seed,runId:hs.runId,epoch:hs.epoch,hostTag:hs.tag,
-    mode:2,caps:host.net._room.CAPS|(1<<6),playerCap:4,spectatorCap:4,
+    mode:2,caps:host.net._room.CAPS|(1<<7),playerCap:4,spectatorCap:4,
   }).slice();
   await gs._onPacket(hs.keys.pub,await api.env.sealApp(row.pair,legacy));
   assert.equal(guest.context.room.active,false,'WELCOME mismatch ends the incompatible room');
