@@ -40,6 +40,29 @@ function assertPose(actor, course, old) {
   assert.ok(actor.progress >= actor.passed && actor.progress < actor.passed + 1);
 }
 
+test('held braking slows an isolated pilot but still receives genuine rear-end momentum', () => {
+  const isolated = playing(), collision = Race.create({ count: 2 }),
+    course = Race.course(isolated.trackId), point = Race.at(course, 300),
+    solo = isolated.actors[0], [front, rear] = collision.actors,
+    brake = { throttle: 1, brake: true };
+  while (collision.phase === 'countdown') Race.step(collision);
+  place(solo, point, { speed: 4.8 });
+  place(front, point, { speed: 4.8 });
+  place(rear, point, { along: -57, speed: 9 });
+  assert.ok(Math.hypot(front.x-rear.x, front.y-rear.y) > C.KART_RADIUS * 2,
+    'the rear kart must drive into contact from a non-overlapping pose');
+  Race.step(isolated, { [solo.id]: brake });
+  Race.step(collision, { [front.id]: brake, [rear.id]: { throttle: 0 } });
+  assert.ok(solo.speed < 4.8, 'the same held brake decelerates without another kart');
+  assert.ok(front.speed > 5 && front.speed > solo.speed,
+    'a held brake does not erase an incoming collision impulse or clamp speed below five');
+  assert.ok(Math.hypot(front.x-rear.x, front.y-rear.y) >= C.KART_RADIUS * 2 - .001,
+    'momentum transfer retains physical kart separation');
+  assert.equal(front.boosting, false);
+  assert.equal(front.recoveries, 0);
+  assert.equal(rear.recoveries, 0);
+});
+
 for (const side of [-1, 1]) for (const ticks of [6, 12]) {
   test(`${ticks * 1000 / 60} ms ${side < 0 ? 'left' : 'right'} taps ramp smoothly and turn the moving kart`, () => {
     const state = playing(), actor = state.actors[0], point = Race.at(Race.course(state.trackId), 200);

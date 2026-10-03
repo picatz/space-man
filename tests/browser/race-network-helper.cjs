@@ -506,6 +506,12 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await network(guest,true);
     // Network interruption only; neither room/simulation state nor actor data changes.
     await guest.page.evaluate(() => SpaceManNet._n1.session().relay.ws.close());
+    if (!live) {
+      // Offline Chromium can stall the graceful close handshake until the
+      // loopback server's 30s timeout, racing the host-removal assertion. Cut
+      // the simulated transport too; its normal close handler notifies DERP.
+      for (const ws of guest.bridgeSockets.keys()) ws.terminate();
+    }
     stage = 'waiting for the disconnected phone to leave the host roster';
     await wait(host,p => !SpaceManNet.roster().some(r => r.p === p),guestIdentity.p);
     stage = 'confirming the phone network is online again';
