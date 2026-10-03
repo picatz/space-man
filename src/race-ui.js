@@ -1730,7 +1730,7 @@
         };
         const focus = project(a), own = a.id === ownActor()?.id;
         const bodies = state.actors.map(actor => {
-          const p = project(actor), r = 33 * zoom;
+          const p = project(actor), r = 36 * zoom;
           return {id:actor.id,x:p.x-r,y:p.y-r,w:r*2,h:r*2};
         });
         const cue = root.SpaceManArt.identityMarkerLayout(a.id, bodies,
@@ -1748,6 +1748,7 @@
           const name = actor.name, w = g.measureText(name).width + 10;
           const box = { left: x - w / 2, right: x + w / 2, top: y - 12, bottom: y + 5 };
           if (box.left < 5 || box.right > width - 5 || box.top < topClip || box.bottom > bottomClip ||
+            bodies.some(b => box.left < b.x+b.w+2 && box.right > b.x-2 && box.top < b.y+b.h+2 && box.bottom > b.y-2) ||
             labels.some(b => box.left < b.right + 6 && box.right > b.left - 6 && box.top < b.bottom + 5 && box.bottom > b.top - 5)) continue;
           labels.push(box);
           g.fillStyle = "#071626dd";
