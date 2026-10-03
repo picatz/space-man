@@ -66,7 +66,7 @@ async function drive(page){
         testPad.buttons[2].pressed=s.tick%24<6;testPad.buttons[1].pressed=target.boss?.phase==='charging'&&s.tick%45<4;
       }else{
         const s=raceUI.snapshot();if(!s||s.phase!=='racing')return;
-        const c=SpaceManRace.cpuInput(s,s.actors[0]);testPad.axes[0]=c.steer;testPad.buttons[0].pressed=c.boost;testPad.buttons[1].pressed=c.brake;
+        const c=SpaceManRace.cpuInput(s,s.actors[0]);testPad.axes[0]=c.steer;testPad.buttons[0].pressed=c.boost;testPad.buttons[1].pressed=c.brake;testPad.buttons[5].pressed=c.item;
       }
     },16);
   });

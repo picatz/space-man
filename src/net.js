@@ -70,14 +70,14 @@
   // Runner HELLO/WELCOME bytes stay unchanged; each arcade mode requires its
   // own invite bit, HELLO/WELCOME marker and negotiated capability.
   const CAP_ARENA = 1 << 5, INV_ARENA = 0x10, MODE_ARENA = 1, A_ARENA = 0x40;
-  // Race revision 3 rounds Ember and opens visible runoff. Bits 6 and 7
-  // belong to legacy geometry: never advertise them together, or old guests
-  // render different roads/props under host poses. Gate HELLO and WELCOME.
-  const CAP_RACE = 1 << 8, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
-  // Journey revision 1 owns encounter epochs above the transport. Standalone
+  // Starlight items/airtime are an atomic race and journey revision. Legacy
+  // race bits 6/7/8 and journey bit 9 are never advertised by these builds.
+  // Appearance bit 10 remains independent; runner/Arena and PROTO stay stable.
+  const CAP_RACE = 1 << 11, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
+  // Journey revision 2 also requires the Starlight race ruleset before admission. Standalone
   // modes cannot opt in accidentally, even with an advertised capability.
   const A_APPEARANCE = 0x43;
-  const CAP_JOURNEY = 1 << 9, INV_JOURNEY = 0x40, MODE_JOURNEY = 3, A_JOURNEY = 0x42;
+  const CAP_JOURNEY = 1 << 12, INV_JOURNEY = 0x40, MODE_JOURNEY = 3, A_JOURNEY = 0x42;
   const ARENA_MAX = 1024, ARENA_HEAD = 8, ARENA_CHUNK = WIRE_MAX - 27 - ARENA_HEAD;
   const ARENA_TTL = 1000, ARENA_ABSENT_GRACE = 15000, SEAL_QUEUE_MAX = 32;
   const modeName = (o) => o && (o.mode === 'arena' || o.mode === 'race' || o.mode === 'journey') ? o.mode : 'runner';
@@ -94,7 +94,8 @@
   const modeMatches = (mode, h) => h.mode === modeByte({ mode }) && (!modeCap({ mode }) || !!(h.caps & modeCap({ mode })));
   const modeRejection = (o, peerMode) => o.mode === 'journey' || peerMode === MODE_JOURNEY ? INV_JOURNEY : o.mode === 'race' || peerMode === MODE_RACE ? INV_RACE : INV_ARENA;
   const modeError = () => new Error('This invite is for a different game mode. Open Star Expedition for journey rooms, Star Circuit for racing rooms, Arena for arena rooms or Run Together for runner rooms.');
-  const raceVersionError = () => new Error('This Star Circuit room uses an incompatible race version. Refresh both games, then ask the host to create a new invite.');
+  const raceVersionError = () => new Error('This room uses a newer racing version. Leave the room, refresh all games, then ask the host for a new invite.');
+  const journeyVersionError = () => new Error('This room uses a newer expedition version. Leave the room, refresh all games, then ask the host for a new invite.');
 
   // Optional fixed catalog identity. No URLs, text, assets or executable data.
   const appearanceCodec = () => root.SpaceManCosmetics;
@@ -1865,7 +1866,11 @@
         row.lastHello = t2;
         const h = decHello(pt);
         if (!h) return strike(row, 'short');
-        if (!modeMatches(S.mode, h)) { S.relay.send(row.pub, await sealApp(row.pair, encBye(S.out, 3, modeRejection(S, h.mode)))); return; }
+        if (!modeMatches(S.mode, h)) {
+          S.relay.send(row.pub, await sealApp(row.pair, encBye(S.out, 3, modeRejection(S, h.mode))));
+          removeRow(row); S.ev.emit('leave', { p: row.p, tag: row.tag });
+          sendRoster(2, [row]).catch(() => {}); return;
+        }
         // Members prove themselves with the invite they joined on. rotateLink
         // bumps epoch + secret for FUTURE joins only, so check the admit-time
         // proof, never the current one (that would strike every reconnect).
@@ -1954,6 +1959,12 @@
     // and approve() (an admitted held join). Re-checks caps at admit time — a
     // queue delay may have filled the room.
     async function admitJoin(srcPub, key, h, pair) {
+      // Held approvals may outlive room/build state. Repeat the same strict
+      // capability check before assigning any player or watcher identity.
+      if (!modeMatches(S.mode, h)) {
+        S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 3, modeRejection(S, h.mode))));
+        return false;
+      }
       if (arcadeMode(S) && S.roleLocked) h.role = ROLE_SPECTATOR;
       const c = counts(arcadeMode(S));
       if (h.role === ROLE_SPECTATOR ? c.spectators >= S.spectatorCap : c.players >= S.playerCap) {
@@ -3053,7 +3064,7 @@
         unsubscribe = next.ev.on((e, d) => {
           if (e === 'join-progress' && d.stage === 'hello') arm();
           if (e === 'welcomed') resolve();
-          if (e === 'bye') reject(d.reason === 3 && d.detail === INV_RACE && next.mode === 'race' ? raceVersionError() : d.reason === 3 && (d.detail === INV_ARENA || d.detail === INV_RACE || d.detail === INV_JOURNEY) ? modeError() : new Error(d.reason === 4 ? 'That room is full for this role.' : 'The host declined or ended this room.'));
+          if (e === 'bye') reject(d.reason === 3 && d.detail === INV_RACE && next.mode === 'race' ? raceVersionError() : d.reason === 3 && d.detail === INV_JOURNEY && next.mode === 'journey' ? journeyVersionError() : d.reason === 3 && (d.detail === INV_ARENA || d.detail === INV_RACE || d.detail === INV_JOURNEY) ? modeError() : new Error(d.reason === 4 ? 'That room is full for this role.' : 'The host declined or ended this room.'));
         });
       });
       try { await Promise.all([next.join(), admitted]); }

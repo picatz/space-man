@@ -108,17 +108,17 @@ test('roster sanitization rejects malformed, duplicate, unbounded identities and
   assert.equal(host.syncRoster(rows(4), NaN), false); assert.equal(host.seats.length, 2);
 });
 
-test('fixed-width inputs carry only quantized controls and a cumulative rescue edge', () => {
+test('fixed-width inputs carry only quantized controls and cumulative rescue/Item edges and warning observations', () => {
   const bytes = Online.encodeInput({ epoch: 17, seq: 203, tick: 345, recoverEdges: 2,
     command: { steer: 999, throttle: 999, brake: true, boost: true, recover: true, passed: 60, fuel: 999, x: 1e9 } });
-  assert.equal(bytes.length, Online.INPUT_BYTES); assert.equal(bytes.length, 19);
+  assert.equal(bytes.length, Online.INPUT_BYTES); assert.equal(bytes.length, 33);
   const d = Online.decodeInput(bytes);
-  assert.deepEqual(d, { epoch: 17, seq: 203, tick: 345, recoverEdges: 2,
-    command: { steer: 1, throttle: 1, brake: true, boost: true, recover: false } });
+  assert.deepEqual(d, { epoch: 17, seq: 203, tick: 345, recoverEdges: 2, itemEdges: 0, released: false, releaseEdges: 0, warnings: [0, 0, 0, 0, 0],
+    command: Race.command({ steer: 1, throttle: 1, brake: true, boost: true }) });
   const invalidAxes = Online.decodeInput(Online.encodeInput({ epoch: 1, seq: 1, tick: 0, recoverEdges: 0,
     command: { steer: NaN, throttle: Infinity, brake: 'true', boost: {} } }));
   assert.deepEqual(invalidAxes.command, Race.command());
-  for (const field of ['epoch', 'seq', 'tick', 'recoverEdges']) {
+  for (const field of ['epoch', 'seq', 'tick', 'recoverEdges', 'itemEdges']) {
     for (const value of [NaN, Infinity, -1, 1.5, '1'])
       assert.equal(Online.encodeInput({ epoch: 1, seq: 1, tick: 0, recoverEdges: 0, [field]: value }), null);
   }
@@ -134,7 +134,7 @@ test('malformed input types, all truncations, trailing bytes, flags and illegal 
     assert.equal(Online.decodeInput(bad), null); assert.equal(host.receive(1, 'host', bad, 0), false);
   }
   for (let n = 0; n < b.length; n++) assert.equal(Online.decodeInput(b.subarray(0, n)), null);
-  for (const [offset, value] of [[0, 2], [1, 2], [14, 128], [16, 4], [16, 255]]) {
+  for (const [offset, value] of [[0, 1], [1, 2], [14, 128], [16, 8], [16, 255]]) {
     const bad = clone(b); bad[offset] = value; assert.equal(Online.decodeInput(bad), null);
   }
 });
@@ -238,7 +238,7 @@ test('disconnect immediately releases input and identity-only rejoin preserves p
   const before = Race.snapshot(a);
   host.syncRoster([rows()[0], { p: 7, role: 0, identity: 'key-2' }], t + 9999);
   assert.equal(host.seats[1].connected, true); assert.equal(host.seats[1].p, 7);
-  assert.equal(host.seats[1].actorId, a.id); assert.deepEqual(a, before);
+  assert.equal(host.seats[1].actorId, a.id); assert.deepEqual(a, { ...before, _itemHeld: true });
   assert.equal(receive(host, 2, { throttle: 1 }, 0, t + 10000, 2, 'key-2'), false);
   assert.equal(receive(host, 2, { throttle: 1 }, 0, t + 10000, 7, 'key-2'), true);
   assert.ok(Online.decodeSnapshot(host.packet()));
@@ -320,6 +320,7 @@ test('pause/resume/new round/lobby create epochs and flush pending/held commands
   const before = Race.snapshot(host.state), epoch = host.epoch;
   assert.equal(host.pause(true), true); assert.equal(host.epoch, epoch + 1);
   assert.equal(host.pause(true), true); assert.equal(host.epoch, epoch + 1);
+  Race.cancelControl(before, undefined, { resetEdges: true });
   host.step(t + 100); assert.deepEqual(host.state, before);
   assert.equal(host.receive(1, 'host', old, t + 100), false);
   assert.equal(client.accept(host.packet(), 1).status, 'paused'); assert.equal(client.input({}, 1), null);
@@ -379,7 +380,7 @@ test('snapshot validators reject nonfinite floats, illegal ranges, bad seats, ch
     x => { x[18] = 0; }, x => { x[18] = 6; }, x => { x[19] = 3; }, x => { x[20] = 3; },
     x => { view(x).setUint16(21, 181, true); }, x => { view(x).setUint16(14, 18001, true); },
     x => { x[25] = 5; }, x => { x[25] = 1; }, x => { x[26] = 4; }, x => { x[27] = 5; },
-    x => { x[28] = 13; }, x => { x[29] = 1; }, x => { x[H] = 1; }, x => { x[H + 1] = 49; },
+    x => { x[28] = 13; }, x => { x[29] = 2; }, x => { x[H] = 1; }, x => { x[H + 1] = 49; },
     x => { x[H + A + 1] = x[H + 1]; }, x => { x[H + 2] = 3; },
     x => { view(x).setUint32(H + 7, host.state.tick + 1, true); },
     x => { view(x).setUint16(H + 11, 1, true); }, x => { view(x).setUint16(H + 58, 10001, true); },
@@ -436,7 +437,7 @@ for (const track of Race.tracks) {
       assert.ok(steps < 60 * 90, 'finish comfortably before cap');
     }
     assert.ok(host.state.actors.slice(0, 4).every(a => a.finishTick > 0 && a.passed === 20));
-    assert.equal(host.state.finishReason, 'humans'); assert.ok(largest <= 446);
+    assert.equal(host.state.finishReason, 'humans'); assert.ok(largest <= 648);
     assert.ok(Online.decodeSnapshot(host.packet()));
   });
 }
@@ -535,7 +536,7 @@ test('final ranks must be zero before finish and an exact unique 1..5 permutatio
     assert.equal(Online.decodeSnapshot(bad), null, `premature rank for pilot-${i}`);
   }
   const finished = nearTieFinish().packet();
-  assert.equal(finished.length <= 446, true);
+  assert.equal(finished.length <= 648, true);
   for (let i = 0; i < 5; i++) {
     for (const rank of [0, 6, 255]) {
       const bad = clone(finished); bad[H + A * i + 63] = rank;

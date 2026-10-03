@@ -211,6 +211,7 @@
     function checkpoint() {
       if (phaseName === "racing") cue("checkpoint", [74], 0, 0.15, 0.035);
     }
+    function threat() { cue("threat", [57, 62], 0.1, 0.18, 0.055); }
     function recover() { cue("recover", [62, 57, 62], 0.11, 0.35); }
     function lap() { cue("lap", [66, 69, 74], 0.09, 0.45); }
     function finish() {
@@ -289,7 +290,13 @@
           const key = event.type + ":" + event.id;
           if (seen.has(key)) continue;
           seen.add(key);
-          if (event.type === "pad") pad();
+          if (event.type === "coin") cue("coin", [81, 86], 0.04, 0.15, 0.045);
+          else if (event.type === "item") cue("item", [74, 78], 0.07, 0.25, 0.055);
+          else if (event.type === "shield" || event.type === "block") cue("shield", [69, 81], 0.07, 0.25, 0.055);
+          else if (event.type === "pulse") cue("pulse", [54, 61, 66], 0.08, 0.25, 0.05);
+          else if (event.type === "jump") cue("jump", [69, 76], 0.045, 0.19, 0.035);
+          else if (event.type === "hit") cue("hit", [55, 50], 0.055, 0.18, 0.055);
+          else if (event.type === "pad") pad();
           else if (event.type === "recover") recover();
           else if (event.type === "lap") {
             milestoneCue = true;
@@ -419,7 +426,7 @@
         engineVoices: engine ? engine.oscs.length : 0,
       });
     }
-    return Object.freeze({ unlock: () => unlock(false), resume, update, phase, countdown, checkpoint, pad, recover, lap, finish, boost, pause, stop, destroy, diagnostics });
+    return Object.freeze({ unlock: () => unlock(false), resume, update, phase, countdown, checkpoint, pad, recover, lap, finish, boost, threat, pause, stop, destroy, diagnostics });
   }
   return Object.freeze({ create });
 });

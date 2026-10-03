@@ -8,8 +8,8 @@
   else root.SpaceManRaceOnline = api;
 })(typeof window !== 'undefined' ? window : globalThis, function (Race) {
   'use strict';
-  const VERSION = 1, INPUT = 1, SNAPSHOT = 2, MAX_BYTES = 1024;
-  const INPUT_BYTES = 19, HEADER_BYTES = 30, ACTOR_BYTES = 64, EVENT_BYTES = 8;
+  const VERSION = 2, CATALOG_VERSION = 1, INPUT = 1, SNAPSHOT = 2, MAX_BYTES = 990;
+  const INPUT_BYTES = 33, HEADER_BYTES = 32, ACTOR_BYTES = 84, EFFECT_BYTES = 20, EVENT_BYTES = 8;
   const INPUT_TTL_MS = 200, REJOIN_MS = 10000, SNAPSHOT_MS = 50;
   const MAX_HUMANS = 4, PILOTS = 5, MAX_EVENTS = 12, NONE = 65535;
   const C = Race.constants;
@@ -17,7 +17,9 @@
   const PHASES = ['countdown', 'racing', 'finished'];
   const STATUSES = ['lobby', 'running', 'paused'];
   const REASONS = [null, 'humans', 'grace', 'time', 'all'];
-  const EVENTS = ['go', 'pad', 'recover', 'lap', 'finish', 'forfeit'];
+  const EVENTS = ['go', 'pad', 'recover', 'lap', 'finish', 'forfeit',
+    'jump', 'land', 'coin', 'item', 'shield', 'pulse', 'block', 'hit', 'land-pulse'];
+  const ITEMS = [null, 'shield', 'pulse'];
   const FLOATS = ['x', 'y', 'heading', 'vx', 'vy', 'speed', 'fuel', 'progress'];
   const uint = (n, max = 0xffffffff) => Number.isInteger(n) && n >= 0 && n <= max;
   const validTime = (n) => Number.isFinite(n) && n >= 0;
@@ -36,31 +38,40 @@
   }
   function encodeInput(o) {
     if (!o || !uint(o.epoch) || !uint(o.seq) || !uint(o.tick) ||
-        !uint(o.recoverEdges, NONE)) return null;
+        !uint(o.recoverEdges, NONE) || !uint(o.itemEdges == null ? 0 : o.itemEdges, NONE) ||
+        !uint(o.releaseEdges == null ? 0 : o.releaseEdges, NONE) ||
+        (o.warnings != null && (!Array.isArray(o.warnings) || o.warnings.length !== PILOTS ||
+          o.warnings.some(n => !uint(n, NONE))))) return null;
     const c = Race.command(o.command), b = new Uint8Array(INPUT_BYTES);
     const v = new DataView(b.buffer);
     b[0] = VERSION; b[1] = INPUT;
     v.setUint32(2, o.epoch, true); v.setUint32(6, o.seq, true);
     v.setUint32(10, o.tick, true);
     v.setInt8(14, Math.round(c.steer * 127)); b[15] = Math.round(c.throttle * 255);
-    b[16] = (c.brake ? 1 : 0) | (c.boost ? 2 : 0);
+    b[16] = (c.brake ? 1 : 0) | (c.boost ? 2 : 0) | (o.released ? 4 : 0);
     v.setUint16(17, o.recoverEdges, true);
+    v.setUint16(19, o.itemEdges || 0, true);
+    for (let i = 0; i < PILOTS; i++) v.setUint16(21 + i * 2, o.warnings ? o.warnings[i] : 0, true);
+    v.setUint16(31, o.releaseEdges || 0, true);
     return b;
   }
   function decodeInput(b) {
     if (!(b instanceof Uint8Array) || b.length !== INPUT_BYTES ||
-        b[0] !== VERSION || b[1] !== INPUT || b[14] === 128 || b[16] > 3) return null;
+        b[0] !== VERSION || b[1] !== INPUT || b[14] === 128 || b[16] > 7 ||
+        ((b[16] & 4) && (b[14] || b[15] || (b[16] & 3) || b.slice(21, 31).some(Boolean)))) return null;
     const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
     return {
       epoch: v.getUint32(2, true), seq: v.getUint32(6, true), tick: v.getUint32(10, true),
-      recoverEdges: v.getUint16(17, true),
+      recoverEdges: v.getUint16(17, true), itemEdges: v.getUint16(19, true), released: !!(b[16] & 4), releaseEdges: v.getUint16(31, true),
+      warnings: Array.from({ length: PILOTS }, (_, i) => v.getUint16(21 + i * 2, true)),
       command: Race.command({ steer: v.getInt8(14) / 127, throttle: b[15] / 255,
         brake: !!(b[16] & 1), boost: !!(b[16] & 2) }),
     };
   }
   function encodeSnapshot(host) {
-    const s = host.state, events = host.events.slice(-MAX_EVENTS);
-    const b = new Uint8Array(HEADER_BYTES + ACTOR_BYTES * PILOTS + EVENT_BYTES * events.length);
+    const s = host.state, events = host.events.slice(-MAX_EVENTS), effects = s.effects || [];
+    if (effects.length > PILOTS || s.actors.length !== PILOTS) return null;
+    const b = new Uint8Array(HEADER_BYTES + ACTOR_BYTES * PILOTS + EFFECT_BYTES * effects.length + EVENT_BYTES * events.length);
     const v = new DataView(b.buffer);
     b[0] = VERSION; b[1] = SNAPSHOT;
     v.setUint32(2, host.revision, true); v.setUint32(6, host.epoch, true);
@@ -71,7 +82,7 @@
     v.setUint16(21, s.countdown, true);
     v.setUint16(23, s.firstFinishTick === null ? NONE : s.firstFinishTick, true);
     b[25] = REASONS.indexOf(s.finishReason); b[26] = PILOTS;
-    b[27] = host.seats.length; b[28] = events.length;
+    b[27] = host.seats.length; b[28] = events.length; b[29] = CATALOG_VERSION; b[30] = effects.length;
     let o = HEADER_BYTES;
     for (const a of s.actors) {
       const seat = host.seats.find(p => p.actorId === a.id);
@@ -96,7 +107,21 @@
       b[o + 62] = seat ? seat.displayP : 0;
       // Final placement is authoritative: float32 progress can erase close gaps.
       b[o + 63] = s.results ? s.results.find(r => r.id === a.id).position : 0;
+      b[o + 64] = ITEMS.indexOf(a.item || null); v.setUint16(o + 65, a.coinMask || 0, true);
+      b[o + 67] = a.rowMask || 0; b[o + 68] = a.rampMask || 0;
+      b[o + 69] = a.airRamp || 0; b[o + 70] = a.airTicks || 0;
+      v.setFloat32(o + 71, a.z || 0, true); b[o + 75] = a.shieldTicks || 0;
+      b[o + 76] = a.slowTicks || 0; b[o + 77] = a.immunityTicks || 0;
+      v.setUint16(o + 78, a.pulseSerial || 0, true);
+      v.setUint16(o + 80, seat ? seat.itemEdges : 0, true);
+      v.setUint16(o + 82, seat ? seat.releaseEdges : 0, true);
       o += ACTOR_BYTES;
+    }
+    for (const e of effects) {
+      b[o] = actorIndex(e.ownerId); v.setUint16(o + 1, e.serial, true);
+      b[o + 3] = e.phase === 'charge' ? 0 : 1; b[o + 4] = e.age;
+      v.setFloat32(o + 8, e.s, true); v.setFloat32(o + 12, e.d, true);
+      v.setFloat32(o + 16, e.originS, true); o += EFFECT_BYTES;
     }
     for (const e of events) {
       v.setUint32(o, e.serial, true); b[o + 4] = EVENTS.indexOf(e.type);
@@ -110,8 +135,8 @@
         b[0] !== VERSION || b[1] !== SNAPSHOT || !Race.tracks[b[16]] ||
         !DIFFICULTIES[b[17]] || b[18] < 1 || b[18] > 5 || !STATUSES[b[19]] ||
         !PHASES[b[20]] || b[25] >= REASONS.length || b[26] !== PILOTS ||
-        b[27] > MAX_HUMANS || b[28] > MAX_EVENTS || b[29] !== 0 ||
-        b.length !== HEADER_BYTES + PILOTS * ACTOR_BYTES + b[28] * EVENT_BYTES) return null;
+        b[27] > MAX_HUMANS || b[28] > MAX_EVENTS || b[29] !== CATALOG_VERSION || b[30] > PILOTS || b[31] !== 0 ||
+        b.length !== HEADER_BYTES + PILOTS * ACTOR_BYTES + b[30] * EFFECT_BYTES + b[28] * EVENT_BYTES) return null;
     const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
     const state = makeState({ trackId: Race.tracks[b[16]].id,
       difficulty: DIFFICULTIES[b[17]], laps: b[18] });
@@ -140,9 +165,10 @@
       if (b[o] !== index || p > 48 || flags > 2 || (p && seenP.has(p)) ||
           (!hasSeat && p) || (hasSeat && !p && flags === 1)) return null;
       const seq = v.getUint32(o + 3, true), lastAcceptedTick = v.getUint32(o + 7, true);
+      const itemEdges = v.getUint16(o + 80, true), releaseEdges = v.getUint16(o + 82, true);
       const recoverEdges = v.getUint16(o + 11, true), rejoinRemainingMs = v.getUint16(o + 58, true);
-      if (lastAcceptedTick > state.tick || recoverEdges > seq || rejoinRemainingMs > REJOIN_MS ||
-          (!hasSeat && (flags || seq || lastAcceptedTick || recoverEdges || rejoinRemainingMs)) ||
+      if (lastAcceptedTick > state.tick || recoverEdges > seq || itemEdges > seq || releaseEdges > seq || rejoinRemainingMs > REJOIN_MS ||
+          (!hasSeat && (flags || seq || lastAcceptedTick || recoverEdges || itemEdges || releaseEdges || rejoinRemainingMs)) ||
           (flags && rejoinRemainingMs)) return null;
       const adjIdx = b[o + 60], nounIdx = b[o + 61], displayP = b[o + 62];
       if ((adjIdx >= 64 && adjIdx !== 255) || (nounIdx >= 64 && nounIdx !== 255) ||
@@ -150,7 +176,7 @@
       if (hasSeat) {
         if (p) seenP.add(p);
         seats.push({ p, actorId: a.id, connected: !!(flags & 1), forfeited: !!(flags & 2),
-          seq, lastAcceptedTick, recoverEdges, rejoinRemainingMs, adjIdx, nounIdx, displayP });
+          seq, lastAcceptedTick, recoverEdges, itemEdges, releaseEdges, rejoinRemainingMs, adjIdx, nounIdx, displayP });
       }
       a.controller = hasSeat ? 'human' : 'cpu';
       for (const [i, k] of FLOATS.entries()) {
@@ -176,7 +202,36 @@
           (a.dnf && (a.finishTick !== null || a.speed !== 0 || a.boosting || a.recoveryTicks)) ||
           (finish !== NONE && (finish < 1 || finish > state.raceTick || a.passed !== state.laps * C.GATES)) ||
           (finish === NONE && a.passed === state.laps * C.GATES)) return null;
+      a.item = ITEMS[b[o + 64]]; a.coinMask = v.getUint16(o + 65, true);
+      a.rowMask = b[o + 67]; a.rampMask = b[o + 68]; a.airRamp = b[o + 69];
+      a.airTicks = b[o + 70]; a.z = v.getFloat32(o + 71, true);
+      a.shieldTicks = b[o + 75]; a.slowTicks = b[o + 76]; a.immunityTicks = b[o + 77];
+      a.pulseSerial = v.getUint16(o + 78, true);
+      const u = a.airTicks / 30, height = a.airRamp ? 10 * (1 - u) + 96 * u * (1 - u) : 0;
+      if (b[o + 64] > 2 || a.coinMask > 1023 || a.rowMask > 3 || a.rampMask > 3 ||
+          a.airRamp > 2 || a.airTicks > 29 || (!a.airRamp && a.airTicks) ||
+          !Number.isFinite(a.z) || Math.abs(a.z - height) > 0.0001 ||
+          a.shieldTicks > 240 || a.slowTicks > 24 || a.immunityTicks > 90 ||
+          (a.airRamp && !(a.rampMask & (1 << (a.airRamp - 1)))) ||
+          ((a.dnf || a.finishTick !== null || state.phase === 'finished') &&
+            (a.item || a.airRamp || a.shieldTicks || a.slowTicks || a.immunityTicks)) ||
+          (state.trackId !== 'starlight' && (a.item || a.coinMask || a.rowMask || a.rampMask ||
+            a.airRamp || a.shieldTicks || a.slowTicks || a.immunityTicks || a.pulseSerial))) return null;
       o += ACTOR_BYTES;
+    }
+    state.effects = []; const owners = new Set(), length = Race.course(state.trackId).length;
+    for (let i = 0; i < b[30]; i++) {
+      const owner = b[o], serial = v.getUint16(o + 1, true), phase = b[o + 3], age = b[o + 4];
+      const s = v.getFloat32(o + 8, true), d = v.getFloat32(o + 12, true), originS = v.getFloat32(o + 16, true);
+      const a = state.actors[owner];
+      if (!a || owners.has(owner) || !serial || serial !== a.pulseSerial || phase > 1 ||
+          age > (phase ? 27 : 53) || b[o + 5] || b[o + 6] || b[o + 7] ||
+          ![s, d, originS].every(Number.isFinite) || Math.abs(d) > 44 ||
+          Math.abs(s) > length * (state.laps + 2) || Math.abs(originS) > length * (state.laps + 2) ||
+          (phase && Math.abs(s - (originS + age * 12)) > 0.01) ||
+          state.trackId !== 'starlight' || state.phase !== 'racing' || a.dnf || a.finishTick !== null) return null;
+      owners.add(owner); state.effects.push({ ownerId: a.id, serial, phase: phase ? 'wave' : 'charge', age, s, d, originS });
+      o += EFFECT_BYTES;
     }
     // These are detached presentation data. They are never restored into a host.
     state.events = [];
@@ -213,15 +268,15 @@
     function record(e) { events.push({ ...e, serial: ++eventSerial }); events = events.slice(-MAX_EVENTS); }
     function clearCommand(s) {
       Race.cancelControl(state, s.actorId);
-      s.command = blank(); s.pendingRecover = false; s.pendingAt = -Infinity; s.receivedAt = -Infinity;
+      s.command = blank(); s.pendingRecover = false; s.pendingItem = 0; s.pendingAt = -Infinity; s.itemAt = -Infinity; s.receivedAt = -Infinity;
     }
     function assign() {
       seats = roster.filter(r => r.role === 0).sort((a, b) => a.p - b.p).slice(0, MAX_HUMANS)
         .map((r, i) => ({ p: r.p, identity: r.identity, actorId: 'pilot-' + i,
-          connected: true, forfeited: false, disconnectedAt: null, seq: 0, recoverEdges: 0,
+          connected: true, forfeited: false, disconnectedAt: null, seq: 0, recoverEdges: 0, itemEdges: 0, releaseEdges: 0,
           adjIdx: r.adjIdx, nounIdx: r.nounIdx, displayP: r.p,
           lastAcceptedTick: 0, bucket: 12, bucketAt: now, command: blank(),
-          pendingRecover: false, pendingAt: -Infinity, receivedAt: -Infinity }));
+          pendingRecover: false, pendingItem: 0, pendingAt: -Infinity, itemAt: -Infinity, receivedAt: -Infinity }));
       for (const a of state.actors) a.controller = seats.some(s => s.actorId === a.id) ? 'human' : 'cpu';
     }
     function expire(s) {
@@ -231,6 +286,7 @@
         s.forfeited = true; clearCommand(s);
         Object.assign(a, { dnf: true, vx: 0, vy: 0, speed: 0, boosting: false,
           padTicks: 0, recoveryTicks: 0, recoverHeld: false });
+        Race.clearFeatures(state, a.id);
         record({ type: 'forfeit', id: a.id });
       }
     }
@@ -282,10 +338,11 @@
       if (epoch === 0xffffffff) return false;
       status = on ? 'paused' : 'running'; epoch++;
       for (const s of seats) {
-        clearCommand(s); Object.assign(s, { seq: 0, recoverEdges: 0, lastAcceptedTick: 0,
+        clearCommand(s); Object.assign(s, { seq: 0, recoverEdges: 0, itemEdges: 0, releaseEdges: 0, lastAcceptedTick: 0,
           bucket: 12, bucketAt: now });
         state.actors[actorIndex(s.actorId)].recoverHeld = false;
       }
+      for (const a of state.actors) Race.cancelControl(state, a.id, { resetEdges: true });
       return true;
     }
     function receive(p, identity, bytes, time) {
@@ -296,15 +353,21 @@
           !input.seq || input.seq <= s.seq || input.seq - s.seq > 3600 ||
           input.tick + 120 < state.tick || input.tick > state.tick + 12 ||
           time < s.receivedAt || input.recoverEdges < s.recoverEdges ||
-          input.recoverEdges - s.recoverEdges > Math.min(120, input.seq - s.seq)) return false;
+          input.recoverEdges - s.recoverEdges > Math.min(120, input.seq - s.seq) ||
+          input.itemEdges < s.itemEdges || input.itemEdges - s.itemEdges > Math.min(120, input.seq - s.seq) ||
+          input.releaseEdges < s.releaseEdges || input.releaseEdges - s.releaseEdges > input.seq - s.seq) return false;
       const budget = Math.min(12, s.bucket + Math.max(0, time - s.bucketAt) * 0.06);
       if (budget < 1) return false;
       now = Math.max(now, time); s.bucket = budget - 1; s.bucketAt = Math.max(s.bucketAt, time);
-      if (input.recoverEdges > s.recoverEdges) { s.pendingRecover = true; s.pendingAt = time; }
-      s.recoverEdges = input.recoverEdges; s.seq = input.seq; s.command = input.command;
+      const stale = time - s.receivedAt >= INPUT_TTL_MS, interrupted = input.released || input.releaseEdges > s.releaseEdges;
+      if (stale || interrupted) clearCommand(s);
+      else if (!input.command.throttle) Race.cancelControl(state, s.actorId, { keepWarnings: true });
+      if (!interrupted && input.itemEdges > s.itemEdges) { s.pendingItem = input.itemEdges; s.itemAt = time; }
+      if (!interrupted && input.recoverEdges > s.recoverEdges) { s.pendingRecover = true; s.pendingAt = time; }
+      s.recoverEdges = input.recoverEdges; s.itemEdges = input.itemEdges; s.releaseEdges = input.releaseEdges; s.seq = input.seq; s.command = input.command;
       // A validated neutral release is an interruption, even when a later input
       // arrives before the next host physics tick. It cannot cash a drift.
-      if (!input.command.throttle || time - s.receivedAt >= INPUT_TTL_MS) Race.cancelControl(state, s.actorId);
+      if (!input.released) Race.observeWarnings(state, s.actorId, input.warnings);
       s.receivedAt = time; s.lastAcceptedTick = state.tick; return true;
     }
     function step(time) {
@@ -317,8 +380,10 @@
         if (!s) { commands[a.id] = Race.cpuInput(state, a); continue; }
         expire(s);
         const fresh = s.connected && !s.forfeited && now - s.receivedAt < INPUT_TTL_MS;
-        commands[a.id] = fresh ? { ...s.command, recover: s.pendingRecover && now - s.pendingAt < INPUT_TTL_MS } : blank();
-        s.pendingRecover = false; s.pendingAt = -Infinity;
+        if (!fresh) clearCommand(s);
+        commands[a.id] = fresh ? { ...s.command, recover: s.pendingRecover && now - s.pendingAt < INPUT_TTL_MS,
+          item: false, itemEdge: s.pendingItem && now - s.itemAt < INPUT_TTL_MS ? s.pendingItem : 0 } : blank();
+        s.pendingRecover = false; s.pendingItem = 0; s.pendingAt = s.itemAt = -Infinity;
       }
       Race.step(state, commands);
       for (const e of state.events) if (EVENTS.includes(e.type)) record(e);
@@ -334,31 +399,60 @@
   function createClient(options = {}) {
     const hostId = options && uint(options.hostId, 48) && options.hostId > 0 ? options.hostId : 1;
     let current = null, eventSerial = 0, seq = 0, recoverEdges = 0, recoverHeld = false;
+    let itemEdges = 0, releaseEdges = 0, releasePending = false, itemHeld = true, warnings = Array(PILOTS).fill(0), seatId = null, rebase = false;
+    function reset() { seq = recoverEdges = itemEdges = releaseEdges = 0; releasePending = false; recoverHeld = false; itemHeld = true; warnings.fill(0); seatId = null; }
+    function cancel(reconnect = false) { releasePending = true; warnings.fill(0); itemHeld = true; recoverHeld = false; if (reconnect) rebase = true; }
+    // Call only after the view has actually painted its screen-space warning.
+    // Snapshot receipt, a world effect and a sound cue are not observations.
+    function observeWarnings(serials) {
+      if (!current || current.status !== 'running' || !Array.isArray(serials) || serials.length !== PILOTS) return false;
+      warnings = Array.from({ length: PILOTS }, (_, owner) => {
+        const e = current.state.effects.find(e => actorIndex(e.ownerId) === owner);
+        return e && uint(serials[owner], NONE) && serials[owner] === e.serial ? e.serial : 0;
+      });
+      return true;
+    }
     function accept(bytes, sender) {
       // The transport must supply the authenticated sender, never a packet field.
       if (sender !== hostId) return null;
       const next = decodeSnapshot(bytes);
       if (!next || (current && (next.revision <= current.revision || next.epoch < current.epoch ||
           (next.epoch === current.epoch && next.state.tick < current.state.tick)))) return null;
-      if (!current || next.epoch !== current.epoch) { seq = 0; recoverEdges = 0; recoverHeld = false; }
+      if (!current || next.epoch !== current.epoch || rebase) { reset(); rebase = false; }
+      else if (seatId) {
+        const before = current.seats.find(s => s.actorId === seatId), after = next.seats.find(s => s.actorId === seatId);
+        if (!before || !after || before.p !== after.p || before.connected !== after.connected || after.forfeited) reset();
+      }
       next.state.events = next.state.events.filter(e => e.serial > eventSerial);
       for (const e of next.state.events) eventSerial = Math.max(eventSerial, e.serial);
       current = next; return next;
     }
-    function input(command, p) {
-      if (!current || current.status !== 'running' || current.state.phase === 'finished') return null;
+    function input(command, p, released = false) {
+      if (!current || rebase || current.status !== 'running' || current.state.phase === 'finished') return null;
       const s = current.seats.find(s => s.p === p && s.connected && !s.forfeited);
-      if (!s || current.state.actors[actorIndex(s.actorId)].finishTick !== null) return null;
-      seq = Math.max(seq, s.seq); recoverEdges = Math.max(recoverEdges, s.recoverEdges);
+      if (!s || current.state.actors[actorIndex(s.actorId)].finishTick !== null) { reset(); return null; }
+      if (seatId !== s.actorId) { reset(); seatId = s.actorId; }
+      seq = Math.max(seq, s.seq); recoverEdges = Math.max(recoverEdges, s.recoverEdges); itemEdges = Math.max(itemEdges, s.itemEdges); releaseEdges = Math.max(releaseEdges, s.releaseEdges);
       if (seq === 0xffffffff) return null;
       const c = Race.command(command);
+      // Carry interruption generations until acknowledged: an unreliable
+      // release packet must not preserve pre-menu hit eligibility or Item use.
+      if (releasePending) {
+        if (releaseEdges === NONE) return null; // fail neutral rather than wrap
+        releaseEdges++; releasePending = false;
+      }
       if (c.recover && !recoverHeld) recoverEdges = Math.min(NONE, recoverEdges + 1);
       recoverHeld = c.recover;
-      return encodeInput({ epoch: current.epoch, seq: ++seq, tick: current.state.tick, recoverEdges, command: c });
+      if (c.item && !itemHeld) itemEdges = Math.min(NONE, itemEdges + 1);
+      itemHeld = c.item;
+      if (released) { itemHeld = true; recoverHeld = false; warnings.fill(0); }
+      const observed = warnings.map((serial, owner) => current.state.effects.some(e => actorIndex(e.ownerId) === owner && e.serial === serial) ? serial : 0);
+      return encodeInput({ epoch: current.epoch, seq: ++seq, tick: current.state.tick, recoverEdges, itemEdges, releaseEdges,
+        warnings: observed, released, command: c });
     }
-    return { accept, input, get current() { return current; } };
+    return { accept, input, observeWarnings, cancel, release(p) { cancel(); return input({}, p, true); }, get current() { return current; } };
   }
-  return Object.freeze({ VERSION, MAX_BYTES, INPUT_BYTES, HEADER_BYTES, ACTOR_BYTES, EVENT_BYTES,
+  return Object.freeze({ VERSION, CATALOG_VERSION, MAX_BYTES, INPUT_BYTES, HEADER_BYTES, ACTOR_BYTES, EFFECT_BYTES, EVENT_BYTES,
     INPUT_TTL_MS, REJOIN_MS, SNAPSHOT_MS, MAX_HUMANS, PILOTS, configuration,
     encodeInput, decodeInput, encodeSnapshot, decodeSnapshot, createHost, createClient });
 });

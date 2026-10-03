@@ -93,3 +93,36 @@ test("same-tick authoritative metadata updates remain current during a pause", (
   assert.equal(shown.actors[0].connected, false);
   assert.equal(shown.actors[0].finishTick, 30);
 });
+
+test('height and air progress interpolate only between received samples, including landing',()=>{
+  const before=state(10,10),after=state(13,19);
+  Object.assign(before.actors[0],{airRamp:1,airTicks:10,z:24});Object.assign(after.actors[0],{airRamp:1,airTicks:13,z:29});
+  const original=JSON.stringify([before,after]),shown=P.between(P.capture(before),after,.5).actors[0];
+  assert.equal(shown.z,26.5);assert.equal(shown.airTicks,11.5);assert.equal(shown.airRamp,1);
+  assert.equal(P.between(before,after,8).actors[0].z,29);
+  const land=state(16,28);Object.assign(land.actors[0],{airRamp:0,airTicks:0,z:0});
+  assert.equal(P.between(after,land,.5).actors[0].z,14.5);
+  assert.equal(P.between(after,land,.5).actors[0].airRamp,1);
+  assert.equal(P.between(after,land,1).actors[0].airRamp,0);
+  assert.equal(JSON.stringify([before,after]),original);
+});
+test('epoch, recovery and new-hop discontinuities never blend the previous height',()=>{
+  const before={...state(20,20),epoch:1},after={...state(21,23),epoch:2};
+  Object.assign(before.actors[0],{z:28,airRamp:1,airTicks:12});Object.assign(after.actors[0],{z:10,airRamp:1,airTicks:0});
+  assert.equal(P.between(P.capture(before),after,0).actors[0].z,10);
+  after.epoch=1;assert.equal(P.between(before,after,0).actors[0].z,10,'new hop snaps even for the same ramp ID');
+  after.actors[0].airRamp=0;after.actors[0].z=0;after.actors[0].recoveries=1;
+  assert.equal(P.between(before,after,0).actors[0].z,0);
+});
+test('network loss cannot extend airtime and following another pilot resets the playback clock',()=>{
+  const t=P.createTimeline(),first={...state(30,30),epoch:1},next={...state(33,39),epoch:1};
+  Object.assign(first.actors[0],{z:20,airRamp:1,airTicks:6});Object.assign(next.actors[0],{z:28,airRamp:1,airTicks:9});
+  t.sample(first,1000,{actorId:'pilot-0'});t.sample(next,1050,{actorId:'pilot-0'});
+  for(let now=1100;now<3000;now+=50) {
+    const shown=t.sample(next,now,{actorId:'pilot-0'}).actors[0];
+    assert.ok(shown.z>=20&&shown.z<=28);assert.ok(shown.airTicks<=9);
+  }
+  assert.equal(t.sample(next,3100,{actorId:'pilot-1'}).actors[0].x,39);
+  const epoch={...next,epoch:2,actors:[{...next.actors[0],x:50,z:0,airRamp:0,airTicks:0}]};
+  assert.equal(t.sample(epoch,3150,{actorId:'pilot-1'}).actors[0].z,0);
+});

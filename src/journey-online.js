@@ -7,7 +7,7 @@
   if(node)module.exports=api;else root.SpaceManJourneyOnline=api;
 })(typeof window!=='undefined'?window:globalThis,function(Director,Arena,Race){
   'use strict';
-  const VERSION=1,HEADER=34,MAX_BYTES=1024,INPUT=1,SNAPSHOT=2,READY=3;
+  const VERSION=2,HEADER=34,MAX_BYTES=1024,INPUT=1,SNAPSHOT=2,READY=3;
   const MODES=['runner','arena','race'],PHASES=['lobby','barrier','running','paused'];
   const MIN_BARRIER_MS=900,MAX_BARRIER_MS=3500,MAX_INDEX=1000000;
   const uint=(n,max=0xffffffff)=>Number.isInteger(n)&&n>=0&&n<=max;
@@ -43,7 +43,21 @@
     const seed=options.seed>>>0,session=options.session>>>0||1;let epoch=0,index=0,revision=0,tick=0,phase='lobby',config=encounter(seed,0),engine=null,rows=[],seats=[],barrierAt=0,lastNow=0;
     const ready=new Set(),samples=new Map(),runnerSeq=new Map();
     const engineAPI=()=>config.id==='arena'?Arena:config.id==='race'?Race:null;
-    function syncRoster(value,now=lastNow){rows=validRoster(value);if(engine)engine.syncRoster(rows.filter(r=>seats.some(s=>s.identity===r.identity)),now);}
+    function syncRoster(value,now=lastNow){
+      rows=validRoster(value);
+      // The transport may assign a reconnecting identity a different P. Keep
+      // the encounter seat (and runner completion/sample) owned by identity;
+      // a recycled P must never admit a different identity to that seat.
+      for(const seat of seats){
+        const row=rows.find(r=>r.identity===seat.identity&&r.role===0);
+        if(row&&row.p!==seat.p){
+          seat.p=row.p;
+          const sample=samples.get(seat.identity);
+          if(sample)samples.set(seat.identity,{...sample,p:row.p});
+        }
+      }
+      if(engine)engine.syncRoster(rows.filter(r=>seats.some(s=>s.identity===r.identity)),now);
+    }
     function prepare(now){if(epoch===0xffffffff||index>MAX_INDEX)return false;epoch++;tick=0;phase='barrier';barrierAt=now;config=encounter(seed,index);engine=null;seats=[];ready.clear();samples.clear();runnerSeq.clear();return true;}
     function start(now=0){if(phase!=='lobby'||!Number.isFinite(now)||now<0)return false;lastNow=now;return prepare(now);}
     function launch(){
@@ -98,7 +112,7 @@
     function message(type,payload){if(!current||seq===0xffffffff)return null;return encode({...current,type,revision:++seq},payload);}
     function ready(){return current&&current.phase==='barrier'?message(READY,new Uint8Array()):null;}
     function input(command,p){if(!current||current.phase!=='running'||!hasPlayer(current.players,p))return null;const payload=current.mode==='runner'?encodeRunner([{...command,p}]):engine.input(command,p);return payload?message(INPUT,payload):null;}
-    return{accept,ready,input,get current(){return current;}};
+    return{accept,ready,input,cancel(reconnect=false){engine?.cancel?.(reconnect);},observeWarnings(serials){return current?.mode==='race'&&engine?.observeWarnings(serials);},release(p){if(!current||current.phase!=='running'||!hasPlayer(current.players,p)||!engine)return null;const payload=current.mode==='race'?engine.release(p):engine.input({},p);return payload?message(INPUT,payload):null;},get current(){return current;}};
   }
   return Object.freeze({VERSION,HEADER,MAX_BYTES,INPUT,SNAPSHOT,READY,MIN_BARRIER_MS,MAX_BARRIER_MS,encode,decode,encodeRunner,decodeRunner,hasPlayer,createHost,createClient});
 });

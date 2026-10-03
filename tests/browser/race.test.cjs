@@ -235,6 +235,7 @@ test(
         testPad.axes[0] = c.steer;
         testPad.buttons[0].pressed = c.boost;
         testPad.buttons[1].pressed = c.brake;
+        testPad.buttons[5].pressed = c.item;
       }, 16);
     });
     // A full-size grid can take over 30 s; use the test's actual 90 s budget

@@ -47,16 +47,22 @@
           ? Math.max(0.1, options.aspect)
           : 1;
         const portrait = Math.max(1, Math.min(1.95, 0.9 / aspect));
+        // A vertical-only FOV makes portrait Cockpit a narrow tunnel. Preserve
+        // a useful horizontal opening for the full upcoming landing road;
+        // landscape retains the existing 68-degree vertical lens.
+        const cockpitFov = Math.max(68, Math.min(150, 2 * Math.atan(1 / aspect) * 180 / Math.PI));
         // Fixed horizon: never roll or shake. Reduced motion removes speed zoom and
         // follow lag, rather than making the road turn underneath a fixed camera.
         const desired = {
           mode,
           x: actor.x - fx * (cockpit ? -6 : 132 * portrait),
-          y: cockpit ? 34 : 94 + (portrait - 1) * 60,
+          // Chase remains ground-relative throughout a hop. Cockpit adds only
+          // a small, capped rise; its road target never lifts with the pilot.
+          y: cockpit ? 34 + (calm ? 0 : Math.min(8, Math.max(0, Number.isFinite(actor.z) ? actor.z : 0))) : 94 + (portrait - 1) * 60,
           z: actor.y - fz * (cockpit ? -6 : 132 * portrait),
           heading: h,
           fov:
-            (cockpit ? 68 : 59) +
+            (cockpit ? cockpitFov : 59) +
             (!calm ? Math.min(4, Math.max(0, actor.speed || 0) * 0.5) : 0),
         };
         if (reset || calm) current = { ...desired };
@@ -66,7 +72,9 @@
           current.y = mix(current.y, desired.y, t);
           current.z = mix(current.z, desired.z, t);
           current.heading += wrap(h - current.heading) * t;
-          current.fov = mix(current.fov, desired.fov, 1 - Math.exp(-dt * 3));
+          // Rotation cannot temporarily narrow the newly required opening.
+          current.fov = Math.max(cockpit ? cockpitFov : 59,
+            mix(current.fov, desired.fov, 1 - Math.exp(-dt * 3)));
         }
         lastRecovery = actor.recoveries;
         lastActor = actor.id;

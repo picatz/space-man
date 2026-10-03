@@ -108,7 +108,7 @@
     "#ff8baa",
     "#fff09d",
   ]);
-  const cache = new Map();
+  const cache = new Map(), featureCache = new Map();
   function track(id) {
     return tracks.find((t) => t.id === id) || tracks[0];
   }
@@ -190,6 +190,213 @@
     }
     return best ? { x: bestX, y: bestY, tx: best.tx, ty: best.ty, s: bestS, distance: Math.sqrt(dist) } : null;
   }
+  // This is the single geometry/rules catalog used by simulation, renderers,
+  // CPU routing and wire validation. There is no screen-space collision data.
+  function features(value = "starlight") {
+    const c = course(typeof value === "string" ? value : value && (value.id || value.trackId));
+    if (featureCache.has(c.id)) return featureCache.get(c.id);
+    const catalog = { revision: 1, trackId: c.id, ramps: [], coins: [], rows: [] };
+    if (c.id === "starlight") {
+      catalog.ramps = [.175, .595].map((f, index) => ({
+        id: "ramp-" + (index ? "b" : "a"), index, s: c.length * f,
+        startS: c.length * f - 60, d: 0, width: 180, gate: index ? 11 : 3,
+      }));
+      catalog.coins = [.055, .075, .095, .115].map((f, index) => ({
+        id: "entry-" + index, index, s: c.length * f, d: 44, airborne: false,
+      }));
+      for (const ramp of catalog.ramps) for (let i = 0; i < 3; i++) catalog.coins.push({
+        id: "sky-" + (ramp.index ? "b" : "a") + "-" + i,
+        index: catalog.coins.length, s: ramp.s + 54 * (i + 1),
+        d: ramp.index ? 44 : -44, airborne: true,
+      });
+      catalog.rows = [.275, .705].map((f, index) => ({
+        id: "item-row-" + (index ? "b" : "a"), index, s: c.length * f,
+        gate: index ? 14 : 5,
+        choices: ["shield", "pulse"].map((item, i) => ({
+          id: "item-" + (index ? "b" : "a") + "-" + item,
+          item, s: c.length * f, d: i ? 44 : -44,
+        })),
+      }));
+    }
+    freeze(catalog); featureCache.set(c.id, catalog); return catalog;
+  }
+  const uint16 = (v) => Number.isInteger(v) && v >= 0 && v <= 65535 ? v : 0;
+  const ownerSlot = (id) => /^pilot-[0-4]$/.test(id) ? Number(id.slice(6)) : -1;
+  function lateral(a, n) { return -(a.x - n.x) * n.ty + (a.y - n.y) * n.tx; }
+  function raceDistance(a, c) {
+    const s = nearest(c, a.x, a.y).s, base = a.passed * c.length / 20;
+    // Select the same unwrapped lap as ordered progress, including the tiny
+    // negative start-grid offsets. Nearness across the loop is never a target.
+    return base + ((s - base + c.length * 1.5) % c.length - c.length / 2);
+  }
+  function threats(state, actorId) {
+    const a = state.actors.find(a => a.id === (typeof actorId === "string" ? actorId : actorId && actorId.id));
+    if (!a || a.dnf || a.finishTick !== null || a.recoveryTicks || state.phase !== "racing") return [];
+    const s = raceDistance(a, course(state.trackId));
+    return state.effects.filter(e => e.ownerId !== a.id &&
+      s >= (e.phase === "charge" ? e.s - 30 : e.s - KART_RADIUS) &&
+      s <= (e.phase === "charge" ? e.s + 900 : e.originS + 336 + KART_RADIUS));
+  }
+  function observeWarnings(state, actorId, serials) {
+    const victim = state.actors.findIndex(a => a.id === actorId);
+    if (victim < 0 || !Array.isArray(serials) || state.phase !== "racing") return;
+    const a = state.actors[victim];
+    if (a.dnf || a.finishTick !== null || a.recoveryTicks) return;
+    for (const e of state.effects) {
+      const slot = ownerSlot(e.ownerId);
+      if (slot < 0 || e.ownerId === actorId || uint16(serials[slot]) !== e.serial) continue;
+      if (!e.observedAt) e.observedAt = state.actors.map(() => -1);
+      if (e.observedAt[victim] < 0) e.observedAt[victim] = state.raceTick;
+    }
+  }
+  function clearFeatures(state, actorId, options = {}) {
+    if (!state) return;
+    for (const a of state.actors) if (!actorId || a.id === actorId) {
+      a.airRamp = a.airTicks = a.z = a.shieldTicks = a.slowTicks = 0;
+      a.immunityTicks = options.keepItem && state.trackId === "starlight" ? 90 : 0;
+      if (!options.keepItem) a.item = null;
+      state.effects = state.effects.filter(e => e.ownerId !== a.id);
+      cancelControl(state, a.id);
+    }
+  }
+  function featureTick(state, a, input, c) {
+    for (const field of ["shieldTicks", "immunityTicks"])
+      if (a[field] > 0) a[field]--;
+    if (a.airRamp) {
+      if (++a.airTicks >= 30) {
+        a.airRamp = a.airTicks = a.z = 0;
+        state.events.push({ type: "land", id: a.id });
+      } else {
+        const u = a.airTicks / 30;
+        a.z = 10 * (1-u) + 96 * u * (1-u);
+      }
+    }
+    observeWarnings(state, a.id, input.warnings);
+    const edge = input.itemEdge > a._lastItemEdge || (!input.itemEdge && input.item && !a._itemHeld);
+    if (input.itemEdge) a._lastItemEdge = Math.max(a._lastItemEdge, input.itemEdge);
+    a._itemHeld = input.item;
+    if (!edge || a.recoveryTicks || !a.item) return;
+    if (a.item === "shield") {
+      a.item = null; a.shieldTicks = 240;
+      state.events.push({ type: "shield", id: a.id });
+    } else if (a.airRamp) state.events.push({ type: "land-pulse", id: a.id });
+    else if (ownerSlot(a.id) >= 0 && a.pulseSerial < 65535 &&
+        state.effects.length < 5 && !state.effects.some(e => e.ownerId === a.id)) {
+      const n = nearest(c, a.x, a.y), s = raceDistance(a, c);
+      state.effects.push({ ownerId: a.id, serial: ++a.pulseSerial,
+        phase: "charge", age: 0, s, originS: s, d: clamp(lateral(a, n), -44, 44),
+        observedAt: state.actors.map(() => -1), _createdTick: state.raceTick });
+      state.effects.sort((a, b) => a.ownerId.localeCompare(b.ownerId));
+      a.item = null; state.events.push({ type: "pulse", id: a.id });
+    }
+  }
+  function planeCross(c, s, old, a) {
+    const p = at(c, s), before = (old.x-p.x)*p.tx + (old.y-p.y)*p.ty,
+      after = (a.x-p.x)*p.tx + (a.y-p.y)*p.ty;
+    if (before > 0 || after <= 0 || after <= before) return null;
+    const t = -before / (after-before), x = old.x+(a.x-old.x)*t, y = old.y+(a.y-old.y)*t;
+    return { t, d: -(x-p.x)*p.ty+(y-p.y)*p.tx, forward: a.vx*p.tx+a.vy*p.ty };
+  }
+  function pickupContact(c, object, old, a, radius) {
+    const p = at(c, object.s), x = p.x-p.ty*object.d, y = p.y+p.tx*object.d,
+      dx = a.x-old.x, dy = a.y-old.y, length2 = dx*dx+dy*dy,
+      rx = old.x-x, ry = old.y-y, b = rx*dx+ry*dy,
+      start = rx*rx+ry*ry-radius*radius;
+    if (start <= 0) return 0;
+    if (!length2) return null;
+    const discriminant = b*b-length2*start;
+    if (discriminant < 0) return null;
+    const t = (-b-Math.sqrt(discriminant))/length2;
+    return t >= 0 && t <= 1 ? t : null;
+  }
+  function sweepFeatures(state, a, c, old, n, exitBoosts) {
+    if (!old.inside || old.released || a.recoveryTicks || a.dnf || a.finishTick !== null) return;
+    const catalog = features(c);
+    for (const ramp of catalog.ramps) {
+      if (a.airRamp || a.rampMask & (1 << ramp.index) || a.passed % 20 !== ramp.gate) continue;
+      const hit = planeCross(c, ramp.s, old, a);
+      if (!hit || Math.abs(hit.d) > c.width/2 || hit.forward < 3.6) continue;
+      a.rampMask |= 1 << ramp.index; a.airRamp = ramp.index+1; a.airTicks = 0; a.z = 10;
+      a.drifting = false; a.driftTicks = a.driftDirection = 0; exitBoosts.delete(a.id);
+      state.events.push({ type: "jump", id: a.id });
+    }
+    for (const coin of catalog.coins) {
+      if (a.coinMask & (1 << coin.index) || coin.airborne && !a.airRamp) continue;
+      // Accepted progress owns the lap. Reverse/backtrack may collect an
+      // uncollected star but cannot refresh its per-pilot lap mask.
+      if (pickupContact(c, coin, old, a, 24) === null) continue;
+      a.coinMask |= 1 << coin.index; a.fuel = Math.min(100, a.fuel+6);
+      state.events.push({ type: "coin", id: a.id });
+    }
+    for (const row of catalog.rows) {
+      if (a.rowMask & (1 << row.index) || a.passed % 20 !== row.gate) continue;
+      const hit = planeCross(c, row.s, old, a);
+      if (!hit || Math.abs(hit.d) > safetyLimit(c)+18) continue;
+      a.rowMask |= 1 << row.index;
+      if (a.item) continue;
+      const contacts = row.choices.map(object => ({ object, t: pickupContact(c, object, old, a, 26) }))
+        .filter(hit => hit.t !== null).sort((a,b) => a.t-b.t || a.object.id.localeCompare(b.object.id));
+      if (contacts.length) {
+        a.item = contacts[0].object.item;
+        state.events.push({ type: "item", id: a.id });
+      }
+    }
+  }
+  function stepEffects(state, c, previous) {
+    const remaining = [];
+    for (const e of state.effects) {
+      const owner = state.actors.find(a => a.id === e.ownerId);
+      if (!owner || owner.dnf || owner.finishTick !== null || owner.recoveryTicks) continue;
+      if (e.phase === "charge") {
+        e.s = raceDistance(owner, c);
+        if (e._createdTick !== state.raceTick && ++e.age >= 54) {
+          e.phase = "wave"; e.age = 0; e.originS = e.s = e.s + 56;
+        }
+        remaining.push(e); continue;
+      }
+      const oldS = e.s; e.age++; e.s = e.originS + e.age*12;
+      const candidates = [];
+      for (let i=0; i<state.actors.length; i++) {
+        const a = state.actors[i], old = previous.get(a.id);
+        if (a === owner || !old || a.airRamp || a.recoveryTicks || old.released ||
+            a.dnf || a.finishTick !== null || a.immunityTicks ||
+            !e.observedAt || e.observedAt[i] < 0 || state.raceTick-e.observedAt[i] < 36) continue;
+        const s = raceDistance(a,c), n = nearest(c,a.x,a.y),
+          oldN = nearest(c,old.x,old.y), oldProgress = s + (oldN.s-n.s+c.length*1.5)%c.length-c.length/2,
+          before = oldProgress-oldS, after = s-e.s;
+        // Intersect all relative sweep intervals. Checking only the final lane
+        // would miss a kart that crossed the pulse during this physics step.
+        // A wave already behind the kart is never a retrospective impact.
+        if (before < -KART_RADIUS || after > before) continue;
+        let enter = 0, leave = 1;
+        const interval = (from,to,low,high) => {
+          if (Math.abs(to-from) < 1e-9) return from >= low && from <= high;
+          const first = (low-from)/(to-from), last = (high-from)/(to-from);
+          enter = Math.max(enter,Math.min(first,last));
+          leave = Math.min(leave,Math.max(first,last));
+          return enter <= leave;
+        };
+        if (!interval(before,after,-KART_RADIUS,KART_RADIUS) ||
+            !interval(lateral(old,oldN),lateral(a,n),e.d-KART_RADIUS-10,e.d+KART_RADIUS+10) ||
+            !interval(oldProgress,s,e.originS,e.originS+336)) continue;
+        candidates.push({ a, t: enter });
+      }
+      candidates.sort((a,b) => a.t-b.t || a.a.id.localeCompare(b.a.id));
+      if (candidates.length) {
+        const a = candidates[0].a;
+        a.immunityTicks = 90;
+        if (a.shieldTicks) {
+          a.shieldTicks = 0; state.events.push({ type: "block", id: a.id });
+        } else {
+          a.vx *= .8; a.vy *= .8; a.speed = Math.hypot(a.vx,a.vy);
+          a.slowTicks = 24; a.padTicks = 0; a.boosting = false;
+          a.drifting = false; a.driftTicks = a.driftDirection = 0;
+          state.events.push({ type: "hit", id: a.id });
+        }
+      } else if (e.age < 28) remaining.push(e);
+    }
+    state.effects = remaining;
+  }
   function command(raw = {}) {
     raw = raw && typeof raw === "object" ? raw : {};
     return {
@@ -198,6 +405,9 @@
       brake: pressed(raw.brake),
       boost: pressed(raw.boost),
       recover: pressed(raw.recover),
+      item: pressed(raw.item),
+      itemEdge: uint16(raw.itemEdge),
+      warnings: Array.from({ length: 5 }, (_, i) => uint16(Array.isArray(raw.warnings) && raw.warnings[i])),
     };
   }
   function create(options = {}) {
@@ -244,10 +454,14 @@
         recoveryTicks: 0,
         recoverHeld: false,
         lastProgressTick: 0,
+        item: null, coinMask: 0, rowMask: 0, rampMask: 0,
+        airRamp: 0, airTicks: 0, z: 0,
+        shieldTicks: 0, slowTicks: 0, immunityTicks: 0, pulseSerial: 0,
+        _itemHeld: false, _lastItemEdge: 0,
       });
     }
     return {
-      version: 1,
+      version: 2,
       trackId: c.id,
       difficulty,
       laps: clamp(Math.floor(finite(options.laps, 3)), 1, 5),
@@ -258,6 +472,8 @@
       ...(options.expedition === true ? { maxRaceTicks: clamp(Math.floor(finite(options.maxTicks, 5400)), 1800, 10800) } : {}),
       actors,
       events: [],
+      effects: [],
+      catalogRevision: 1,
       results: null,
       // Local races keep their original first-human finish. Online authority
       // opts into a bounded finish window for all admitted human seats.
@@ -267,29 +483,66 @@
     };
   }
   function cpuInput(state, actor) {
-    const c = course(state.trackId),
-      n = nearest(c, actor.x, actor.y),
-      ahead = at(c, n.s + 70 + actor.speed * 13),
-      desired = Math.atan2(ahead.y - actor.y, ahead.x - actor.x),
-      turn = angle(desired - actor.heading);
-    const target =
-      { easy: 4.5, normal: 5.6, hard: 6.35 }[state.difficulty] *
-      (1 - (actor.id.charCodeAt(actor.id.length - 1) % 3) * 0.025);
+    const c = course(state.trackId), n = nearest(c, actor.x, actor.y),
+      catalog = features(c), incoming = threats(state, actor.id),
+      index = state.actors.indexOf(actor), s = raceDistance(actor, c),
+      rivalAhead = state.actors.some(a => a !== actor && !a.dnf && a.finishTick === null &&
+        raceDistance(a,c) > s && raceDistance(a,c) - s < 650),
+      leading = standings(state)[0] === actor;
+    let lane = 0;
+    // Route deliberately through optional lines, with smooth look-ahead rather
+    // than teleporting onto a pickup. These choices use only public state.
+    if (catalog.coins.length && n.s >= 115 && n.s < c.length*.115+32) lane = 44;
+    for (const ramp of catalog.ramps)
+      if (n.s >= ramp.s-170 && n.s < ramp.s+184) lane = ramp.index ? 44 : -44;
+    for (const row of catalog.rows) if (!(actor.rowMask & (1 << row.index)) &&
+        n.s >= row.s-200 && n.s < row.s+24) {
+      lane = incoming.length || leading || !rivalAhead ? -44 : 44;
+    }
+    // Observation is sent through the same command path as human display acks.
+    // Reaction quality varies, while warning time/hitboxes/item power do not.
+    const perceived = incoming.find(e => e.observedAt && e.observedAt[index] >= 0 &&
+      state.raceTick-e.observedAt[index] >= ({easy:18, normal:12, hard:6}[state.difficulty]));
+    if (perceived) {
+      const currentLane = lateral(actor,n);
+      lane = [-52,0,52].filter(d => Math.abs(d-perceived.d) > KART_RADIUS+10)
+        .sort((a,b) => Math.abs(a-currentLane)-Math.abs(b-currentLane) || a-b)[0];
+    }
+    const ahead = at(c, n.s + 70 + actor.speed*13),
+      targetX = ahead.x-ahead.ty*lane, targetY = ahead.y+ahead.tx*lane,
+      desired = Math.atan2(targetY-actor.y,targetX-actor.x),
+      turn = angle(desired-actor.heading),
+      target = { easy: 4.5, normal: 5.6, hard: 6.35 }[state.difficulty] *
+        (1-(actor.id.charCodeAt(actor.id.length-1)%3)*.025),
+      useShield = actor.item === "shield" && !actor.shieldTicks && (perceived ||
+        // An otherwise quiet easy race still teaches activation; keep most
+        // shields for real threats and never infer another pilot's input.
+        !incoming.length && state.raceTick % 240 === (index*31)%240),
+      usePulse = actor.item === "pulse" && rivalAhead && !actor.airRamp &&
+        !state.effects.some(e => e.ownerId === actor.id) &&
+        state.raceTick % 12 === index%12;
     return command({
-      steer: turn * 1.85,
-      throttle: actor.speed > target ? 0.2 : 1,
-      brake: Math.abs(turn) > 0.9 && actor.speed > 3.3,
-      boost:
-        Math.abs(turn) < 0.16 && actor.fuel > 50 && state.difficulty !== "easy",
-      recover:
-        n.distance > c.width * 2 ||
-        state.raceTick - actor.lastProgressTick > 720,
+      steer: turn*1.85,
+      throttle: actor.speed > target ? .2 : 1,
+      brake: Math.abs(turn) > .9 && actor.speed > 3.3,
+      boost: Math.abs(turn) < .16 && actor.fuel > 50 && state.difficulty !== "easy",
+      recover: n.distance > c.width*2 || state.raceTick-actor.lastProgressTick > 720,
+      item: !!(useShield || usePulse),
+      warnings: Array.from({length:5}, (_,slot) => {
+        const e = incoming.find(e => ownerSlot(e.ownerId) === slot); return e ? e.serial : 0;
+      }),
     });
   }
-  function cancelControl(state, actorId) {
+  function cancelControl(state, actorId, options = {}) {
     if (!state) return;
     for (const a of state.actors) if (!actorId || a.id === actorId) {
       a.drifting = false; a.driftTicks = 0; a.driftDirection = 0;
+      // Suppress a level held through a menu/release until an actual neutral
+      // sample; authenticated monotonic edge counters remain consumed.
+      a._itemHeld = true;
+      if (options.resetEdges) a._lastItemEdge = 0;
+      const index = state.actors.indexOf(a);
+      if (!options.keepWarnings) for (const e of state.effects) if (e.observedAt) e.observedAt[index] = -1;
     }
   }
   function recover(state, a, c) {
@@ -304,6 +557,7 @@
       if (state.actors.every(other => other === a || other.dnf || other.finishTick !== null ||
         Math.hypot(other.x-p.x, other.y-p.y) >= KART_RADIUS * 2 + 2)) break;
     }
+    clearFeatures(state, a.id, { keepItem: true });
     a.x = p.x;
     a.y = p.y;
     a.heading = Math.atan2(p.ty, p.tx);
@@ -397,15 +651,23 @@
       previous = new Map(), exitBoosts = new Set();
     for (const a of state.actors) {
       if (a.finishTick !== null || a.dnf) continue;
-      const input = command(inputs[a.id]);
-      if (input.recover && !a.recoverHeld && a.recoveryTicks === 0)
+      const input = command(inputs[a.id]),
+        rescuing = input.recover && !a.recoverHeld && a.recoveryTicks === 0;
+      if (rescuing) {
+        // Rescue wins a simultaneous Item edge: preserve the held item and
+        // consume the command without leaving a queued post-recovery shot.
         recover(state, a, c);
+        a._lastItemEdge = Math.max(a._lastItemEdge, input.itemEdge);
+      } else featureTick(state, a, input, c);
       a.recoverHeld = input.recover;
       if (a.recoveryTicks > 0) {
         a.recoveryTicks--;
         // The release frame is already visible as an active kart. Resolve
         // contacts now, but keep the complete stationary recovery wait.
-        if (a.recoveryTicks === 0) previous.set(a.id, { x: a.x, y: a.y, released: true });
+        if (a.recoveryTicks === 0) {
+          a.immunityTicks = state.trackId === "starlight" ? 90 : 0;
+          previous.set(a.id, { x: a.x, y: a.y, released: true });
+        }
         continue;
       }
       const n = nearest(c, a.x, a.y);
@@ -423,7 +685,7 @@
       }
       if (a.padCooldown > 0) a.padCooldown--;
       if (a.padTicks > 0) a.padTicks--;
-      a.boosting = input.boost && a.fuel > 1 && !a.offroad && !input.brake;
+      a.boosting = input.boost && a.fuel > 1 && !a.offroad && !input.brake && !a.slowTicks;
       a.fuel = clamp(a.fuel + (a.boosting ? -0.72 : 0.17), 0, 100);
       const speed = Math.hypot(a.vx, a.vy),
         // A small high-speed correction must not become a spin. Low-speed
@@ -433,7 +695,7 @@
       const wasDrifting = !!a.drifting,
         driftDirection = Math.sign(input.steer),
         canDrift = input.throttle > 0 && input.brake && Math.abs(input.steer) >= 0.35 &&
-          speed >= (wasDrifting ? 2.8 : 3.6) && !a.offroad;
+          speed >= (wasDrifting ? 2.8 : 3.6) && !a.offroad && !a.airRamp;
       // Brake + steer carves a controlled slide. A sustained, same-direction
       // road corner earns one short exit boost; tapping, reversing, offroad,
       // input expiry and rescue cannot bank or release a reward.
@@ -443,7 +705,7 @@
         a.driftDirection = driftDirection;
       } else {
         if (wasDrifting && a.driftTicks >= 24 && !input.brake && input.throttle > 0 &&
-            !a.offroad && speed >= 2.8 && (Math.abs(input.steer) < 0.1 || driftDirection === a.driftDirection)) {
+            !a.offroad && !a.airRamp && !a.slowTicks && speed >= 2.8 && (Math.abs(input.steer) < 0.1 || driftDirection === a.driftDirection)) {
           exitBoosts.add(a.id);
         }
         a.driftTicks = 0;
@@ -457,7 +719,7 @@
         runoff = a.offroad && !invalid,
         forward = runoff || a.drifting ? speed : a.vx * fx + a.vy * fy,
         lateral = -a.vx * fy + a.vy * fx;
-      const boost = a.boosting || a.padTicks > 0,
+      const boost = !a.slowTicks && (a.boosting || a.padTicks > 0),
         shoulder = clamp((n.distance - (c.width / 2 - 4)) / RUNOFF, 0, 1),
         max = invalid ? 2.6 : a.offroad ? 5.2 - 1.5 * shoulder : a.drifting ? 5.6 : boost ? 9 : 6.4;
       let accel = input.throttle * (boost ? 0.19 : 0.125);
@@ -484,7 +746,7 @@
       a.y += a.vy;
       a.speed = Math.hypot(a.vx, a.vy);
       if (
-        !a.offroad && !a.drifting &&
+        !a.offroad && !a.drifting && !a.slowTicks &&
         a.padCooldown === 0 &&
         c.pads.some(
           (p) =>
@@ -541,9 +803,10 @@
       const swept = onroad ? a : driven.get(a.id);
       a.offroad = n.distance > c.width / 2 - 4;
       a.speed = Math.hypot(a.vx, a.vy);
+      sweepFeatures(state, a, c, old, n, exitBoosts);
       // Award after movement and contacts: crossing onto runoff while releasing
       // is a missed exit, not a free boost off the edge of the road.
-      if (exitBoosts.has(a.id) && !a.offroad && a.speed >= 2.8) {
+      if (exitBoosts.has(a.id) && !a.offroad && !a.airRamp && !a.slowTicks && a.speed >= 2.8) {
         a.padTicks = Math.max(a.padTicks, 30);
         state.events.push({ type: "pad", id: a.id });
       }
@@ -563,9 +826,11 @@
         a.lastProgressTick = state.raceTick;
         if (a.passed % 20 === 0) {
           a.lap++;
+          a.coinMask = a.rowMask = a.rampMask = 0;
           state.events.push({ type: "lap", id: a.id, lap: a.lap });
           if (a.lap > state.laps) {
             a.finishTick = state.raceTick;
+            clearFeatures(state, a.id);
             state.events.push({ type: "finish", id: a.id });
           }
         }
@@ -576,6 +841,10 @@
       if (delta > c.length * 0.5) delta = 0;
       a.progress = a.passed + clamp(delta / (c.length / 20), 0, 0.999);
     }
+    // Impact is applied after movement. Count all 24 subsequent propulsion
+    // steps, then let a new hit establish a fresh bounded timer.
+    for (const a of state.actors) if (a.slowTicks > 0) a.slowTicks--;
+    stepEffects(state, c, previous);
     checkFinish(state);
     return state;
   }
@@ -595,6 +864,7 @@
     if (allDone || humansDone || graceDone || state.raceTick >= (state.maxRaceTicks || 60 * 300)) {
       state.finishReason = humansDone ? "humans" : allDone ? "all" : graceDone ? "grace" : "time";
       state.phase = "finished";
+      clearFeatures(state);
       state.results = standings(state).map((a, i) => ({
         id: a.id,
         name: a.name,
@@ -623,7 +893,11 @@
   }
   return Object.freeze({
     constants: freeze({
-      VERSION: 1,
+      VERSION: 2,
+      CATALOG_REVISION: 1,
+      AIR_TICKS: 30,
+      WARNING_TICKS: 36,
+      MAX_EFFECTS: 5,
       TICK_RATE: 60,
       STEP,
       GATES: 20,
@@ -636,6 +910,11 @@
     }),
     tracks,
     course,
+    features,
+    threats,
+    warningFor: threats,
+    observeWarnings,
+    clearFeatures,
     at,
     nearest,
     command,

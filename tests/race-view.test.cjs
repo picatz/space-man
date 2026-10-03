@@ -35,6 +35,7 @@ function harness({
     const listeners = new Map();
     const node = {
       tagName: tagName.toUpperCase(),
+      getContext() { return new Proxy({}, { get: (t,k) => t[k] || (() => {}), set: (t,k,v) => (t[k]=v,true) }); },
       children: [],
       attrs: {},
       dataset: {},
@@ -91,6 +92,7 @@ function harness({
   const sandbox = {
     document,
     SpaceManRace: Race,
+    SpaceManArt: require("../src/art.js"),
     SpaceManRacePresentation: Presentation,
     SpaceManRaceCamera: Camera,
     SpaceManRaceScene: Scene,
@@ -340,7 +342,7 @@ test("Chase identifies the local pilot in screen space and Cockpit only retains 
   const h = harness();
   h.view.render(h.snapshot, h.config);
   assert.equal(h.marker.hidden, false);
-  assert.equal(h.marker.textContent, "YOU");
+  assert.equal(h.marker.dataset.role, "you");
   assert.equal(h.marker.dataset.actorId, h.config.localActorId);
   assert.ok(Number.isFinite(parseFloat(h.marker.style.left)));
   assert.ok(Number.isFinite(parseFloat(h.marker.style.top)));
@@ -363,30 +365,85 @@ test("spectators identify the followed racer as WATCHING through seat changes an
   // Ownership comes from the authoritative adapter, never a slot number or color.
   const remote = { ...h.snapshot, actors: h.snapshot.actors.map(a => ({ ...a, controller: "remote" })) };
   h.view.render(remote, { ...h.config, localActorId: null });
-  assert.equal(h.marker.textContent, "WATCHING");
+  assert.equal(h.marker.dataset.role, "watching");
   for (const actor of remote.actors) {
     h.view.render(remote, { ...h.config, actorId: actor.id, localActorId: null });
     assert.equal(h.marker.hidden, false);
     assert.equal(h.marker.dataset.actorId, actor.id);
-    assert.equal(h.marker.textContent, "WATCHING");
-    assert.ok(parseFloat(h.marker.style.left) >= 54);
-    assert.ok(parseFloat(h.marker.style.left) <= 390 - 54);
+    assert.equal(h.marker.dataset.role, "watching");
+    assert.ok(parseFloat(h.marker.style.left) >= 14);
+    assert.ok(parseFloat(h.marker.style.left) <= 390 - 14);
   }
   // A stale local ID does not turn an explicitly remote pilot into YOU.
   h.view.render(remote, h.config);
-  assert.equal(h.marker.textContent, "WATCHING");
+  assert.equal(h.marker.dataset.role, "watching");
   const id = remote.actors[3].id;
   const rejoined = { ...remote, actors: remote.actors.map(a => ({ ...a, controller: a.id === id ? "human" : "remote", recoveries: 2 })) };
   h.view.render(rejoined, { ...h.config, actorId: id, localActorId: id });
   assert.equal(h.marker.dataset.actorId, id);
-  assert.equal(h.marker.textContent, "YOU");
+  assert.equal(h.marker.dataset.role, "you");
   h.lose();
   assert.equal(h.marker.hidden, true, "context loss clears the WebGL marker before fallback renders");
   h.restore();
   h.view.render(remote, { ...h.config, actorId: id, localActorId: null });
-  assert.equal(h.marker.textContent, "WATCHING");
+  assert.equal(h.marker.dataset.role, "watching");
   h.view.setMode("topdown");
   h.view.render(remote, { ...h.config, actorId: id, localActorId: null });
   assert.equal(h.marker.hidden, true, "top-down supplies its own screen-space marker");
+  h.view.destroy();
+});
+
+test('WebGL integrates followed-pilot availability and both pulse phases with battery saver',()=>{
+  const h=harness({batterySaver:true});
+  const state={...h.snapshot,actors:h.snapshot.actors.map((a,i)=>({...a,coinMask:i===0?1:1023,rowMask:i===0?1:3})),
+    effects:[{ownerId:'pilot-1',serial:1,phase:'charge',age:20,s:600,d:-44,originS:500},
+      {ownerId:'pilot-2',serial:1,phase:'wave',age:3,s:680,d:44,originS:644}]};
+  freeze(state);const before=JSON.stringify(state);
+  assert.equal(h.view.render(state,h.config),true);
+  let features=h.frames.at(-1).meshes.filter(m=>m.featureKind);
+  assert.equal(features.filter(m=>m.featureKind==='coin').length,9);
+  assert.equal(features.filter(m=>m.featureKind==='item').length,2);
+  assert.deepEqual(Array.from(features.filter(m=>m.featureKind==='pulse'),m=>m.featurePhase),['charge','wave']);
+  assert.equal(h.view.render(state,{...h.config,actorId:state.actors[1].id,localActorId:null}),true);
+  features=h.frames.at(-1).meshes.filter(m=>m.featureKind);
+  assert.equal(features.filter(m=>m.featureKind==='coin').length,0);
+  assert.equal(features.filter(m=>m.featureKind==='item').length,0);
+  assert.equal(features.filter(m=>m.featureKind==='pulse').length,2);
+  assert.equal(JSON.stringify(state),before);
+  h.lose();assert.equal(h.view.render(state,h.config),false);assert.equal(h.base.hidden,false);
+  h.restore();h.view.render({...state,effects:[]},h.config);
+  assert.ok(!h.frames.at(-1).meshes.some(m=>m.featureKind==='pulse'),'restoration uses current effects without replay');
+  h.view.destroy();
+});
+test('an airborne YOU marker follows the same elevated craft and face above a grounded shadow',()=>{
+  const h=harness({width:390,height:844});h.view.render(h.snapshot,h.config);
+  const groundCamera=h.frames.at(-1).camera,groundTop=parseFloat(h.marker.style.top);
+  const state={...h.snapshot,actors:h.snapshot.actors.map(a=>({...a,airRamp:1,airTicks:12,z:28}))};
+  h.view.render(state,h.config);const frame=h.frames.at(-1),id=h.config.actorId;
+  assert.deepEqual(frame.camera,groundCamera,'Chase horizon does not track the hop');
+  assert.equal(frame.meshes.find(m=>m.actorId===id).model[13],28);
+  assert.equal(frame.meshes.find(m=>m.faceActorId===id).model[13],28);
+  assert.equal(frame.meshes.find(m=>m.shadowActorId===id).model[13],0);
+  assert.ok(parseFloat(h.marker.style.top)<groundTop);
+  const a=state.actors[0],matrix=Render3D.multiply(Render3D.perspective(frame.camera.fov,390/844,frame.camera.near,frame.camera.far),Render3D.lookAt(frame.camera.eye,frame.camera.target));
+  const hatTop={antenna:40,sprout:37,beanie:38.1,halo:37.2,crown:37,cone:44.5,catears:39,phones:34};
+  const point=Render3D.project([a.x-Math.cos(a.heading)*5,(hatTop[a.appearance?.hat]||34)+28,a.y-Math.sin(a.heading)*5],matrix),expected=Math.max(35,Math.min(834,(1-point.y)*844/2-6));
+  assert.ok(Math.abs(parseFloat(h.marker.style.top)-expected)<.00001);
+  h.view.destroy();
+});
+test('same-track same-tick epoch changes and follow changes discard buffered airborne poses',()=>{
+  const h=harness(),id=h.config.actorId;
+  const first={...h.snapshot,tick:30,phase:'racing',actors:h.snapshot.actors.map(a=>({...a,z:28,airRamp:1,airTicks:12}))};
+  const config={...h.config,network:true,epoch:1};
+  h.view.render(first,config);h.view.render(first,config);
+  const next={...first,tick:33,actors:first.actors.map(a=>({...a,x:a.x+6,z:0,airRamp:0,airTicks:0}))};
+  h.view.render(next,config);
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===id).model[13],28,'latest HUD authority does not extrapolate buffered pose');
+  h.view.render(next,{...config,epoch:2});
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===id).model[13],0);
+  const later={...next,tick:36,actors:next.actors.map(a=>({...a,x:a.x+6,z:20,airRamp:2,airTicks:5}))};
+  h.view.render(later,{...config,epoch:2,actorId:later.actors[1].id,localActorId:null});
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===later.actors[1].id).model[13],20);
+  assert.equal(h.marker.dataset.role,'watching');
   h.view.destroy();
 });

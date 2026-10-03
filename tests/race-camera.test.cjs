@@ -211,3 +211,25 @@ test('slide framing follows travel without mutating authority or rolling the hor
   assert.ok(camera.target[1]<camera.eye[1]);assert.equal(JSON.stringify(actor),original);
   assert.equal(Camera.travelHeading({...actor,speed:0,vx:0,vy:0}),0);
 });
+
+test('hops leave Chase ground-relative and cap the Cockpit rise, removing it in reduced motion',()=>{
+  const c=R.course('starlight'),a=R.create().actors[0],air={...a,airRamp:1,airTicks:14,z:29};
+  const ground=Camera.create().update(a,c,R.at,{mode:'chase'}),jump=Camera.create().update(air,c,R.at,{mode:'chase'});
+  assert.deepEqual(jump,ground);
+  const cockpit=Camera.create().update(air,c,R.at,{mode:'cockpit'});
+  assert.equal(cockpit.eye[1],42);assert.equal(cockpit.target[1],25);
+  assert.equal(Camera.create().update(air,c,R.at,{mode:'cockpit',reduceMotion:true}).eye[1],34);
+});
+test('both landing-road edges fit the camera projection at entry and takeoff across viewport shapes',()=>{
+  const M=require('../src/render3d.js'),c=R.course('starlight'),base=R.create().actors[0];
+  for(const ramp of R.features(c).ramps) for(const s of [ramp.startS,ramp.s-30,ramp.s])
+    for(const aspect of [320/568,390/844,568/320,768/1024,1280/720]) for(const mode of ['chase','cockpit']) {
+      const p=R.at(c,s),a={...base,x:p.x,y:p.y,heading:Math.atan2(p.ty,p.tx),vx:p.tx*6,vy:p.ty*6,speed:6};
+      const view=Camera.create().update(a,c,R.at,{aspect,mode,reduceMotion:true});
+      const matrix=M.multiply(M.perspective(view.fov,aspect,view.near,view.far),M.lookAt(view.eye,view.target));
+      for(const offset of [108,162,270]) for(const d of [-90,0,90]) {
+        const q=R.at(c,ramp.s+offset),shown=M.project([q.x-q.ty*d,0,q.y+q.tx*d],matrix);
+        assert.ok(shown.visible,`${ramp.id} ${mode} ${aspect}: ${offset}/${d} outside projection`);
+      }
+    }
+});

@@ -258,10 +258,10 @@ const characterHats = {
 };
 
 
-  function hoverpod(c, style, { tick = 20, id = 0, calm = false, boosting = false, hero = false } = {}) {
+  function hoverpod(c, style, { tick = 20, id = 0, calm = false, boosting = false, hero = false, shadow = true } = {}) {
     const P = style.palette, accent = style.accent, ship = style.appearance.ship;
     c.save();
-    c.fillStyle = '#0006'; c.beginPath(); c.ellipse(0, 5, 28, 19, 0, 0, TAU); c.fill();
+    if (shadow) { c.fillStyle = '#0006'; c.beginPath(); c.ellipse(0, 5, 28, 19, 0, 0, TAU); c.fill(); }
     if (boosting || hero) {
       c.fillStyle = accent; c.globalAlpha *= .35; c.beginPath(); c.moveTo(-19, -8); c.lineTo(-44 - (calm ? 0 : tick % 6), 0); c.lineTo(-19, 8); c.fill(); c.globalAlpha /= .35;
       c.fillStyle = '#DFFBFF'; c.beginPath(); c.moveTo(-22, -3); c.lineTo(-34, 0); c.lineTo(-22, 3); c.fill();
@@ -352,6 +352,29 @@ const characterHats = {
     c.font = (primary ? '900 11px' : '700 9px') + ' system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillStyle = primary ? '#101B29' : '#EDF5FF'; c.fillText(text, x + w / 2, y + h / 2 + .5, w - 10); c.restore();
   }
+  // A quiet, screen-pixel ownership cue. Local and followed pilots differ by
+  // silhouette, not suit color. No box, selection frame, or animation competes
+  // with the character. The dark keyline survives bright platform/effect pixels.
+  function identityCue(c, x, y, role = 'you', targetX = x, targetY = y + 20) {
+    c.save(); c.globalAlpha = 1; c.translate(x, y);
+    c.lineJoin = 'round'; c.lineCap = 'round'; c.beginPath();
+    if (role === 'watching') {
+      c.moveTo(-7, 0); c.quadraticCurveTo(0, -7, 7, 0);
+      c.quadraticCurveTo(0, 7, -7, 0); c.closePath();
+      c.strokeStyle = '#071522'; c.lineWidth = 5; c.stroke();
+      c.strokeStyle = '#EAF7FF'; c.lineWidth = 1.75; c.stroke();
+      c.beginPath(); c.arc(0, 0, 1.75, 0, TAU); c.fillStyle = '#EAF7FF'; c.fill();
+    } else {
+      // A HUD-boundary side placement still points to the same pilot.
+      c.rotate(Math.atan2(targetY - y, targetX - x) - Math.PI / 2);
+      c.moveTo(-6, -3); c.lineTo(0, 1); c.lineTo(6, -3);
+      c.lineTo(0, 6); c.closePath();
+      c.strokeStyle = '#071522'; c.lineWidth = 3; c.stroke();
+      c.fillStyle = '#EAF7FF'; c.fill();
+    }
+    c.restore();
+  }
+
   function identityBrackets(c, x, y, w, h, color = '#FFF3CE') {
     c.save(); c.globalAlpha = 1; c.lineCap = 'round'; c.lineJoin = 'round';
     c.beginPath();
@@ -370,7 +393,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityBadge, identityBrackets };
+  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityBadge, identityCue, identityBrackets };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

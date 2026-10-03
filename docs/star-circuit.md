@@ -143,6 +143,8 @@ uses actual WebSockets to the existing relay; it never represents simulated
 relay results as a live-network pass. Physical iPhone/cellular testing remains
 separate.
 
-The host build determines arcade handling for a friend room. The existing v1
-commands and snapshots remain compatible with earlier builds; refresh all
-clients for current control instructions and host-side drift rewards.
+The host build determines arcade handling and track-feature outcomes for a
+friend room. Race codec v2 and the exclusive race/journey capabilities reject
+earlier builds before admission, including watchers and reconnects. Leave the
+room, refresh all games, then ask the host for a new invite. See
+[race-feature-wire.md](race-feature-wire.md) for the bounded authority contract.

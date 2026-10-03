@@ -292,11 +292,12 @@
   }
   function actors(
     snapshot,
-    { hideId = null, calm = false, chaseActor = null } = {},
+    { hideId = null, calm = false, chaseActor = null, course = null, catalog = null, nearest = null, shadows = true } = {},
   ) {
     const b = builder();
     for (const a of snapshot.actors) {
       if (!visibleActor(a, { hideId, chaseActor })) continue;
+      const height = actorHeight(a, course, catalog, nearest);
       const h = a.heading,
         co = Math.cos(h),
         si = Math.sin(h),
@@ -305,7 +306,7 @@
         color = rgb(style.accent), white = rgb(P.suit);
       const p = (f, u, side) => [
         a.x + co * f - si * side,
-        u,
+        u + height,
         a.y + si * f + co * side,
       ];
       const pod = (f, u, side, rx, ry, rz, col) =>
@@ -396,13 +397,14 @@
       b.box(...p(-13, 18, 0), 3, 7, 7, [0.27, 0.43, 0.5], h);
       b.box(...p(-14.7, 20, 0), 0.5, 2, 5, color, h);
       // Soft-edged geometric contact shadow: no downloaded texture.
-      for (let i = 0; i < 16; i++) {
+      const ground = (f, y, side) => [a.x + co * f - si * side, y, a.y + si * f + co * side];
+      for (let i = 0; shadows && i < 16; i++) {
         const a0 = (i * Math.PI) / 8,
           a1 = ((i + 1) * Math.PI) / 8;
         b.triangle(
-          p(0, 0.15, 0),
-          p(30 * Math.cos(a0), 0.15, 24 * Math.sin(a0)),
-          p(30 * Math.cos(a1), 0.15, 24 * Math.sin(a1)),
+          ground(0, 0.15, 0),
+          ground(30 * Math.cos(a0), 0.15, 24 * Math.sin(a0)),
+          ground(30 * Math.cos(a1), 0.15, 24 * Math.sin(a1)),
           [0.045, 0.08, 0.12],
         );
       }
@@ -411,7 +413,7 @@
         for (const s of [-17, 17]) {
           const p = (f, u, side) => [
             a.x + co * f - si * side,
-            u,
+            u + height,
             a.y + si * f + co * side,
           ];
           b.triangle(
@@ -494,16 +496,19 @@
       const style = Art.characterStyle(a.appearance, a.color), appearance = style.appearance;
       const boosted = !!(a.boosting || a.padTicks > 0);
       const key = [style.accent, appearance.suit, appearance.helmet, appearance.hat, appearance.detail, appearance.ship, boosted].join(':');
-      const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, heading: 0, boosting: boosted, padTicks: 0 }] }, { calm: true }).vertices, 32);
+      const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, z: 0, airRamp: 0, heading: 0, boosting: boosted, padTicks: 0 }] }, { calm: true, shadows: false }).vertices, 32);
       const c = Math.cos(a.heading), s = Math.sin(a.heading);
-      const model = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,0,a.y,1]);
+      const height = actorHeight(a, options.course, options.catalog, options.nearest);
+      const model = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,height,a.y,1]);
+      const groundModel = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,0,a.y,1]);
       out.push({ vertices, static: true, actorId: a.id, bounds: { min: [-72,0,-32], max: [32,46,32] }, model });
       const pose = Art.facePose({ eyes: appearance.eyes, tick: snapshot.tick, id: a.id, calm: options.calm, mood: a.recoveryTicks ? 2 : boosted ? 1 : 0 });
       const faceKey = [appearance.helmet, pose.happy,pose.determined,pose.height,pose.width,pose.closed].join(':');
       const faceVertices = cache(faceModels, faceKey, () => faceMesh(appearance,pose), 24);
       out.push({ vertices: faceVertices, static: true, emissive: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[6,33,11] }, model });
+      out.push({ ...shadowMesh(), shadowActorId: a.id, model: groundModel });
       const slip = a.speed > 3 ? Math.atan2(Math.sin(a.heading - Math.atan2(a.vy, a.vx)), Math.cos(a.heading - Math.atan2(a.vy, a.vx))) : 0;
-      if (!a.offroad && !a.recoveryTicks && Math.abs(slip) > .18) {
+      if (!a.offroad && !a.recoveryTicks && !a.airRamp && Math.abs(slip) > .18) {
         const direction = Math.sign(slip);
         const streaks = cache(slideModels, direction, () => {
           const b = builder();
@@ -512,10 +517,205 @@
           return b.mesh().vertices;
         }, 2);
         out.push({ vertices: streaks, static: true, emissive: true, effectActorId: a.id,
-          bounds:{min:[-40,1,-32],max:[-13,1,32]}, model });
+          bounds:{min:[-40,1,-32],max:[-13,1,32]}, model: groundModel });
       }
     }
     return out;
   }
-  return Object.freeze({ rgb, builder, course, actors, actorMeshes, faceMesh });
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  const CYAN = rgb('#8BEAF2'), GOLD = rgb('#FFDA72'), PULSE = rgb('#FFC08E');
+  const featureModels = new Map(), featureCatalogs = new WeakMap();
+  function boundedMesh(b, metadata = {}) {
+    const mesh = b.mesh(), min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < mesh.vertices.length; i += 9)
+      for (let axis = 0; axis < 3; axis++) {
+        min[axis] = Math.min(min[axis], mesh.vertices[i + axis]);
+        max[axis] = Math.max(max[axis], mesh.vertices[i + axis]);
+      }
+    return Object.freeze({ ...mesh, static: true, ...metadata,
+      bounds: Object.freeze({ min: Object.freeze(min), max: Object.freeze(max) }) });
+  }
+  function featureModel(key, build) {
+    return cache(featureModels, key, () => boundedMesh(build(), { emissive: true }), 8);
+  }
+  function poseModel(x, z, heading, height = 0) {
+    const c = Math.cos(heading), s = Math.sin(heading);
+    return new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,x,height,z,1]);
+  }
+  function atModel(c, at, s, d = 0) {
+    const p = at(c, s);
+    return poseModel(p.x - p.ty * d, p.y + p.tx * d, Math.atan2(p.ty, p.tx));
+  }
+  function rampProfile(s, ramp) {
+    // Rounded entry and a short, shallow back slope let slow/reverse traffic
+    // remain visually grounded too. This profile never changes physics height.
+    const u = s <= ramp.s ? (s - ramp.startS) / (ramp.s - ramp.startS) : 1 - (s - ramp.s) / 24;
+    const t = clamp(u, 0, 1);
+    return 10 * t * t * (3 - 2 * t);
+  }
+  function actorHeight(a, c, catalog, nearest) {
+    if (a.airRamp) return clamp(Number.isFinite(a.z) ? a.z : 0, 0, 32);
+    if (!c || !catalog || !nearest || a.recoveryTicks) return 0;
+    const p = nearest(c, a.x, a.y);
+    if (!p) return 0;
+    const d = -(a.x - p.x) * p.ty + (a.y - p.y) * p.tx;
+    for (const ramp of catalog.ramps)
+      if (p.s >= ramp.startS && p.s <= ramp.s + 24 && Math.abs(d - ramp.d) <= ramp.width / 2)
+        return rampProfile(p.s, ramp);
+    return 0;
+  }
+  function shadowMesh() {
+    return featureModel('shadow', () => {
+      const b = builder();
+      for (let i = 0; i < 16; i++) {
+        const a = i * Math.PI / 8, n = (i + 1) * Math.PI / 8;
+        b.triangle([0,.15,0], [30*Math.cos(n),.15,24*Math.sin(n)],
+          [30*Math.cos(a),.15,24*Math.sin(a)], [.045,.08,.12]);
+      }
+      return b;
+    });
+  }
+  function ribbon(b, c, at, start, end, d, width, height, color, step = 18) {
+    const count = Math.max(1, Math.ceil(Math.abs(end - start) / step));
+    for (let i = 0; i < count; i++) {
+      const s = start + (end - start) * i / count, next = start + (end - start) * (i + 1) / count;
+      const p = at(c, s), q = at(c, next), y = typeof height === 'function' ? height(s) : height,
+        yy = typeof height === 'function' ? height(next) : height;
+      b.quad(roadPoint(p, d + width / 2, y), roadPoint(q, d + width / 2, yy),
+        roadPoint(q, d - width / 2, yy), roadPoint(p, d - width / 2, y), color);
+    }
+  }
+  function chevron(b, c, at, s, d, width, height, color) {
+    const p = (f, side) => roadPoint(at(c, s + f), d + side,
+      typeof height === 'function' ? height(s + f) : height);
+    for (const side of [-1, 1]) {
+      const points = [p(-10,side*width/2),p(-4,side*width/2),p(10,0),p(4,0)];
+      // Both halves face up, including the non-emissive ramp chevrons.
+      if (side < 0) points.reverse();
+      b.quad(...points,color);
+    }
+  }
+  const SHIELD_SHAPE = [[-12,13],[12,13],[12,-2],[8,-10],[0,-17],[-8,-10],[-12,-2]];
+  const PULSE_SHAPE = [[0,17],[13,1],[5,1],[5,-15],[-5,-15],[-5,1],[-13,1]];
+  function symbol(b, shape, point, color) {
+    for (let i = 0; i < shape.length; i++)
+      b.triangle(point(0,shape===PULSE_SHAPE?3:0), point(...shape[i]), point(...shape[(i + 1) % shape.length]), color);
+  }
+  function badge(b, shape, y, color) {
+    for (const face of [-1, 1]) symbol(b, shape, (side, up) => [face*2,y+up,side], color);
+    for (let i = 0; i < shape.length; i++) {
+      const [s,u] = shape[i], [ss,uu] = shape[(i+1)%shape.length];
+      b.quad([-2,y+u,s],[2,y+u,s],[2,y+uu,ss],[-2,y+uu,ss],shade(color,.65));
+    }
+  }
+  function pickupModel(kind, airborne = false) {
+    return featureModel(kind === 'coin' ? 'coin-' + airborne : kind, () => {
+      const b = builder(), identity = (f,y,d) => [f,y,d];
+      ring(b,identity,0,.65,0,11,11,2,kind === 'coin' ? GOLD : CYAN);
+      if (kind === 'coin') {
+        const star = Array.from({length:10}, (_,i) => {
+          const angle = Math.PI / 2 + i * Math.PI / 5, radius = i % 2 ? 5.5 : 12;
+          return [Math.cos(angle)*radius,Math.sin(angle)*radius];
+        });
+        badge(b,star,airborne ? 43 : 28,GOLD);
+        // A road bead anchors even the air-line stars to their optional lane.
+        b.crystal(0,1.2,0,4,3,GOLD,4);
+      } else {
+        badge(b,kind === 'shield' ? SHIELD_SHAPE : PULSE_SHAPE,30,kind === 'shield' ? CYAN : PULSE);
+        if (kind === 'shield') symbol(b,SHIELD_SHAPE,(side,up)=>[-2.2,30+up*.55,side*.55],[.12,.31,.4]);
+      }
+      return b;
+    });
+  }
+  function shieldModel(active) {
+    return featureModel(active ? 'shield-active' : 'shield-held', () => {
+      const b = builder(), color = active ? CYAN : [.3,.57,.63], radius = active ? 36 : 33,
+        y = active ? 14 : 6, thickness = active ? 2 : 1.1;
+      for (let i = 0; i < 6; i++) {
+        const a = i*Math.PI/3, n = (i+1)*Math.PI/3;
+        b.quad([radius*Math.cos(a),y,radius*Math.sin(a)],
+          [radius*Math.cos(n),y,radius*Math.sin(n)],
+          [(radius-thickness)*Math.cos(n),y,(radius-thickness)*Math.sin(n)],
+          [(radius-thickness)*Math.cos(a),y,(radius-thickness)*Math.sin(a)],color);
+        if (active) b.box(radius*Math.cos(a),9,radius*Math.sin(a),1.4,17,1.4,color);
+      }
+      return b;
+    });
+  }
+  function catalogMeshes(c, at, catalog) {
+    let cached = featureCatalogs.get(catalog);
+    if (cached && cached.course === c) return cached;
+    const ramps = [], coins = [], rows = [];
+    for (const ramp of catalog.ramps.slice(0, 2)) {
+      const b = builder(), top = (s) => .35 + rampProfile(s, ramp);
+      ribbon(b,c,at,ramp.startS,ramp.s+24,ramp.d,ramp.width,top,[.15,.3,.38],6);
+      for (const side of [-1,1]) {
+        ribbon(b,c,at,ramp.startS,ramp.s+24,ramp.d+side*(ramp.width/2-2),2.5,
+          (s)=>top(s)+.12,CYAN,6);
+        for (let s = ramp.startS; s < ramp.s+24; s+=6) {
+          const n = Math.min(ramp.s+24,s+6), p=at(c,s),q=at(c,n),d=ramp.d+side*ramp.width/2;
+          b.quad(roadPoint(p,d,.15),roadPoint(q,d,.15),roadPoint(q,d,top(n)),roadPoint(p,d,top(s)),[.1,.2,.28]);
+        }
+      }
+      for (const s of [ramp.s-40,ramp.s-19]) chevron(b,c,at,s,ramp.d,108,(s)=>top(s)+.18,CYAN);
+      ramps.push(boundedMesh(b,{featureKind:'ramp',featureId:ramp.id}));
+      const landing = builder();
+      // Small ground-relative guide rails make the continuous landing road
+      // readable without filling it or suggesting a mandatory landing point.
+      for (const side of [-1,1]) for (let s=ramp.s+108;s<ramp.s+270;s+=36)
+        ribbon(landing,c,at,s,Math.min(s+18,ramp.s+270),side*72,2,.55,[.24,.48,.54]);
+      ramps.push(boundedMesh(landing,{featureKind:'landing',featureId:ramp.id+'-landing'}));
+    }
+    for (const coin of catalog.coins.slice(0,10)) coins.push(Object.freeze({ ...pickupModel('coin',coin.airborne),
+      model: atModel(c,at,coin.s,coin.d), featureKind:'coin',featureId:coin.id,featureIndex:coin.index }));
+    for (const row of catalog.rows.slice(0,2)) {
+      const meshes=[];
+      for (const choice of row.choices.slice(0,2)) {
+        meshes.push(Object.freeze({ ...pickupModel(choice.item),model:atModel(c,at,choice.s,choice.d),
+          featureKind:'item',featureId:choice.id,item:choice.item }));
+        const approach=builder(),p=at(c,choice.s-120),color=choice.item==='shield'?CYAN:PULSE;
+        symbol(approach,choice.item==='shield'?SHIELD_SHAPE:PULSE_SHAPE,(side,forward)=>
+          [p.x+p.tx*forward-p.ty*(choice.d+side),.55,p.y+p.ty*forward+p.tx*(choice.d+side)],shade(color,.7));
+        meshes.push(boundedMesh(approach,{featureKind:'approach',featureId:choice.id+'-approach',item:choice.item}));
+      }
+      rows.push(Object.freeze({index:row.index,meshes:Object.freeze(meshes)}));
+    }
+    cached=Object.freeze({course:c,ramps:Object.freeze(ramps),coins:Object.freeze(coins),rows:Object.freeze(rows)});
+    featureCatalogs.set(catalog,cached);
+    return cached;
+  }
+  function featureMeshes(snapshot, c, at, catalog, options = {}) {
+    if (!snapshot || !catalog || catalog.trackId !== c.id || !catalog.ramps.length) return [];
+    const geometry=catalogMeshes(c,at,catalog),out=[...geometry.ramps],
+      followed=snapshot.actors.find(a=>a.id===options.actorId)||snapshot.actors[0];
+    // Availability belongs to the followed pilot. A leader's mask can never
+    // remove a trailing pilot's route, including when spectating after a rejoin.
+    if (followed) {
+      for (const coin of geometry.coins) if (!((followed.coinMask||0)&(1<<coin.featureIndex))) out.push(coin);
+      for (const row of geometry.rows) if (!((followed.rowMask||0)&(1<<row.index))) out.push(...row.meshes);
+    }
+    for (const a of snapshot.actors.slice(0,5)) {
+      if (!(a.shieldTicks>0||a.item==='shield') || !visibleActor(a,options)) continue;
+      out.push({ ...shieldModel(a.shieldTicks>0), featureKind:'shield', shieldActorId:a.id,
+        active:a.shieldTicks>0,model:poseModel(a.x,a.y,a.heading,actorHeight(a,c,catalog,options.nearest)) });
+    }
+    // Moving lane geometry streams through the renderer's single bounded
+    // buffer. Never mark per-tick effects static or accumulate GPU cache keys.
+    for (const effect of (snapshot.effects||[]).slice(0,5)) {
+      if (!Number.isFinite(effect.s)||!Number.isFinite(effect.d)||!['charge','wave'].includes(effect.phase)) continue;
+      const b=builder(),d=clamp(effect.d,-44,44),charge=effect.phase==='charge';
+      if (charge) {
+        for (const side of [-1,1]) ribbon(b,c,at,effect.s+36,effect.s+392,d+side*10,2,1.1,PULSE,18);
+        for (let distance=56;distance<=392;distance+=48) chevron(b,c,at,effect.s+distance,d,20,1.25,PULSE);
+      } else {
+        ribbon(b,c,at,effect.s-24,effect.s,d,20,1.8,[.35,.16,.12],8);
+        chevron(b,c,at,effect.s-12,d,20,4,PULSE);
+        chevron(b,c,at,effect.s,d,20,6,[1,.88,.68]);
+      }
+      out.push(boundedMesh(b,{static:false,emissive:true,featureKind:'pulse',featurePhase:effect.phase,
+        effectOwnerId:effect.ownerId,effectSerial:effect.serial}));
+    }
+    return out;
+  }
+  return Object.freeze({ rgb, builder, course, actors, actorMeshes, faceMesh, actorHeight, featureMeshes });
 });

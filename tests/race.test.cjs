@@ -178,6 +178,9 @@ test("commands reject nonfinite axes and truthy non-boolean actions without muta
     brake: false,
     boost: false,
     recover: false,
+    item: false,
+    itemEdge: 0,
+    warnings: [0, 0, 0, 0, 0],
   };
   for (const raw of [undefined, null, 2, false, "bad", [], () => {}])
     assert.deepEqual(Race.command(raw), empty);
@@ -205,6 +208,7 @@ test("commands reject nonfinite axes and truthy non-boolean actions without muta
       recover: true,
     }),
     {
+      ...empty,
       steer: -1,
       throttle: 1,
       brake: true,
