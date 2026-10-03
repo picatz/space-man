@@ -50,8 +50,14 @@ Brief in-play cues introduce the next objective and controls without blocking pl
 Every route is bounded, and a fall or loss still carries the journey forward.
 Use Pause and **Finish expedition** whenever you want to stop. Runner records are
 banked once per completed run; standalone modes keep their settings and lengths.
-Route history lasts for the page session. Shared-room integration is still being
-verified; existing Run Together, Arena and Racing invites stay mode-locked.
+Route history lasts for the page session. **Expedition with friends** keeps up to
+four players and four watchers in one room across every encounter. Open **Crew ·
+seats & invite** from Pause to share the same invite or request a seat in the next
+encounter. Late arrivals watch first; arcade vacancies get CPUs, and Guardian
+fights give all four crew members a place alongside a distinct boss. A bounded
+regrouping cue handles slow connections without trapping the rest of the crew.
+The host owns arcade combat and the route clock; runner scores remain local.
+Existing Run Together, Arena and Racing invites stay mode-locked.
 [Lifecycle and encounter details](docs/star-expedition.md).
 
 ## Orbital Arena · CPU + Friends

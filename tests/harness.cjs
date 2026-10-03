@@ -98,7 +98,7 @@ function relay() {
     }
     close() {
       this.closed = true; this.readyState = 3; sockets.delete(this);
-      if (this.pub) { clients.delete(hub.api.bytes.hex(this.pub)); for (const s of sockets) frame(s, 8, this.pub); }
+      if (this.pub && clients.get(hub.api.bytes.hex(this.pub)) === this) { clients.delete(hub.api.bytes.hex(this.pub)); for (const s of sockets) frame(s, 8, this.pub); }
     }
   };
   const bootstrap = client(hub, { game: false });

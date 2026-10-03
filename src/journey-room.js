@@ -57,7 +57,7 @@
     function start(){if(!host||connection)return false;host.syncRoster(roster(),now());const ok=host.start(now());if(ok)publish(true);return ok;}
     function submit(command){if(!active||connection||(!host&&now()-lastReceived>1500))return;if(client.current?.mode==='runner')lastRunnerSample=command;const b=client.input(command,net.info().myP);if(!b)return;if(host)host.receive(1,'host',b,now());else if(now()-lastInput>=25){lastInput=now();net.sendJourney(b).catch(()=>{});}}
     function release(){if(client.current?.mode==='runner')return;submit({});}
-    function pause(on){release();if(!host||connection)return false;const ok=host.pause(on);lastBeat=now();acc=0;publish(true);return ok;}
+    function pause(on){release();if(!host||connection)return false;if(host.phase==='barrier'){pauseAfterBarrier=!!on;return true;}const ok=host.pause(on);lastBeat=now();acc=0;publish(true);return ok;}
     function leave(){const message=host?'Expedition closed.':'You left the expedition.';cleanup();closedReason='';error='';changed();options.onExit?.(message);}
     async function role(value){if(!active||![0,1].includes(value))return false;if(client.current?.phase==='running'||client.current?.phase==='paused'){pendingRole=value;changed();return true;}const ok=await net.setRole(value);sync();sendReady();return ok;}
     function attach(callbacks){listeners.add(callbacks);callbacks.onChange?.(status());if(presented)callbacks.onSnapshot?.(presented);return()=>listeners.delete(callbacks);}

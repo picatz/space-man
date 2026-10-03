@@ -25,10 +25,27 @@ async function simulatedRelay(context, c, hub) {
   // Native WebSockets preserve order, including OPEN before the first frame.
   // Serialize CDP deliveries instead of relying on concurrent evaluate order.
   const deliver = (page, id, type, bytes) => {
-    const next = (deliveries.get(id) || Promise.resolve()).then(() => page.evaluate(({ id, type, bytes }) => {
-      window.__arenaRelayDispatch?.(id, type, bytes);
-    }, { id, type, bytes })).catch(() => { c.deliveryErrors++; });
-    deliveries.set(id,next); return next;
+    let pipe = deliveries.get(id);
+    if (!pipe) { pipe = { queue: [], running: false }; deliveries.set(id, pipe); }
+    return new Promise(resolve => {
+      pipe.queue.push({ type, bytes, resolve });
+      c.maxDeliveryQueue = Math.max(c.maxDeliveryQueue || 0, pipe.queue.length);
+      if (pipe.running) return;
+      pipe.running = true;
+      (async () => {
+        while (pipe.queue.length) {
+          // Preserve native event order, but avoid a separate CDP round trip
+          // for every fragment. Bytes, crypto and game clocks stay untouched.
+          const batch = pipe.queue.splice(0, 32);
+          try { await page.evaluate(({ id, events }) => {
+            for (const event of events) window.__arenaRelayDispatch?.(id, event.type, event.bytes);
+          }, { id, events: batch.map(({ type, bytes }) => ({ type, bytes })) }); }
+          catch (_) { c.deliveryErrors++; }
+          batch.forEach(item => item.resolve());
+        }
+        pipe.running = false;
+      })();
+    });
   };
   await context.exposeBinding('__arenaRelayHop', ({ page }, action, id, value) => {
     if (action === 'open') {
