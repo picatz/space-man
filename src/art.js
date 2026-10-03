@@ -352,14 +352,27 @@ const characterHats = {
     c.font = (primary ? '900 11px' : '700 9px') + ' system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillStyle = primary ? '#101B29' : '#EDF5FF'; c.fillText(text, x + w / 2, y + h / 2 + .5, w - 10); c.restore();
   }
-  function identityBrackets(c, x, y, w, h, color = '#FFF3CE') {
-    c.save(); c.globalAlpha = 1; c.lineCap = 'round'; c.lineJoin = 'round';
-    c.beginPath();
-    for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
-      const px = x + sx * w / 2, py = y + sy * h / 2;
-      c.moveTo(px - sx * 6, py); c.lineTo(px, py); c.lineTo(px, py - sy * 7);
+  // A quiet, screen-pixel ownership cue. Local and followed pilots differ by
+  // silhouette, not suit color. No box, selection frame, or animation competes
+  // with the character. The dark keyline survives bright platform/effect pixels.
+  function identityCue(c, x, y, role = 'you', targetX = x, targetY = y + 20) {
+    c.save(); c.globalAlpha = 1; c.translate(x, y);
+    c.lineJoin = 'round'; c.lineCap = 'round'; c.beginPath();
+    if (role === 'watching') {
+      c.moveTo(-7, 0); c.quadraticCurveTo(0, -7, 7, 0);
+      c.quadraticCurveTo(0, 7, -7, 0); c.closePath();
+      c.strokeStyle = '#071522'; c.lineWidth = 5; c.stroke();
+      c.strokeStyle = '#EAF7FF'; c.lineWidth = 1.75; c.stroke();
+      c.beginPath(); c.arc(0, 0, 1.75, 0, TAU); c.fillStyle = '#EAF7FF'; c.fill();
+    } else {
+      // A HUD-boundary side placement still points to the same pilot.
+      c.rotate(Math.atan2(targetY - y, targetX - x) - Math.PI / 2);
+      c.moveTo(-6, -3); c.lineTo(0, 1); c.lineTo(6, -3);
+      c.lineTo(0, 6); c.closePath();
+      c.strokeStyle = '#071522'; c.lineWidth = 3; c.stroke();
+      c.fillStyle = '#EAF7FF'; c.fill();
     }
-    c.strokeStyle = '#07111F'; c.lineWidth = 5; c.stroke(); c.strokeStyle = color; c.lineWidth = 2.25; c.stroke(); c.restore();
+    c.restore();
   }
 
   // Easing set shared by render code (and mirrored by the CSS --ease tokens).
@@ -370,7 +383,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityBadge, identityBrackets };
+  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityBadge, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

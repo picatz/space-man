@@ -94,10 +94,11 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390], [1280, 800]])
       assert.ok(hud.x + hud.width <= right.x || hud.y >= right.y + right.height, 'identity does not cover pause or timer');
       assert.equal(await page.locator('.race-pilot-marker').isVisible(), mode === 'chase');
       if (mode === 'chase') {
-        assert.equal(await page.locator('.race-pilot-marker').textContent(), 'YOU');
+        assert.equal(await page.locator('.race-pilot-marker').getAttribute('data-role'), 'you');
+        assert.equal(await page.locator('.race-pilot-marker').evaluate(e => e.tagName), 'CANVAS');
         assert.equal(await page.locator('.race-pilot-marker').getAttribute('data-actor-id'), id);
       } else if (mode === 'topdown') {
-        await page.waitForFunction(() => identityLabels.at(-1) === 'YOU');
+        await page.waitForFunction(() => document.querySelector('.race-root').dataset.identity?.startsWith('YOU:'));
       }
       await capture(page, `race-identity-${width}-${mode}`);
     }
@@ -136,10 +137,10 @@ test('non-first-seat pilot and spectator keep distinct identity through watch cy
       await identity(watcher.page, 'watching', id);
       assert.equal(await watcher.page.locator('.race-pilot-marker').isVisible(), mode === 'chase');
       if (mode === 'chase') {
-        assert.equal(await watcher.page.locator('.race-pilot-marker').textContent(), 'WATCHING');
+        assert.equal(await watcher.page.locator('.race-pilot-marker').getAttribute('data-role'), 'watching');
         assert.equal(await watcher.page.locator('.race-pilot-marker').getAttribute('data-actor-id'), id);
       }
-      if (mode === 'topdown') await watcher.page.waitForFunction(() => identityLabels.at(-1) === 'WATCHING');
+      if (mode === 'topdown') await watcher.page.waitForFunction(() => document.querySelector('.race-root').dataset.identity?.startsWith('WATCHING:'));
     }
     await capture(watcher.page, 'race-watching-' + mode);
   }

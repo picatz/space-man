@@ -174,8 +174,8 @@
 @media(max-width:360px){.arena-modal{padding-left:calc(var(--arena-safe-left) + 8px);padding-right:calc(var(--arena-safe-right) + 8px)}.arena-setup{padding:10px}.arena-format-card{padding:9px 6px}.arena-segment{padding:8px 9px}.arena-player-helmet{display:none}.arena-player-card{gap:6px}}
 `;
   const IDENTITY_STYLES = `
-.arena-player-card[data-you=true]{border:2px solid #FFF3CE;border-top-color:#FFF3CE;background:#152333;box-shadow:0 0 0 2px #07111f,0 4px 14px #0004}
-.arena-player-card[data-watching=true]{border:2px dashed #FFF3CE}
+.arena-player-card[data-you=true]{border-top-color:#EAF7FF;background:#152738;box-shadow:inset 0 1px 0 #EAF7FF18}
+.arena-player-card[data-watching=true]{border-top:2px dashed #EAF7FF}
 .arena-player-portrait{flex:0 0 30px;width:30px;height:38px;object-fit:contain;align-self:center}
 .arena-player-info{grid-template-columns:minmax(0,1fr);gap:3px}
 .arena-player-name{display:flex;align-items:center;gap:4px;white-space:nowrap;min-width:0}
@@ -186,6 +186,9 @@
 @media(max-width:650px){.arena-player-card{gap:5px}.arena-player-portrait{flex-basis:27px;width:27px;height:34px}.arena-player-name{font-size:10px}.arena-player-tag{font-size:8px}.arena-root[data-format=teams] .arena-player-card,.arena-root[data-format=ffa] .arena-player-card{padding:6px}.arena-you-badge{font-size:8px;padding:2px 3px}.arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none!important;padding:6px 10px!important}.arena-player-card[data-boss=true] .arena-player-info{display:flex;gap:8px;align-items:center}.arena-player-card[data-boss=true] .arena-player-tag{font-size:8px}}
 @media(max-height:600px) and (min-width:651px){.arena-player-portrait{display:none}.arena-player-card{min-width:0}.arena-player-tag{font-size:7px}.arena-player-name{font-size:9px}.arena-you-badge{font-size:7px}.arena-player-card[data-you=true]{padding:6px}}
 @media(max-width:360px){.arena-player-portrait{display:none}.arena-player-tag{font-size:8px}}
+.arena-root[data-touch=true] .arena-player-card[data-you=true] .arena-player-portrait{display:block;flex-basis:22px;width:22px;height:30px}
+.arena-root[data-touch=true] .arena-player-card[data-you=true]{gap:4px}
+
 `;
   const THUMB_STYLES = `
 /* These rules follow identity styles so compact HUDs keep names and YOU intact. */
@@ -928,7 +931,7 @@
     }
     function actorIdentity(actor) {
       const you = localActor(), watching = !you || you.stocks <= 0;
-      if (actor.id === you?.id) return { role: 'you', text: 'YOU', tag: state.format === 'teams' ? (actor.team === 0 ? '◇ BLUE TEAM' : '△ GOLD TEAM') : 'YOUR PILOT' };
+      if (actor.id === you?.id) return { role: 'you', text: 'YOU', tag: state.format === 'teams' ? 'YOU · ' + (actor.team === 0 ? '◇ BLUE' : '△ GOLD') : 'YOUR PILOT' };
       const relation = actor.boss ? 'BOSS' : state.format === 'teams' ? (you ? (actor.team === you.team ? 'ALLY' : 'RIVAL') : (actor.team === 0 ? 'BLUE' : 'GOLD')) : 'RIVAL';
       const control = actor.controller === 'remote' ? (actor.connected ? 'FRIEND' : 'RECONNECTING') : 'CPU';
       const followed = watching && watchedActor().id === actor.id;
@@ -943,18 +946,25 @@
         const y = (lerp(actor.py, actor.y, alpha) - c.y) * c.scale + c.centerY;
         if (x < 12 || x > width - 12 || y + actor.h * c.scale < bounds.top || y > bounds.bottom) continue;
         const identity = actorIdentity(actor), primary = identity.role !== 'other';
-        // Brackets remain visible in a pile-up without repainting anyone's suit.
-        if (primary) art.identityBrackets(ctx, x, y + actor.h * c.scale / 2, Math.max(37, actor.w * c.scale + 13), Math.max(46, actor.h * c.scale + 10));
         const body = { id: actor.id, x: x - actor.w * c.scale / 2 - 5, y: y - 8, w: actor.w * c.scale + 10, h: actor.h * c.scale + 8 };
         bodies.push(body);
         if (thumbOccludes(body, c)) continue; // Its clear-corridor cue replaces a label beneath a thumb.
         ctx.font = primary ? '900 11px system-ui,sans-serif' : '700 9px system-ui,sans-serif';
-        labels.push({ id: actor.id, text: identity.text, x, y: y - 43, w: ctx.measureText(identity.text).width + 18, h: primary ? 22 : 18, priority: primary ? 2 : actor.boss ? 1 : 0, primary, color: actorColor(actor), targetX: x, targetY: y - 12 });
+        labels.push({ id: actor.id, role: identity.role, text: identity.text, x, y: y - 32, w: primary ? 20 : ctx.measureText(identity.text).width + 12, h: primary ? 16 : 16, priority: primary ? 2 : actor.boss ? 1 : 0, primary, color: actorColor(actor), targetX: x, targetY: y - 9 });
       }
       const layout = art.identityLayout(labels, bounds, bodies);
       // A small diagnostic describes the actual painted labels for browser QA.
       rootEl.dataset.identity = layout.filter(b => b.primary).map(b => b.text + ':' + b.id).join(',');
-      for (const b of layout.slice().reverse()) art.identityBadge(ctx, b.text, b.x, b.y, b.w, { primary: b.primary, color: b.color, h: b.h, pointerX: b.targetX, pointerY: b.targetY });
+      for (const b of layout.slice().reverse()) {
+        if (b.primary) art.identityCue(ctx, b.x + b.w / 2, b.y + b.h / 2, b.role, b.targetX, b.targetY);
+        else {
+          // Crew/rival names stay secondary to the astronaut, without signposts.
+          ctx.save(); ctx.font = '650 9px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.strokeStyle = '#071522'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+          ctx.strokeText(b.text, b.x + b.w / 2, b.y + b.h / 2);
+          ctx.fillStyle = '#CEE0EA'; ctx.fillText(b.text, b.x + b.w / 2, b.y + b.h / 2); ctx.restore();
+        }
+      }
     }
     function drawIndicators(c, alpha) {
       const controlCues = [];
@@ -986,7 +996,6 @@
         if (!actor.boss) root.SpaceManArt.drawAvatar(icon.getContext('2d'), 36, 40, 78, actor.appearance, { reduceMotion: true });
         else icon.hidden = true;
         const info = el('div', 'arena-player-info'), name = el('strong', 'arena-player-name');
-        if (identity.role === 'you') name.append(el('span', 'arena-you-badge', 'YOU'));
         name.append(el('span', 'arena-player-name-text', (state.format === 'teams' && !actor.boss ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name));
         const tag = el('span', 'arena-player-tag', identity.tag), lives = el('span', 'arena-stocks'); info.append(name, tag, lives);
         const damage = el('strong', 'arena-damage', '0%'); card.append(icon, info, damage); rosterEl.append(card);

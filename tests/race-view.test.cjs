@@ -35,6 +35,7 @@ function harness({
     const listeners = new Map();
     const node = {
       tagName: tagName.toUpperCase(),
+      getContext() { return new Proxy({}, { get: (t,k) => t[k] || (() => {}), set: (t,k,v) => (t[k]=v,true) }); },
       children: [],
       attrs: {},
       dataset: {},
@@ -91,6 +92,7 @@ function harness({
   const sandbox = {
     document,
     SpaceManRace: Race,
+    SpaceManArt: require("../src/art.js"),
     SpaceManRacePresentation: Presentation,
     SpaceManRaceCamera: Camera,
     SpaceManRaceScene: Scene,
@@ -340,7 +342,7 @@ test("Chase identifies the local pilot in screen space and Cockpit only retains 
   const h = harness();
   h.view.render(h.snapshot, h.config);
   assert.equal(h.marker.hidden, false);
-  assert.equal(h.marker.textContent, "YOU");
+  assert.equal(h.marker.dataset.role, "you");
   assert.equal(h.marker.dataset.actorId, h.config.localActorId);
   assert.ok(Number.isFinite(parseFloat(h.marker.style.left)));
   assert.ok(Number.isFinite(parseFloat(h.marker.style.top)));
@@ -363,28 +365,28 @@ test("spectators identify the followed racer as WATCHING through seat changes an
   // Ownership comes from the authoritative adapter, never a slot number or color.
   const remote = { ...h.snapshot, actors: h.snapshot.actors.map(a => ({ ...a, controller: "remote" })) };
   h.view.render(remote, { ...h.config, localActorId: null });
-  assert.equal(h.marker.textContent, "WATCHING");
+  assert.equal(h.marker.dataset.role, "watching");
   for (const actor of remote.actors) {
     h.view.render(remote, { ...h.config, actorId: actor.id, localActorId: null });
     assert.equal(h.marker.hidden, false);
     assert.equal(h.marker.dataset.actorId, actor.id);
-    assert.equal(h.marker.textContent, "WATCHING");
-    assert.ok(parseFloat(h.marker.style.left) >= 54);
-    assert.ok(parseFloat(h.marker.style.left) <= 390 - 54);
+    assert.equal(h.marker.dataset.role, "watching");
+    assert.ok(parseFloat(h.marker.style.left) >= 14);
+    assert.ok(parseFloat(h.marker.style.left) <= 390 - 14);
   }
   // A stale local ID does not turn an explicitly remote pilot into YOU.
   h.view.render(remote, h.config);
-  assert.equal(h.marker.textContent, "WATCHING");
+  assert.equal(h.marker.dataset.role, "watching");
   const id = remote.actors[3].id;
   const rejoined = { ...remote, actors: remote.actors.map(a => ({ ...a, controller: a.id === id ? "human" : "remote", recoveries: 2 })) };
   h.view.render(rejoined, { ...h.config, actorId: id, localActorId: id });
   assert.equal(h.marker.dataset.actorId, id);
-  assert.equal(h.marker.textContent, "YOU");
+  assert.equal(h.marker.dataset.role, "you");
   h.lose();
   assert.equal(h.marker.hidden, true, "context loss clears the WebGL marker before fallback renders");
   h.restore();
   h.view.render(remote, { ...h.config, actorId: id, localActorId: null });
-  assert.equal(h.marker.textContent, "WATCHING");
+  assert.equal(h.marker.dataset.role, "watching");
   h.view.setMode("topdown");
   h.view.render(remote, { ...h.config, actorId: id, localActorId: null });
   assert.equal(h.marker.hidden, true, "top-down supplies its own screen-space marker");

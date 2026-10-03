@@ -23,10 +23,10 @@ for(const [width,height] of [[320,568],[390,844],[844,390],[1280,800]])test(`ide
  });
  await page.locator('#btnArena').click();await page.locator('[data-format="teams"]').click();await page.locator('#arenaStart').click();
  await page.waitForFunction(()=>document.querySelector('#arenaRoot').dataset.identity?.includes('YOU:1'));
- assert.equal(await page.locator('.arena-player-card[data-you="true"]').count(),1);assert.equal(await page.locator('.arena-you-badge').innerText(),'YOU');
+ assert.equal(await page.locator('.arena-player-card[data-you="true"]').count(),1);assert.equal(await page.locator('.arena-you-badge').count(),0);assert.ok((await page.locator('.arena-player-card[data-you="true"]').innerText()).includes('YOU ·'));
  assert.ok((await page.locator('.arena-player-card').nth(1).innerText()).includes('ALLY'));
  assert.ok((await page.locator('.arena-player-card').nth(2).innerText()).includes('RIVAL'));
- const layout=await page.locator('.arena-player-card[data-you="true"]').evaluate(e=>({r:e.getBoundingClientRect().toJSON(),bg:getComputedStyle(e).backgroundColor,border:getComputedStyle(e).borderTopColor}));assert.ok(layout.r.right<=width&&layout.r.left>=0);assert.equal(layout.border,'rgb(255, 243, 206)');
+ const layout=await page.locator('.arena-player-card[data-you="true"]').evaluate(e=>({r:e.getBoundingClientRect().toJSON(),bg:getComputedStyle(e).backgroundColor,border:getComputedStyle(e).borderTopColor}));assert.ok(layout.r.right<=width&&layout.r.left>=0);assert.equal(layout.border,'rgb(234, 247, 255)');assert.equal(await page.locator('.arena-player-card[data-you="true"] .arena-player-portrait').isVisible(),true);
  await page.waitForFunction(()=>arenaUI.snapshot()?.phase==='playing'&&document.querySelector('.arena-countdown').hidden,undefined,{timeout:6000});
  await page.evaluate(()=>{identityArenaState.actors.forEach((a,i)=>Object.assign(a,{x:425+i*13,px:425+i*13,y:390,py:390,vx:0,vy:0,invulnerable:0}));});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  await capture(page,`identity-crowded-teams-${width}`);
@@ -54,10 +54,10 @@ for(const [width,height] of [[320,568],[390,844],[844,390],[1280,800]])test(`ide
  });
  await page.waitForFunction(()=>!!window.identityNearHudFrame,undefined,{timeout:3000});
  const airborne=await page.evaluate(()=>window.identityNearHudFrame),pilot=airborne.labels.find(b=>b.primary);
- assert.ok(pilot,'airborne pilot keeps its identity badge');
+ assert.ok(pilot,'airborne pilot keeps its identity cue');
  const ownBody=airborne.bodies.find(b=>b.id===pilot.id);
  assert.ok(pilot.x+pilot.w<=ownBody.x||pilot.x>=ownBody.x+ownBody.w||pilot.y+pilot.h<=ownBody.y||pilot.y>=ownBody.y+ownBody.h,'HUD-clamped marker must not cover its own pilot');
- assert.ok(pilot.y-2>=airborne.hudBottom+4,'badge including its outline clears the measured boss HUD');
+ assert.ok(pilot.y-2>=airborne.hudBottom+4,'cue including its keyline clears the measured boss HUD');
  assert.ok(pilot.y<=airborne.bounds.top+1,'fixture exercises a badge clamped at the top boundary');
  await capture(page,`identity-airborne-boss-${width}`);
 });
