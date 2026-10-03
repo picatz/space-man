@@ -70,10 +70,10 @@
   // Runner HELLO/WELCOME bytes stay unchanged; each arcade mode requires its
   // own invite bit, HELLO/WELCOME marker and negotiated capability.
   const CAP_ARENA = 1 << 5, INV_ARENA = 0x10, MODE_ARENA = 1, A_ARENA = 0x40;
-  // Race revision 2 widens authored roads and changes contact rules. Bit 6
-  // belongs to legacy geometry: never advertise both, or old guests render a
-  // different road under authoritative poses. Gate both HELLO and WELCOME.
-  const CAP_RACE = 1 << 7, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
+  // Race revision 3 rounds Ember and opens visible runoff. Bits 6 and 7
+  // belong to legacy geometry: never advertise them together, or old guests
+  // render different roads/props under host poses. Gate HELLO and WELCOME.
+  const CAP_RACE = 1 << 8, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
   const ARENA_MAX = 1024, ARENA_HEAD = 8, ARENA_CHUNK = WIRE_MAX - 27 - ARENA_HEAD;
   const ARENA_TTL = 1000, ARENA_ABSENT_GRACE = 15000, SEAL_QUEUE_MAX = 32;
   const modeName = (o) => o && (o.mode === 'arena' || o.mode === 'race') ? o.mode : 'runner';

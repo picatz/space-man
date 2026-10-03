@@ -1323,6 +1323,16 @@
       g.lineJoin = "round";
       g.lineCap = "round";
       path();
+      // Match the 3D apron: brief excursions have visible ground, not a void
+      // beyond the painted asphalt edge. The outer line marks the safety edge.
+      g.strokeStyle = c.edge + "55";
+      g.lineWidth = c.width + 190;
+      g.stroke();
+      path();
+      g.strokeStyle = "#13202b";
+      g.lineWidth = c.width + 176;
+      g.stroke();
+      path();
       g.strokeStyle = "#0005";
       g.lineWidth = c.width + 32;
       g.stroke();

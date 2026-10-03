@@ -875,11 +875,12 @@ feature — features negotiate, they are never assumed.
 | 4 | `0x10` | HOSTEPOCH |
 | 5 | `0x20` | ARENA (explicit mode 1) |
 | 6 | `0x40` | Legacy RACE geometry revision 1; no longer advertised |
-| 7 | `0x80` | RACE geometry/contact revision 2 (explicit mode 2) |
+| 7 | `0x80` | Legacy RACE geometry/contact revision 2; no longer advertised |
+| 8 | `0x100` | RACE geometry/contact revision 3 (rounded Ember and visible runoff) |
 
 The runner mask remains `0x1F`; Arena adds bit 5, and current Star Circuit adds
-only bit 7. Race revisions are mutually exclusive compatibility requirements,
-not optional features. Revision 2 changes authored road widths and contact rules;
+only bit 8. Race revisions are mutually exclusive compatibility requirements,
+not optional features. Revision 3 rounds Ember, opens driveable runoff, and moves props out of that space;
 guests reconstruct course geometry from their local build, so old/new race
 clients must not share a match even though snapshot field widths are unchanged.
 

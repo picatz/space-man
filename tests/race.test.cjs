@@ -537,9 +537,9 @@ test("missing the side of a gate cannot award progress and crossing it again cor
   const state = playing(),
     a = state.actors[0],
     c = Race.course(state.trackId);
-  crossGate(state, 1, { lateral: c.width / 2 + 25 });
+  crossGate(state, 1, { lateral: c.width / 2 + C.RUNOFF + 25 });
   assert.equal(a.passed, 0);
-  crossGate(state, 1, { lateral: -c.width / 2 - 25 });
+  crossGate(state, 1, { lateral: -c.width / 2 - C.RUNOFF - 25 });
   assert.equal(a.passed, 0);
   crossGate(state, 1, { lateral: c.width / 2 - 10 });
   assert.equal(a.passed, 1);
@@ -759,7 +759,7 @@ test("swept gate width is checked at the crossing, not the final drift position"
       a = state.actors[0],
       c = Race.course(state.trackId),
       gate = c.gates[1];
-    const limit = c.width / 2 + 18;
+    const limit = c.width / 2 + C.RUNOFF + 18;
     place(a, gate, { along: -1, lateral: limit + side * 0.9, speed: 4 });
     a.vx -= gate.ty * -side * 3;
     a.vy += gate.tx * -side * 3;

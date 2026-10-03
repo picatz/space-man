@@ -132,6 +132,7 @@
       accent = rgb(c.accent),
       road = rgb(c.road);
     const half = c.width / 2,
+      clearance = (c.runoff || 0) + 28 + 12,
       clearances = [];
     const trackMesh = TrackMesh.build(c);
     // Repeated luminous pylons create strong speed/depth cues without collision walls.
@@ -139,9 +140,9 @@
       const p = at(c, d),
         h = Math.atan2(p.ty, p.tx);
       for (const side of [-1, 1]) {
-        const x = p.x - p.ty * (half + 25) * side,
-          z = p.y + p.tx * (half + 25) * side;
-        if (TrackMesh.distance(c, x, z) < half + 12) continue;
+        const x = p.x - p.ty * (half + clearance) * side,
+          z = p.y + p.tx * (half + clearance) * side;
+        if (TrackMesh.distance(c, x, z) < half + clearance - 1) continue;
         clearances.push({ x, z, radius: 6, type: "pylon" });
         b.box(x, 0, z, 7, 17, 7, [0.12, 0.2, 0.27], h);
         b.box(x, 16, z, 8, 3, 8, edge, h);
@@ -151,13 +152,13 @@
     for (let i = 0; i < 32; i++) {
       const p = at(c, (i * c.length) / 32),
         side = i % 2 ? -1 : 1,
-        dist = half + 135 + (i % 4) * 55,
+        dist = half + 180 + (i % 4) * 55,
         x = p.x - p.ty * dist * side,
         z = p.y + p.tx * dist * side;
       const radius = c.id === "ember" ? 60 : c.id === "bloom" ? 48 : 26;
       // Clearance is measured against EVERY track segment, including the far
       // side of a hairpin. A local tangent offset does not imply a safe site.
-      if (TrackMesh.distance(c, x, z) < half + radius + 24) continue;
+      if (TrackMesh.distance(c, x, z) < half + radius + clearance) continue;
       clearances.push({ x, z, radius, type: "landmark" });
       if (c.id === "ember") {
         b.crystal(
@@ -222,23 +223,23 @@
       }
     for (const side of [-1, 1])
       b.box(
-        p.x - p.ty * (half + 19) * side,
+        p.x - p.ty * (half + clearance) * side,
         0,
-        p.y + p.tx * (half + 19) * side,
+        p.y + p.tx * (half + clearance) * side,
         13,
         210,
         13,
         shade(edge, 0.6),
         h,
       );
-    b.box(p.x, 207, p.y, 17, 14, c.width + 53, [0.17, 0.28, 0.37], h);
+    b.box(p.x, 207, p.y, 17, 14, c.width + clearance * 2 + 15, [0.17, 0.28, 0.37], h);
     b.box(
       p.x + Math.cos(h) * 10,
       212,
       p.y + Math.sin(h) * 10,
       3,
       5,
-      c.width + 34,
+      c.width + clearance * 2 - 4,
       accent,
       h,
     );

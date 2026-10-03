@@ -10,6 +10,7 @@
   const TAU = Math.PI * 2,
     STEP = 1 / 60,
     KART_RADIUS = 28,
+    RUNOFF = 48,
     OFFCOURSE_TICKS = 120;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const finite = (v, fallback = 0) => (Number.isFinite(v) ? v : fallback);
@@ -59,17 +60,17 @@
       accent: "#ffc663",
       planet: "#ba584e",
       points: [
-        [300, 290],
-        [880, 220],
-        [1490, 360],
-        [1570, 690],
-        [1160, 790],
-        [1390, 1150],
-        [780, 1200],
-        [330, 1080],
-        [210, 810],
-        [680, 670],
-        [350, 540],
+        [420, 240],
+        [860, 120],
+        [1510, 330],
+        [1520, 620],
+        [1280, 820],
+        [1280, 1140],
+        [780, 1240],
+        [300, 1130],
+        [250, 930],
+        [560, 690],
+        [450, 470],
       ],
       pads: [0.13, 0.45, 0.77],
     },
@@ -153,7 +154,7 @@
       length += l;
       return s;
     });
-    const out = { ...def, segments, length };
+    const out = { ...def, runoff: RUNOFF, segments, length };
     out.gates = Array.from({ length: 20 }, (_, i) =>
       at(out, (i * length) / 20),
     );
@@ -218,6 +219,7 @@
         x: spawn.x - spawn.ty * side,
         y: spawn.y + spawn.tx * side,
         heading: Math.atan2(spawn.ty, spawn.tx),
+        steering: 0,
         vx: 0,
         vy: 0,
         speed: 0,
@@ -294,6 +296,7 @@
     a.x = p.x;
     a.y = p.y;
     a.heading = Math.atan2(p.ty, p.tx);
+    a.steering = 0;
     a.vx = a.vy = a.speed = 0;
     a.fuel = Math.max(0, a.fuel - 25);
     a.boosting = false;
@@ -306,41 +309,55 @@
     a.lastProgressTick = state.raceTick;
     state.events.push({ type: "recover", id: a.id });
   }
-  // Near a rail, turn only outward drive toward the local tangent. This is a
-  // gradual heading correction, not a position snap or injected forward speed.
-  // Inward steering, braking and free driving stay entirely in the pilot's hands.
-  function guideRail(a, c, n, input) {
-    const limit = c.width / 2 - KART_RADIUS,
-      strength = clamp((n.distance - (limit - 10)) / 10, 0, 1);
-    if (!strength || n.distance > limit + 0.01 || !input.throttle || input.brake) return;
-    const nx = (a.x - n.x) / n.distance, ny = (a.y - n.y) / n.distance;
-    if (Math.cos(a.heading) * nx + Math.sin(a.heading) * ny <= 0) return;
-    // A short secant smooths the sampled centerline's segment joins. Keep
-    // deliberate backwards driving backwards; a sideways impact defaults ahead.
-    const behind = at(c, n.s - 18), ahead = at(c, n.s + 18),
-      heading = Math.atan2(ahead.y - behind.y, ahead.x - behind.x),
-      direction = Math.cos(a.heading - heading) < -0.35 ? -1 : 1,
-      target = heading + (direction < 0 ? Math.PI : 0);
-    a.heading = angle(a.heading + clamp(angle(target - a.heading), -0.09 * strength, 0.09 * strength));
+  function safetyLimit(c) {
+    return c.width / 2 + RUNOFF;
   }
-  // A continuous road-relative rail, shared by CPU and human pilots. Remove
-  // only outward velocity (no bouncing); retain tangent motion around bends.
-  // Existing invalid/offcourse poses move inward by at most two units per tick
-  // until the explicit rescue takes over, rather than snapping to a nearby road.
+  // The asphalt edge is a readable cue, not an invisible wall. The existing
+  // apron offers a short, slower runoff route. Assistance shares the pilot's
+  // yaw budget and never reverses a deliberate steering command.
+  function roadSteering(a, c, n, input, turnSpeed) {
+    const desired = input.steer,
+      current = finite(a.steering),
+      rate = desired === 0 ? 1 : desired * current < 0 ? 0.28 : 0.18;
+    // Release/cancel is immediate; buildup and direction reversals are eased.
+    a.steering = current + clamp(desired - current, -rate, rate);
+    const yawLimit = turnSpeed * (input.brake ? 1.22 : 1);
+    let yaw = a.steering * yawLimit;
+    const strength = clamp((n.distance - (c.width / 2 - KART_RADIUS - 6)) / 54, 0, 1);
+    if (strength && n.distance <= safetyLimit(c) + 0.01 && input.throttle && !input.brake) {
+      const behind = at(c, n.s - 28), ahead = at(c, n.s + 28),
+        tangent = Math.atan2(ahead.y - behind.y, ahead.x - behind.x),
+        backwards = Math.cos(a.heading - tangent) < -0.35,
+        target = at(c, n.s + (backwards ? -1 : 1) * (110 + a.speed * 6)),
+        targetHeading = Math.atan2(target.y - a.y, target.x - a.x),
+        correction = clamp(angle(targetHeading - a.heading), -turnSpeed, turnSpeed) * strength;
+      if (!desired || correction * desired >= 0) yaw += correction;
+      else yaw += Math.sign(correction) * Math.min(Math.abs(correction), Math.abs(yaw) * 0.3);
+    }
+    a.heading = angle(a.heading + clamp(yaw, -yawLimit, yawLimit));
+  }
+  // Only the outer apron has a final safety contact. Preserve a fraction of
+  // impact momentum as a slide instead of projecting a head-on kart to rest.
+  // Already-invalid poses still correct gradually and never earn gate credit.
   function edgeContact(a, c, old, friction = true, readPosition = true) {
-    const n = nearest(c, a.x, a.y), limit = c.width / 2 - KART_RADIUS;
+    const n = nearest(c, a.x, a.y), limit = safetyLimit(c);
     if (n.distance <= limit) return n;
-    const nx = (a.x - n.x) / n.distance, ny = (a.y - n.y) / n.distance;
-    const wasInside = old.inside || old.released;
-    const correction = Math.min(n.distance - limit, wasInside ? 32 : 2);
+    const nx = (a.x - n.x) / n.distance, ny = (a.y - n.y) / n.distance,
+      correction = Math.min(n.distance - limit, old.inside || old.released ? 32 : 2);
     a.x -= nx * correction;
     a.y -= ny * correction;
     const outward = a.vx * nx + a.vy * ny;
     if (outward > 0) {
-      a.vx -= nx * outward;
-      a.vy -= ny * outward;
+      const speed = Math.hypot(a.vx, a.vy), tx = -ny, ty = nx,
+        tangent = a.vx * tx + a.vy * ty,
+        direction = Math.abs(tangent) > 0.1 ? Math.sign(tangent) : Math.sign(n.tx * tx + n.ty * ty) || 1,
+        // A small throttle-only glide prevents a pin against the last safety
+        // edge. This is bounded physical movement, never a positional rescue.
+        glide = old.inside && old.driving ? 1.8 : 0,
+        slide = Math.max(Math.abs(tangent), Math.min(Math.max(speed * 0.82, glide), 4.2));
+      a.vx = tx * slide * direction;
+      a.vy = ty * slide * direction;
     }
-    // Gentle rail friction, independent of rendered frame rate.
     if (friction) { a.vx *= 0.995; a.vy *= 0.995; }
     return readPosition ? nearest(c, a.x, a.y) : null;
   }
@@ -373,13 +390,13 @@
         continue;
       }
       const n = nearest(c, a.x, a.y);
-      previous.set(a.id, { x: a.x, y: a.y, inside: n.distance <= c.width / 2 - KART_RADIUS + 0.01 });
+      previous.set(a.id, { x: a.x, y: a.y, inside: n.distance <= safetyLimit(c) + 0.01, driving: input.throttle > 0 && !input.brake });
       // The inner shoulder eases speed before the physical rail, without a
       // sudden low-speed clamp the moment a wheel grazes the painted edge.
-      a.offroad = n.distance > c.width / 2 - KART_RADIUS - 12;
-      const trapped = n.distance > c.width / 2 - KART_RADIUS - 1 &&
+      a.offroad = n.distance > c.width / 2 - 4;
+      const trapped = n.distance > safetyLimit(c) - 1 &&
         a.speed < 0.75 && input.throttle > 0 && !input.brake;
-      a.offroadTicks = n.distance > c.width / 2 || trapped
+      a.offroadTicks = n.distance > safetyLimit(c) || trapped
         ? finite(a.offroadTicks) + 1 : 0;
       if (n.distance > c.width / 2 + 120 || a.offroadTicks >= OFFCOURSE_TICKS) {
         recover(state, a, c);
@@ -390,29 +407,37 @@
       a.boosting = input.boost && a.fuel > 1 && !a.offroad && !input.brake;
       a.fuel = clamp(a.fuel + (a.boosting ? -0.72 : 0.17), 0, 100);
       const speed = Math.hypot(a.vx, a.vy),
-        turnSpeed = 0.026 + Math.min(speed, 7) * 0.0042;
-      a.heading = angle(
-        a.heading + input.steer * turnSpeed * (input.brake ? 1.22 : 1),
-      );
-      guideRail(a, c, n, input);
+        turnSpeed = 0.052 + Math.min(speed, 8) * 0.0042;
+      roadSteering(a, c, n, input, turnSpeed);
       const fx = Math.cos(a.heading),
         fy = Math.sin(a.heading),
-        forward = a.vx * fx + a.vy * fy,
+        invalid = !previous.get(a.id).inside,
+        runoff = a.offroad && !invalid,
+        forward = runoff ? speed : a.vx * fx + a.vy * fy,
         lateral = -a.vx * fy + a.vy * fx;
       const boost = a.boosting || a.padTicks > 0,
-        invalid = !previous.get(a.id).inside,
-        shoulder = clamp((n.distance - (c.width / 2 - KART_RADIUS - 12)) / 12, 0, 1),
-        max = invalid ? 2.6 : a.offroad ? 6.4 - 2.2 * shoulder : boost ? 9 : 6.4;
+        shoulder = clamp((n.distance - (c.width / 2 - 4)) / RUNOFF, 0, 1),
+        max = invalid ? 2.6 : a.offroad ? 5.2 - 1.5 * shoulder : boost ? 9 : 6.4;
       let accel = input.throttle * (boost ? 0.19 : 0.125);
       if (input.brake) accel = -0.2;
       const velocity = clamp(
           forward * (invalid ? 0.965 : 0.991) + accel,
           0,
-          invalid ? max : Math.max(max, forward - 0.14),
+          invalid ? max : Math.max(max, forward - 0.2),
         ),
-        slide = lateral * (input.brake ? 0.82 : 0.65);
-      a.vx = fx * velocity - fy * slide;
-      a.vy = fy * velocity + fx * slide;
+        slide = lateral * (input.brake ? 0.82 : a.offroad && !invalid ? 0.88 : 0.65);
+      if (runoff && speed > 0.001) {
+        // Retain scalar momentum while the travel direction catches the nose.
+        // A safety-edge slide can be sideways; projecting it onto the nose on
+        // the next tick would erase the very momentum contact just preserved.
+        const travel = Math.atan2(a.vy, a.vx),
+          direction = travel + angle(a.heading - travel) * (input.brake ? 0.2 : 0.32);
+        a.vx = Math.cos(direction) * velocity;
+        a.vy = Math.sin(direction) * velocity;
+      } else {
+        a.vx = fx * velocity - fy * slide;
+        a.vy = fy * velocity + fx * slide;
+      }
       a.x += a.vx;
       a.y += a.vy;
       a.speed = Math.hypot(a.vx, a.vy);
@@ -472,7 +497,7 @@
       const onroad = old.inside || old.released;
       const n = onroad ? nearest(c, a.x, a.y) : edgeContact(a, c, old);
       const swept = onroad ? a : driven.get(a.id);
-      a.offroad = n.distance > c.width / 2 - KART_RADIUS - 12;
+      a.offroad = n.distance > c.width / 2 - 4;
       a.speed = Math.hypot(a.vx, a.vy);
       const gate = c.gates[a.nextGate],
         before = (old.x - gate.x) * gate.tx + (old.y - gate.y) * gate.ty,
@@ -484,7 +509,7 @@
       const lateralGate = Math.abs(
         -(crossX - gate.x) * gate.ty + (crossY - gate.y) * gate.tx,
       );
-      if (!old.released && crossed && lateralGate < c.width / 2 + 18) {
+      if (!old.released && crossed && lateralGate < safetyLimit(c) + 18) {
         a.passed++;
         a.nextGate = (a.nextGate + 1) % 20;
         a.lastProgressTick = state.raceTick;
@@ -556,6 +581,7 @@
       GATES: 20,
       COUNTDOWN: 180,
       KART_RADIUS,
+      RUNOFF,
       OFFCOURSE_TICKS,
       FINISH_GRACE_TICKS: 60 * 30,
       MAX_RACE_TICKS: 60 * 300,
