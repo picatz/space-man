@@ -502,3 +502,70 @@ test('arena native touch can resume immediately after a held gesture is paused',
   await page.locator('#arenaResume').tap(); await screen(page, 'match');
   assert.equal(await page.locator('.arena-stick-active,.arena-pressed').count(), 0);
 });
+
+test('arena thumb layout keeps comfortable targets and the pilot clear across phone and tablet viewports', { timeout: 90000 }, async t => {
+  const { page } = await launch(t, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await page.evaluate(() => {
+    settings.reduceMotion = true; settings.muted = true;
+    const arena = SpaceManArena;
+    SpaceManArena = {...arena,create(o){window.thumbState=arena.create(o);return thumbState;}};
+    const layout = SpaceManArt.identityLayout;
+    SpaceManArt.identityLayout = (items, bounds, bodies) => {
+      window.thumbFrame = { bodies, bounds }; return layout(items, bounds, bodies);
+    };
+  });
+  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
+  const intersects = (a, b, gap = 0) => a.x < b.x + b.width + gap && a.x + a.width > b.x - gap && a.y < b.y + b.height + gap && a.y + a.height > b.y - gap;
+  for (const [width, height] of [[320,568],[390,640],[390,844],[568,320],[640,360],[667,320],[844,320],[844,390],[768,1024],[1024,768]]) {
+    await page.locator('#arenaPause').tap();
+    await page.setViewportSize({ width, height }); await page.waitForTimeout(180);
+    await page.locator('#arenaResume').tap();
+    for (const lefty of [false, true]) {
+      await page.evaluate(lefty => { settings.lefty = lefty; }, lefty);
+      // Settings are refreshed through the normal pause/resume path.
+      await page.locator('#arenaPause').tap(); await page.locator('#arenaResume').tap();
+      await page.waitForTimeout(100);
+      const controls = [];
+      for (const action of ['jump', 'attack', 'dash']) {
+        const r = await page.locator('.arena-touch-' + action).boundingBox(); controls.push(r);
+        assert.ok(r.width >= 60 && r.height >= 60, `${action} stays at least 60px at ${width}x${height}`);
+        assert.ok(r.x >= 8 && r.y >= 0 && r.x + r.width <= width - 7 && r.y + r.height <= height - 7, `${action} clears the screen edge`);
+      }
+      for (let i=0;i<controls.length;i++) for (let j=i+1;j<controls.length;j++) assert.equal(intersects(controls[i], controls[j], 8), false, 'action hit rectangles have an 8px gap');
+      const zone = await page.locator('.arena-stick-zone').boundingBox();
+      const base = await page.locator('.arena-stick-base').boundingBox();
+      assert.ok(zone.width <= 160 && zone.height <= 170, 'movement never steals half of the fighting area');
+      assert.ok(base.x >= zone.x && base.y >= zone.y && base.x + base.width <= zone.x + zone.width && base.y + base.height <= zone.y + zone.height, 'visible stick matches its input pod');
+      for(const b of controls) assert.equal(intersects(zone,b,8),false,'movement and action hit zones stay separate');
+      const pause = await page.locator('#arenaPause').boundingBox();
+      assert.ok(pause.width >= 44 && pause.height >= 44); assert.match(await page.locator('#arenaPause').innerText(),/PAUSE/);
+      for(const card of await page.locator('.arena-player-card').all()) assert.equal(intersects(pause,await card.boundingBox(),4),false,'Pause stays outside the fighter roster');
+      const hud = await page.locator('.arena-hud').boundingBox();
+      for(const b of [...controls,zone]) assert.equal(intersects(hud,b,8),false,'the HUD stays above the thumb pods');
+      await page.waitForFunction(() => thumbFrame?.bodies.some(b => b.id === 1));
+      const own = await page.evaluate(() => thumbFrame.bodies.find(b => b.id === 1));
+      assert.ok(own,'the local pilot remains in the visible playfield');
+      for (const b of [...controls,zone]) assert.equal(intersects({x:own.x,y:own.y,width:own.w,height:own.h},b),false,'the local pilot is visible outside the controls');
+      await page.waitForFunction(() => document.querySelector('.arena-countdown').hidden);
+      if(width===667&&!lefty) {
+        await page.evaluate(() => {
+          const player=thumbState.actors[0],rival=thumbState.actors[1],body=thumbFrame.bodies.find(b=>b.id===player.id),dash=document.querySelector('.arena-touch-dash').getBoundingClientRect(),scale=(body.h-8)/player.h;
+          rival.x=player.x+(dash.x+dash.width/2-(body.x+body.w/2))/scale;rival.px=rival.x;
+          rival.y=player.y+(dash.y+dash.height/2-(body.y+8+player.h*scale/2))/scale;rival.py=rival.y;rival.vx=rival.vy=0;rival.invulnerable=60;
+        });
+        await page.waitForFunction(() => document.querySelector('#arenaRoot').dataset.controlCues?.split(' ').includes('2'));
+      }
+      await capture(page, `arena-thumbs-${width}x${height}-${lefty ? 'left' : 'right'}`);
+    }
+    // Restart a real match so CPUs cannot eliminate the stationary pilot while
+    // the viewport matrix is inspecting its UI.
+    await page.locator('#arenaPause').tap(); await page.getByRole('button',{name:'Restart match',exact:true}).tap(); await playing(page);
+  }
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(() => { const root=document.querySelector('#arenaRoot');root.style.setProperty('--game-ui-left','20px');root.style.setProperty('--game-ui-right','24px');root.style.setProperty('--game-ui-bottom','34px');window.dispatchEvent(new Event('resize')); });
+  await page.waitForTimeout(150);
+  for(const selector of ['.arena-touch-jump','.arena-touch-attack','.arena-touch-dash','.arena-stick-zone']) {
+    const b=await page.locator(selector).boundingBox();assert.ok(b.x>=20&&b.x+b.width<=390-24&&b.y+b.height<=844-34,`safe-area-aware ${selector}: ${JSON.stringify(b)}`);
+  }
+  await capture(page,'arena-thumbs-safe-areas');
+});
