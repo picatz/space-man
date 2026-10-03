@@ -14,7 +14,12 @@ room with up to four human racers and CPU-filled empty slots.
 - **Chill / Sport / Expert:** CPU pace, using the same kart physics and controls
 - Auto-drive is on: A/D or Left/Right steer; S/Down brakes; Space/Shift boosts;
   R rescues; Escape pauses
-- Touch: left/right steering buttons, brake and boost, plus a rescue button
+- Brake + steer at speed starts a drift. Hold a full turn for at least 0.4 seconds
+  (longer for a partial analog turn), then release Brake on the road for a short
+  exit boost. Brake alone still stops. Offroad, reversal, cancellation and rescue
+  discard the charge. Existing pad propulsion can still be drifted through but
+  does not build a second reward until it ends
+- Touch: left/right steering buttons, Brake / Drift and Boost, plus a rescue button
 - Standard controller: stick/D-pad steering, B/L2 brake, A/R2 boost, X rescue,
   Menu pause. Menus also support controller navigation and A activation
 - Existing left-handed, remapped steering, mute/SFX volume and battery-saving
@@ -137,3 +142,7 @@ ordinary browser suite substitutes only the opaque relay hop. The separate
 uses actual WebSockets to the existing relay; it never represents simulated
 relay results as a live-network pass. Physical iPhone/cellular testing remains
 separate.
+
+The host build determines arcade handling for a friend room. The existing v1
+commands and snapshots remain compatible with earlier builds; refresh all
+clients for current control instructions and host-side drift rewards.
