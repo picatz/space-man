@@ -44,3 +44,34 @@ test('recovery clears corner charge and preserves accepted gates',()=>{
   const passed=a.passed;step(s,{throttle:1,recover:true});
   assert.equal(a.passed,passed);assert.equal(a.driftTicks,0);assert.equal(a.drifting,false);assert.equal(a.padTicks,0);
 });
+test('boost strips do not turn the same drift input into full braking',()=>{
+  for(const remaining of [0,30,45]){
+    const s=ready(),a=s.actors[0];a.padTicks=remaining;
+    step(s,{throttle:1,brake:true,steer:1},24);
+    assert.equal(a.drifting,true);assert.ok(a.speed>4.5);
+    if(remaining>24)assert.equal(a.driftTicks,0,'existing propulsion cannot charge a second reward');
+  }
+});
+test('explicit interruption and authoritative host pause discard charged drift without a reward',()=>{
+  const s=ready(),a=s.actors[0];step(s,{throttle:1,brake:true,steer:1},24);
+  Race.cancelControl(s,a.id);step(s,{throttle:1});assert.equal(a.padTicks,0);
+  const Online=require('../src/race-online.js'),host=Online.createHost();
+  host.syncRoster([{p:1,role:0,identity:'test-host'}],0);host.start();
+  const h=host.state.actors[0];Object.assign(h,{drifting:true,driftTicks:30,driftDirection:1});
+  assert.ok(host.pause(true));assert.equal(h.driftTicks,0);assert.equal(h.drifting,false);
+  host.pause(false);
+  Object.assign(h,{drifting:true,driftTicks:30,driftDirection:1});
+  assert.ok(host.receive(1,'test-host',Online.encodeInput({epoch:host.epoch,seq:1,tick:host.state.tick,recoverEdges:0,command:{}}),1));
+  assert.equal(h.driftTicks,0,'release cancels immediately, without waiting for a host step');
+});
+test('an exit crossing onto runoff cannot receive a newly earned boost',()=>{
+  const s=ready(),a=s.actors[0],c=Race.course('starlight'),p=Race.at(c,0);
+  Object.assign(a,{x:p.x,y:p.y,heading:Math.atan2(p.ty,p.tx),vx:p.tx*6.4,vy:p.ty*6.4,speed:6.4});
+  step(s,{throttle:1,steer:-1,brake:true},30);
+  assert.equal(a.offroad,false);assert.ok(a.driftTicks>=24);
+  step(s,{throttle:1,steer:-1});assert.equal(a.offroad,true);assert.equal(a.padTicks,0);
+});
+test('shallow analog steering must earn the same cornering amount as a full digital turn',()=>{
+  const s=ready(),a=s.actors[0];step(s,{throttle:1,brake:true,steer:.35},24);
+  assert.ok(a.driftTicks<9);step(s,{throttle:1});assert.equal(a.padTicks,0);
+});

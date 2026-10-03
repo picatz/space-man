@@ -482,7 +482,7 @@
   }
   // Geometry caches are bounded. Animation swaps only a tiny visor mesh; it
   // never rebuilds the full craft on a blink or on a fractional display frame.
-  const kartModels = new Map(), faceModels = new Map();
+  const kartModels = new Map(), faceModels = new Map(), slideModels = new Map();
   function cache(map, key, build, limit) {
     if (!map.has(key)) { map.set(key, build()); if(map.size > limit) map.delete(map.keys().next().value); }
     return map.get(key);
@@ -502,6 +502,18 @@
       const faceKey = [appearance.helmet, pose.happy,pose.determined,pose.height,pose.width,pose.closed].join(':');
       const faceVertices = cache(faceModels, faceKey, () => faceMesh(appearance,pose), 24);
       out.push({ vertices: faceVertices, static: true, emissive: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[6,33,11] }, model });
+      const slip = a.speed > 3 ? Math.atan2(Math.sin(a.heading - Math.atan2(a.vy, a.vx)), Math.cos(a.heading - Math.atan2(a.vy, a.vx))) : 0;
+      if (!a.offroad && !a.recoveryTicks && Math.abs(slip) > .18) {
+        const direction = Math.sign(slip);
+        const streaks = cache(slideModels, direction, () => {
+          const b = builder();
+          for (const side of [-20,20]) b.quad([-13,1,side-1.5],[-13,1,side+1.5],
+            [-40,1,side+direction*10+1.5],[-40,1,side+direction*10-1.5],[.5,.92,1]);
+          return b.mesh().vertices;
+        }, 2);
+        out.push({ vertices: streaks, static: true, emissive: true, effectActorId: a.id,
+          bounds:{min:[-40,1,-32],max:[-13,1,32]}, model });
+      }
     }
     return out;
   }

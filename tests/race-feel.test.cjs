@@ -77,9 +77,10 @@ for (const side of [-1, 1]) for (const ticks of [6, 12]) {
     }
     const turn = angle(actor.heading - heading) * side,
       lateral = (-(actor.x - point.x) * point.ty + (actor.y - point.y) * point.tx) * side;
+    // Calmer digital corrections: about 9 degrees at 100 ms, 23 at 200 ms.
     // Observable human-scale envelopes, not an exact replay of the integrator.
-    assert.ok(turn > (ticks === 6 ? .25 : .70) && turn < (ticks === 6 ? .35 : .85), `${turn} rad turn`);
-    assert.ok(lateral > (ticks === 6 ? 2 : 16), 'the travel path responds as well as the nose');
+    assert.ok(turn > (ticks === 6 ? .13 : .35) && turn < (ticks === 6 ? .19 : .45), `${turn} rad turn`);
+    assert.ok(lateral > (ticks === 6 ? 1.3 : 9), 'the travel path responds as well as the nose');
     assert.ok(actor.speed > 6, 'a normal tap retains cruise momentum');
     assert.ok(samples[0] < samples[5] / 4, 'a press must not snap immediately to maximum yaw');
     for (let tick = 0; tick < 4; tick++) drive(state, { steer: 0 });

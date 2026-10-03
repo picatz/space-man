@@ -286,6 +286,12 @@
         state.raceTick - actor.lastProgressTick > 720,
     });
   }
+  function cancelControl(state, actorId) {
+    if (!state) return;
+    for (const a of state.actors) if (!actorId || a.id === actorId) {
+      a.drifting = false; a.driftTicks = 0; a.driftDirection = 0;
+    }
+  }
   function recover(state, a, c) {
     // Explicit rescue returns to the last verified gate, never a forward jump.
     const s = ((a.passed % 20) * c.length) / 20 + 12;
@@ -334,7 +340,7 @@
     // opposite correction. Reintroduce neutral assistance over 200 ms.
     a.neutralAssist = desired || input.brake || !input.throttle
       ? 0 : Math.min(1, finite(a.neutralAssist, 1) + 1 / 12);
-    const yawLimit = a.drifting ? 0.055 : turnSpeed * (input.brake ? 1.18 : 1);
+    const yawLimit = a.drifting ? 0.055 : turnSpeed * (input.brake ? 1.22 : 1);
     let yaw = a.steering * yawLimit;
     const strength = clamp((n.distance - (c.width / 2 - KART_RADIUS - 6)) / 54, 0, 1);
     if (strength && n.distance <= safetyLimit(c) + 0.01 && input.throttle && !input.brake) {
@@ -388,7 +394,7 @@
     }
     state.raceTick++;
     const c = course(state.trackId),
-      previous = new Map();
+      previous = new Map(), exitBoosts = new Set();
     for (const a of state.actors) {
       if (a.finishTick !== null || a.dnf) continue;
       const input = command(inputs[a.id]);
@@ -422,23 +428,23 @@
       const speed = Math.hypot(a.vx, a.vy),
         // A small high-speed correction must not become a spin. Low-speed
         // manoeuvres stay nimble, while boost asks for a wider, cleaner line.
-        turnSpeed = (0.054 - clamp(speed / 9, 0, 1) * 0.018) * clamp(speed / 2, 0.45, 1);
+        turnSpeed = a.offroad ? 0.052 + Math.min(speed, 8) * 0.0042 :
+          (0.054 - clamp(speed / 9, 0, 1) * 0.018) * clamp(speed / 2, 0.45, 1);
       const wasDrifting = !!a.drifting,
         driftDirection = Math.sign(input.steer),
         canDrift = input.throttle > 0 && input.brake && Math.abs(input.steer) >= 0.35 &&
-          speed >= (wasDrifting ? 2.8 : 3.6) && !a.offroad && a.padTicks === 0;
+          speed >= (wasDrifting ? 2.8 : 3.6) && !a.offroad;
       // Brake + steer carves a controlled slide. A sustained, same-direction
       // road corner earns one short exit boost; tapping, reversing, offroad,
       // input expiry and rescue cannot bank or release a reward.
       if (canDrift) {
         if (!wasDrifting || a.driftDirection !== driftDirection) a.driftTicks = 0;
-        a.driftTicks = Math.min(60, finite(a.driftTicks) + 1);
+        a.driftTicks = a.padTicks > 0 ? 0 : Math.min(60, finite(a.driftTicks) + Math.abs(input.steer));
         a.driftDirection = driftDirection;
       } else {
         if (wasDrifting && a.driftTicks >= 24 && !input.brake && input.throttle > 0 &&
             !a.offroad && speed >= 2.8 && (Math.abs(input.steer) < 0.1 || driftDirection === a.driftDirection)) {
-          a.padTicks = Math.max(a.padTicks, 30);
-          state.events.push({ type: "pad", id: a.id });
+          exitBoosts.add(a.id);
         }
         a.driftTicks = 0;
         a.driftDirection = 0;
@@ -535,6 +541,12 @@
       const swept = onroad ? a : driven.get(a.id);
       a.offroad = n.distance > c.width / 2 - 4;
       a.speed = Math.hypot(a.vx, a.vy);
+      // Award after movement and contacts: crossing onto runoff while releasing
+      // is a missed exit, not a free boost off the edge of the road.
+      if (exitBoosts.has(a.id) && !a.offroad && a.speed >= 2.8) {
+        a.padTicks = Math.max(a.padTicks, 30);
+        state.events.push({ type: "pad", id: a.id });
+      }
       const gate = c.gates[a.nextGate],
         before = (old.x - gate.x) * gate.tx + (old.y - gate.y) * gate.ty,
         after = (swept.x - gate.x) * gate.tx + (swept.y - gate.y) * gate.ty;
@@ -627,6 +639,7 @@
     at,
     nearest,
     command,
+    cancelControl,
     create,
     cpuInput,
     step,

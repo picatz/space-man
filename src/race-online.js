@@ -212,6 +212,7 @@
     let epoch = 0, revision = 0, status = 'lobby', eventSerial = 0, events = [], now = 0;
     function record(e) { events.push({ ...e, serial: ++eventSerial }); events = events.slice(-MAX_EVENTS); }
     function clearCommand(s) {
+      Race.cancelControl(state, s.actorId);
       s.command = blank(); s.pendingRecover = false; s.pendingAt = -Infinity; s.receivedAt = -Infinity;
     }
     function assign() {
@@ -301,6 +302,9 @@
       now = Math.max(now, time); s.bucket = budget - 1; s.bucketAt = Math.max(s.bucketAt, time);
       if (input.recoverEdges > s.recoverEdges) { s.pendingRecover = true; s.pendingAt = time; }
       s.recoverEdges = input.recoverEdges; s.seq = input.seq; s.command = input.command;
+      // A validated neutral release is an interruption, even when a later input
+      // arrives before the next host physics tick. It cannot cash a drift.
+      if (!input.command.throttle) Race.cancelControl(state, s.actorId);
       s.receivedAt = time; s.lastAcceptedTick = state.tick; return true;
     }
     function step(time) {

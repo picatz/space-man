@@ -203,3 +203,11 @@ test("all cached craft vertices fit their conservative local-space culling bound
         );
   }
 });
+test('slide framing follows travel without mutating authority or rolling the horizon',()=>{
+  const actor={...R.create().actors[0],heading:0,speed:5,vx:5*Math.cos(-.35),vy:5*Math.sin(-.35)};
+  const original=JSON.stringify(actor),h=Camera.travelHeading(actor);
+  assert.ok(h<-.2&&h>-.3,'frame between travel and nose, biased toward the road');
+  const camera=Camera.create().update(actor,R.course('starlight'),R.at,{reduceMotion:true});
+  assert.ok(camera.target[1]<camera.eye[1]);assert.equal(JSON.stringify(actor),original);
+  assert.equal(Camera.travelHeading({...actor,speed:0,vx:0,vy:0}),0);
+});

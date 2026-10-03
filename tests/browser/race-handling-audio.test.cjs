@@ -430,3 +430,53 @@ for (const device of [
   assert.equal(await page.locator(".race-pressed").count(), 0);
   t.diagnostic(`${device.name}: ${probe.contacts} contact ticks, longest near-stall ${probe.longestSlow} ticks, minimum contact motion ${probe.minContactMotion.toFixed(3)}`);
 });
+
+// Human-scale authored inputs, not a CPU following the course or injected poses.
+// Screenshots and pass results establish mechanics/layout, not subjective fun.
+for (const device of [
+  {name:'desktop',viewport:{width:1280,height:800}},
+  {name:'phone-portrait',viewport:{width:390,height:844},hasTouch:true,isMobile:true},
+  {name:'phone-landscape',viewport:{width:844,height:390},hasTouch:true,isMobile:true},
+  {name:'tablet',viewport:{width:820,height:1180},hasTouch:true,isMobile:true},
+]) test(`arcade cornering: ${device.name} brake-steer-release and interruption`, {timeout:60000}, async t=>{
+  const {name,...options}=device,{page,context}=await launch(t,options);
+  await menu(page,'Launch race');await playing(page);
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+  await page.keyboard.down('ArrowRight');await page.keyboard.down('ArrowDown');
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
+  const during=await page.evaluate(()=>raceUI.snapshot().actors[0]);
+  assert.ok(during.drifting&&!during.offroad&&during.speed>4.5);
+  assert.equal(await page.locator('.race-drive-feedback').innerText(),'CARVING');
+  await page.keyboard.up('ArrowDown');await page.keyboard.up('ArrowRight');
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0);
+  assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!');
+  if(process.env.SPACE_MAN_RACE_SCREENSHOTS){
+    await fs.mkdir(process.env.SPACE_MAN_RACE_SCREENSHOTS,{recursive:true});
+    await page.screenshot({path:path.join(process.env.SPACE_MAN_RACE_SCREENSHOTS,`arcade-${name}-exit.png`)});
+  }
+  await page.keyboard.press('Escape');await screen(page,'pause');
+  await menu(page,'Restart race');await playing(page);
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+  await page.keyboard.down('ArrowRight');await page.keyboard.down('ArrowDown');
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
+  await page.keyboard.press('Escape');await screen(page,'pause');
+  assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].driftTicks),0);
+  await page.keyboard.up('ArrowRight');await page.keyboard.up('ArrowDown');
+  await menu(page,'Resume race');
+  assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].padTicks),0,'pause does not cash a corner reward');
+  if(options.hasTouch&&engine===chromium){
+    await page.keyboard.press('Escape');await screen(page,'pause');await menu(page,'Restart race');await playing(page);
+    await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+    const right=await page.getByRole('button',{name:'Steer right',exact:true}).boundingBox();
+    const brake=await page.getByRole('button',{name:'Brake',exact:true}).boundingBox();
+    for(const b of[right,brake])assert.ok(b&&b.width>=44&&b.height>=44);
+    const cdp=await context.newCDPSession(page);
+    const point=(b,id)=>({id,x:b.x+b.width/2,y:b.y+b.height/2,radiusX:5,radiusY:5,force:1});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(right,1),point(brake,2)]});
+    await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
+    await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks===0);
+    assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].padTicks),0,'real touch cancellation is not brake release');
+    await cdp.detach();
+  }
+});
