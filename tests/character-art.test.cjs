@@ -44,6 +44,7 @@ test('all cosmetic choices change their intended art and stay within 3D culling 
 test('a blink only swaps the tiny visor overlay, preserving static craft geometry', () => {
   const snapshot={tick:20,actors:[{id:1,x:0,y:0,heading:0,color:'#38E1FF',appearance:Cosmetics.DEFAULTS}]};
   const open=Scene.actorMeshes(snapshot),blink=Scene.actorMeshes({...snapshot,tick:166});
+  assert.equal(open[0].emissive,undefined);assert.equal(open[1].emissive,true);
   assert.equal(open[0].vertices,blink[0].vertices);assert.notEqual(open[1].vertices,blink[1].vertices);
   assert.ok(open[1].vertices.length<500,'face is a small mesh');
   assert.equal(Scene.actorMeshes({...snapshot,tick:166},{calm:true})[1].vertices,open[1].vertices);

@@ -501,7 +501,7 @@
       const pose = Art.facePose({ eyes: appearance.eyes, tick: snapshot.tick, id: a.id, calm: options.calm, mood: a.recoveryTicks ? 2 : boosted ? 1 : 0 });
       const faceKey = [appearance.helmet, pose.happy,pose.determined,pose.height,pose.width,pose.closed].join(':');
       const faceVertices = cache(faceModels, faceKey, () => faceMesh(appearance,pose), 24);
-      out.push({ vertices: faceVertices, static: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[6,33,11] }, model });
+      out.push({ vertices: faceVertices, static: true, emissive: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[6,33,11] }, model });
     }
     return out;
   }
