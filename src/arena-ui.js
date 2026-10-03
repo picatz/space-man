@@ -168,6 +168,8 @@
     let pulseMeter, dashMeter, countdownEl, pauseButton, launchButton, resultTitle, resultText, resultRoster;
     let formatButtons = [], stageButtons = [], difficultyButtons = [], mirrorButton, stageDescription;
     let savedFocus = null, inertSiblings = [], savedBodyOverflow = '';
+    const cosmeticSession = Date.now().toString(36) + ':' + Math.random().toString(36).slice(2, 9);
+    let cosmeticRound = 0;
     let arena, state = null, view = 'lobby', paused = false, activeModal = null, selections = { arenaId: '', format: 'duel', difficulty: 'normal' };
     let frameId = 0, lastTime = 0, accumulator = 0, lastDraw = 0, lastHudTick = -1, lastCountdown = '', resultAt = 0, matchSerial = 0;
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
@@ -499,6 +501,7 @@
       if (!snapshot.isHost && old && !newRound) for (const a of state.actors) { const p = old.actors.find(p => p.id === a.id); if (p && p.stocks === a.stocks && p.respawnTicks === a.respawnTicks && Math.hypot(p.x-a.x,p.y-a.y)<220) { a.px=p.x;a.py=p.y; } }
       networkReceived = performance.now(); priorNetworkTick = state.tick;
       if (view !== 'match' || newRound) {
+        cosmeticRound++;
         resetInput(); view = 'match'; paused = false; localRoomMenu = false; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; resultAt = 0; effects = []; spectatorId = null; camera.initialized = false;
         rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION 2/3 · ' : '') + selectedArena().name + ' · FRIEND ARENA'; setModal(null); unlockAudio();
       }
@@ -651,31 +654,40 @@
     }
     function actorColor(actor) { return state && state.format === 'teams' ? (actor.team === 0 ? '#38E1FF' : '#FFB454') : (actor.color || PLAYER_COLORS[(actor.id - 1) % 4]); }
     function astronaut(g, actor, x, y, tick, hero) {
-      const art = root.SpaceManArt, color = hero ? (actor.color || '#38E1FF') : actorColor(actor), w = actor.w || 24, h = actor.h || 34;
-      const speed = Math.min(Math.abs(actor.vx || 0) / 6.4, 1), phase = tick * .25 + actor.id, bob = calm() ? 0 : Math.sin(phase * 2) * speed * .9;
+      const art = root.SpaceManArt, color = hero ? (actor.color || '#38E1FF') : actorColor(actor);
+      const appearance = actor.appearance || ((hero || actor.id === localActor()?.id) && typeof opts.appearance === 'function' ? opts.appearance() : null);
+      const style = art.characterStyle(appearance, color), P = style.palette;
+      const aw = actor.w || 24, ah = actor.h || 34, boss = actor.boss;
+      const w = 24, h = 34, scale = boss ? Math.min(aw / w, ah / h) : 1;
+      const speed = Math.min(Math.abs(actor.vx || 0) / 6.4, 1), phase = tick * .25 + actor.id;
+      const bob = calm() ? 0 : Math.sin(phase * 2) * speed * .9;
       const facing = actor.facing || 1, attack = actor.attackTicks || 0;
-      g.save(); g.translate(x + w / 2, y + h / 2); if (!calm()) g.rotate(clamp((actor.vx || 0) * .012, -.10, .10)); g.scale(facing, 1);
-      if (art && !saver()) { g.globalAlpha = actor.invulnerable ? .42 : .18; g.drawImage(art.glow(32, color, .03), -30, -31, 60, 60); g.globalAlpha = 1; }
+      g.save(); g.translate(x + aw / 2, y + ah - h * scale / 2);
+      if (!calm()) g.rotate(clamp((actor.vx || 0) * .012, -.10, .10)); g.scale(facing * scale, scale);
+      if (!saver()) { g.globalAlpha = actor.invulnerable ? .42 : .18; g.drawImage(art.glow(32, color, .03), -30, -31, 60, 60); g.globalAlpha = 1; }
       if (actor.invulnerable > 0) { g.strokeStyle = color; g.lineWidth = 1; g.globalAlpha = .6; g.beginPath(); g.ellipse(0, -1, w * .82, h * .7, 0, 0, TAU); g.stroke(); g.globalAlpha = 1; }
       if (actor.dashTicks > 0) {
         g.fillStyle = color; g.globalAlpha = .45; rounded(g, -w * 1.7, -5, w * 1.1, 5, 2); g.fill(); g.globalAlpha = .22; rounded(g, -w * 2.1, 3, w * 1.4, 4, 2); g.fill(); g.globalAlpha = 1;
       }
       const stride = actor.onGround ? Math.sin(phase) * speed * 4 : actor.vy < 0 ? -3 : 2;
-      g.strokeStyle = '#87A4BA'; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(3, 7); g.lineTo(5 + stride, h / 2 - 2); g.stroke();
-      g.strokeStyle = '#D8E5EE'; g.beginPath(); g.moveTo(-3, 7); g.lineTo(-5 - stride, h / 2 - 2); g.stroke();
+      g.strokeStyle = P.legB; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(3, 7); g.lineTo(5 + stride, h / 2 - 2); g.stroke();
+      g.strokeStyle = P.legF; g.beginPath(); g.moveTo(-3, 7); g.lineTo(-5 - stride, h / 2 - 2); g.stroke();
       g.fillStyle = '#415D78'; rounded(g, -w / 2 - 3, -6 + bob, 8, 15, 3); g.fill(); g.fillStyle = color; g.fillRect(-w / 2 - 2, -3 + bob, 3, 6);
-      g.strokeStyle = '#9EBDD0'; g.lineWidth = 4.5; g.beginPath(); g.moveTo(-5, 0 + bob); g.lineTo(-10, 6 + bob); g.stroke();
-      g.fillStyle = actor.suit || '#F4F7FF'; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill();
-      g.fillStyle = '#243C57'; rounded(g, -4, -1 + bob, 8, 7, 2); g.fill(); g.fillStyle = color; rounded(g, -2.5, .5 + bob, 5, 2.5, 1); g.fill(); g.fillStyle = '#8DABC4'; g.fillRect(-7, 8 + bob, 14, 2);
-      // Oversized helmet, a blue visor and glint preserve the runner's silhouette.
-      g.fillStyle = actor.suit || '#F4F7FF'; g.beginPath(); g.arc(0, -9 + bob, 11, 0, TAU); g.fill();
-      g.strokeStyle = color; g.lineWidth = 1.7; g.beginPath(); g.arc(0, -9 + bob, 9.5, Math.PI * 1.1, Math.PI * 1.85); g.stroke();
-      g.fillStyle = '#102D49'; rounded(g, -5, -15 + bob, 14, 10, 4.5); g.fill(); g.fillStyle = color; g.globalAlpha = .58; rounded(g, -3, -14 + bob, 10, 3, 1.5); g.fill(); g.globalAlpha = 1;
-      const blink = !hero && ((tick + actor.id * 71) % 237 < 6);
-      g.fillStyle = '#BFEFFF'; if (blink) { g.fillRect(1, -9 + bob, 2, 1); g.fillRect(5, -9 + bob, 2, 1); } else { rounded(g, 1, -11 + bob, 1.6, 3.2, .8); g.fill(); rounded(g, 5, -11 + bob, 1.6, 3.2, .8); g.fill(); }
-      g.fillStyle = '#FFF'; g.globalAlpha = .8; g.beginPath(); g.ellipse(-5, -15 + bob, 2.5, 1.5, -.65, 0, TAU); g.fill(); g.globalAlpha = 1;
-      g.strokeStyle = color; g.lineWidth = 1.5; g.beginPath(); g.moveTo(-5, -19 + bob); g.lineTo(-7, -23 + bob); g.stroke(); g.fillStyle = color; g.beginPath(); g.arc(-7, -23 + bob, 2, 0, TAU); g.fill();
-      g.strokeStyle = '#E1EBF4'; g.lineWidth = 4.5; g.beginPath(); g.moveTo(6, -1 + bob); g.lineTo(attack ? 14 : 10, attack ? -3 + bob : 5 + bob); g.stroke();
+      g.strokeStyle = P.legB; g.lineWidth = 4.5; g.beginPath(); g.moveTo(-5, bob); g.lineTo(-10, 6 + bob); g.stroke();
+      g.fillStyle = P.suit; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill();
+      art.suitDetails(g, 0, bob, style);
+      if (boss) {
+        // Broader armored shoulders and three charge cells distinguish the
+        // guardian at a glance; authored encounter telegraphs live outside it.
+        g.fillStyle = P.legB; rounded(g, -12, -4 + bob, 6, 7, 2); g.fill(); rounded(g, 6, -4 + bob, 6, 7, 2); g.fill();
+        g.fillStyle = color; for (let i = 0; i < 3; i++) g.fillRect(-3 + i * 2.5, 7 + bob, 1.5, 2);
+      }
+      const reaction = art.arenaMood(actor);
+      const face = { tick: hero ? 20 : tick, id: actor.id, calm: calm() || hero,
+        mood: reaction, lookX: Math.min(speed, .8), lookY: actor.onGround ? 0 : (actor.vy < 0 ? -.5 : .5) };
+      const helmetStyle = boss?.phase === 'charging' ? { ...style, appearance: { ...style.appearance, eyes: 'determined' } } : style;
+      art.characterHelmet(g, 0, -9 + bob, helmetStyle, face);
+      g.strokeStyle = P.arm; g.lineWidth = 4.5; g.beginPath(); g.moveTo(6, -1 + bob); g.lineTo(attack ? 14 : 10, attack ? -3 + bob : 5 + bob); g.stroke();
       g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
       g.restore();
     }
@@ -886,6 +898,8 @@
       // comes from frame time or presentation effects.
       matchSerial++; const seed = localSession ? localSession.seed : ((Date.now() >>> 0) ^ Math.imul(matchSerial, 2654435761)) >>> 0;
       state = arena.create({ arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty });
+      cosmeticRound++;
+      if (root.SpaceManCosmetics && typeof opts.appearance === 'function') { const human = state.actors.find(a => a.controller === 'human'); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       view = 'match'; paused = false; resultAt = 0; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; effects = []; spectatorId = null; camera.initialized = false;
       rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION 2/3 · ' : '') + selectedArena().name + ' · ' + FORMATS.find(f => f.id === state.format).name;
       buildRoster(); setModal(null); updateHud(true); paint(1); ensureFrame();
@@ -926,6 +940,10 @@
       resultRoster.replaceChildren();
       for (const actor of state.actors) { const row = el('div', 'arena-result-row'); row.style.setProperty('--fighter', actorColor(actor)); row.append(el('strong', '', actor.name + (actor.controller === 'human' ? ' · YOU' : '')), el('span', '', (actor.kos || 0) + ' KO' + ((actor.kos || 0) === 1 ? '' : 's')), el('span', '', actor.stocks + ' lives')); resultRoster.append(row); }
       if (onlineActive() && !human && !result.tie) { resultTitle.textContent = winners + ' win!'; resultText.textContent = 'Shared match complete. The host can launch another round.'; }
+      if (human && typeof opts.onReward === 'function') {
+        const found = opts.onReward({ type: 'arena', id: cosmeticSession + ':' + cosmeticRound }) || [];
+        if (found.length) resultText.textContent += ' Found: ' + found.map(id => root.SpaceManCosmetics.item(id)?.name || '').join(', ') + '.';
+      }
       syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent);
       if (localSession && !localSession.reported) {
         localSession.reported = true;

@@ -45,6 +45,8 @@
 `;
   function create(opts = {}) {
     const R = root.SpaceManRace;
+    const cosmeticSession = Date.now().toString(36) + ":" + Math.random().toString(36).slice(2, 9);
+    let cosmeticRound = 0;
     let active = false,
       built = false,
       destroyed = false,
@@ -310,6 +312,7 @@
       state = next;
       networkEpoch = snapshot.epoch;
       if (newRound) {
+        cosmeticRound++;
         previousPose = null;
         perspective?.reset();
         resetInput();
@@ -1202,6 +1205,8 @@
       rescueRequest = false;
       preferences();
       state = R.create(localSession ? { ...selected, laps: 1, seed: localSession.seed } : selected);
+      cosmeticRound++;
+      if (root.SpaceManCosmetics && typeof opts.appearance === "function") { const human = state.actors.find(a => a.controller === "human"); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       previousPose = null;
       perspective?.reset();
       view = "play";
@@ -1304,6 +1309,10 @@
           el("span", "", r.time === null ? "Unfinished" : fmt(r.time)),
         );
         resultRows.append(row);
+      }
+      if (me && typeof opts.onReward === "function") {
+        const found = opts.onReward({ type: "race", id: cosmeticSession + ":" + cosmeticRound }) || [];
+        if (found.length) resultRows.append(el("p", "race-cosmetic-reward", "Found: " + found.map(id => root.SpaceManCosmetics.item(id)?.name || "").join(", ")));
       }
       setPanel(resultPanel);
       announce(
@@ -1444,59 +1453,10 @@
       g.restore();
     }
     function kart(ctx, a, scale = 1, hero = false) {
-      ctx.save();
-      ctx.translate(a.x, a.y);
-      ctx.rotate(a.heading);
-      ctx.scale(scale, scale);
-      ctx.fillStyle = "#0006";
-      ctx.beginPath();
-      ctx.ellipse(2, 5, 24, 17, 0, 0, TAU);
-      ctx.fill();
-      const glow = a.boosting || a.padTicks > 0;
-      if (glow || hero) {
-        ctx.fillStyle = a.color + "48";
-        ctx.beginPath();
-        ctx.moveTo(-16, -7);
-        ctx.lineTo(-42 - (calm() ? 0 : (state?.tick || 0) % 6), 0);
-        ctx.lineTo(-16, 7);
-        ctx.fill();
-        ctx.fillStyle = "#d7ffff";
-        ctx.beginPath();
-        ctx.moveTo(-17, -3);
-        ctx.lineTo(-31, 0);
-        ctx.lineTo(-17, 3);
-        ctx.fill();
-      }
-      ctx.fillStyle = a.color;
-      round(ctx, -17, -15, 31, 8, 4);
-      ctx.fill();
-      round(ctx, -17, 7, 31, 8, 4);
-      ctx.fill();
-      ctx.fillStyle = "#eff9fc";
-      ctx.beginPath();
-      ctx.moveTo(26, 0);
-      ctx.quadraticCurveTo(15, -11, -12, -11);
-      ctx.lineTo(-19, -5);
-      ctx.lineTo(-19, 5);
-      ctx.lineTo(-12, 11);
-      ctx.quadraticCurveTo(15, 11, 26, 0);
-      ctx.fill();
-      ctx.fillStyle = a.color;
-      round(ctx, 8, -4, 13, 8, 4);
-      ctx.fill();
-      ctx.fillStyle = "#577489";
-      round(ctx, -18, -5, 8, 10, 3);
-      ctx.fill();
-      ctx.fillStyle = "#f6ffff";
-      ctx.beginPath();
-      ctx.arc(0, 0, 10, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = "#16374b";
-      round(ctx, 0, -7, 8, 14, 4);
-      ctx.fill();
-      ctx.fillStyle = a.color;
-      round(ctx, 2, -5, 3, 9, 2);
-      ctx.fill();
+      const appearance = a.appearance || ((hero || a.id === ownActor()?.id) && typeof opts.appearance === 'function' ? opts.appearance() : null);
+      const style = root.SpaceManArt.characterStyle(appearance, a.color);
+      ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.heading); ctx.scale(scale, scale);
+      root.SpaceManArt.hoverpod(ctx, style, { tick: state?.tick || 20, id: a.id, calm: calm(), boosting: !!(a.boosting || a.padTicks > 0), hero });
       ctx.restore();
     }
     function drawHero() {

@@ -800,6 +800,24 @@
   #ovRosterActions .panel { max-width: 320px; }
   .roster-actions-head { font-size: 12px; letter-spacing: 1px; color: var(--ui); margin-bottom: 10px; text-transform: uppercase; }
   .roster-actions-head .glyph { color: var(--cyan-lt); margin-right: 4px; }
+
+  .wardrobe-panel { width:min(480px,100%); max-height:100%; overflow-y:auto; }
+  .ward-copy { margin:6px auto 8px; color:#91ACC5; font:400 11px/1.5 system-ui,sans-serif; letter-spacing:0; }
+  #wardPreview { display:block; width:240px; max-width:100%; height:116px; margin:0 auto 8px; }
+  .ward-tabs { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; margin:8px 0 12px; }
+  .ward-tab { min-width:0; min-height:44px; border:1px solid #29465D; border-radius:9px; padding:6px 3px; color:#B5CEE3; background:#0A1B2A; font:600 11px/1.3 system-ui,sans-serif; cursor:pointer; }
+  .ward-tab[aria-selected=true] { color:#FFE5B2; border-color:#FFB454; background:#332B29; }
+  .ward-choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+  .ward-choice { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-width:0; min-height:64px; padding:8px 5px; border:1px solid #29465D; border-radius:10px; color:#D8E8F4; background:#112438; font:600 10px/1.3 system-ui,sans-serif; cursor:pointer; }
+  .ward-choice.sel { border-color:#38E1FF; background:#163849; box-shadow:inset 0 0 0 1px #38E1FF; }
+  .ward-choice small { font-size:8px; letter-spacing:.08em; color:#A2BAD0; }
+  .ward-choice.sel small { color:#9FF1FF; } .ward-choice.locked { border-style:dashed; background:#0B1928; }
+  .ward-swatch { display:block; width:22px; height:22px; border-radius:50%; border:1px solid #D7EDFF55; }
+  .ward-choice canvas { width:30px!important; height:30px!important; }
+  .wardrobe-panel .ward-hint { min-height:30px; height:auto; white-space:normal; font:400 11px/1.4 system-ui,sans-serif; }
+  .wardrobe-panel .dock { position:sticky; bottom:-1px; padding:10px 0 0; background:linear-gradient(transparent,#091426 12px); z-index:2; }
+  @media (max-height:500px) and (min-width:550px) { #wardPreview { height:72px; width:149px; margin-bottom:0; } .ward-choices { grid-template-columns:repeat(5,minmax(0,1fr)); } .wardrobe-panel { width:min(640px,100%); } }
+
 </style>
 <link rel="stylesheet" href="src/space-theme.css" />
 <link rel="stylesheet" href="src/expedition.css" />
@@ -940,16 +958,18 @@
   </div>
 </div>
 
-<!-- Wardrobe — bottom-anchored so the live attract scene stays the preview -->
+<!-- Wardrobe — one compact category at a time; every equipped choice travels. -->
 <div class="overlay attract-anchor" id="ovWardrobe">
-  <div class="panel">
-    <div class="title-lg t-md">Your Spacefarer</div>
-    <div class="swatch-row" id="suitRow"></div>
-    <div class="ward-name" id="suitName"></div>
-    <div class="swatch-row" id="hatRow"></div>
-    <div class="ward-name" id="hatName"></div>
-    <div class="ward-hint" id="wardHint"></div>
-    <button class="btn" id="btnWardrobeDone">Done</button>
+  <div class="panel wardrobe-panel" role="dialog" aria-modal="true" aria-labelledby="wardTitle">
+    <div class="title-lg t-md" id="wardTitle">Your Spacefarer</div>
+    <p class="ward-copy">One look for every adventure. Just for fun, never extra power.</p>
+    <canvas id="wardPreview" width="240" height="116" role="img" aria-label="Your equipped Spacefarer"></canvas>
+    <div class="ward-tabs" id="wardTabs" role="tablist" aria-label="Customize your Spacefarer"></div>
+    <div class="ward-choices" id="wardChoices" role="tabpanel"></div>
+    <div class="ward-name" id="wardName"></div>
+    <div class="ward-hint" id="wardHint" role="status" aria-live="polite"></div>
+    <div class="ward-copy" id="wardCount"></div>
+    <div class="dock"><button class="btn" id="btnWardrobeDone">Done</button></div>
   </div>
 </div>
 
@@ -1096,6 +1116,7 @@
 
 <script src="src/build.js"></script>
 <script src="src/contracts.js"></script>
+<script src="src/cosmetics.js"></script>
 <script src="src/save-schema.js"></script>
 <script src="src/input-snapshot.js"></script>
 <script src="src/course.js"></script>
@@ -1290,7 +1311,7 @@ const savedSettings = loadJSON(LS.settings, {});
 const legacySound = savedSettings.sound === undefined ? true : !!savedSettings.sound;
 // OS answer at load: only the DEFAULT for the in-game Reduce Motion switch.
 const osReducedMotion = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
+const migratedSave = window.SpaceManSave.migrate({ settings: savedSettings, cosmetics: loadJSON(LS.cosmetics, null), stats: loadJSON(LS.stats, null), flags: loadJSON(LS.flags, null), discoveries: loadJSON(LS.discoveries, null), achievements: loadJSON(LS.achievements, null) }, { reduceMotion: osReducedMotion });
 let settings = Object.assign({ music: legacySound, sfx: legacySound, haptics: legacySound, shake: !osReducedMotion, lefty: false, autorun: false, sharp: false, batterySaver: false, hapticsStrength: 1, hapticsSaver: true, musicVol: 1, sfxVol: 1, muted: false,
   // Run Together (net-spec §4.8 defaults; schema owner formalizes at save-schema v5).
   netGhosts: 0.85, netEmotes: true, netApprove: false, netRelay: '', netRelayMode: 'default', netRelayUrl: '', netRelayList: '' }, migratedSave.settings, savedSettings);
@@ -1556,16 +1577,9 @@ visorGrad.addColorStop(0, '#61D9FF'); visorGrad.addColorStop(1, '#1479FF');
 
 /* ---- suit palettes: wardrobe, not a form. Silhouette, gait, and hitboxes never
    change; 'classic' resolves to the exact original literals (goldens stay bytewise). ---- */
-const PALETTES = {
- classic: {name:'CLASSIC',      suit:'#F4F7FF',legB:'#9FB3E0',legF:'#C6D4F5',arm:'#E4ECFF',pack:'#FFB454',visTop:'#61D9FF',visBot:'#1479FF',trail:'159,241,255,.6'},
- mint:    {name:'MINT COMET',   suit:'#C8F5DC',legB:'#8FC4A6',legF:'#AEE3C4',arm:'#B9EED0',pack:'#FFB454',visTop:'#7BF0C4',visBot:'#0E8A5F',trail:'123,240,196,.6'},
- rose:    {name:'ROSE NEBULA',  suit:'#FFD4E5',legB:'#D19BB4',legF:'#F0B8CD',arm:'#FFC6DC',pack:'#38E1FF',visTop:'#FF9ECF',visBot:'#C2247E',trail:'255,158,207,.6'},
- gold:    {name:'SOLAR GOLD',   suit:'#FFE8B0',legB:'#CBA96A',legF:'#EDD08F',arm:'#FFDF9A',pack:'#FF4F66',visTop:'#FFC93C',visBot:'#B4610A',trail:'255,201,60,.6'},
- lilac:   {name:'LILAC DRIFT',  suit:'#E4D4FF',legB:'#AC96D6',legF:'#CCB8EE',arm:'#D9C6FA',pack:'#FFC93C',visTop:'#C9A8FF',visBot:'#6A2FD0',trail:'201,168,255,.6'},
- coral:   {name:'CORAL BLAZE',  suit:'#FFC4AE',legB:'#CE8F76',legF:'#EFAC92',arm:'#FFB69C',pack:'#61D9FF',visTop:'#FF8A6B',visBot:'#C22B3A',trail:'255,138,107,.65'},
- aurora:  {name:'AURORA ICE',   suit:'#CFFAF0',legB:'#8FC9BC',legF:'#B2E4D8',arm:'#C0F0E3',pack:'#FF9ECF',visTop:'#6BF7E0',visBot:'#0C7C8C',trail:'107,247,224,.6'},
- graphite:{name:'GRAPHITE VOID',suit:'#9AA3B8',legB:'#6B7488',legF:'#848EA4',arm:'#8C96AC',pack:'#FFC93C',visTop:'#2B3A5E',visBot:'#0B1E42',trail:'154,163,184,.55'},
-};
+const COSMETICS = window.SpaceManCosmetics;
+// Local derived colors remain mutable; the shared canonical palettes are frozen.
+const PALETTES = Object.fromEntries(Object.entries(COSMETICS.PALETTES).map(([id, p]) => [id, { ...p }]));
 function hexRGB(h) { return parseInt(h.slice(1, 3), 16) + ',' + parseInt(h.slice(3, 5), 16) + ',' + parseInt(h.slice(5, 7), 16); }
 // Particle tints are prebuilt strings (per-site alphas preserved so classic
 // stays literal-identical): trail* = dust/skid/land, puff* = jetpack exhaust.
@@ -4172,6 +4186,7 @@ function finalizeDeath(completed = false) {
   const fs = G.finalScore !== undefined ? G.finalScore : Math.floor(G.score);
   lastRunEnd = performance.now() / 1000;   // E13: restarts inside 60s never see a vignette
   stats.runs++;
+  earnCosmeticEvent({ type: 'runner', id: 'run:' + stats.runs });
   bestScore = Math.max(bestScore, fs);
   stats.bestScore = bestScore;
   stats.bestDist = Math.max(stats.bestDist, G.dist);
@@ -5491,69 +5506,12 @@ function rrPath(c, x, y, w, h, r) {   // roundRect on an arbitrary context (thum
   c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
   c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
 }
-const HATS = {
-  none: { name: 'NO HAT', draw() {} },
-  antenna: { name: 'ANTENNA', draw(c) {
-    c.strokeStyle = '#C6D4F5'; c.lineWidth = 2; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(0, -11); c.lineTo(0, -17); c.stroke();
-    c.fillStyle = '#FFC93C'; c.beginPath(); c.arc(0, -18, 2.5, 0, TAU); c.fill();
-    c.fillStyle = 'rgba(255,201,60,.4)'; c.beginPath(); c.arc(0, -18, 4, 0, TAU); c.fill();   // pre-baked halo
-  } },
-  sprout: { name: 'SPROUT', draw(c) {
-    c.strokeStyle = '#35C46B'; c.lineWidth = 2; c.lineCap = 'round';
-    c.beginPath(); c.moveTo(0, -10); c.quadraticCurveTo(1, -15, 3, -17); c.stroke();
-    c.fillStyle = '#4ADE87';
-    c.beginPath(); c.ellipse(0.5, -15, 3, 1.6, -0.6, 0, TAU); c.fill();
-    c.beginPath(); c.ellipse(4.5, -17.5, 3, 1.6, 0.5, 0, TAU); c.fill();
-  } },
-  beanie: { name: 'BEANIE', draw(c) {
-    c.fillStyle = '#FF6B8A'; c.beginPath(); c.arc(0, -8, 9.5, Math.PI, 0); c.closePath(); c.fill();   // dome
-    c.fillStyle = '#E14E6E'; rrPath(c, -9.5, -9, 19, 3.5, 1.75); c.fill();
-    c.fillStyle = '#FFF3F6'; c.beginPath(); c.arc(0, -18, 2.8, 0, TAU); c.fill();                     // pom
-  } },
-  halo: { name: 'HALO', draw(c) {
-    c.strokeStyle = 'rgba(255,233,168,.35)'; c.lineWidth = 4;
-    c.beginPath(); c.ellipse(0, -15, 8, 2.4, 0, 0, TAU); c.stroke();
-    c.strokeStyle = '#FFE9A8'; c.lineWidth = 1.8;
-    c.beginPath(); c.ellipse(0, -15, 8, 2.4, 0, 0, TAU); c.stroke();   // double-stroke glow
-  } },
-  crown: { name: 'CROWN', draw(c) {
-    c.fillStyle = '#FFC93C'; c.beginPath();
-    c.moveTo(-7, -9); c.lineTo(-7, -15); c.lineTo(-3.5, -12); c.lineTo(0, -17);
-    c.lineTo(3.5, -12); c.lineTo(7, -15); c.lineTo(7, -9); c.closePath(); c.fill();
-    c.fillStyle = '#FF4F66'; c.beginPath(); c.arc(0, -12, 1.3, 0, TAU); c.fill();
-  } },
-  cone: { name: 'PARTY CONE', draw(c) {
-    c.fillStyle = '#B87BFF'; c.beginPath();
-    c.moveTo(-5, -9); c.lineTo(5, -9); c.lineTo(0, -20); c.closePath(); c.fill();
-    c.strokeStyle = '#F4F7FF'; c.lineWidth = 1.5;
-    c.beginPath(); c.moveTo(-3.4, -12.5); c.lineTo(3.4, -12.5); c.moveTo(-1.9, -16); c.lineTo(1.9, -16); c.stroke();
-    c.fillStyle = '#FFC93C'; c.beginPath(); c.arc(0, -20, 2, 0, TAU); c.fill();
-  } },
-  catears: { name: 'STAR CAT', draw(c) {   // suit-colored ears, pink inner at 55% about the same centroid
-    const tri = (m, k) => {
-      const pts = [[-8.5, -7], [-3, -10], [-6.5, -16]], cx = -6, cy = -11;
-      c.beginPath();
-      pts.forEach(([x, y], i) => { const px = (cx + (x - cx) * k) * m, py = cy + (y - cy) * k; i ? c.lineTo(px, py) : c.moveTo(px, py); });
-      c.closePath(); c.fill();
-    };
-    c.fillStyle = palNow().suit; tri(1, 1); tri(-1, 1);
-    c.fillStyle = '#FF9ECF'; tri(1, 0.55); tri(-1, 0.55);
-  } },
-  phones: { name: 'HEADPHONES', draw(c) {
-    c.strokeStyle = '#38E1FF'; c.lineWidth = 2.5; c.lineCap = 'round';
-    c.beginPath(); c.arc(0, 0, 12.5, 1.15 * Math.PI, 1.85 * Math.PI); c.stroke();
-    c.fillStyle = '#1479FF'; rrPath(c, -14, -3, 4.5, 8, 2); c.fill(); rrPath(c, 9.5, -3, 4.5, 8, 2); c.fill();
-    c.fillStyle = '#9FF1FF';
-    c.beginPath(); c.arc(-11.75, 1, 1.2, 0, TAU); c.fill();
-    c.beginPath(); c.arc(11.75, 1, 1.2, 0, TAU); c.fill();
-  } },
-};
+const HATS = ART.characterHats;
 function drawHat(id, s, g) {
   const h = HATS[id];
   if (!h || id === 'none') return;
   g = g || ctx;
-  g.save(); g.scale(s, s); h.draw(g); g.restore();
+  ART.characterHat(g, id, s, palNow());
 }
 
 /* ---- arms + light pistol (E12): capsule strokes in the leg language.
@@ -5582,6 +5540,7 @@ function drawPlayer(alpha) {
   // no local crouch, stomp pop/ring, launch, blink or eye mood leaks onto peers.
   const R = p === rigPlayer ? rig : RIG_NEUTRAL;
   const PAL = PALETTES[G.cosmetics.suit] || PALETTES.classic;
+  const style = ART.characterStyle(G.cosmetics, null, PAL);
   const x = lerp(p.px, p.x, alpha) + p.w / 2;
   const y = lerp(p.py, p.y, alpha) + p.h / 2 + p.landDip;
   // Hit reaction: a white impact flash + shock ring at the fatal point, read over
@@ -5601,9 +5560,9 @@ function drawPlayer(alpha) {
     if (G.helmet) {
       ctx.save(); ctx.translate(lerp(G.helmet.px, G.helmet.x, alpha) + p.w / 2, lerp(G.helmet.py, G.helmet.y, alpha)); ctx.rotate(lerp(G.helmet.prot, G.helmet.rot, alpha));
       ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -20, 40, 40);
-      ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, 0, 9, 0, TAU); ctx.fill();
-      ctx.fillStyle = PAL.visBot; ctx.beginPath(); ctx.arc(2, 0, 5, 0, TAU); ctx.fill();
-      drawHat(G.cosmetics.hat, 9 / 11);   // welded to the detached helmet — tumbles and bounces free
+      ctx.save(); ctx.scale(9 / 11, 9 / 11);
+      ART.characterHelmet(ctx, 0, 0, style, { lid: 1, calm: true });
+      ctx.restore();
       ctx.restore();
     }
     if (G.pistol) {   // E12: the pistol is debris now — tumbles and lands like the helmet
@@ -5754,6 +5713,7 @@ function drawPlayer(alpha) {
   armCapsule(-5, -6 + bob, farA, 12, -1.8);
 
   ctx.fillStyle = PAL.suit; roundRect(-8, -4 + bob, 16, 16, 6); ctx.fill();
+  ART.suitDetails(ctx, 0, bob, style);
 
   ctx.strokeStyle = PAL.arm; ctx.lineWidth = 4;
   const hand = armCapsule(5, -6 + bob, nearA, 10, -1.8);
@@ -5782,34 +5742,13 @@ function drawPlayer(alpha) {
   const headDip = crouch * 0.8;
   ctx.save(); ctx.translate(0, -hh + 8 + bob * 0.35 + headDip); ctx.rotate(idleTilt - pop * 0.08); ctx.translate(0, hh - 8);
   ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -hh - 4, 40, 40);
-  ctx.fillStyle = PAL.suit; ctx.beginPath(); ctx.arc(0, -hh + 8, 11, 0, TAU); ctx.fill();
-  // E4: the astronaut is afraid — mirrors the enemy lookX/lookY eye-tracking,
-  // offsetting the visor toward the flare's world direction. lookLocal folds
-  // the facing mirror back in so it always reads as "toward the flare" on
-  // screen regardless of which way the sprite is scaled.
   const lookLocal = clamp((G.flare.x - x) / 300, -1, 1) * p.facing * G.glanceT;
-  ctx.fillStyle = suitVisor(G.cosmetics.suit); ctx.beginPath(); ctx.ellipse(1 + lookLocal * 2.5, -hh + 8, 7.5, 6.5, 0, 0, TAU); ctx.fill();
-  // LED eyes behind the visor: blink on the rig's cadence, ^^ after a stomp or a
-  // banked chain, wide on the hit, sleepy after a long stargaze. Two tiny
-  // rounded strokes — the whole face budget.
-  {
-    const mood = ANIM.eyeMood(R, p.idle || 0), lid = ANIM.lidAmount(R);
-    const ex = 1.6 + lookLocal * 3 + (p.onGround ? 0 : 0.4), ey = -hh + 8.4 + (p.onGround ? 0 : (p.vy < 0 ? -0.5 : 0.5));
-    ctx.strokeStyle = 'rgba(232,252,255,0.95)'; ctx.lineCap = 'round';
-    for (const s of SGN) {
-      const cx = ex + s * 2.7;
-      ctx.beginPath();
-      if (mood === 1) { ctx.lineWidth = 1.3; ctx.arc(cx, ey + 1, 1.5, Math.PI * 1.1, Math.PI * 1.9); }
-      else {
-        const h = (mood === 2 ? 2.4 : mood === 3 ? 0.5 : 1.7) * (1 - lid);
-        ctx.lineWidth = mood === 2 ? 2 : 1.7;
-        ctx.moveTo(cx, ey - h / 2); ctx.lineTo(cx, ey + h / 2 + 0.01);
-      }
-      ctx.stroke();
-    }
-  }
-  const glx = Math.sin(p.glint * 1.2) * 3 + lookLocal * 3;
-  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.beginPath(); ctx.ellipse(glx - 2, -hh + 5, 2, 3, -0.4, 0, TAU); ctx.fill();
+  // Arena's dark glass/LED read, with the runner's existing reaction rig.
+  ART.characterHelmet(ctx, 0, -hh + 8, style, {
+    mood: ANIM.eyeMood(R, p.idle || 0), lid: ANIM.lidAmount(R),
+    lookX: lookLocal, lookY: p.onGround ? 0 : (p.vy < 0 ? -.5 : .5),
+    tick: 10, calm: true,
+  }, false);
   if (SEASON.frost) {   // E13 seasonal: frost creeps in from the visor edge (render-only, off under SHOT)
     ctx.strokeStyle = 'rgba(228,248,255,0.9)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.ellipse(1, -hh + 8, 6.6, 5.6, 0, -2.8, -1.15); ctx.stroke();
@@ -6611,25 +6550,26 @@ function showTrophy() {
 /* ---- wardrobe: suits, hats, unlocks ---- */
 const SUIT_ORDER = ['classic', 'mint', 'rose', 'gold', 'lilac', 'coral', 'aurora', 'graphite'];
 const HAT_ORDER = ['none', 'antenna', 'sprout', 'beanie', 'halo', 'crown', 'cone', 'catears', 'phones'];
-// D6: two players on the DEFAULT suit ('classic') would render as identical blue.
-// Give each slot a distinct default tint from the shipped palette (P1 first, all
-// non-classic so a default never collides with another default). This is a
-// render-side derivation from the peer's P# — every client knows every P# — and
-// NEVER overrides an explicitly chosen suit (only 'classic' is remapped). Applies
-// to self and ghosts consistently. Solo/net-off is unaffected (only used under a
-// live room), so #shot goldens stay pixel-identical.
-const DEFAULT_SLOT_SUITS = ['gold', 'coral', 'mint', 'lilac', 'aurora', 'rose', 'graphite'];
-function effectiveSuit(name, p) { return (name === 'classic' && p) ? DEFAULT_SLOT_SUITS[(p - 1) % DEFAULT_SLOT_SUITS.length] : name; }
-const UNLOCK_HINTS = {
-  rose: 'REACH A 750m BEST', gold: 'EARN A GOLD MEDAL', coral: 'SKIM THE FLARE FOR 3 SECONDS',
-  lilac: '10 RUNS PAST 600m', aurora: 'COMPLETE 5 MISSIONS', graphite: 'REACH LAST LIGHT',
-  sprout: 'PLAY ON 5 DIFFERENT DAYS', beanie: 'FINISH 25 RUNS', halo: '3 NEW BESTS IN A ROW',
-  crown: 'HOLD 1ST PLACE WITH YOUR INITIALS', cone: 'SPOT THE SAUCER 3 TIMES',
-  catears: 'STARGAZE A WHILE', phones: 'SURVIVE ONE FULL SONG',
-};
-function cosmeticName(id) { return (PALETTES[id] || HATS[id] || { name: id }).name; }
+// Equipped identity is literal in every mode. Player labels and team rings carry
+// team/slot colors instead of silently recoloring a friend's chosen suit.
+function effectiveSuit(name) { return COSMETICS.normalizeAppearance({ suit: name }).suit; }
+const UNLOCK_HINTS = Object.fromEntries(COSMETICS.SLOTS.flatMap(slot => COSMETICS.CATALOG[slot].map(item => [item.id, item.hint])));
+function cosmeticName(id) { const item = COSMETICS.item(id); return item ? item.name.toUpperCase() : ''; }
+function equippedAppearance() { return COSMETICS.getAppearance(G.cosmetics); }
+function earnCosmeticEvent(event) {
+  if (SHOT) return [];
+  const result = COSMETICS.reward(G.cosmetics, event);
+  if (!result.accepted) return [];
+  G.cosmetics = result.profile;
+  for (const id of result.unlocked) {
+    G.newCosmetics.push(id); queueToast('✦ FOUND — ' + cosmeticName(id), 'gold');
+  }
+  if (result.unlocked.length) { buzz('success'); updateWardrobeBadge(); }
+  persistAll();
+  return result.unlocked;
+}
 function unlockCosmetic(id) {
-  if (SHOT || G.cosmetics.unlocked.indexOf(id) >= 0) return;   // QA bots never mutate the profile
+  if (SHOT || !COSMETICS.item(id) || G.cosmetics.unlocked.indexOf(id) >= 0) return;   // QA bots never mutate the profile
   G.cosmetics.unlocked.push(id);
   G.newCosmetics.push(id);
   // Mid-run/attract unlocks toast at the next calm beat; death-time unlocks are
@@ -6648,9 +6588,7 @@ function checkUnlocks() {
   if ((stats.deepRuns || 0) >= 10) unlockCosmetic('lilac');
   if ((stats.missionsDone || 0) >= 5) unlockCosmetic('aurora');
   if (stats.bestDist >= 2500) unlockCosmetic('graphite');
-  if ((flags.playDays || []).length >= 5) unlockCosmetic('sprout');
   if (stats.runs >= 25) unlockCosmetic('beanie');
-  if ((flags.bestStreak || 0) >= 3) unlockCosmetic('halo');
   if ((flags.ufoSeen || 0) >= 3) unlockCosmetic('cone');
   if (Audio.loopsCompleted >= 1) unlockCosmetic('phones');   // one full form without dying
 }
@@ -6667,37 +6605,51 @@ function hatThumb(id) {   // painted by drawHat itself — a thumbnail can never
   drawHat(id, id === 'phones' ? 1.2 : 1.6, g);
   return c;
 }
-function wardItem(id, cls, sel, apply) {
-  const b = document.createElement('button');
-  b.className = cls + (sel ? ' sel' : '');
-  const locked = G.cosmetics.unlocked.indexOf(id) < 0;
-  if (locked) {
-    b.classList.add('locked');
-    const lk = document.createElement('span'); lk.className = 'lock'; lk.textContent = '🔒';
-    b.appendChild(lk);
-    b.setAttribute('aria-label', cosmeticName(id) + ' locked');
-    b.onclick = () => { $('wardHint').textContent = cosmeticName(id) + ' — ' + (UNLOCK_HINTS[id] || '?'); Audio.sfx.ui(1); };
-  } else {
-    b.setAttribute('aria-label', cosmeticName(id));
-    b.onclick = () => { apply(); $('wardHint').textContent = ''; Audio.sfx.ui(3); persistAll(); buildWardrobe(); };
-  }
+let wardrobeSlot = 'suit';
+const WARDROBE_LABELS = { suit: 'Color', hat: 'Hat', eyes: 'Eyes', helmet: 'Helmet', detail: 'Suit', ship: 'Ship' };
+function wardrobePreview() {
+  const canvas = $('wardPreview'), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = 240 * dpr; canvas.height = 116 * dpr;
+  const c = canvas.getContext('2d'); c.scale(dpr, dpr); c.clearRect(0, 0, 240, 116);
+  if (ART.drawAvatar) ART.drawAvatar(c, 120, 57, 96, equippedAppearance(), { time: 0, reduceMotion: true, ship: wardrobeSlot === 'ship' });
+  else { c.fillStyle = PALETTES[G.cosmetics.suit].suit; c.beginPath(); c.arc(120, 48, 22, 0, TAU); c.fill(); c.fillRect(105, 71, 30, 28); }
+  canvas.setAttribute('aria-label', 'Your equipped Spacefarer: ' + COSMETICS.SLOTS.map(slot => cosmeticName(G.cosmetics[slot])).join(', '));
+}
+function wardItem(slot, item) {
+  const id = item.id, selected = G.cosmetics[slot] === id, locked = !G.cosmetics.unlocked.includes(id);
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'ward-choice' + (selected ? ' sel' : '') + (locked ? ' locked' : '');
+  b.dataset.cosmetic = id; b.dataset.slot = slot;
+  b.setAttribute('aria-pressed', String(selected));
+  b.setAttribute('aria-label', item.name + (selected ? ', equipped' : locked ? ', locked. ' + item.hint : ', ready to wear'));
+  if (slot === 'suit') { const swatch = document.createElement('span'); swatch.className = 'ward-swatch'; swatch.style.background = PALETTES[id].suit; b.appendChild(swatch); }
+  if (slot === 'hat') b.appendChild(hatThumb(id));
+  const label = document.createElement('span'); label.textContent = item.name; b.appendChild(label);
+  const state = document.createElement('small'); state.textContent = selected ? 'EQUIPPED' : locked ? 'TO FIND' : 'READY'; b.appendChild(state);
+  b.onclick = () => {
+    if (locked) { $('wardHint').textContent = item.name + ': ' + item.hint + '. No win required.'; Audio.sfx.ui(1); return; }
+    const result = COSMETICS.equip(G.cosmetics, slot, id); if (!result.equipped) return;
+    G.cosmetics = result.profile; refreshFaviconSkin();
+    if (NET && typeof NET.setAppearance === 'function') NET.setAppearance(equippedAppearance());
+    Audio.sfx.ui(3); persistAll(); buildWardrobe();
+    $('wardHint').textContent = item.name + ' equipped in every mode';
+    const replacement = $('wardChoices').querySelector('[data-cosmetic="' + id + '"]'); if (replacement) replacement.focus();
+  };
   return b;
 }
 function buildWardrobe() {
-  const suits = $('suitRow'), hats = $('hatRow');
-  suits.innerHTML = ''; hats.innerHTML = '';
-  for (const id of SUIT_ORDER) {
-    const b = wardItem(id, 'swatch', G.cosmetics.suit === id, () => { G.cosmetics.suit = id; refreshFaviconSkin(); });
-    b.style.background = PALETTES[id].suit;
-    suits.appendChild(b);
-  }
-  for (const id of HAT_ORDER) {
-    const b = wardItem(id, 'hat-tile', G.cosmetics.hat === id, () => { G.cosmetics.hat = id; refreshFaviconSkin(); });
-    b.insertBefore(hatThumb(id), b.firstChild);
-    hats.appendChild(b);
-  }
-  $('suitName').textContent = cosmeticName(G.cosmetics.suit);
-  $('hatName').textContent = cosmeticName(G.cosmetics.hat);
+  const tabs = $('wardTabs'), choices = $('wardChoices'); tabs.innerHTML = ''; choices.innerHTML = '';
+  COSMETICS.SLOTS.forEach((slot, index) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'ward-tab'; b.textContent = WARDROBE_LABELS[slot]; b.id = 'wardTab-' + slot;
+    b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(wardrobeSlot === slot)); b.setAttribute('aria-controls', 'wardChoices');
+    b.onclick = () => { wardrobeSlot = slot; $('wardHint').textContent = ''; buildWardrobe(); $('wardTab-' + slot).focus(); };
+    b.onkeydown = e => { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return; e.preventDefault(); e.stopPropagation(); const n = e.key === 'Home' ? 0 : e.key === 'End' ? COSMETICS.SLOTS.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + COSMETICS.SLOTS.length) % COSMETICS.SLOTS.length; wardrobeSlot = COSMETICS.SLOTS[n]; buildWardrobe(); $('wardTab-' + wardrobeSlot).focus(); };
+    tabs.appendChild(b);
+  });
+  choices.setAttribute('aria-labelledby', 'wardTab-' + wardrobeSlot);
+  for (const item of COSMETICS.CATALOG[wardrobeSlot]) choices.appendChild(wardItem(wardrobeSlot, item));
+  $('wardName').textContent = cosmeticName(G.cosmetics[wardrobeSlot]);
+  $('wardCount').textContent = G.cosmetics.unlocked.length + ' of ' + COSMETICS.SLOTS.reduce((n, slot) => n + COSMETICS.CATALOG[slot].length, 0) + ' keepsakes collected';
+  wardrobePreview();
 }
 function showWardrobe() {   // G.mode stays 'attract': the live idle scene IS the preview
   G.newCosmetics.length = 0;
@@ -6720,7 +6672,7 @@ function ensureWardrobeCallsign() {
     row.innerHTML = '<span>Callsign</span>';
     const v = document.createElement('span'); v.className = 'net-val'; v.id = 'wardCallsignVal'; row.appendChild(v);
     row.onclick = () => showCallsign(() => showWardrobe());
-    panel.insertBefore(row, $('btnWardrobeDone'));
+    panel.insertBefore(row, $('btnWardrobeDone').parentNode);
   }
   const cs = getCallsign();
   $('wardCallsignVal').textContent = cs ? (NET.callsignText(cs[0], cs[1]) || 'Pick one') : 'Pick one';
@@ -6951,7 +6903,7 @@ function applyCallsignToNet() { const c = getCallsign(); if (c && NET) NET.setCa
 function netIdentity() {
   const c = getCallsign();
   return { adjIdx: c ? c[0] : undefined, nounIdx: c ? c[1] : undefined,
-    suit: Math.max(0, SUIT_ORDER.indexOf(G.cosmetics.suit)), hat: Math.max(0, HAT_ORDER.indexOf(G.cosmetics.hat)) };
+    suit: Math.max(0, SUIT_ORDER.indexOf(G.cosmetics.suit)), hat: Math.max(0, HAT_ORDER.indexOf(G.cosmetics.hat)), appearance: equippedAppearance() };
 }
 
 let callsignSel = [0, 0];
@@ -8536,6 +8488,7 @@ function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
     storageKey: BUILD.storageKey('sm2.arena.v1'),
     net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions() {
       const relayDir = { mode: settings.netRelayMode };
       if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
@@ -8561,6 +8514,7 @@ function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
     storageKey: BUILD.storageKey('sm2.race.v1'),
     net: NET, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions() {
       const relayDir = { mode: settings.netRelayMode };
       if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
