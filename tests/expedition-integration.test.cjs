@@ -60,3 +60,20 @@ test('runner-to-arcade ownership releases native captures and tracked touch ids'
   const c=setup(t);c.run('openExpedition();window.released=[];canvas.hasPointerCapture=id=>true;canvas.releasePointerCapture=id=>released.push(id);input.downIds.add(91);input.stick.active=true;G.finalScore=0;finishExpeditionRunner(false)');
   assert.deepEqual(Array.from(c.run('released')),[91]);assert.equal(c.run('input.downIds.size'),0);assert.equal(c.run('input.stick.active'),false);
 });
+
+test('shared runner banking requires actual prior participation, never a restored watcher role', t => {
+  const c=setup(t);
+  c.run(`startRun(); window.sharedCallbacks=null;
+    window.SpaceManJourneyUI={create(options){sharedCallbacks=options;return{room:{active:true}};}};
+    getJourneyUI(); sharedEncounter={id:'runner',index:0}; sharedRunnerBanked=false; sharedRunnerParticipated=false;
+    sharedCallbacks.onChange({journey:{index:0,phase:'running'},info:{role:1}});`);
+  const before=c.run('stats.runs');
+  assert.equal(c.run('sharedRunnerParticipated'),false);
+  assert.equal(c.run('bankSharedRunner()'),false);
+  assert.equal(c.run('stats.runs'),before,'watch-only fallback never banks a run when its role is restored');
+  c.run("sharedCallbacks.onChange({journey:{index:0,phase:'running'},info:{role:0}})");
+  assert.equal(c.run('sharedRunnerParticipated'),true);
+  assert.equal(c.run('bankSharedRunner()'),true);
+  assert.equal(c.run('stats.runs'),before+1);
+  assert.equal(c.run('bankSharedRunner()'),false,'a played runner encounter is banked once');
+});

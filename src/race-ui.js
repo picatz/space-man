@@ -573,8 +573,13 @@
     function unlockAudioGesture(e) {
       if (!ownsInput()) return;
       if (!active || !e.isTrusted) return;
-      raceAudio()?.unlock();
-      if (view === "lobby" || paused) audio?.pause();
+      const controller = raceAudio(), inMenu = view === "lobby" || paused;
+      // Keep the first menu gesture for online host-start permission. Once
+      // authorized, menu controls must not queue a native resume after stop.
+      // Explicit launch/resume handlers still unlock inside their own gesture.
+      if (inMenu && controller?.diagnostics().unlocked) return;
+      controller?.unlock();
+      if (inMenu) controller?.pause();
     }
     function resetTouch() {
       const old = Array.from(touches);

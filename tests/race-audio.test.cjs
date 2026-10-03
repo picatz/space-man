@@ -208,6 +208,52 @@ test("pause during pending unlock leaves the late-resuming context suspended", a
   assert.equal(h.timers.size, 0); assert.equal(h.live().length, 0);
 });
 
+test("authorized menu gestures cannot queue a deferred native resume after leaving the race", async () => {
+  const h = harness();
+  // Exercise the production event handler with the real audio controller. The
+  // DOM itself is irrelevant to this native-promise ordering regression.
+  const source = fs.readFileSync(require.resolve("../src/race-ui.js"), "utf8");
+  const handler = source.match(/    function unlockAudioGesture\(e\) \{[\s\S]*?\n    \}/)[0];
+  const scope = { active: true, view: "lobby", paused: false, audio: h.audio,
+    ownsInput: () => true, raceAudio: () => h.audio };
+  const gesture = vm.runInNewContext(handler + "; unlockAudioGesture", scope);
+  gesture({ isTrusted: true });
+  await new Promise(setImmediate);
+  assert.equal(h.audio.diagnostics().unlocked, true, "first menu gesture authorizes online host start");
+  assert.equal(h.contexts[0].state, "suspended");
+
+  const ctx = h.contexts[0], pending = [], transitions = [];
+  ctx.resume = () => new Promise(resolve => {
+    pending.push(() => { ctx.state = "running"; transitions.push("running"); resolve(); });
+  });
+  const count = h.count();
+  for (const menu of [{ view: "play", paused: true }, { view: "lobby", paused: false }]) {
+    Object.assign(scope, menu);
+    gesture({ isTrusted: true });
+    await h.audio.stop();
+  }
+  // Reproduce a resume that completes after the menu-exit quiet sample. Before
+  // the fix these callbacks transiently woke the suspended native context.
+  for (const resolve of pending.splice(0)) resolve();
+  await new Promise(setImmediate);
+  assert.deepEqual(transitions, [], "menu exit never has a late native wake");
+  assert.equal(ctx.state, "suspended");
+  assert.equal(h.audio.diagnostics().scheduled, false);
+  assert.equal(h.count(), count);
+  assert.equal(h.live().length, 0);
+
+  const launch = h.audio.unlock();
+  assert.equal(pending.length, 1, "explicit launch still resumes the authorized context");
+  pending.shift()();
+  assert.equal(await launch, true);
+  await h.audio.pause();
+  const resume = h.audio.resume();
+  assert.equal(pending.length, 1, "explicit host resume still works");
+  pending.shift()();
+  assert.equal(await resume, true);
+  await h.audio.stop();
+});
+
 test("online host resume reuses prior gesture permission without ever creating a context", async () => {
   const h = harness();
   assert.equal(await h.audio.resume(), false); assert.equal(h.contexts.length, 0);

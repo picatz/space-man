@@ -4423,7 +4423,7 @@ let acc = 0, lastT = 0, rafId = 0, shotFrozen = false;
 let arenaUI = null;
 let raceUI = null;
 let expedition = null, expeditionToken = 0;
-let journeyUI = null, sharedEncounter = null, sharedEnding = false, sharedRunnerBanked = false;
+let journeyUI = null, sharedEncounter = null, sharedEnding = false, sharedRunnerBanked = false, sharedRunnerParticipated = false;
 function modeOverlayActive() { return !!((journeyUI && journeyUI.active) || (arenaUI && arenaUI.active) || (raceUI && raceUI.active)); }
 let arenaPadNeutral = false;
 function frame(now) {
@@ -8651,6 +8651,10 @@ function exitExpedition() {
 }
 $('btnExpedition').onclick = openExpedition;
 
+function bankSharedRunner() {
+  if (!sharedRunnerActive() || sharedRunnerBanked || !sharedRunnerParticipated || !G.player) return false;
+  G.finalScore = Math.floor(G.score); finalizeDeath(true); sharedRunnerBanked = true; return true;
+}
 function sharedRunnerActive() { return !!sharedEncounter && sharedEncounter.id === 'runner' && !!journeyUI && journeyUI.room.active; }
 function finishSharedRunner(reached) {
   if (!sharedRunnerActive() || sharedRunnerBanked) return;
@@ -8665,20 +8669,24 @@ function getJourneyUI() {
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     hostOptions() { return { relayDir: settings.netRelayList ? { mode: 'list', text: settings.netRelayList } : undefined, relayHost: settings.netRelay || undefined, approve: false }; },
     onEncounter(leg, context, room) {
-      if (sharedRunnerActive() && !sharedRunnerBanked && !netSpectating() && G.player) { G.finalScore = Math.floor(G.score); finalizeDeath(true); }
+      bankSharedRunner();
       if (sharedEncounter && typeof earnCosmeticEvent === 'function' && context.index > sharedEncounter.index) {
         earnCosmeticEvent({ type: 'encounter', id: 'shared:' + context.session + ':' + sharedEncounter.index, mode: sharedEncounter.id, kind: sharedEncounter.kind });
         if (sharedEncounter.index % 5 === 4) earnCosmeticEvent({ type: 'journey', id: 'shared:' + context.session + ':loop:' + Math.floor(sharedEncounter.index / 5) });
       }
       for (const key of expeditionHeldKeys) expeditionKeyGate.add(key);
       arenaUI?.closeSharedSession(); raceUI?.closeSharedSession();
-      NET = TRANSPORT; sharedEncounter = leg; sharedRunnerBanked = false; $('btnJourneyCrew').hidden = false;
+      NET = TRANSPORT; sharedEncounter = leg; sharedRunnerBanked = false; sharedRunnerParticipated = false; $('btnJourneyCrew').hidden = false;
       cancelDeathAnim(); Audio.killSting(); hideAllOverlays(); releaseExpeditionInputs(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0; G.mode = 'attract';
       if (leg.id === 'runner') { NET = room.runnerNet; $('btnQuit').textContent = 'Leave expedition'; startRun({ sync: true, watch: NET.info().role === 1 }); }
       else { Audio.suspend(); const ui = leg.id === 'arena' ? getArenaUI() : getRaceUI(); if (!ui.openSharedSession(leg, room.adapter)) throw new Error('Could not prepare encounter'); }
       showExpeditionCue(leg); announce('Shared expedition. ' + leg.name + '. ' + leg.controls);
     },
-    onChange(status) { if (sharedRunnerActive() && (status.connection || status.stale || status.journey?.phase === 'paused')) clearInput(); },
+    onChange(status) {
+      if (!sharedRunnerActive()) return;
+      if (status.journey?.index === sharedEncounter.index && ['running', 'paused'].includes(status.journey.phase) && status.info.role === 0 && TRANSPORT.info().role === 0) sharedRunnerParticipated = true;
+      if (status.connection || status.stale || status.journey?.phase === 'paused') clearInput();
+    },
     onExit(reason) { endSharedJourney(reason); },
     onClose() { showAttract(); $('btnExpeditionFriends').focus(); },
   });
@@ -8697,7 +8705,7 @@ function requestLeaveSharedJourney() {
 }
 function endSharedJourney(reason) {
   if (sharedEnding) return; sharedEnding = true;
-  arenaUI?.closeSharedSession(); raceUI?.closeSharedSession(); sharedEncounter = null; sharedRunnerBanked = false; NET = TRANSPORT; $('btnJourneyCrew').hidden = true;
+  arenaUI?.closeSharedSession(); raceUI?.closeSharedSession(); sharedEncounter = null; sharedRunnerBanked = false; sharedRunnerParticipated = false; NET = TRANSPORT; $('btnJourneyCrew').hidden = true;
   clearTimeout(expeditionCueTimer); $('expeditionCue').hidden = true; document.body.appendChild($('expeditionCue'));
   cancelDeathAnim(); Audio.killSting(); Audio.resume(); releaseExpeditionInputs(); expeditionKeyGate.clear(); acc = 0; lastT = 0;
   $('btnQuit').textContent = 'Quit to Title'; showAttract(); $('btnExpeditionFriends').focus(); sharedEnding = false;
