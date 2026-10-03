@@ -167,3 +167,27 @@ test('pause and visibility handlers in every mode; held key/pad and synthetic to
   await stop(page);
   assert.equal(await page.evaluate(()=>localStorage.getItem(BUILD.storageKey('sm2.race.v1'))),saved);
 });
+
+test('solo team elimination catches the rescue shuttle instead of waiting for CPUs',{timeout:90000},async t=>{
+  const {page}=await launch(t);
+  // Choose a reproducible real itinerary; engine clocks and outcomes remain untouched.
+  await page.evaluate(()=>{window.originalRandom=Math.random;Math.random=()=>0;});
+  await page.locator('#btnExpedition').click();
+  await page.evaluate(()=>{Math.random=originalRandom;});
+  await page.keyboard.down('d');
+  await page.waitForFunction(()=>arenaUI?.active&&arenaUI.snapshot()?.format==='teams',undefined,{timeout:50000});
+  await page.keyboard.up('d');
+  await page.waitForFunction(()=>arenaUI.snapshot()?.phase==='playing');
+  const token=await page.evaluate(()=>expedition.snapshot().token);
+  await page.keyboard.down('d');
+  await page.waitForFunction(()=>{
+    const s=arenaUI?.snapshot();return s&&s.actors.find(a=>a.controller==='human').stocks===0;
+  },undefined,{timeout:22000});
+  const left=await page.evaluate(()=>arenaUI.snapshot().timeLeftTicks);
+  assert.ok(left>600,'the original team match still has substantial clock remaining');
+  await page.waitForFunction(token=>expedition.snapshot().token>token,token,{timeout:2500});
+  await page.keyboard.up('d');
+  const record=await page.evaluate(()=>expedition.snapshot().records.find(r=>r.id==='arena'));
+  assert.equal(record.won,false,'extraction does not invent a victory');
+  await stop(page);
+});

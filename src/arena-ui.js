@@ -188,6 +188,7 @@
     const calm = () => typeof currentPrefs.reduceMotion === 'boolean' ? currentPrefs.reduceMotion : typeof currentPrefs.reducedMotion === 'boolean' ? currentPrefs.reducedMotion : prefersReduced;
     const saver = () => !!currentPrefs.batterySaver;
     const isMatch = () => view === 'match' && !!state;
+    const localRescue = () => !!localSession && !!state && state.actors.some(a => a.controller === 'human' && a.stocks <= 0);
     const isRunning = () => isMatch() && !paused && !roomPaused && state.phase !== 'over';
     const selectedArena = () => arena.getArena ? arena.getArena(selections.arenaId) : (arena.arenas.find(a => a.id === selections.arenaId) || arena.arenas[0]);
     const themeFor = (a) => {
@@ -802,7 +803,7 @@
       }
       ctx.globalAlpha = 1; ctx.restore();
       drawIndicators(c, alpha);
-      if (isMatch() && localActor() && localActor().stocks <= 0 && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText('You’re out · watching ' + watchedActor().name, width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
+      if (isMatch() && localActor() && localActor().stocks <= 0 && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText(localSession ? 'Rescue shuttle incoming' : 'You’re out · watching ' + watchedActor().name, width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
     }
     function drawIndicators(c, alpha) {
       for (const actor of state.actors) {
@@ -877,7 +878,7 @@
       arena.step(state, commands);
       if (!oldDash && human.dashTicks > 0) sfx('dash');
       effects.forEach(e => e.life--); effects = effects.filter(e => e.life > 0); consumeEvents(); updateHud(false);
-      if (state.phase === 'over' && !resultAt) { resultAt = performance.now() + 450; resetInput(); }
+      if ((state.phase === 'over' || localRescue()) && !resultAt) { resultAt = performance.now() + 450; resetInput(); }
     }
     function frame(now) {
       frameId = 0;
@@ -895,7 +896,7 @@
         while (accumulator >= 1 / 60 && steps < 6 && isRunning()) { step(); accumulator -= 1 / 60; steps++; }
         if (steps === 6) accumulator = Math.min(accumulator, 1 / 60);
       } else accumulator = 0;
-      if (isMatch() && state.phase === 'over' && !activeModal && resultAt && now >= resultAt) showResults();
+      if (isMatch() && (state.phase === 'over' || localRescue()) && !activeModal && resultAt && now >= resultAt) showResults();
       const renderGap = saver() ? 1000 / 30 : 1000 / 60;
       if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { paint(paused || state.phase === 'over' ? 1 : onlineActive() && !room.isHost ? clamp((now - networkReceived) / 50, 0, 1) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
       if (!frameId && active && !document.hidden) frameId = root.requestAnimationFrame(frame);
@@ -939,10 +940,10 @@
     }
     function nextArena() { const i = arena.arenas.findIndex(a => a.id === selections.arenaId); selections.arenaId = arena.arenas[(i + 1) % arena.arenas.length].id; syncChoices(); startMatch(); }
     function showResults() {
-      if (!state || !state.result) return;
+      if (!state || (!state.result && !localRescue())) return;
       if (sharedSession) { resetInput(); return; }
       updateHud(true); // The final stock loss must bypass the five-tick HUD throttle.
-      resetInput(); const result = state.result, human = state.actors.find(a => a.controller === 'human');
+      resetInput(); const result = state.result || { tie: false, winnerIds: [], winnerTeam: null }, human = state.actors.find(a => a.controller === 'human');
       const won = !!human && (result.winnerIds.includes(human.id) || (state.format === 'teams' && result.winnerTeam === human.team));
       if (localSession) {
         if (!localSession.reported) {

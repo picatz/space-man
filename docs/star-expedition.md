@@ -11,7 +11,8 @@ cue orients the player inside the new scene; there are no chapter/results gates.
 Runner rendezvous goals vary from 260 to 420 metres, with a 40-second active-play
 cap. Arena skirmishes have two stocks and a 35-second cap; Guardian encounters
 last at most 55 seconds. Racing uses one varied-track lap with a 90-second cap.
-A failed encounter still continues. Pause and Finish expedition remain available
+A failed encounter still continues. A solo pilot who loses all lives is rescued
+within half a second instead of waiting for CPU teammates. Pause and Finish expedition remain available
 in each mode. Backgrounding pauses local play, and returning never dismisses a
 pause automatically. Standalone games retain their existing rules and choices.
 
