@@ -191,3 +191,78 @@ test('solo team elimination catches the rescue shuttle instead of waiting for CP
   assert.equal(record.won,false,'extraction does not invent a victory');
   await stop(page);
 });
+
+for (const mode of ['arena','race']) test(mode+' input yields to an inert sibling crew dialog and restores safely',{timeout:25000},async t=>{
+  const {page}=await launch(t);
+  await page.locator(mode==='arena'?'#btnArena':'#btnRace').click();
+  await page.locator(mode==='arena'?'.arena-launch':'.race-launch').click();
+  await page.keyboard.press('Escape');
+  await page.evaluate(mode=>{
+    const game=document.querySelector(mode==='arena'?'.arena-root':'.race-root');
+    const panel=document.createElement('div');panel.id='crewDialogFixture';panel.setAttribute('role','dialog');
+    panel.style.cssText='position:fixed;inset:20px;z-index:9999;background:#102030;color:white;padding:30px';
+    panel.innerHTML='<input id="crewNameFixture" aria-label="Crew name"><button id="crewActionFixture">Crew action</button>';
+    window.fixtureClicks=0;window.fixtureEscapes=0;
+    panel.querySelector('button').onclick=()=>fixtureClicks++;
+    panel.addEventListener('keydown',e=>{if(e.code==='Escape')fixtureEscapes++;});
+    game.inert=true;document.body.appendChild(panel);panel.querySelector('input').focus();
+  },mode);
+  await page.getByLabel('Crew name').pressSequentially('Nova');
+  assert.equal(await page.getByLabel('Crew name').getAttribute('id'),'crewNameFixture');
+  assert.equal(await page.getByLabel('Crew name').evaluate(e=>e.value),'Nova');
+  await page.getByRole('button',{name:'Crew action',exact:true}).click();
+  assert.equal(await page.evaluate(()=>fixtureClicks),1,'old pointer guard must not swallow the sibling click');
+  await page.getByLabel('Crew name').click();
+  await page.evaluate(()=>{testPad.buttons[13].pressed=true;testPad.buttons[0].pressed=true;});
+  await page.waitForTimeout(150);
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'crewNameFixture','old gamepad menu must not steal dialog focus');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(()=>fixtureEscapes),1);
+  assert.equal(await page.evaluate(mode=>mode==='arena'?arenaUI.screen:raceUI.screen,mode),'pause');
+  await page.evaluate(mode=>{
+    testPad.buttons.forEach(b=>b.pressed=false);testPad.axes=[0,0];
+    document.querySelector('#crewDialogFixture').remove();
+    document.querySelector(mode==='arena'?'.arena-root':'.race-root').inert=false;
+  },mode);
+  await page.locator(mode==='arena'?'#arenaResume':'#raceResume').click();
+  assert.equal(await page.evaluate(mode=>mode==='arena'?arenaUI.screen:raceUI.screen,mode),'play');
+  await page.keyboard.press('Escape');await page.locator(mode==='arena'?'#arenaExit':'#raceExit').click();
+});
+
+test('shared arcade barrier Escape opens Crew rather than silently leaving', {timeout:30000}, async t => {
+  const {page}=await launch(t);
+  for(const id of ['arena','race']) {
+    await page.evaluate(id=>{
+      window.sharedEsc={crew:0,left:0};
+      const status={active:true,busy:false,host:true,error:'',closedReason:'',connection:'',stale:false,info:{...SpaceManNet.info(),mode:'journey',isHost:true},roster:[],current:null};
+      const adapter={active:true,busy:false,isHost:true,current:null,status:()=>status,attach(cb){cb.onChange(status);return()=>{};},release(){},step(){},pause(){},leave(){sharedEsc.left++;},openCrew(){sharedEsc.crew++;},configure(){},setTeam(){}};
+      const ui=id==='arena'?getArenaUI():getRaceUI();ui.openSharedSession({id,arenaId:'orbital-dock',trackId:'starlight',format:'teams'},adapter);
+    },id);
+    await page.keyboard.press('Escape');
+    assert.deepEqual(await page.evaluate(()=>sharedEsc),{crew:1,left:0});
+    await page.evaluate(id=>(id==='arena'?arenaUI:raceUI).closeSharedSession(),id);
+  }
+});
+
+test('an inert crew dialog cancels a queued race recovery before the next simulation tick',{timeout:25000},async t=>{
+  const {page}=await launch(t,{hasTouch:true,isMobile:true});
+  await page.locator('#btnRace').click();await page.locator('.race-launch').click();
+  await page.waitForFunction(()=>raceUI.snapshot()?.phase==='racing');
+  const before=await page.evaluate(()=>raceUI.snapshot().actors[0].recoveries);
+  await page.evaluate(()=>{
+    // Dispatch the normal button action and transfer dialog ownership atomically.
+    document.querySelector('.race-recover').click();
+    document.querySelector('.race-root').inert=true;
+  });
+  await page.waitForTimeout(120);
+  assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].recoveries),before);
+  await page.keyboard.down('d');
+  await page.evaluate(()=>{document.querySelector('.race-root').inert=false;});
+  await page.keyboard.down('d'); // A held dialog key produces repeat:true after restoration.
+  await page.waitForTimeout(120);
+  assert.ok(Math.abs(await page.evaluate(()=>raceUI.snapshot().actors[0].steering))<.001);
+  await page.keyboard.up('d');await page.keyboard.down('d');await page.waitForTimeout(120);
+  assert.ok(Math.abs(await page.evaluate(()=>raceUI.snapshot().actors[0].steering))>.001,'a fresh press regains steering');
+  await page.keyboard.up('d');
+  await page.keyboard.press('Escape');await page.locator('#raceExit').click();
+});

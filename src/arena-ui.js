@@ -185,7 +185,7 @@
     const onlineActive = () => !!(room && room.active);
     const localActor = () => state && state.actors.find(a => a.controller === 'human');
     const canControl = () => !onlineActive() || !!(localActor() && localActor().stocks > 0 && !(roomStatus && (roomStatus.stale || roomStatus.connection)));
-    let localSession = null, sharedSession = null;
+    let localSession = null, sharedSession = null, inputSuspended = false;
     const listeners = [];
     const getSettings = () => { try { return (typeof opts.settings === 'function' ? opts.settings() : opts.settings) || {}; } catch (_) { return {}; } };
     const calm = () => typeof currentPrefs.reduceMotion === 'boolean' ? currentPrefs.reduceMotion : typeof currentPrefs.reducedMotion === 'boolean' ? currentPrefs.reducedMotion : prefersReduced;
@@ -284,6 +284,12 @@
       held.clear(); jumpEdge = attackEdge = dashEdge = false; pad = { moveX: 0, moveY: 0, jump: false }; padNeedsNeutral = true;
       resetTouchInput();
     }
+    function ownsInput() {
+      if (!active) return false;
+      const suspended = !!rootEl.inert;
+      if (suspended !== inputSuspended) { inputSuspended = suspended; resetInput(); }
+      return !suspended;
+    }
     function focusables() { return activeModal ? Array.from(activeModal.querySelectorAll('button:not([disabled]),summary,[href],input:not([disabled]),[tabindex="0"]')).filter(n => !n.hidden && n.getClientRects().length) : [pauseButton]; }
     function focusStep(direction) {
       const nodes = focusables(); if (!nodes.length) return;
@@ -296,11 +302,11 @@
     }
     function actionHeld(action) { for (const value of held.values()) if (value === action) return true; return false; }
     function onKeyDown(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       e.stopImmediatePropagation();
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return; escapeAction(); return; }
-      if (e.code === 'Tab') { e.preventDefault(); if (!activeModal && isMatch()) pauseMatch('Match paused'); else focusStep(e.shiftKey ? -1 : 1); return; }
+      if (e.code === 'Tab') { e.preventDefault(); if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; } if (!activeModal && isMatch()) pauseMatch('Match paused'); else focusStep(e.shiftKey ? -1 : 1); return; }
       if (activeModal) {
         if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) { if (e.key === 'Enter' && e.target === roomInput) { e.preventDefault(); roomJoin.click(); } return; }
         if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); if (!e.repeat && document.activeElement && activeModal.contains(document.activeElement)) document.activeElement.click(); }
@@ -320,8 +326,9 @@
         held.set(e.code, action);
       }
     }
-    function onKeyUp(e) { if (!active) return; e.stopImmediatePropagation(); if (actionForKey(e)) e.preventDefault(); held.delete(e.code); }
+    function onKeyUp(e) { if (!ownsInput()) return; e.stopImmediatePropagation(); if (actionForKey(e)) e.preventDefault(); held.delete(e.code); }
     function escapeAction() {
+      if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; }
       resetInput();
       if (view === 'lobby') close();
       else if (activeModal === resultPanel) showLobby();
@@ -329,7 +336,7 @@
       else pauseMatch('Match paused');
     }
     function guardPointer(e) {
-      if (!active) return;
+      if (!ownsInput()) return;
       // Capture can fail or be lost when WebKit moves browser chrome. Recover
       // releases before the runner-isolation guard discards outside events.
       if (['pointerup', 'pointercancel', 'lostpointercapture'].includes(e.type)) releaseTouch(e);
@@ -337,6 +344,7 @@
       if (!(e.target instanceof root.Node) || !rootEl.contains(e.target)) { e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); }
     }
     function onTouchEnd(e) {
+      if (!ownsInput()) return;
       // A completed tap still gets its one action if it ended between frames.
       if (active && (e.type === 'touchcancel' || (e.touches && e.touches.length === 0))) resetTouchInput(e.type === 'touchcancel');
     }
@@ -376,6 +384,7 @@
       stickKnob.style.transform = 'translate(calc(-50% + ' + (x * 32).toFixed(1) + 'px),calc(-50% + ' + (y * 32).toFixed(1) + 'px))';
     }
     function pollGamepad() {
+      if (!ownsInput()) return;
       let pads;
       try { pads = root.navigator.getGamepads && root.navigator.getGamepads(); } catch (_) { return; }
       const p = pads && Array.from(pads).find(p => p && p.connected && p.mapping === 'standard');
@@ -396,6 +405,7 @@
       padPrevious = raw;
     }
     function command() {
+      if (!ownsInput()) return arena.normalizeCommand();
       const keyboardX = (actionHeld('right') ? 1 : 0) - (actionHeld('left') ? 1 : 0);
       const keyboardY = (actionHeld('down') ? 1 : 0) - (actionHeld('jump') && (held.has('KeyW') || held.has('ArrowUp')) ? 1 : 0);
       const c = { moveX: clamp(keyboardX + moveX + pad.moveX, -1, 1), moveY: clamp(keyboardY + moveY + pad.moveY, -1, 1),
@@ -412,6 +422,7 @@
         root.clearTimeout(timer); if (clearRecoveryClick === clear) clearRecoveryClick = null;
       };
       const swallow = e => {
+        if (rootEl && rootEl.inert) { clear(); return; }
         if (!e.isTrusted || e.detail === 0) return;
         e.preventDefault(); e.stopImmediatePropagation(); clear();
       };

@@ -81,7 +81,12 @@ test('coordinator release, shared pause, late viewing, and same-identity reconne
   await step(185);
   assert.equal(state(host).phase, 'playing');
   const before = state(host).actors[1].x;
-  await step(12, player, { moveX: -1 });
+  // Delivery is asynchronous while these simulated host ticks run faster than
+  // real time. Keep advancing until the delivered input can affect the actor;
+  // sleeping after the final tick alone cannot demonstrate command handling.
+  for (let attempts = 0; attempts < 12 && state(host).actors[1].x >= before - 5; attempts++) {
+    await step(3, player, { moveX: -1 });
+  }
   assert.ok(state(host).actors[1].x < before - 5, 'guest command drives only its host-owned fighter');
   player.room.release();
   await sleep(20); await step(45);
