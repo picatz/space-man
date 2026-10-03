@@ -196,7 +196,7 @@
 .arena-root[data-touch=true] .arena-hud{top:calc(var(--arena-safe-top) + 8px);left:calc(var(--arena-safe-left) + 12px);right:calc(var(--arena-safe-right) + 12px)}
 .arena-root[data-touch=true] .arena-hud-top{position:absolute;inset:0;margin:0;pointer-events:none}
 .arena-root[data-touch=true] .arena-match-brand{display:none}
-.arena-root[data-touch=true] .arena-hud-tools{top:0;right:0;gap:10px;pointer-events:auto}
+.arena-root[data-touch=true] .arena-hud-tools{position:absolute;top:0;right:0;gap:10px;pointer-events:auto}
 .arena-root[data-touch=true] .arena-pause-button{width:48px;height:48px;min-height:48px}
 .arena-root[data-touch=true] .arena-roster{display:flex;margin:0 116px 0 0;max-width:none;padding:0;gap:6px}
 .arena-root[data-touch=true] .arena-player-card{min-width:0;max-width:230px;padding:6px 8px;gap:6px;border-radius:9px}

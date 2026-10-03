@@ -514,8 +514,10 @@ test('arena thumb layout keeps comfortable targets and the pilot clear across ph
   });
   await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
   const intersects = (a, b, gap = 0) => a.x < b.x + b.width + gap && a.x + a.width > b.x - gap && a.y < b.y + b.height + gap && a.y + a.height > b.y - gap;
-  for (const [width, height] of [[320,568],[390,640],[390,844],[667,320],[844,320],[844,390],[768,1024],[1024,768]]) {
+  for (const [width, height] of [[320,568],[390,640],[390,844],[568,320],[640,360],[667,320],[844,320],[844,390],[768,1024],[1024,768]]) {
+    await page.locator('#arenaPause').tap();
     await page.setViewportSize({ width, height }); await page.waitForTimeout(180);
+    await page.locator('#arenaResume').tap();
     for (const lefty of [false, true]) {
       await page.evaluate(lefty => { settings.lefty = lefty; }, lefty);
       // Settings are refreshed through the normal pause/resume path.
@@ -535,6 +537,7 @@ test('arena thumb layout keeps comfortable targets and the pilot clear across ph
       for(const b of controls) assert.equal(intersects(zone,b,8),false,'movement and action hit zones stay separate');
       const pause = await page.locator('#arenaPause').boundingBox();
       assert.ok(pause.width >= 44 && pause.height >= 44); assert.match(await page.locator('#arenaPause').innerText(),/PAUSE/);
+      for(const card of await page.locator('.arena-player-card').all()) assert.equal(intersects(pause,await card.boundingBox(),4),false,'Pause stays outside the fighter roster');
       const hud = await page.locator('.arena-hud').boundingBox();
       for(const b of [...controls,zone]) assert.equal(intersects(hud,b,8),false,'the HUD stays above the thumb pods');
       const own = await page.evaluate(() => thumbFrame?.bodies.find(b => b.id === 1));
