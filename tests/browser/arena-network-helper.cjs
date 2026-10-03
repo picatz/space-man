@@ -239,7 +239,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
   try {
     const host = await client('desktop host');
     const guest = await client('phone player', { viewport: { width:390,height:844 }, isMobile:true,hasTouch:true,deviceScaleFactor:2 });
-    const watcher = await client('spectator'), late = await client('late player');
+    const watcher = await client('spectator', { viewport: { width:390,height:844 }, isMobile:true,hasTouch:true,deviceScaleFactor:2 }), late = await client('late player');
     stage = 'creating and joining an arena through visible controls';
     await open(host); await host.page.locator('#arenaHost').click();
     await wait(host, () => SpaceManNet.active && SpaceManNet.info().mode === 'arena');
@@ -402,6 +402,8 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await wait(watcher, () => SpaceManNet.active && SpaceManNet.info().role === 1 && SpaceManNet.roster().some(r => r.you));
     watcher.joined = true; await roster(4);
     assert.equal((await identity(watcher)).p, departedP, 'fresh spectator actually reuses the vacated number');
+    await host.page.locator('#arenaResume').click();
+    await Promise.all(clients.map(c => screen(c,'match')));
     await wait(watcher, () => arenaUI.snapshot()?.actors.every(a => a.controller !== 'human'));
     assert.equal(await watcher.page.locator('#arenaWatchNext').isVisible(),true,'recycled-number watcher retains spectator navigation');
     assert.equal(await watcher.page.locator('.arena-touch').count(),1,'fighter controls exist to check visibility');
