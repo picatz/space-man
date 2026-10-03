@@ -962,7 +962,7 @@
         if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
         const x = (lerp(actor.px, actor.x, alpha) + actor.w / 2 - c.x) * c.scale + width / 2;
         const y = (lerp(actor.py, actor.y, alpha) + actor.h / 2 - c.y) * c.scale + c.centerY;
-        const blocked = thumbOccludes({x:x-actor.w*c.scale/2,y:y-actor.h*c.scale/2,w:actor.w*c.scale,h:actor.h*c.scale},c);
+        const blocked = thumbOccludes({x:x-actor.w*c.scale/2-5,y:y-actor.h*c.scale/2-8,w:actor.w*c.scale+10,h:actor.h*c.scale+8},c);
         if (!blocked && x > 16 && x < width - 16 && y > c.top && y < height - c.bottom) continue;
         let ix = clamp(x, 32, width - 32);
         const iy = clamp(y, c.top + 20, height - c.bottom - 20), color = actorIdentity(actor).role !== 'other' ? '#FFF3CE' : actorColor(actor);
