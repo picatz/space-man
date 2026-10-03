@@ -45,6 +45,8 @@
 `;
   function create(opts = {}) {
     const R = root.SpaceManRace;
+    const cosmeticSession = Date.now().toString(36) + ":" + Math.random().toString(36).slice(2, 9);
+    let cosmeticRound = 0;
     let active = false,
       built = false,
       destroyed = false,
@@ -310,6 +312,7 @@
       state = next;
       networkEpoch = snapshot.epoch;
       if (newRound) {
+        cosmeticRound++;
         previousPose = null;
         perspective?.reset();
         resetInput();
@@ -1202,6 +1205,8 @@
       rescueRequest = false;
       preferences();
       state = R.create(localSession ? { ...selected, laps: 1, seed: localSession.seed } : selected);
+      cosmeticRound++;
+      if (root.SpaceManCosmetics && typeof opts.appearance === "function") { const human = state.actors.find(a => a.controller === "human"); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       previousPose = null;
       perspective?.reset();
       view = "play";
@@ -1304,6 +1309,10 @@
           el("span", "", r.time === null ? "Unfinished" : fmt(r.time)),
         );
         resultRows.append(row);
+      }
+      if (me && typeof opts.onReward === "function") {
+        const found = opts.onReward({ type: "race", id: cosmeticSession + ":" + cosmeticRound }) || [];
+        if (found.length) resultRows.append(el("p", "race-cosmetic-reward", "Found: " + found.map(id => root.SpaceManCosmetics.item(id)?.name || "").join(", ")));
       }
       setPanel(resultPanel);
       announce(
