@@ -38,6 +38,21 @@ Version 2.0 was a ground-up canvas rewrite designed and built by a Claude
 Fable 5 agent team. It's a fun research project exploring the capabilities
 of AI models for web game development.
 
+## Star Expedition · Solo journey
+
+Choose **Star Expedition** to link all three games in one local itinerary:
+reach a 400m runner rendezvous (or catch the rescue shuttle after a fall), face a
+Cadet CPU at Orbital Dock, then race one lap of Starlight Speedway with four
+Chill CPUs. A briefing explains each new control scheme and a trip card keeps
+all three results together. You can continue even when you lose a leg.
+
+Runner points and earned records are banked once at the end of that leg; arcade
+results do not change runner scores. Pause, restart the current arcade leg, or
+leave the expedition from its pause menu. Progress lasts for the current page;
+reloading starts fresh. Standalone Arena/Racing choices and three-lap races stay
+unchanged. The journey is solo only for now: leave a live room explicitly before
+starting. [Lifecycle boundaries and multiplayer plan](docs/star-expedition.md).
+
 ## Orbital Arena · CPU + Friends
 
 Choose **Orbital Arena** from the title to enter a separate, opt-in
