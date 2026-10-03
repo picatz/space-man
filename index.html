@@ -823,53 +823,58 @@
 </style>
 <link rel="stylesheet" href="src/space-theme.css" />
 <link rel="stylesheet" href="src/expedition.css" />
+<link rel="stylesheet" href="src/home.css" />
 </head>
 <body>
 
 <canvas id="game" role="img" aria-label="Space Man: an endless space runner. Scores, sectors and run results are announced."></canvas>
 
-<!-- Attract / landing -->
+<!-- Home: one adventure launch, with the arcade and personal tools in easy reach. -->
 <div class="overlay attract-anchor" id="ovAttract">
-  <div class="panel">
-    <div class="attract-main">
-    <div class="launch-heading"><h1>Choose your adventure</h1><div id="attractBest" class="title-lg">BEST 0</div></div>
-    <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
-    <div class="launch-modes" role="group" aria-label="Game modes">
-      <button class="btn mode-link" id="btnPlay" data-description="Outrun the flare · solo or friends" aria-label="Endless Run. Outrun the flare, solo or with friends.">Endless Run</button>
-      <button class="btn ghost mode-link" id="btnArena" data-description="Small suits. Big knockouts." aria-label="Orbital Arena. Battle CPUs or friends.">Orbital Arena</button>
-      <button class="btn ghost mode-link" id="btnRace" data-description="Carve the corners. Catch a boost." aria-label="Star Circuit. Arcade hover racing.">Star Circuit</button>
-    </div>
-    <button class="btn ghost expedition-launch" id="btnExpedition"><span>Star Expedition<small>ONE CONTINUOUS ADVENTURE</small></span><span class="expedition-solo">SOLO</span></button>
-    <button class="btn ghost expedition-launch" id="btnExpeditionFriends"><span>Expedition with friends<small>SAME CREW · EVERY ENCOUNTER</small></span><span class="expedition-solo">CREW</span></button>
-    <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
-    <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
-    </div>
-    <div class="attract-side">
-    <div id="attractMedals" class="sub" style="margin:6px 0 14px;font-size:18px;letter-spacing:4px;"></div>
-    <div class="control-guide desktop-guide" aria-label="Keyboard controls">
-      <div><b>A D / ← →</b><span>MOVE</span></div>
-      <div><b>SPACE</b><span>JUMP</span></div>
-      <div><b>F / CLICK</b><span>FIRE</span></div>
-    </div>
-    <div class="control-guide touch-guide" aria-label="Touch controls">
-      <div><b>LEFT SIDE</b><span>MOVE</span></div>
-      <div><b>RIGHT SIDE</b><span>JUMP</span></div>
-      <div><b>FIRE</b><span>SHOOT</span></div>
-    </div>
-    <div class="control-guide gamepad-guide" aria-label="Controller controls">
-      <div><b>LEFT STICK</b><span>MOVE</span></div>
-      <div><b>A / ✕</b><span>JUMP</span></div>
-      <div><b>X / □ / R2</b><span>FIRE</span></div>
-    </div>
-    <div class="row" id="attractRow">
-      <button class="btn ghost" id="btnTrophy">Scores</button>
+  <div class="panel home-shell">
+    <header class="home-header">
+      <h1 class="home-wordmark">SPACE<span>MAN</span><i aria-hidden="true">✦</i></h1>
+      <div id="attractBest" class="title-lg">BEST 0</div>
+    </header>
+    <div class="home-world">
+      <div class="home-orbit" aria-hidden="true"></div>
+      <p class="home-tagline">Small suit. Big universe.</p>
+      <canvas id="homeHero" width="640" height="400" role="img" aria-label="Your Spacefarer, ready for adventure"></canvas>
+      <div class="home-identity"><span class="home-you">YOU</span><span id="homeCallsign">Spacefarer</span></div>
       <button class="btn ghost" id="btnWardrobe">Suit Up</button>
-      <button class="btn ghost" id="btnSettings">Settings</button>
-      <button class="btn ghost" id="btnTogether">Run Together</button>
     </div>
-    <div id="attractStats" class="stats-line"></div>
-    <div id="offlineNote" class="offline-note" role="status" style="display:none">Offline · single player ready</div>
-    </div>
+    <main class="home-launch">
+      <section class="home-adventure" aria-labelledby="homeAdventureTitle">
+        <div class="home-kicker"><span aria-hidden="true">✦</span> STAR EXPEDITION</div>
+        <h2 id="homeAdventureTitle">Adventure awaits.</h2>
+        <p>Run, battle &amp; race through one endless journey.</p>
+        <div class="home-play-actions">
+          <button class="btn" id="btnExpedition" aria-label="Play solo. Start a continuous Star Expedition."><span class="home-play-icon" aria-hidden="true">▶</span> Play solo <span class="home-play-arrow" aria-hidden="true">↗</span></button>
+          <button class="btn ghost" id="btnExpeditionFriends" aria-label="Star Expedition with friends. Create, join or watch a shared adventure."><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></svg>With friends</button>
+        </div>
+      </section>
+      <section class="home-arcade" aria-labelledby="homeArcadeTitle">
+        <div class="home-section-heading"><h2 id="homeArcadeTitle">Pick a quick game</h2><span>YOUR ARCADE</span></div>
+        <div class="launch-modes" role="group" aria-label="Game modes">
+          <div class="home-mode home-run"><canvas id="homeRunArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn mode-link" id="btnPlay" aria-label="Endless Run. Outrun the flare, solo or with friends.">Endless Run</button><span aria-hidden="true">Outrun the flare</span></div>
+          <div class="home-mode home-arena"><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn ghost mode-link" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends.">Orbital Arena</button><span aria-hidden="true">Tiny suits. Big KOs.</span></div>
+          <div class="home-mode home-race"><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn ghost mode-link" id="btnRace" aria-label="Star Circuit. Arcade hover racing.">Star Circuit</button><span aria-hidden="true">Catch a boost</span></div>
+        </div>
+        <button class="home-run-together" id="btnTogether">Run Together <span>Shared-course runner</span><b aria-hidden="true">↗</b></button>
+      </section>
+      <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
+      <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span class="home-daily-icon" aria-hidden="true">✧</span><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span><b aria-hidden="true">›</b></button>
+      <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
+    </main>
+    <footer class="home-footer">
+      <div class="row" id="attractRow">
+        <button class="btn ghost" id="btnTrophy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v6a5 5 0 0 1-10 0V3Zm0 2H3v3a4 4 0 0 0 5 4m9-7h4v3a4 4 0 0 1-5 4M12 14v6m-5 1h10"/></svg>Records</button>
+        <button class="btn ghost" id="btnSettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></svg>Settings</button>
+      </div>
+      <span class="home-footer-note">A universe of play. All yours.</span>
+      <div id="attractMedals" hidden></div><div id="attractStats" hidden></div>
+      <div id="offlineNote" class="offline-note" role="status" style="display:none">Offline · single player ready</div>
+    </footer>
   </div>
 </div>
 
@@ -1114,6 +1119,7 @@
 <script src="src/powerups.js"></script>
 <!-- Presentation only: shared palette + draw helpers, and the character animation rig. -->
 <script src="src/art.js"></script>
+<script src="src/home.js"></script>
 <script src="src/anim.js"></script>
 <!-- Arena is opt-in: pure simulation + an inert, lazy-created presentation shell. -->
 <script src="src/expedition.js"></script>
@@ -2281,7 +2287,7 @@ function topOverlayId() {
 }
 const visibleEl = (el) => !el.disabled && el.getClientRects().length > 0;
 function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input[type="range"], summary')).filter(visibleEl) : []; }
-function menuFocusFirst(id) { const it = menuItems(id); if (it.length) it[0].focus(); return it.length > 0; }
+function menuFocusFirst(id) { const it = menuItems(id); const featured = id === 'ovAttract' && it.find(el => el.id === 'btnExpedition'); if (it.length) (featured || it[0]).focus(); return it.length > 0; }
 // Spatial move: nearest control whose centre lies in the pressed direction
 // (cross-axis distance weighted 2x); vertical presses wrap in DOM order.
 function menuMove(dx, dy) {
@@ -6288,6 +6294,9 @@ function showAttract() {
   $('attractStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m · BEST CHAIN ×${stats.bestChain}` + (logN ? ` · LOG ${logN}/${DISCOVERIES.length}` : '');
   updateWardrobeBadge();
   renderDailyCard();
+  const homeCallsign = getCallsign();
+  $('homeCallsign').textContent = homeCallsign && NET ? (NET.callsignText(homeCallsign[0], homeCallsign[1]) || 'Spacefarer') : 'Spacefarer';
+  window.SpaceManHome.render(equippedAppearance());
   syncOffline();
   showOverlay('ovAttract');
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
