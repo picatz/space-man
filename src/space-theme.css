@@ -224,7 +224,7 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 .race-root .race-preferences > .race-label { margin-bottom: 10px; }
 .race-root .race-setting-label { margin: 8px 0 6px; color: var(--sm-copy); font-size: 12px; font-weight: 650; }
 .race-root .race-camera-options { margin: 0; gap: 6px; }
-.race-root .race-dialog .race-camera-options .race-button { min-width: 0; padding-inline: 4px; white-space: nowrap; font: 650 11px/1.3 var(--sm-font-body); }
+.race-root .race-dialog .race-camera-options .race-button { flex: 1 1 auto; min-width: max-content; padding-inline: 4px; white-space: nowrap; font: 650 11px/1.3 var(--sm-font-body); }
 .race-root .race-audio-controls { margin-top: 0; gap: 6px; }
 .race-root .race-dialog .race-audio-controls .race-button { flex: 1; font: 650 11px/1.3 var(--sm-font-body); }
 .race-root .race-audio-volume { flex: 1 0 100%; justify-content: space-between; gap: 12px; min-width: 0; font-size: 12px; }

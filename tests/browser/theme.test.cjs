@@ -122,11 +122,13 @@ for (const [width,height] of sizes) test(`shared chrome ${width}x${height}: laun
   await page.getByRole('slider', { name: 'Race audio volume' }).filter({ visible: true }).scrollIntoViewIfNeeded();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Pause race', exact: true }).click();
-  assert.equal(await page.locator('.race-compact:visible').evaluate(n => n.scrollTop), 0, 'reopened pause resets its old scroll position');
   await page.locator('.race-root[data-screen=pause]').waitFor();
+  assert.equal(await page.locator('.race-compact:visible').evaluate(n => n.scrollTop), 0, 'reopened pause resets its old scroll position');
   const pointerFocus = await page.evaluate(() => ({ tag: document.activeElement.tagName, id: document.activeElement.id, className: document.activeElement.className }));
   console.log('pause pointer focus', engineName, width, height, pointerFocus);
   assert.equal(await page.locator('.race-compact:visible .race-menu-actions button').first().getAttribute('id'), 'raceResume', 'resume remains the first action');
+  // Mobile WebKit retains the range input after a pointer-opened menu. The
+  // keyboard-opened pause below must still focus Resume on every engine.
   if (engineName !== 'webkit' || width >= 900) assert.equal(pointerFocus.id, 'raceResume', 'pointer-opened pause keeps focus on resume');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
