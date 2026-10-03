@@ -97,6 +97,7 @@
       padNeutral = true,
       padPrevious = {},
       pad = { steer: 0, boost: false, brake: false, recover: false },
+      lastControl = { steer: 0, brake: false },
       lastPad = null,
       audio = null,
       perspective = null,
@@ -588,6 +589,7 @@
       if (inMenu) controller?.pause();
     }
     function cancelCorner() {
+      lastControl = { steer: 0, brake: false };
       if (onlineActive()) room.release();
       else R.cancelControl(state);
     }
@@ -1778,9 +1780,11 @@
       speed.textContent = String(Math.round(a.speed * 23));
       fuel.style.transform = "scaleX(" + a.fuel / 100 + ")";
       const slip = a.speed > 3 ? Math.abs(Math.atan2(Math.sin(a.heading - Math.atan2(a.vy, a.vx)), Math.cos(a.heading - Math.atan2(a.vy, a.vx)))) : 0;
+      // Pair local intent with authoritative slip: a collision alone is not a drift.
       // All clients can read these physical cues from existing v1 snapshots.
       // Do not pretend a remote client knows the host-only drift-charge timer.
-      const sliding = !a.offroad && !a.recoveryTicks && slip > 0.18;
+      const sliding = a.id === ownActor()?.id && lastControl.brake &&
+        Math.abs(lastControl.steer) >= .35 && !a.offroad && !a.recoveryTicks && slip > 0.18;
       driveFeedback.hidden = state.phase !== "racing" || a.recoveryTicks > 0 ||
         (!a.boosting && !a.padTicks && !sliding);
       driveFeedback.dataset.kind = a.boosting || a.padTicks ? "boost" : "drift";
@@ -1829,6 +1833,7 @@
           const command = isRunning() && canControl() ? input() : R.command();
           if (rescueRequest && canControl()) command.recover = true;
           rescueRequest = false;
+          lastControl = command;
           room.step(command, now);
           acc -= 1 / 60;
         }
@@ -1844,6 +1849,7 @@
             cmds[state.actors[0].id].recover = true;
             rescueRequest = false;
           }
+          lastControl = cmds[state.actors[0].id];
           previousPose = root.SpaceManRacePresentation?.capture(state);
           R.step(state, cmds);
           audio?.update(state, followActor());

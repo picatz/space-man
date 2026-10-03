@@ -41,10 +41,23 @@ neither an automated lap nor green CI establishes that the game is fun.
 
 ## Verification so far
 
-The first complete pass has 855 passing pure regression tests. Independent
+The identity-integrated pass has 863 passing pure regression tests. Independent
 review additionally reproduced and closed pause/cancel rewards, boost-strip
 braking, edge-crossing rewards, shallow analog reward farming and stale-input
 reacquisition before a host step. The fixed snapshot encoder and decoder remain
 byte-compatible; an old production decoder accepted the new reward and a new
-client accepted an old-host snapshot. Real browser and manual acceptance are
-still pending on the final revision.
+client accepted an old-host snapshot. The Chromium native partial-release injector was checked on two isolated
+buttons before game acceptance. Both natural finger release and releasing Brake
+while continuing to steer produce the reward through real native touch events;
+cancellation does not. Chromium and WebKit pass the authored keyboard cases at
+phone portrait/landscape, tablet and desktop sizes. Full browser suites are
+rechecked on the final revision.
+
+Manual cloud-browser top-down play covered short steering corrections, straight
+braking, normal boost, an early missed drift, recovery without the rescue action,
+and a deliberate 420 ms drift through a Starlight bend that stayed in lane and
+released into a visible boost. The merged identity strip/marker and speed-meter
+contrast were inspected while driving Ember. The cloud browser used 2D fallback;
+WebGL framing evidence comes from hosted Chromium/WebKit raster tests and
+independent screenshot review. This is not physical-device testing or a claim
+that automated driving proves subjective fun.

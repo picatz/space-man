@@ -465,6 +465,7 @@ for (const device of [
   await page.keyboard.up('ArrowRight');await page.keyboard.up('ArrowDown');
   await menu(page,'Resume race');
   assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].padTicks),0,'pause does not cash a corner reward');
+  assert.equal(await page.locator('.race-drive-feedback').isVisible(),false,'residual or collision slip without held brake is not labelled DRIFT');
   if(options.hasTouch&&engine===chromium){
     await page.keyboard.press('Escape');await screen(page,'pause');await menu(page,'Restart race');await playing(page);
     await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
