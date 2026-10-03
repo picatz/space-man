@@ -10,7 +10,7 @@ const { chromium, webkit } = require("playwright");
 const ROOT = path.resolve(__dirname, "../..");
 const engine = process.env.SPACE_MAN_RACE_BROWSER === "webkit" ? webkit : chromium;
 
-async function launch(t) {
+async function launch(t, device = {}) {
   const server = http.createServer(async (req, res) => {
     try {
       const pathname = new URL(req.url, "http://localhost").pathname;
@@ -32,7 +32,7 @@ async function launch(t) {
   browser = await engine.launch(engine === chromium && process.env.SPACE_MAN_CHROMIUM_PATH
     ? { executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : {});
   const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 }, serviceWorkers: "block",
+    viewport: { width: 1280, height: 800 }, serviceWorkers: "block", ...device,
   });
   const page = await context.newPage(), errors = [], sockets = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -91,6 +91,25 @@ async function launch(t) {
     });
   });
   assert.equal(await page.evaluate(() => raceAudioProbe.contexts.length), 0, "no race AudioContext before a gesture");
+  await page.evaluate(() => {
+    const race = SpaceManRace;
+    window.raceDriveProbe = { ticks: 0, contacts: 0, slow: 0, longestSlow: 0, maxDistance: 0, recoveries: 0, command: null };
+    window.SpaceManRace = { ...race, step(state, inputs) {
+      const result = race.step(state, inputs);
+      if (state.phase === "racing") {
+        const a = state.actors[0], c = race.course(state.trackId), p = raceDriveProbe;
+        p.command = { ...inputs?.[a.id] };
+        p.ticks++;
+        const distance = race.nearest(c, a.x, a.y).distance;
+        p.maxDistance = Math.max(p.maxDistance, distance);
+        if (distance >= c.width / 2 - race.constants.KART_RADIUS - .5) p.contacts++;
+        p.slow = distance >= c.width / 2 - race.constants.KART_RADIUS - 1 && a.speed < .75 ? p.slow + 1 : 0;
+        p.longestSlow = Math.max(p.longestSlow, p.slow);
+        p.recoveries = a.recoveries;
+      }
+      return result;
+    }};
+  });
   await page.locator("#btnRace").click();
   await screen(page, "lobby");
   t.after(() => {
@@ -342,4 +361,63 @@ test("race solver: worst-case six-pilot switchback pileup stays within the physi
   });
   t.diagnostic(`Worst-case six-kart contact physics, milliseconds: ${JSON.stringify(timing)}`);
   assert.ok(timing.median<12 && timing.p95<25, 'bounded solver must leave a practical rendering budget');
+});
+
+
+for (const device of [
+  { name: "desktop", width: 1280, height: 800, track: "starlight" },
+  { name: "phone-portrait", width: 390, height: 844, track: "ember", touch: true },
+  { name: "phone-landscape", width: 844, height: 390, track: "bloom", touch: true },
+  { name: "tablet", width: 1024, height: 768, track: "ember", touch: true },
+]) test(`forgiving rails: ${device.name} held steering, boost, release and cancel`, { timeout: 30000 }, async (t) => {
+  const { page, context } = await launch(t, { viewport: { width: device.width, height: device.height },
+    hasTouch: !!device.touch, isMobile: !!device.touch });
+  await page.locator(`[data-track="${device.track}"]`).click();
+  await page.locator(".race-launch").click();
+  await playing(page);
+  let cdp;
+  if (device.touch && engine === chromium) cdp = await context.newCDPSession(page);
+  async function hold(actions) {
+    if (!device.touch) { for (const action of actions) await page.keyboard.down(action === "boost" ? "Space" : "ArrowLeft"); return; }
+    const points = [];
+    for (const [id, action] of actions.entries()) {
+      const b = await page.locator(`[data-action="${action}"]`).boundingBox();
+      assert.ok(b.width >= 48 && b.height >= 48 && b.x >= 0 && b.y >= 0 &&
+        b.x + b.width <= device.width + 1 && b.y + b.height <= device.height + 1);
+      points.push({ id, x: b.x + b.width / 2, y: b.y + b.height / 2 });
+      if (!cdp) await page.locator(`[data-action="${action}"]`).dispatchEvent("pointerdown", {
+        pointerId: id + 40, pointerType: "touch", isPrimary: id === 0, clientX: points[id].x, clientY: points[id].y,
+      });
+    }
+    if (cdp) await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: points });
+  }
+  async function release(cancel) {
+    if (!device.touch) { await page.keyboard.up("ArrowLeft"); await page.keyboard.up("Space"); return; }
+    if (cdp) await cdp.send("Input.dispatchTouchEvent", { type: cancel ? "touchCancel" : "touchEnd", touchPoints: [] });
+    else await page.evaluate((cancel) => {
+      for (const id of [40,41]) window.dispatchEvent(new PointerEvent(cancel ? "pointercancel" : "pointerup", { pointerId: id, pointerType: "touch" }));
+    }, cancel);
+  }
+  await hold(["left", "boost"]);
+  await page.waitForFunction(() => raceDriveProbe.command?.steer === -1 && raceDriveProbe.command?.boost);
+  const start = await page.evaluate(() => raceUI.snapshot().raceTick);
+  await page.waitForFunction((start) => raceUI.snapshot().raceTick >= start + 300, start);
+  const probe = await page.evaluate(() => ({ ...raceDriveProbe, limit: SpaceManRace.course(raceUI.snapshot().trackId).width / 2 - SpaceManRace.constants.KART_RADIUS }));
+  assert.ok(probe.contacts > 30, `held direction genuinely exercises the rail: ${JSON.stringify(probe)}`);
+  assert.ok(probe.maxDistance <= probe.limit + .001);
+  assert.ok(probe.longestSlow < 30, "rail contact cannot strand the driver for half a second");
+  assert.equal(probe.recoveries, 0);
+  if (process.env.SPACE_MAN_RACE_SCREENSHOTS) {
+    await fs.mkdir(process.env.SPACE_MAN_RACE_SCREENSHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SPACE_MAN_RACE_SCREENSHOTS, `forgiving-${device.name}.png`) });
+  }
+  await release(false);
+  await page.waitForFunction(() => raceDriveProbe.command?.steer === 0 && !raceDriveProbe.command?.boost);
+  assert.equal(await page.locator(".race-pressed").count(), 0);
+  await hold(["left"]);
+  await page.waitForFunction(() => raceDriveProbe.command?.steer === -1);
+  await release(true);
+  await page.waitForFunction(() => raceDriveProbe.command?.steer === 0);
+  assert.equal(await page.locator(".race-pressed").count(), 0);
+  t.diagnostic(`${device.name}: ${probe.contacts} contact ticks, longest near-stall ${probe.longestSlow} ticks`);
 });

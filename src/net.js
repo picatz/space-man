@@ -70,7 +70,10 @@
   // Runner HELLO/WELCOME bytes stay unchanged; each arcade mode requires its
   // own invite bit, HELLO/WELCOME marker and negotiated capability.
   const CAP_ARENA = 1 << 5, INV_ARENA = 0x10, MODE_ARENA = 1, A_ARENA = 0x40;
-  const CAP_RACE = 1 << 6, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
+  // Race revision 2 widens authored roads and changes contact rules. Bit 6
+  // belongs to legacy geometry: never advertise both, or old guests render a
+  // different road under authoritative poses. Gate both HELLO and WELCOME.
+  const CAP_RACE = 1 << 7, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
   const ARENA_MAX = 1024, ARENA_HEAD = 8, ARENA_CHUNK = WIRE_MAX - 27 - ARENA_HEAD;
   const ARENA_TTL = 1000, ARENA_ABSENT_GRACE = 15000, SEAL_QUEUE_MAX = 32;
   const modeName = (o) => o && (o.mode === 'arena' || o.mode === 'race') ? o.mode : 'runner';
@@ -87,6 +90,7 @@
   const modeMatches = (mode, h) => h.mode === modeByte({ mode }) && (!modeCap({ mode }) || !!(h.caps & modeCap({ mode })));
   const modeRejection = (o, peerMode) => o.mode === 'race' || peerMode === MODE_RACE ? INV_RACE : INV_ARENA;
   const modeError = () => new Error('This invite is for a different game mode. Open Star Circuit for racing rooms, Arena for arena rooms or Run Together for runner rooms.');
+  const raceVersionError = () => new Error('This Star Circuit room uses an incompatible race version. Refresh both games, then ask the host to create a new invite.');
 
   // Mobility rate-limit tables (Addendum F.1) — GUEST-enforced; the host is
   // never trusted to self-limit. Move/handoff FLOWS are M2 (reserved frame
@@ -2979,7 +2983,7 @@
         unsubscribe = next.ev.on((e, d) => {
           if (e === 'join-progress' && d.stage === 'hello') arm();
           if (e === 'welcomed') resolve();
-          if (e === 'bye') reject(d.reason === 3 && (d.detail === INV_ARENA || d.detail === INV_RACE) ? modeError() : new Error(d.reason === 4 ? 'That room is full for this role.' : 'The host declined or ended this room.'));
+          if (e === 'bye') reject(d.reason === 3 && d.detail === INV_RACE && next.mode === 'race' ? raceVersionError() : d.reason === 3 && (d.detail === INV_ARENA || d.detail === INV_RACE) ? modeError() : new Error(d.reason === 4 ? 'That room is full for this role.' : 'The host declined or ended this room.'));
         });
       });
       try { await Promise.all([next.join(), admitted]); }

@@ -56,10 +56,10 @@ async function reachable(page, selector, minimum = 44) {
   assert.ok(b && b.height >= minimum - .5, `${selector} has a ${minimum}px target`);
   assert.ok(b.x >= -1 && b.x + b.width <= viewport.width + 1 && b.y >= -1 && b.y + b.height <= viewport.height + 1, `${selector} stays reachable`);
 }
-const sizes = [[320,568],[360,640],[375,667],[390,640],[390,844],[844,390],[768,1024],[1440,900]];
+const sizes = [[320,568],[360,640],[375,667],[390,640],[390,844],[667,375],[844,390],[768,1024],[1440,900]];
 test('before screenshots retain the real production reference', { timeout: 90000, skip: !process.env.SPACE_MAN_THEME_BASE_ROOT }, async t => {
   const page = await launch(t, path.resolve(process.env.SPACE_MAN_THEME_BASE_ROOT));
-  for (const [width,height] of [[320,568],[360,640],[375,667],[390,640],[390,844],[844,390],[768,1024],[1440,900]]) {
+  for (const [width,height] of [[320,568],[360,640],[375,667],[390,640],[390,844],[667,375],[844,390],[768,1024],[1440,900]]) {
     await page.setViewportSize({ width, height });
     await capture(page, `before-${width}x${height}-title`);
     await page.locator('#btnArena').click(); await page.locator('.arena-root[data-screen=lobby]').waitFor();
@@ -175,7 +175,7 @@ test('runner result card fixture shares chrome without clipping retry or score',
   const base = page.url();
   await page.goto(base + '?theme-layout=results#shot=dead&seed=42&frames=600');
   await page.locator('#ovDead.show').waitFor();
-  for (const [width,height] of [[320,568],[390,640],[390,844],[844,390],[1440,900]]) {
+  for (const [width,height] of [[320,568],[390,640],[390,844],[667,375],[844,390],[1440,900]]) {
     await page.setViewportSize({ width,height });
     await reachable(page, '#btnAgain');
     // The retry dock intentionally bleeds through the panel's horizontal

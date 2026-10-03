@@ -119,7 +119,9 @@ for (const course of tracks) {
   });
 
   test(`${course.id}: spatial packing preserves every original triangle and material byte`, () => {
-    assert.equal(triangleHash(TrackMesh.build(course).vertices), originalTriangles[course.id]);
+    // Retain the original-width byte regression when authored track widths change.
+    const original = Object.freeze({ ...course, width: { starlight: 156, ember: 148, bloom: 152 }[course.id] });
+    assert.equal(triangleHash(TrackMesh.build(original).vertices), originalTriangles[course.id]);
   });
 }
 
