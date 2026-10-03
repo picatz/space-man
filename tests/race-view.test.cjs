@@ -6,6 +6,7 @@ const Race = require("../src/race.js");
 const Camera = require("../src/race-camera.js");
 const Scene = require("../src/race-scene.js");
 const Presentation = require("../src/race-presentation.js");
+const Render3D = require("../src/render3d.js");
 
 const source = fs.readFileSync(require.resolve("../src/race-view.js"), "utf8");
 const freeze = (value) => {
@@ -37,6 +38,7 @@ function harness({
       children: [],
       attrs: {},
       dataset: {},
+      style: {},
       hidden: false,
       append(...children) {
         this.children.push(...children);
@@ -98,6 +100,7 @@ function harness({
       setItem: (key, value) => storage.set(key, value),
     },
     SpaceManRender3D: {
+      ...Render3D,
       create(canvas, options) {
         attempts++;
         callbacks = options;
@@ -118,6 +121,7 @@ function harness({
     dt: 1 / 60,
     reduceMotion: true,
     actorId: snapshot.actors[0].id,
+    localActorId: snapshot.actors[0].id,
   };
   return {
     view,
@@ -136,6 +140,7 @@ function harness({
     get hasPixels() {
       return hasPixels;
     },
+    marker: nodes.find((node) => node.className === "race-pilot-marker"),
     world: nodes.find((node) => node.className === "race-world"),
     menu: nodes.find((node) => node.className === "race-view-menu"),
     toggle: nodes.find((node) => node.className?.includes("race-view-toggle")),
@@ -327,5 +332,61 @@ test("fractional display frames update shared camera and craft poses without reb
     .meshes.find((m) => m.actorId === h.snapshot.actors[0].id);
   assert.equal(a.vertices, b.vertices);
   assert.ok(Math.abs(b.model[12] - a.model[12] - 2) < 0.001);
+  h.view.destroy();
+});
+
+
+test("Chase identifies the local pilot in screen space and Cockpit only retains HUD identity", () => {
+  const h = harness();
+  h.view.render(h.snapshot, h.config);
+  assert.equal(h.marker.hidden, false);
+  assert.equal(h.marker.textContent, "YOU");
+  assert.equal(h.marker.dataset.actorId, h.config.localActorId);
+  assert.ok(Number.isFinite(parseFloat(h.marker.style.left)));
+  assert.ok(Number.isFinite(parseFloat(h.marker.style.top)));
+  h.view.setMode("cockpit");
+  assert.equal(h.marker.hidden, true, "camera switch clears the old marker immediately");
+  h.view.render(h.snapshot, h.config);
+  assert.equal(h.marker.hidden, true);
+  assert.ok(!h.frames.at(-1).meshes.some(m => m.actorId === h.config.localActorId));
+  h.view.setMode("chase");
+  h.view.render(h.snapshot, h.config);
+  assert.equal(h.marker.hidden, false);
+  h.view.close();
+  assert.equal(h.marker.hidden, true);
+  h.view.destroy();
+  assert.equal(h.marker.removed, true);
+});
+
+test("spectators identify the followed racer as WATCHING through seat changes and recovery", () => {
+  const h = harness({ width: 390, height: 844 });
+  // Ownership comes from the authoritative adapter, never a slot number or color.
+  const remote = { ...h.snapshot, actors: h.snapshot.actors.map(a => ({ ...a, controller: "remote" })) };
+  h.view.render(remote, { ...h.config, localActorId: null });
+  assert.equal(h.marker.textContent, "WATCHING");
+  for (const actor of remote.actors) {
+    h.view.render(remote, { ...h.config, actorId: actor.id, localActorId: null });
+    assert.equal(h.marker.hidden, false);
+    assert.equal(h.marker.dataset.actorId, actor.id);
+    assert.equal(h.marker.textContent, "WATCHING");
+    assert.ok(parseFloat(h.marker.style.left) >= 54);
+    assert.ok(parseFloat(h.marker.style.left) <= 390 - 54);
+  }
+  // A stale local ID does not turn an explicitly remote pilot into YOU.
+  h.view.render(remote, h.config);
+  assert.equal(h.marker.textContent, "WATCHING");
+  const id = remote.actors[3].id;
+  const rejoined = { ...remote, actors: remote.actors.map(a => ({ ...a, controller: a.id === id ? "human" : "remote", recoveries: 2 })) };
+  h.view.render(rejoined, { ...h.config, actorId: id, localActorId: id });
+  assert.equal(h.marker.dataset.actorId, id);
+  assert.equal(h.marker.textContent, "YOU");
+  h.lose();
+  assert.equal(h.marker.hidden, true, "context loss clears the WebGL marker before fallback renders");
+  h.restore();
+  h.view.render(remote, { ...h.config, actorId: id, localActorId: null });
+  assert.equal(h.marker.textContent, "WATCHING");
+  h.view.setMode("topdown");
+  h.view.render(remote, { ...h.config, actorId: id, localActorId: null });
+  assert.equal(h.marker.hidden, true, "top-down supplies its own screen-space marker");
   h.view.destroy();
 });

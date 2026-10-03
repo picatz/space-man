@@ -232,6 +232,15 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await wait(c, () => SpaceManNet.active && SpaceManNet.info().mode === 'arena' && SpaceManNet.roster().some(r => r.you));
     if (c.phone) assert.equal(await c.page.locator('#arenaRoomHint').isVisible(),true,'phone joined-room connection status is visible');
   }
+  const assertHUDIdentity = async c => {
+    await wait(c, () => {
+      const s = arenaUI.snapshot(); if (!s) return false;
+      const own = s.actors.find(a => a.controller === 'human');
+      const cards = [...document.querySelectorAll('.arena-player-card[data-you="true"]')];
+      if (own) return cards.length === 1 && cards[0].dataset.actor === String(own.id) && cards[0].querySelector('.arena-you-badge')?.textContent === 'YOU';
+      return cards.length === 0 && !document.querySelector('.arena-you-badge') && document.querySelector('.arena-player-card[data-watching="true"]');
+    });
+  };
   const identity = c => c.page.evaluate(() => {
     const n = SpaceManNet, info = n.info(), s = n._n1.session();
     return { p: info.myP, role: info.role, key: n._n1.bytes.hex(s.keys.pub) };
@@ -286,6 +295,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     assert.equal((await snapshot(host)).actors[0].controller, 'human');
     assert.equal((await snapshot(guest)).actors[1].controller, 'human');
     assert.ok((await snapshot(watcher)).actors.every(a => a.controller !== 'human'));
+    await Promise.all([host,guest,watcher].map(assertHUDIdentity));
     await capture(guest,'phone-fight');
     await watcher.page.locator('#arenaWatchNext').click();
     await watcher.page.locator('#arenaWatchPrevious').click();
@@ -340,6 +350,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await host.page.locator('#arenaResume').click();
     await Promise.all(clients.map(c => screen(c,'match')));
 
+    await Promise.all(clients.map(assertHUDIdentity));
     stage = 'positioning host for a real keyboard attack';
     await wait(host, () => arenaUI.snapshot().actors.every(a => a.invulnerable === 0));
     await host.page.keyboard.down('d');
@@ -396,6 +407,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     assert.equal(teams.actors.find(a => a.peerP === 1).team,1);
     assert.ok((await snapshot(guest)).actors.every(a => a.controller !== 'human'));
     assert.ok((await snapshot(watcher)).actors.some(a => a.controller === 'human'));
+    await Promise.all(clients.map(assertHUDIdentity));
     const viewport = guest.page.viewportSize();
     for (const id of ['arenaWatchPrevious','arenaWatchNext']) {
       await guest.page.locator('#'+id).waitFor({state:'visible'});
@@ -422,6 +434,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await host.page.locator('#arenaResume').click();
     await Promise.all(clients.map(c => screen(c,'match')));
     await wait(watcher, () => arenaUI.snapshot()?.actors.every(a => a.controller !== 'human'));
+    await assertHUDIdentity(watcher);
     assert.equal(await watcher.page.locator('#arenaWatchNext').isVisible(),true,'recycled-number watcher retains spectator navigation');
     assert.equal(await watcher.page.locator('.arena-touch').count(),1,'fighter controls exist to check visibility');
     assert.equal(await watcher.page.locator('.arena-touch').isVisible(),false,'recycled-number watcher never gets fighter touch controls');

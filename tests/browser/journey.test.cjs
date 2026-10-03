@@ -43,5 +43,21 @@ test((live?'LIVE public':'simulated')+' relay: one crew through all engines and 
  }
  assert.equal((await state(late.page)).role,0,'late viewer takes requested seat at next boundary');
  for(const c of[host,friend,watcher])assert.ok(c.encryptedSent>0&&c.encryptedReceived>0,'genuine encrypted relay traffic');
- await host.page.waitForFunction(()=>journeyUI.room.current?.phase==='running');await host.page.keyboard.press('Escape');const exitMode=(await state(host.page)).mode;await host.page.locator(exitMode==='runner'?'#btnJourneyCrew':exitMode==='arena'?'#arenaJourneyCrew':'#raceJourneyCrew').click();await host.page.locator('#journeyLeave').click();await Promise.all([friend,watcher,late].map(c=>c.page.waitForFunction(()=>!SpaceManNet.active&&!sharedEncounter&&!arenaUI?.active&&!raceUI?.active)));assert.equal(await host.page.locator('#ovAttract').evaluate(el=>el.inert),false);
+ // Finish synthetic driving before exercising the human host's close-room
+ // confirmation. WebKit needs the page foregrounded for native modal input.
+ await Promise.all([host,friend,late].map(c=>c.page.evaluate(()=>{clearInterval(window.driver);testPad.axes=[0,0];testPad.buttons.forEach(b=>b.pressed=false);})));
+ await host.page.bringToFront();
+ await host.page.waitForFunction(()=>journeyUI.room.current?.phase==='running');
+ await host.page.keyboard.press('Escape');
+ const exitMode=(await state(host.page)).mode;
+ await host.page.locator(exitMode==='runner'?'#btnJourneyCrew':exitMode==='arena'?'#arenaJourneyCrew':'#raceJourneyCrew').click();
+ host.page.removeAllListeners('dialog');
+ const confirmation=host.page.waitForEvent('dialog',{timeout:5000});
+ const closeClick=host.page.locator('#journeyLeave').click();
+ const dialog=await confirmation;
+ assert.equal(dialog.type(),'confirm');assert.equal(dialog.message(),'Close this expedition for everyone?');
+ await dialog.accept();await closeClick;
+ await host.page.waitForFunction(()=>!journeyUI.room.active&&!SpaceManNet.active,undefined,{timeout:5000});
+ await Promise.all([friend,watcher,late].map(c=>c.page.waitForFunction(()=>!SpaceManNet.active&&!sharedEncounter&&!arenaUI?.active&&!raceUI?.active)));
+ assert.equal(await host.page.locator('#ovAttract').evaluate(el=>el.inert),false);
 });
