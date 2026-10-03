@@ -540,8 +540,10 @@ test('arena thumb layout keeps comfortable targets and the pilot clear across ph
       for(const card of await page.locator('.arena-player-card').all()) assert.equal(intersects(pause,await card.boundingBox(),4),false,'Pause stays outside the fighter roster');
       const hud = await page.locator('.arena-hud').boundingBox();
       for(const b of [...controls,zone]) assert.equal(intersects(hud,b,8),false,'the HUD stays above the thumb pods');
-      const own = await page.evaluate(() => thumbFrame?.bodies.find(b => b.id === 1));
-      if (own) for (const b of [...controls,zone]) assert.equal(intersects({x:own.x,y:own.y,width:own.w,height:own.h},b),false,'the local pilot is visible outside the controls');
+      await page.waitForFunction(() => thumbFrame?.bodies.some(b => b.id === 1));
+      const own = await page.evaluate(() => thumbFrame.bodies.find(b => b.id === 1));
+      assert.ok(own,'the local pilot remains in the visible playfield');
+      for (const b of [...controls,zone]) assert.equal(intersects({x:own.x,y:own.y,width:own.w,height:own.h},b),false,'the local pilot is visible outside the controls');
       await capture(page, `arena-thumbs-${width}x${height}-${lefty ? 'left' : 'right'}`);
     }
     // Restart a real match so CPUs cannot eliminate the stationary pilot while
@@ -549,10 +551,10 @@ test('arena thumb layout keeps comfortable targets and the pilot clear across ph
     await page.locator('#arenaPause').tap(); await page.getByRole('button',{name:'Restart match',exact:true}).tap(); await playing(page);
   }
   await page.setViewportSize({width:390,height:844});
-  await page.evaluate(() => { document.documentElement.style.setProperty('--game-ui-left','20px');document.documentElement.style.setProperty('--game-ui-right','24px');document.documentElement.style.setProperty('--game-ui-bottom','34px');window.dispatchEvent(new Event('resize')); });
+  await page.evaluate(() => { const root=document.querySelector('#arenaRoot');root.style.setProperty('--game-ui-left','20px');root.style.setProperty('--game-ui-right','24px');root.style.setProperty('--game-ui-bottom','34px');window.dispatchEvent(new Event('resize')); });
   await page.waitForTimeout(150);
   for(const selector of ['.arena-touch-jump','.arena-touch-attack','.arena-touch-dash','.arena-stick-zone']) {
-    const b=await page.locator(selector).boundingBox();assert.ok(b.x>=20&&b.x+b.width<=390-24&&b.y+b.height<=844-34,'safe-area-aware control bounds');
+    const b=await page.locator(selector).boundingBox();assert.ok(b.x>=20&&b.x+b.width<=390-24&&b.y+b.height<=844-34,`safe-area-aware ${selector}: ${JSON.stringify(b)}`);
   }
   await capture(page,'arena-thumbs-safe-areas');
 });

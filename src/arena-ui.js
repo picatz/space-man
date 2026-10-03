@@ -189,7 +189,7 @@
 `;
   const THUMB_STYLES = `
 /* These rules follow identity styles so compact HUDs keep names and YOU intact. */
-@media(max-aspect-ratio: 114/100){
+@media(max-aspect-ratio: 114/100), (min-height:601px){
 .arena-root[data-touch=true] .arena-touch:before{content:'';position:absolute;inset:auto 0 0;height:calc(184px + var(--arena-safe-bottom));background:linear-gradient(0deg,#060D1CCE,#060D1C66 55%,transparent);pointer-events:none}
 }
 @media(min-aspect-ratio: 115/100) and (max-height:600px){
@@ -846,7 +846,8 @@
         // empty rectangles and carry them into a resumed match.
         if (zones.every(r => r.width > 0 && r.height > 0)) thumbBounds = { top: Math.min(...zones.map(r => r.top - origin.top)), side: Math.max(...zones.map(r => r.width + Math.min(r.left - origin.left, origin.right - r.right))) + 14 };
       }
-      const bottom = touch && thumbBounds ? (portrait ? height - thumbBounds.top + 16 : 24) : 66;
+      const lowerDeck = portrait || height > 600;
+      const bottom = touch && thumbBounds ? (lowerDeck ? height - thumbBounds.top + 16 : 24) : 66;
       const playHeight = Math.max(100, height - top - bottom), cy = top + playHeight / 2;
       let scale, x, y;
       if (portrait) {
@@ -854,7 +855,7 @@
         x = clamp(lerp(human.px, human.x, alpha) + human.w / 2 + human.facing * 28, span * .38, a.width - span * .38);
         y = clamp(lerp(human.py, human.y, alpha) + human.h / 2, 245, 460);
       } else {
-        const safeWidth = touch && thumbBounds ? width - thumbBounds.side * 2 : width - 65;
+        const safeWidth = touch && thumbBounds && !lowerDeck ? width - thumbBounds.side * 2 : width - 65;
         scale = Math.min(safeWidth / 880, playHeight / 430, 1.7);
         // A wide phone shows the complete stage between the two thumb pods.
         // On narrower landscape screens, follow the pilot instead of reducing
