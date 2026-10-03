@@ -224,7 +224,7 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 .race-root .race-preferences > .race-label { margin-bottom: 10px; }
 .race-root .race-setting-label { margin: 8px 0 6px; color: var(--sm-copy); font-size: 12px; font-weight: 650; }
 .race-root .race-camera-options { margin: 0; gap: 6px; }
-.race-root .race-dialog .race-camera-options .race-button { min-width: 0; font: 650 11px/1.3 var(--sm-font-body); }
+.race-root .race-dialog .race-camera-options .race-button { min-width: 0; padding-inline: 4px; white-space: nowrap; font: 650 11px/1.3 var(--sm-font-body); }
 .race-root .race-audio-controls { margin-top: 0; gap: 6px; }
 .race-root .race-dialog .race-audio-controls .race-button { flex: 1; font: 650 11px/1.3 var(--sm-font-body); }
 .race-root .race-audio-volume { flex: 1 0 100%; justify-content: space-between; gap: 12px; min-width: 0; font-size: 12px; }
@@ -242,9 +242,10 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 .race-root .race-room-input { font-size: 16px; }
 .race-root .race-compact { padding: 22px; scroll-padding-block: 14px; }
 .race-root .race-compact h2 { margin: 12px 0 8px; }
-.race-root .race-compact > p { margin: 0 0 16px; line-height: 1.55; }
-.race-root .race-compact > .race-button { min-height: 46px; margin-top: 8px; }
-.race-root .race-compact > .race-text { color: var(--sm-copy); border-color: var(--sm-line); }
+.race-root .race-menu-copy > p { margin: 0 0 16px; line-height: 1.55; }
+.race-root .race-menu-actions { display: grid; gap: 8px; }
+.race-root .race-menu-actions > .race-button { width: 100%; min-height: 46px; margin: 0; }
+.race-root .race-menu-actions > .race-text { color: var(--sm-copy); border-color: var(--sm-line); }
 .race-root .race-compact .race-camera-options { margin-top: 16px; }
 .race-root .race-compact .race-audio-controls { margin-top: 12px; }
 .race-root .race-results { display: grid; gap: 6px; margin: 16px 0; }
@@ -301,4 +302,23 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
   .race-root .race-local-note { margin-top: 8px; }
   .race-root .race-compact { padding: 18px; }
   .race-root .race-results { margin-block: 12px; }
+}
+
+/* Short landscape screens keep both Resume and the way out visible. Settings
+   remain in the same scrollable dialog; no controls are hidden to force a fit. */
+@media (orientation: landscape) and (max-height: 560px) and (min-width: 600px) {
+  .race-root .race-pause-panel { width: min(730px,100%); display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-areas: 'copy actions' 'preferences actions'; gap: 0 20px; }
+  .race-root .race-menu-copy { grid-area: copy; }
+  .race-root .race-pause-panel .race-menu-actions { grid-area: actions; align-self: start; gap: 10px; }
+  .race-root .race-menu-preferences { grid-area: preferences; min-width: 0; }
+  .race-root .race-menu-copy h2 { font-size: 23px; margin-block: 8px 6px; }
+  .race-root .race-menu-copy > p { margin-bottom: 8px; font-size: 12px; }
+  .race-root .race-compact .race-camera-options { margin-top: 0; }
+  .race-root .race-compact .race-audio-controls { margin-top: 8px; padding-top: 8px; }
+  .race-root .race-result-panel { width: min(730px,100%); display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 6px 20px; align-items: start; }
+  .race-root .race-result-panel > .race-pill { grid-column: 1/-1; justify-self: start; }
+  .race-root .race-result-panel > h2 { grid-column: 1/-1; font-size: 24px; margin-block: 2px 6px; }
+  .race-root .race-result-panel .race-results { margin: 0; gap: 4px; }
+  .race-root .race-result-panel .race-result-row { padding: 6px 9px; }
+  .race-root .race-result-panel .race-menu-actions { gap: 7px; }
 }

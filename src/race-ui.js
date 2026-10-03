@@ -1097,7 +1097,7 @@
       roomUtilities.append(preferences);
       grid.append(intro, setup, roomUtilities);
       lobby.append(header, grid);
-      pausePanel = el("div", "race-dialog race-compact");
+      pausePanel = el("div", "race-dialog race-compact race-pause-panel");
       pausePanel.setAttribute("role", "dialog");
       pausePanel.setAttribute("aria-label", "Race paused");
       pausePanel.append(
@@ -1109,9 +1109,17 @@
         button("Choose a circuit", "race-text", showLobby),
         recoveryButton("All games", "race-text", close),
       );
-      perspective?.panel(pausePanel);
+      const pauseCopy = el("div", "race-menu-copy");
+      for (const n of Array.from(pausePanel.children).slice(0, 3)) pauseCopy.append(n);
+      pausePanel.prepend(pauseCopy);
+      const pauseActions = el("div", "race-menu-actions");
+      for (const n of pausePanel.querySelectorAll("button")) pauseActions.append(n);
+      pausePanel.append(pauseActions);
+      const pausePreferences = el("div", "race-menu-preferences");
+      perspective?.panel(pausePreferences);
+      pausePanel.append(pausePreferences);
 
-      resultPanel = el("div", "race-dialog race-compact");
+      resultPanel = el("div", "race-dialog race-compact race-result-panel");
       resultPanel.setAttribute("role", "dialog");
       resultPanel.setAttribute("aria-label", "Race results");
       resultTitle = el("h2");
@@ -1133,6 +1141,9 @@
         button("Choose a circuit", "race-text", showLobby),
         recoveryButton("All games", "race-text", close),
       );
+      const resultActions = el("div", "race-menu-actions");
+      for (const n of resultPanel.querySelectorAll("button")) resultActions.append(n);
+      resultPanel.append(resultActions);
       pausePanel.querySelectorAll("button")[0].id = "raceResume";
       pausePanel.querySelectorAll("button")[1].id = "raceRestart";
       pausePanel.querySelectorAll("button")[2].id = "raceLobby";
@@ -1142,7 +1153,7 @@
       resultPanel.querySelectorAll("button")[1].id = "raceNext";
       buildRoomControls();
 
-      buildAudioControls(pausePanel);
+      buildAudioControls(pausePreferences);
       modal.append(lobby, pausePanel, resultPanel);
       rootEl.append(modal);
       live = el("div", "race-sr");
