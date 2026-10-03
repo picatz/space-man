@@ -74,22 +74,25 @@
   // belong to legacy geometry: never advertise them together, or old guests
   // render different roads/props under host poses. Gate HELLO and WELCOME.
   const CAP_RACE = 1 << 8, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
+  // Journey revision 1 owns encounter epochs above the transport. Standalone
+  // modes cannot opt in accidentally, even with an advertised capability.
+  const CAP_JOURNEY = 1 << 9, INV_JOURNEY = 0x40, MODE_JOURNEY = 3, A_JOURNEY = 0x42;
   const ARENA_MAX = 1024, ARENA_HEAD = 8, ARENA_CHUNK = WIRE_MAX - 27 - ARENA_HEAD;
   const ARENA_TTL = 1000, ARENA_ABSENT_GRACE = 15000, SEAL_QUEUE_MAX = 32;
-  const modeName = (o) => o && (o.mode === 'arena' || o.mode === 'race') ? o.mode : 'runner';
-  const modeByte = (o) => modeName(o) === 'race' ? MODE_RACE : modeName(o) === 'arena' ? MODE_ARENA : 0;
+  const modeName = (o) => o && (o.mode === 'arena' || o.mode === 'race' || o.mode === 'journey') ? o.mode : 'runner';
+  const modeByte = (o) => modeName(o) === 'journey' ? MODE_JOURNEY : modeName(o) === 'race' ? MODE_RACE : modeName(o) === 'arena' ? MODE_ARENA : 0;
   const arcadeMode = (o) => !!modeByte(o);
-  const modeCap = (o) => modeName(o) === 'race' ? CAP_RACE : modeName(o) === 'arena' ? CAP_ARENA : 0;
-  const modeFlag = (o) => modeName(o) === 'race' ? INV_RACE : modeName(o) === 'arena' ? INV_ARENA : 0;
-  const modeFrame = (o) => modeName(o) === 'race' ? A_RACE : A_ARENA;
+  const modeCap = (o) => modeName(o) === 'journey' ? CAP_JOURNEY : modeName(o) === 'race' ? CAP_RACE : modeName(o) === 'arena' ? CAP_ARENA : 0;
+  const modeFlag = (o) => modeName(o) === 'journey' ? INV_JOURNEY : modeName(o) === 'race' ? INV_RACE : modeName(o) === 'arena' ? INV_ARENA : 0;
+  const modeFrame = (o) => modeName(o) === 'journey' ? A_JOURNEY : modeName(o) === 'race' ? A_RACE : A_ARENA;
   const inviteMode = (inv) => {
-    const flags = inv.flags & (INV_ARENA | INV_RACE);
-    return flags === INV_RACE ? 'race' : flags === INV_ARENA ? 'arena' : flags ? 'invalid' : 'runner';
+    const flags = inv.flags & (INV_ARENA | INV_RACE | INV_JOURNEY);
+    return flags === INV_JOURNEY ? 'journey' : flags === INV_RACE ? 'race' : flags === INV_ARENA ? 'arena' : flags ? 'invalid' : 'runner';
   };
   const modeCaps = (o) => CAPS | modeCap(o);
   const modeMatches = (mode, h) => h.mode === modeByte({ mode }) && (!modeCap({ mode }) || !!(h.caps & modeCap({ mode })));
-  const modeRejection = (o, peerMode) => o.mode === 'race' || peerMode === MODE_RACE ? INV_RACE : INV_ARENA;
-  const modeError = () => new Error('This invite is for a different game mode. Open Star Circuit for racing rooms, Arena for arena rooms or Run Together for runner rooms.');
+  const modeRejection = (o, peerMode) => o.mode === 'journey' || peerMode === MODE_JOURNEY ? INV_JOURNEY : o.mode === 'race' || peerMode === MODE_RACE ? INV_RACE : INV_ARENA;
+  const modeError = () => new Error('This invite is for a different game mode. Open Star Expedition for journey rooms, Star Circuit for racing rooms, Arena for arena rooms or Run Together for runner rooms.');
   const raceVersionError = () => new Error('This Star Circuit room uses an incompatible race version. Refresh both games, then ask the host to create a new invite.');
 
   // Mobility rate-limit tables (Addendum F.1) — GUEST-enforced; the host is
@@ -492,7 +495,7 @@
   // ROUND/control, KILL/KILLB/KILLS, BYE, EMOTE, HELLO, and anything unknown — mutates state,
   // so it must arrive after every earlier state frame: one whose counter is not above the last
   // accepted state frame is dropped as 'late' (never struck — that is reordering, not an attack).
-  const REORDER_SAFE = new Set([A_PRES, A_SNAP, A_PING, A_PONG, A_ARENA, A_RACE]);
+  const REORDER_SAFE = new Set([A_PRES, A_SNAP, A_PING, A_PONG, A_ARENA, A_RACE, A_JOURNEY]);
   // Anti-replay with a small window (the DTLS/IPsec rule): every counter opens at most once; one
   // that arrives a little late (reordered on a lossy path) is still accepted, one from beyond the
   // window is dropped as stale. `mask` bit i = counter highSeen−1−i already opened.
@@ -993,7 +996,7 @@
     dv.setUint32(37, (o.caps == null ? CAPS : o.caps) >>> 0, true);
     u[41] = (o.adjIdx == null ? CALLSIGN_NONE : o.adjIdx) & 0xff;
     u[42] = (o.nounIdx == null ? CALLSIGN_NONE : o.nounIdx) & 0xff;
-    if (o.mode === MODE_ARENA || o.mode === MODE_RACE) { u[43] = o.mode; return u.subarray(0, 44); }
+    if (o.mode === MODE_ARENA || o.mode === MODE_RACE || o.mode === MODE_JOURNEY) { u[43] = o.mode; return u.subarray(0, 44); }
     return u.subarray(0, HELLO_LEN);
   }
   function decHello(pt) {
@@ -1026,7 +1029,7 @@
     u.fill(0, 15, WELCOME_LEN);
     u[15] = (o.hostEpoch || 0) & 0xff;
     dv.setUint32(16, (o.caps == null ? CAPS : o.caps) >>> 0, true);
-    u[20] = o.mode === MODE_ARENA || o.mode === MODE_RACE ? o.mode : 0;
+    u[20] = o.mode === MODE_ARENA || o.mode === MODE_RACE || o.mode === MODE_JOURNEY ? o.mode : 0;
     if (u[20]) { u[21] = o.playerCap || 4; u[22] = o.spectatorCap || 4; }
     return u.subarray(0, WELCOME_LEN);
   }
@@ -1667,7 +1670,7 @@
       if (!pt.length) return;
       // Frame-type partition (Addendum D): reserved (0x40-0x7F) & experimental
       // (0x80-0xFF) types are ignored silently and NEVER striked.
-      if (pt[0] === A_ARENA || pt[0] === A_RACE) {
+      if (pt[0] === A_ARENA || pt[0] === A_RACE || pt[0] === A_JOURNEY) {
         if (!arcadeMode(S) || pt[0] !== modeFrame(S) || !(row.caps & modeCap(S))) return;
         if (row.role === ROLE_SPECTATOR) return strike(row, 'spectator-' + S.mode);
         if (row.absent) return;
@@ -2278,6 +2281,7 @@
     }
     S.setArenaRoleLock = (locked) => setArcadeRoleLock('arena', locked);
     S.setRaceRoleLock = (locked) => setArcadeRoleLock('race', locked);
+    S.setJourneyRoleLock = (locked) => setArcadeRoleLock('journey', locked);
     function sendArcade(mode, bytes, targetP) {
       if (S.mode !== mode) return Promise.resolve(false);
       const rows = members().filter((r) => (r.caps & modeCap(S)) && (targetP == null || r.p === targetP));
@@ -2286,6 +2290,7 @@
     }
     S.sendArena = (bytes, targetP) => sendArcade('arena', bytes, targetP);
     S.sendRace = (bytes, targetP) => sendArcade('race', bytes, targetP);
+    S.sendJourney = (bytes, targetP) => sendArcade('journey', bytes, targetP);
     S.setCallsign = (a, n) => { S.adjIdx = a & 0xff; S.nounIdx = n & 0xff; sendRoster(0).catch(() => {}); };
     S.sendRoster = sendRoster; S.counts = counts;
 
@@ -2542,7 +2547,7 @@
       if (S.hostGoneTimer) { clearTimeout(S.hostGoneTimer); S.hostGoneTimer = null; S.hostAwayAt = 0; if (S.awayKnock) { stopTick(S.awayKnock); S.awayKnock = null; } S.ev.emit('hostback', {}); }   // the host is back
       const pt = res.pt;
       if (!pt.length) return;
-      if (pt[0] === A_ARENA || pt[0] === A_RACE) {
+      if (pt[0] === A_ARENA || pt[0] === A_RACE || pt[0] === A_JOURNEY) {
         if (!arcadeMode(S) || pt[0] !== modeFrame(S) || !S.welcomed || !(S.caps & modeCap(S)) || S.byed != null || res.ctr <= (S.arenaMinCtr || 0)) return;
         const why = arenaReceive(S, pt, (bytes) => S.ev.emit(S.mode + '-data', { p: 1, pubHex: S.hostHex, bytes }));
         if (why) S.ev.emit('drop', { why });
@@ -2796,6 +2801,7 @@
     }
     S.sendArena = (bytes, targetP) => sendArcade('arena', bytes, targetP);
     S.sendRace = (bytes, targetP) => sendArcade('race', bytes, targetP);
+    S.sendJourney = (bytes, targetP) => sendArcade('journey', bytes, targetP);
     S.setCallsign = (a, n) => { S.adjIdx = a & 0xff; S.nounIdx = n & 0xff; };
     // Presence + session board for the render stage (N3). A guest projects the
     // host's SNAP fan-out (S.peers, p → last snap row) joined to the roster
@@ -2983,7 +2989,7 @@
         unsubscribe = next.ev.on((e, d) => {
           if (e === 'join-progress' && d.stage === 'hello') arm();
           if (e === 'welcomed') resolve();
-          if (e === 'bye') reject(d.reason === 3 && d.detail === INV_RACE && next.mode === 'race' ? raceVersionError() : d.reason === 3 && (d.detail === INV_ARENA || d.detail === INV_RACE) ? modeError() : new Error(d.reason === 4 ? 'That room is full for this role.' : 'The host declined or ended this room.'));
+          if (e === 'bye') reject(d.reason === 3 && d.detail === INV_RACE && next.mode === 'race' ? raceVersionError() : d.reason === 3 && (d.detail === INV_ARENA || d.detail === INV_RACE || d.detail === INV_JOURNEY) ? modeError() : new Error(d.reason === 4 ? 'That room is full for this role.' : 'The host declined or ended this room.'));
         });
       });
       try { await Promise.all([next.join(), admitted]); }
@@ -3080,6 +3086,8 @@
     setArenaRoleLock(locked) { return !!(session && session.setArenaRoleLock && session.setArenaRoleLock(locked)); },
     sendRace(bytes, targetP) { return session && session.sendRace ? session.sendRace(bytes, targetP) : Promise.resolve(false); },
     setRaceRoleLock(locked) { return !!(session && session.setRaceRoleLock && session.setRaceRoleLock(locked)); },
+    sendJourney(bytes, targetP) { return session && session.sendJourney ? session.sendJourney(bytes, targetP) : Promise.resolve(false); },
+    setJourneyRoleLock(locked) { return !!(session && session.setJourneyRoleLock && session.setJourneyRoleLock(locked)); },
     // Callsigns (Addendum C) — indexes only; the picker uses the validator to
     // re-roll out-of-range / denied pairs. UI (N2b) owns the spinner.
     setCallsign(adjIdx, nounIdx) { if (session && session.setCallsign) session.setCallsign(adjIdx, nounIdx); },
@@ -3284,9 +3292,10 @@
     // Room-protocol seam (N2): additive over _n1 for the harness + N2b UI.
     _room: {
       ROLE_PLAYER, ROLE_SPECTATOR, PLAYER_CAP, SPECTATOR_CAP, CAPS, CALLSIGN_NONE,
-      caps: { CAP_CALLSIGN, CAP_SPECTATE, CAP_ROLECHANGE, CAP_ANTICHEAT, CAP_HOSTEPOCH, CAP_ARENA, CAP_RACE },
+      caps: { CAP_CALLSIGN, CAP_SPECTATE, CAP_ROLECHANGE, CAP_ANTICHEAT, CAP_HOSTEPOCH, CAP_ARENA, CAP_RACE, CAP_JOURNEY },
       arena: { A_ARENA, INV_ARENA, MODE_ARENA, ARENA_MAX, ARENA_CHUNK, ARENA_TTL, ARENA_ABSENT_GRACE, SEAL_QUEUE_MAX, arenaFragment, arenaReceive },
       race: { A_RACE, INV_RACE, MODE_RACE, RACE_MAX: ARENA_MAX, RACE_CHUNK: ARENA_CHUNK, RACE_TTL: ARENA_TTL, RACE_ABSENT_GRACE: ARENA_ABSENT_GRACE, SEAL_QUEUE_MAX, raceFragment, raceReceive: arenaReceive },
+      journey: { A_JOURNEY, INV_JOURNEY, MODE_JOURNEY, MAX_BYTES: ARENA_MAX, fragment: (bytes, id, index) => arenaFragment(bytes, id, index, A_JOURNEY) },
       frameRange: { FRAME_CORE_HI, FRAME_RESERVED_HI },
       callsign: { text: callsignText, valid: callsignValid, denied: (a, n) => { const cs = callsignData(); return cs ? callsignDenied(cs, a, n) : false; }, data: callsignData },
       anticheat: { check: checkEnvelope, AC },
