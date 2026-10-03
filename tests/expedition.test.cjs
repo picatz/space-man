@@ -40,3 +40,9 @@ test('receipt data is bounded and retains no unrecognized values', () => {
   const r=e.snapshot().records[0]; assert.equal(r.distance,0);assert.equal(r.score,0);assert.equal(r.secret,undefined);
 });
 
+
+test('page has no orphaned legacy briefing or continue controls', () => {
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '../index.html'), 'utf8');
+  assert.doesNotMatch(html, /id="(?:ovExpedition|btnExpeditionContinue|btnExpeditionExit|expeditionLeg[0-9])"/);
+  assert.equal((html.match(/id="expeditionCue"/g)||[]).length,1);
+});

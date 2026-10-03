@@ -122,10 +122,34 @@
       invulnerable: constants.RESPAWN_INVULNERABLE, lastHitBy: null,
     });
   }
+  // Expedition rules are opt-in. Ordinary local/online matches keep their
+  // original canonical state and three-minute, three-stock rules.
+  function encounterOptions(options) {
+    if (options.encounter !== 'boss' && options.encounter !== 'skirmish') return null;
+    const boss = options.encounter === 'boss';
+    const encounter = {
+      type: options.encounter,
+      durationTicks: clamp(Math.trunc(finite(options.durationTicks, boss ? 3300 : 2100)), 900, 5400),
+      countdownTicks: clamp(Math.trunc(finite(options.countdownTicks, 60)), 0, constants.COUNTDOWN_TICKS),
+      stocks: clamp(Math.trunc(finite(options.stocks, 2)), 1, 3),
+    };
+    if (boss) {
+      encounter.bossTier = clamp(Math.trunc(finite(options.bossTier, 1)), 1, 5);
+      encounter.wingmate = options.wingmate !== false;
+      if (options.crewCount !== undefined) {
+        encounter.crewCount = clamp(Math.trunc(finite(options.crewCount, encounter.wingmate ? 2 : 1)), 1, 4);
+        encounter.wingmate = encounter.crewCount > 1;
+      }
+    }
+    return encounter;
+  }
+  function crewCount(encounter) { return encounter.crewCount || (encounter.wingmate ? 2 : 1); }
+  function bossHealth(encounter) { return 168 + encounter.bossTier * 24 + (crewCount(encounter) - 1) * 192; }
   function create(options) {
     const opts = options && typeof options === 'object' ? options : {};
-    const arena = getArena(opts.arenaId);
-    const format = ['duel', 'ffa', 'teams'].includes(opts.format) ? opts.format : 'duel';
+    const arena = getArena(opts.arenaId), encounter = encounterOptions(opts);
+    const bossEncounter = encounter && encounter.type === 'boss';
+    const format = bossEncounter ? 'teams' : ['duel', 'ffa', 'teams'].includes(opts.format) ? opts.format : 'duel';
     const difficulty = Object.hasOwn(difficulties, opts.difficulty) ? opts.difficulty : 'normal';
     const seed = Math.trunc(finite(opts.seed, 1)) >>> 0;
     const state = {
@@ -134,16 +158,23 @@
       arenaId: arena.id, format, difficulty, seed, rngState: seed,
       actors: [], events: [], result: null,
     };
-    const count = format === 'duel' ? 2 : 4;
+    if (encounter) {
+      state.encounter = encounter;
+      state.countdownTicks = encounter.countdownTicks;
+      state.timeLeftTicks = encounter.durationTicks;
+      if (!state.countdownTicks) state.phase = 'playing';
+    }
+    const count = bossEncounter ? (crewCount(encounter) + 1) : format === 'duel' ? 2 : 4;
     for (let index = 0; index < count; index++) {
-      const profile = profiles[index];
+      const isBoss = bossEncounter && index === count - 1;
+      const profile = profiles[isBoss ? 2 : index];
       const actor = {
         id: index + 1, profileId: profile.id, name: profile.name, color: profile.color,
         accent: profile.accent, suit: profile.suit,
-        team: format === 'teams' ? (index < 2 ? 0 : 1) : index,
+        team: bossEncounter ? (isBoss ? 1 : 0) : format === 'teams' ? (index < 2 ? 0 : 1) : index,
         controller: index === 0 ? 'human' : 'cpu',
         w: constants.FIGHTER_W, h: constants.FIGHTER_H, facing: index % 2 ? -1 : 1,
-        stocks: constants.STOCKS, deaths: 0, kos: 0, attackSerial: 0,
+        stocks: isBoss ? 1 : encounter ? encounter.stocks : constants.STOCKS, deaths: 0, kos: 0, attackSerial: 0,
         ai: {
           rngState: Math.floor(random(state) * 4294967296) >>> 0,
           aggression: 0.75 + random(state) * 0.5,
@@ -153,9 +184,28 @@
           intent: normalizeCommand(), cachedCommand: normalizeCommand(),
         },
       };
-      // Teams begin on opposite halves; each pair is together.
-      const spawnIndex = format === 'teams' ? [0, 2, 1, 3][index] : index;
-      resetBody(actor, arena.spawns[spawnIndex]);
+      // A wingmate helps with navigation, pressure and tells, but leaves the
+      // player room to fight instead of clearing a boss on their behalf.
+      if (bossEncounter && index > 0 && !isBoss) actor.ai.aggression *= 0.30;
+      if (isBoss) {
+        actor.name = 'Sentinel'; actor.w = 56; actor.h = 74;
+        actor.facing = -1; actor.color = '#FF856B'; actor.accent = '#FFE09C'; actor.suit = '#422C51';
+        const maxHealth = bossHealth(encounter);
+        actor.boss = {
+          tier: encounter.bossTier, maxHealth, health: maxHealth,
+          phase: 'idle', phaseTicks: 72, phaseDuration: 72,
+          move: 'shockwave', cycle: 0, attack: null, hitIds: [],
+        };
+      }
+      // Teams begin on opposite halves; each pair is together. A boss has one
+      // larger body, rather than a disguised extra team of normal fighters.
+      const spawnIndex = bossEncounter ? (isBoss ? 1 : [0, 2][index]) : format === 'teams' ? [0, 2, 1, 3][index] : index;
+      let spawn = arena.spawns[spawnIndex];
+      if (bossEncounter && !isBoss && crewCount(encounter) > 2) {
+        const deck = arena.platforms[0];
+        spawn = { x: deck.x + 24 + index * Math.min(64, (deck.w - 72) / 3), y: deck.y - constants.FIGHTER_H };
+      }
+      resetBody(actor, { x: spawn.x, y: spawn.y + constants.FIGHTER_H - actor.h });
       actor.supportId = supportAt(arena, actor).id;
       state.actors.push(actor);
     }
@@ -185,7 +235,7 @@
     return { x: x / length, y: y / length };
   }
   function attackBox(actor) {
-    if (actor.attackTicks <= 0) return null;
+    if (actor.boss || actor.attackTicks <= 0) return null;
     const dx = actor.attackDirX, dy = actor.attackDirY;
     const vertical = Math.abs(dy) > Math.abs(dx);
     const w = vertical ? constants.ATTACK_H : constants.ATTACK_W;
@@ -196,6 +246,73 @@
       y: centerY(actor) + dy * constants.ATTACK_REACH - h / 2, w, h,
       active: elapsed >= constants.ATTACK_WINDUP && elapsed < constants.ATTACK_WINDUP + constants.ATTACK_ACTIVE,
     };
+  }
+  // The exact collision rectangle is also the telegraph: renderers never have
+  // to guess where a special will land. Once charging starts it cannot track.
+  function bossAttackBox(actor) {
+    const boss = actor && actor.boss;
+    if (!boss || !boss.attack || (boss.phase !== 'charging' && boss.phase !== 'active')) return null;
+    return Object.assign({}, boss.attack, { active: boss.phase === 'active', move: boss.move });
+  }
+  function setBossPhase(boss, phase, ticks) {
+    boss.phase = phase; boss.phaseTicks = ticks; boss.phaseDuration = ticks;
+  }
+  function beginBossAttack(state, actor) {
+    const boss = actor.boss;
+    const targets = state.actors.filter((other) => enemies(state, actor, other) && other.stocks > 0 && !other.respawnTicks);
+    targets.sort((a, b) => Math.abs(centerX(a) - centerX(actor)) - Math.abs(centerX(b) - centerX(actor)) || a.id - b.id);
+    if (!targets.length) return;
+    const target = targets[0], tier = boss.tier;
+    boss.move = boss.cycle % 2 ? 'lance' : 'shockwave'; boss.cycle++;
+    boss.hitIds = [];
+    if (boss.move === 'shockwave') {
+      const reach = 170 + tier * 12;
+      boss.attack = { x: centerX(actor) - reach, y: actor.y + actor.h - 24, w: reach * 2, h: 26 };
+    } else {
+      const width = 62 + tier * 4, bounds = getArena(state.arenaId).bounds;
+      boss.attack = { x: centerX(target) - width / 2, y: bounds.top, w: width, h: bounds.bottom - bounds.top };
+    }
+    setBossPhase(boss, 'charging', (boss.move === 'shockwave' ? 70 : 64) - tier * 3);
+    actor.invulnerable = 0; actor.vx = 0;
+    emit(state, 'boss-warning', actor, { move: boss.move, ticks: boss.phaseTicks });
+  }
+  function tickBoss(state, actor, command) {
+    const boss = actor.boss;
+    if (!boss || actor.stocks <= 0 || actor.respawnTicks) return;
+    if (boss.phaseTicks > 0) boss.phaseTicks--;
+    if (!boss.phaseTicks) {
+      if (boss.phase === 'idle') {
+        if (command.attackPressed && actor.onGround && !actor.stun) beginBossAttack(state, actor);
+      } else if (boss.phase === 'charging') {
+        setBossPhase(boss, 'active', 10);
+        emit(state, 'boss-strike', actor, { move: boss.move });
+      } else if (boss.phase === 'active') {
+        setBossPhase(boss, 'recover', 78);
+        emit(state, 'boss-exposed', actor, { ticks: boss.phaseTicks });
+      } else if (boss.phase === 'recover') {
+        boss.attack = null;
+        setBossPhase(boss, 'idle', 62 - boss.tier * 3);
+      }
+    }
+  }
+  function resolveBossAttacks(state) {
+    for (const attacker of state.actors) {
+      const boss = attacker.boss, box = bossAttackBox(attacker);
+      if (!boss || attacker.stocks <= 0 || !box || !box.active) continue;
+      for (const target of state.actors.slice().sort((a, b) => a.id - b.id)) {
+        if (!enemies(state, attacker, target) || target.stocks <= 0 || target.respawnTicks || target.invulnerable || boss.hitIds.includes(target.id) || !overlap(box, target)) continue;
+        boss.hitIds.push(target.id); boss.hitIds.sort((a, b) => a - b);
+        const damage = 12 + boss.tier * 2;
+        target.damage = Math.min(999, target.damage + damage);
+        const force = 7 + target.damage * 0.055;
+        target.vx = sign(centerX(target) - centerX(attacker) || attacker.facing) * force;
+        target.vy = boss.move === 'shockwave' ? -8.5 : -6.5;
+        target.stun = 18; target.attackTicks = 0; target.dashTicks = 0;
+        target.onGround = false; target.supportId = null; target.coyoteTicks = 0;
+        target.lastHitBy = attacker.id;
+        emit(state, 'hit', attacker, { targetId: target.id, x: centerX(target), y: centerY(target), damage, knockback: force, move: boss.move });
+      }
+    }
   }
   function overlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
   function emit(state, type, actor, extra) {
@@ -222,6 +339,9 @@
   }
   function moveActor(state, actor, command, arena) {
     actor.px = actor.x; actor.py = actor.y;
+    if (actor.boss && actor.boss.phase !== 'idle') {
+      command = normalizeCommand(); actor.vx = 0;
+    }
     for (const field of ['stun', 'invulnerable', 'attackTicks', 'dashTicks', 'dashCooldown', 'dropTicks', 'jumpBufferTicks']) {
       if (actor[field] > 0) actor[field]--;
     }
@@ -240,7 +360,7 @@
           actor.vy = 1;
         } else startJump(state, actor);
       }
-      if (command.dashPressed && !actor.dashCooldown && !actor.attackTicks && (actor.onGround || actor.airDashAvailable)) {
+      if (!actor.boss && command.dashPressed && !actor.dashCooldown && !actor.attackTicks && (actor.onGround || actor.airDashAvailable)) {
         const direction = aim(command, actor.facing);
         actor.dashTicks = constants.DASH_TICKS; actor.dashCooldown = constants.DASH_COOLDOWN;
         actor.invulnerable = Math.max(actor.invulnerable, constants.DODGE_TICKS);
@@ -248,7 +368,7 @@
         if (!actor.onGround) actor.airDashAvailable = false;
         actor.onGround = false; actor.supportId = null;
       }
-      if (command.attackPressed && !actor.attackTicks && !actor.dashTicks) beginAttack(state, actor, command);
+      if (!actor.boss && command.attackPressed && !actor.attackTicks && !actor.dashTicks) beginAttack(state, actor, command);
     }
 
     if (!actor.dashTicks) {
@@ -309,6 +429,17 @@
     for (let index = 0; index < pending.length;) {
       const b = pending[index].target, hits = [];
       while (index < pending.length && pending[index].target.id === b.id) hits.push(pending[index++]);
+      if (b.boss) {
+        // Super armor prevents stun-locking a telegraph. Recovery is a genuine
+        // opening: the same pulse deals double core damage for 1.3 seconds.
+        const damage = constants.ATTACK_DAMAGE * (b.boss.phase === 'recover' ? 2 : 1);
+        b.boss.health = Math.max(0, b.boss.health - damage * hits.length);
+        b.damage = b.boss.maxHealth - b.boss.health;
+        b.lastHitBy = hits[0].attacker.id;
+        for (const hit of hits) emit(state, 'hit', hit.attacker, { targetId: b.id, x: centerX(b), y: centerY(b), damage, knockback: 0, boss: true });
+        if (!b.boss.health) loseStock(state, b);
+        continue;
+      }
       b.damage = Math.min(999, b.damage + constants.ATTACK_DAMAGE * hits.length);
       const force = 5.8 + b.damage * 0.105;
       let vx = 0, vy = 0;
@@ -340,6 +471,11 @@
     actor.vx = 0; actor.vy = 0; actor.attackTicks = 0; actor.dashTicks = 0;
     actor.respawnTicks = actor.stocks > 0 ? constants.RESPAWN_TICKS : 0;
     actor.onGround = false; actor.supportId = null;
+    if (actor.boss) {
+      actor.boss.health = 0; actor.boss.attack = null;
+      setBossPhase(actor.boss, 'defeated', 0);
+      emit(state, 'boss-defeated', actor);
+    }
     emit(state, 'ringout', actor, { targetId: credit ? credit.id : null, stocks: actor.stocks });
   }
   function respawn(state, actor, arena) {
@@ -372,7 +508,9 @@
     }
     groups.sort((a, b) => b.stocks - a.stocks || a.damage - b.damage || a.id - b.id);
     const top = groups[0];
-    const winners = top.stocks === 0 ? [] : groups.filter((group) => group.stocks === top.stocks && (reason !== 'time' || group.damage === top.damage));
+    const bossEncounter = state.encounter && state.encounter.type === 'boss';
+    const survivingBoss = bossEncounter && state.actors.some((actor) => actor.boss && actor.stocks > 0);
+    const winners = bossEncounter && reason === 'time' && survivingBoss ? groups.filter((group) => group.id === 1) : top.stocks === 0 ? [] : groups.filter((group) => group.stocks === top.stocks && (reason !== 'time' || group.damage === top.damage));
     const tie = winners.length !== 1;
     state.phase = 'over';
     state.result = {
@@ -402,7 +540,9 @@
       }
       moveActor(state, actor, normalizeCommand(commands[actor.id]), arena);
     }
+    for (const actor of state.actors) tickBoss(state, actor, normalizeCommand(commands[actor.id]));
     resolveAttacks(state);
+    resolveBossAttacks(state);
     for (const actor of state.actors) {
       if (actor.stocks > 0 && !actor.respawnTicks && outOfBounds(actor, arena.bounds)) loseStock(state, actor);
     }
@@ -514,6 +654,26 @@
         c.dashPressed = true; c.attackPressed = false; c.moveX = -sign(dx || actor.facing); c.moveY = 0;
       }
     }
+    if (actor.boss) {
+      c.attackPressed = actor.boss.phase === 'idle' && actor.boss.phaseTicks <= difficulty.reaction && !!target;
+      c.dashPressed = false;
+      if (actor.boss.phase !== 'idle') return normalizeCommand();
+    } else if (state.encounter && state.encounter.type === 'boss') {
+      const boss = state.actors.find((other) => other.boss && other.stocks > 0);
+      const box = boss && bossAttackBox(boss);
+      if (box && boss.boss.phase === 'charging' && boss.boss.phaseTicks <= 32 && overlap(box, actor)) {
+        if (boss.boss.move === 'shockwave') {
+          c.jumpPressed = actor.onGround; c.jumpHeld = true; c.attackPressed = false;
+        } else {
+          // Evade the marked column toward room on this platform, never dive
+          // over a nearby ledge just because the shortest direction is unsafe.
+          const midpoint = box.x + box.w / 2;
+          let away = sign(centerX(actor) - midpoint) || -1;
+          if (support && (away < 0 ? actor.x - support.x < 70 : support.x + support.w - actor.x - actor.w < 70)) away *= -1;
+          c.moveX = away; c.moveY = 0; c.attackPressed = false;
+        }
+      }
+    }
     return c;
   }
   function cpuInput(state, actorId) {
@@ -537,17 +697,30 @@
   function snapshot(state) { return JSON.parse(JSON.stringify(state)); }
   function restore(saved) {
     if (!saved || saved.version !== constants.VERSION || !arenas.some((a) => a.id === saved.arenaId) || !['duel', 'ffa', 'teams'].includes(saved.format) || !Object.hasOwn(difficulties, saved.difficulty) || !['countdown', 'playing', 'over'].includes(saved.phase)) throw new TypeError('Invalid arena snapshot');
-    if (!Number.isInteger(saved.tick) || saved.tick < 0 || !Number.isInteger(saved.rngState) || !Number.isInteger(saved.countdownTicks) || !Number.isInteger(saved.timeLeftTicks) || !Array.isArray(saved.events) || !Array.isArray(saved.actors) || saved.actors.length !== (saved.format === 'duel' ? 2 : 4)) throw new TypeError('Invalid arena snapshot state');
+    if (!Number.isInteger(saved.tick) || saved.tick < 0 || !Number.isInteger(saved.rngState) || !Number.isInteger(saved.countdownTicks) || !Number.isInteger(saved.timeLeftTicks) || !Array.isArray(saved.events) || !Array.isArray(saved.actors) || saved.actors.length !== (saved.encounter && saved.encounter.type === 'boss' ? (crewCount(saved.encounter) + 1) : saved.format === 'duel' ? 2 : 4)) throw new TypeError('Invalid arena snapshot state');
+    if (saved.encounter !== undefined) {
+      const e = saved.encounter;
+      const canonical = e && encounterOptions(Object.assign({}, e, { encounter: e.type }));
+      if (!canonical || Object.keys(e).length !== Object.keys(canonical).length || Object.keys(canonical).some((key) => e[key] !== canonical[key]) || saved.timeLeftTicks < 0 || saved.timeLeftTicks > e.durationTicks || saved.countdownTicks < 0 || saved.countdownTicks > e.countdownTicks || (e.type === 'boss' && saved.format !== 'teams')) throw new TypeError('Invalid arena snapshot encounter');
+    }
+    const bossEncounter = saved.encounter && saved.encounter.type === 'boss';
     const ids = new Set();
     for (const actor of saved.actors) {
       if (!actor || !Number.isInteger(actor.id) || actor.id < 1 || ids.has(actor.id) || !actor.ai || !Number.isInteger(actor.ai.rngState) || !actor.ai.intent || !actor.ai.cachedCommand || !Array.isArray(actor.attackHitIds)) throw new TypeError('Invalid arena snapshot actor');
       ids.add(actor.id);
+      if (actor.boss) {
+        const b = actor.boss;
+        if (!bossEncounter || actor.id !== saved.actors.length || actor.team !== 1 || actor.w !== 56 || actor.h !== 74 || b.tier !== saved.encounter.bossTier || b.maxHealth !== bossHealth(saved.encounter) || !Number.isInteger(b.health) || b.health < 0 || b.health > b.maxHealth || !['idle', 'charging', 'active', 'recover', 'defeated'].includes(b.phase) || !['shockwave', 'lance'].includes(b.move) || !Number.isInteger(b.cycle) || b.cycle < 0 || !Number.isInteger(b.phaseTicks) || !Number.isInteger(b.phaseDuration) || b.phaseTicks < 0 || b.phaseTicks > b.phaseDuration || b.phaseDuration > 78 || !Array.isArray(b.hitIds) || b.hitIds.some((id, i) => !Number.isInteger(id) || id < 1 || id >= actor.id || (i && b.hitIds[i - 1] >= id))) throw new TypeError('Invalid arena snapshot boss');
+        if (b.attack !== null && (!b.attack || Object.keys(b.attack).length !== 4 || !['x', 'y', 'w', 'h'].every((key) => Number.isFinite(b.attack[key])) || b.attack.w <= 0 || b.attack.h <= 0 || b.attack.w > 1000 || b.attack.h > 2000)) throw new TypeError('Invalid arena snapshot boss attack');
+        if (((b.phase === 'charging' || b.phase === 'active' || b.phase === 'recover') && !b.attack) || ((b.phase === 'idle' || b.phase === 'defeated') && b.attack) || (b.phase === 'defeated') !== (b.health === 0) || actor.stocks !== (b.health > 0 ? 1 : 0)) throw new TypeError('Invalid arena snapshot boss phase');
+      } else if (bossEncounter && (actor.id >= saved.actors.length || actor.team !== 0)) throw new TypeError('Invalid arena snapshot boss roster');
       for (const key of ['x', 'y', 'px', 'py', 'vx', 'vy', 'w', 'h', 'stocks', 'damage', 'stun', 'invulnerable', 'attackTicks', 'dashTicks', 'respawnTicks']) {
         if (!Number.isFinite(actor[key])) throw new TypeError('Invalid arena snapshot number');
       }
     }
+    if (bossEncounter && saved.actors.filter((actor) => actor.boss).length !== 1) throw new TypeError('Invalid arena snapshot boss roster');
     return snapshot(saved);
   }
 
-  return freeze({ constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, step, cpuInput, attackBox, snapshot, restore });
+  return freeze({ constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, step, cpuInput, attackBox, bossAttackBox, snapshot, restore });
 });

@@ -8,7 +8,7 @@ jobs:
   expedition:
     if: github.event.action != 'labeled'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +25,7 @@ jobs:
           cache-dependency-path: tests/browser/package-lock.json
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.engine }}
-      - name: Play the complete solo expedition and check constrained layouts
+      - name: Play two continuous sectors and check constrained layouts
         run: node --test expedition.test.cjs
         env:
           SPACE_MAN_EXPEDITION_BROWSER: ${{ matrix.engine }}
@@ -44,7 +44,7 @@ jobs:
       github.event.pull_request.user.login == 'picatz' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -81,7 +81,7 @@ jobs:
             fs.appendFileSync(process.env.GITHUB_ENV, `SPACE_MAN_BASE_URL=${url.href}\nSPACE_MAN_EXPECTED_SHA=${process.env.HEAD_SHA}\n`);
           })().catch(error => { console.error(error); process.exitCode = 1; });
           NODE
-      - name: Play the deployed expedition through all three modes
+      - name: Play two deployed sectors including boss encounters
         run: node --test expedition.test.cjs
         env:
           SPACE_MAN_EXPEDITION_BROWSER: ${{ matrix.engine }}

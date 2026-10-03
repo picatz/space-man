@@ -95,7 +95,7 @@
       previousPose = null,
       renderDt = 1 / 60;
     const audioControls = [], audioOverrides = {};
-    let localSession = null;
+    let localSession = null, sharedSession = null;
     let selected = { trackId: "starlight", difficulty: "normal" },
       keys = new Map(),
       touches = new Map(),
@@ -173,10 +173,11 @@
         online && ((!host && roomPaused) || !!roomStatus?.connection),
       );
       setText(resume, resume.disabled ? "Waiting for host…" : "Resume race");
-      rootEl.querySelector("#raceLobby").hidden = !!localSession;
+      rootEl.querySelector("#raceLobby").hidden = !!(localSession || sharedSession);
+      rootEl.querySelector("#raceRestart").hidden = !!sharedSession;
       setText(
         rootEl.querySelector("#raceLobby"),
-        localSession ? "Finish expedition" : online
+        (localSession || sharedSession) ? "Finish expedition" : online
           ? host
             ? "Back to room lobby"
             : "Leave race room"
@@ -521,7 +522,7 @@
       } catch (_) {}
     }
     function save() {
-      if (localSession) return; // Expedition settings are temporary.
+      if (localSession || sharedSession) return; // Expedition settings are temporary.
       try {
         root.localStorage.setItem(
           opts.storageKey || "sm2.race.v1",
@@ -1186,6 +1187,7 @@
     }
     let rescueRequest = false;
     function start() {
+      if (sharedSession) return;
       if (!active) return;
       raceAudio()?.unlock();
       if (onlineActive()) {
@@ -1221,7 +1223,7 @@
     }
     function showLobby() {
       if (!active) return;
-      if (localSession) { close(); return; }
+      if (localSession || sharedSession) { close(); return; }
       if (onlineActive()) {
         if (!room.isHost) {
           leaveRaceRoom();
@@ -1284,6 +1286,7 @@
       ensureFrame();
     }
     function results() {
+      if (sharedSession) { resetInput(); return; }
       resetInput();
       view = "results";
       resultRows.replaceChildren();
@@ -1902,8 +1905,13 @@
       if (room) roomChanged(room.status());
       ensureFrame();
     }
-    function close() {
+    function close(options = {}) {
       if (!active) return;
+      const shared = sharedSession;
+      if (shared) {
+        shared.detach?.(); sharedSession = null;
+        room.release(); room = shared.previousRoom; selected = shared.previous;
+      }
       if (room && (room.active || room.busy) && !leaveRaceRoom()) return;
       resetInput();
       active = false;
@@ -1931,8 +1939,22 @@
       pausePanel.querySelector("#raceLobby").hidden = false;
       pausePanel.querySelector("#raceLobby").textContent = "Choose a circuit";
       pausePanel.querySelector("#raceExit").textContent = "All games";
-      opts.onClose?.();
+      pausePanel.querySelector("#raceRestart").hidden = false;
+      if (shared && !options.transition) shared.adapter.leave();
+      if (!options.transition && !shared) opts.onClose?.();
     }
+    function openSharedSession(config, adapter) {
+      if (active || destroyed || !adapter || typeof adapter.attach !== "function") return false;
+      open();
+      sharedSession = { previousRoom: room, previous: { ...selected }, adapter, detach: null };
+      room = adapter;
+      selected = { trackId: R.course(config.trackId).id, difficulty: "easy" };
+      rootEl.dataset.session = "true";
+      pausePanel.querySelector("#raceExit").textContent = "Leave expedition";
+      sharedSession.detach = adapter.attach({ onChange: roomChanged, onSnapshot: networkSnapshot });
+      syncRoomChoices(); return true;
+    }
+    function closeSharedSession() { if (sharedSession) close({ transition: true }); }
     function openSession(config, onResult) {
       if (active || destroyed || opts.net?.active || typeof onResult !== "function") return false;
       open();
@@ -1954,6 +1976,8 @@
     return Object.freeze({
       open,
       openSession,
+      openSharedSession,
+      closeSharedSession,
       close,
       destroy,
       joinInvite(payload, role) {

@@ -852,25 +852,9 @@
   </div>
 </div>
 
-<!-- Solo connected itinerary: uses the runner's accessible overlay navigation. -->
+<!-- Nonblocking orientation cue follows the active expedition scene. -->
 <div class="expedition-cue" id="expeditionCue" role="status" aria-live="polite" aria-atomic="true" hidden>
   <span id="expeditionCueRoute"></span><strong id="expeditionCueTitle"></strong><span id="expeditionCueHelp"></span>
-</div>
-
-    <ol class="expedition-route" aria-label="Expedition itinerary">
-      <li id="expeditionLeg0"><span>01</span><strong>RUN</strong></li>
-      <li id="expeditionLeg1"><span>02</span><strong>ARENA</strong></li>
-      <li id="expeditionLeg2"><span>03</span><strong>RACE</strong></li>
-    </ol>
-    <div class="expedition-destination" id="expeditionDestination"></div>
-    <h2 id="expeditionTitle">One trip. Three adventures.</h2>
-    <p class="expedition-copy" id="expeditionCopy"></p>
-    <ul class="expedition-receipt" id="expeditionReceipt" aria-label="Your expedition results"></ul>
-    <p class="expedition-controls" id="expeditionControls"></p>
-    <button class="btn" id="btnExpeditionContinue">Begin the escape</button>
-    <button class="btn ghost" id="btnExpeditionExit">Back to all modes</button>
-    <p class="expedition-note">No victory required to continue · Reloading starts a fresh expedition</p>
-  </section>
 </div>
 
 <!-- Pause -->
@@ -4466,6 +4450,9 @@ function frame(now) {
     if (G.deathCardShown && G.hudFade > 0) G.hudFade = Math.max(0, G.hudFade - dt / 0.1);   // HUD fades over 100ms, doesn't hard-cut (E9.1)
   }
 
+  // A death rescue can synchronously transfer ownership to an arcade engine.
+  if (modeOverlayActive()) { acc = 0; lastT = 0; return; }
+
   // acc is untouched during freeze — hitstop re-renders the exact same frame.
   // The conductor still ticks: wall-clock scheduling is indifferent to hitstop.
   if (G.freeze > 0) { G.freeze -= dt; render(clamp(acc / STEP, 0, 1)); tickAudio(); return; }
@@ -4474,6 +4461,8 @@ function frame(now) {
   let steps = 0;
   while (acc >= STEP && steps < 6) {
     if (G.mode === 'play' || G.mode === 'attract') update();
+    // The encounter director may open another engine during this very tick.
+    if (modeOverlayActive()) { acc = 0; lastT = 0; return; }
     acc -= STEP; steps++;
   }
   // Drop unpayable debt after the step cap or a slow device spirals: 6 updates
@@ -8587,6 +8576,13 @@ window.addEventListener('keydown', e => {
 }, true);
 window.addEventListener('keyup', e => { expeditionHeldKeys.delete(e.code); expeditionKeyGate.delete(e.code); }, true);
 window.addEventListener('blur', () => { expeditionHeldKeys.clear(); expeditionKeyGate.clear(); });
+function releaseExpeditionInputs() {
+  // End native runner captures before an arcade's event guard takes ownership.
+  for (const id of input.downIds) {
+    try { if (canvas.hasPointerCapture && canvas.hasPointerCapture(id)) canvas.releasePointerCapture(id); } catch (_) {}
+  }
+  input.downIds.clear(); clearInput();
+}
 function expeditionRunnerActive() {
   const s = expedition && expedition.snapshot();
   return !!s && s.phase === 'playing' && s.current.id === 'runner';
@@ -8636,7 +8632,7 @@ function launchExpeditionLeg() {
   const leg = expedition.begin(); if (!leg) return;
   expeditionToken = leg.token;
   for (const key of expeditionHeldKeys) expeditionKeyGate.add(key);
-  hideAllOverlays(); clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
+  hideAllOverlays(); releaseExpeditionInputs(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
   if (leg.id === 'runner') {
     $('btnQuit').textContent = 'Finish expedition';
     startRun({ course: { kind: 'seed', seed: leg.seed, gen: COURSE.GEN, beat: 0 } });
@@ -8671,7 +8667,7 @@ function exitExpedition() {
   clearTimeout(expeditionCueTimer); $('expeditionCue').hidden = true; document.body.appendChild($('expeditionCue'));
   if (arenaUI && arenaUI.active) arenaUI.close();
   if (raceUI && raceUI.active) raceUI.close();
-  cancelDeathAnim(); Audio.killSting(); Audio.resume(); clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
+  cancelDeathAnim(); Audio.killSting(); Audio.resume(); releaseExpeditionInputs(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
   expeditionKeyGate.clear();
   $('btnQuit').textContent = 'Quit to Title';
   showAttract(); $('btnExpedition').focus();

@@ -45,3 +45,18 @@ test('solo never leaves or repurposes a room',t=>{
   assert.equal(c.run('expedition'),null);assert.equal(c.net.mockActive,true);c.net.mockActive=false;
 });
 
+
+for (const path of ['timeout', 'rescue']) test('runner frame yields audio and timing after '+path+' transfers scene ownership',t=>{
+  const c=setup(t);c.run('openExpedition()');
+  if(path==='timeout')c.run('G.frameCount=expedition.snapshot().current.maxTicks;G.freeze=0;');
+  else c.run("die('void');G.deathSeq=1.7;");
+  c.run("window.audioCalls=[];Audio.suspend=()=>audioCalls.push('suspend');Audio.resume=()=>audioCalls.push('resume');Audio.tickMusic=mode=>audioCalls.push('tick:'+mode);lastT=1000;acc=STEP;frame(1020)");
+  assert.equal(c.run('arenaUI.active'),true);
+  assert.deepEqual(Array.from(c.run('audioCalls')),['suspend']);
+  assert.equal(c.run('acc'),0);assert.equal(c.run('lastT'),0);
+});
+
+test('runner-to-arcade ownership releases native captures and tracked touch ids',t=>{
+  const c=setup(t);c.run('openExpedition();window.released=[];canvas.hasPointerCapture=id=>true;canvas.releasePointerCapture=id=>released.push(id);input.downIds.add(91);input.stick.active=true;G.finalScore=0;finishExpeditionRunner(false)');
+  assert.deepEqual(Array.from(c.run('released')),[91]);assert.equal(c.run('input.downIds.size'),0);assert.equal(c.run('input.stick.active'),false);
+});

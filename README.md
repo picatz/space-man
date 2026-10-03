@@ -38,20 +38,21 @@ Version 2.0 was a ground-up canvas rewrite designed and built by a Claude
 Fable 5 agent team. It's a fun research project exploring the capabilities
 of AI models for web game development.
 
-## Star Expedition · Solo journey
+## Star Expedition · Continuous adventure
 
-Choose **Star Expedition** to link all three games in one local itinerary:
-reach a 400m runner rendezvous (or catch the rescue shuttle after a fall), face a
-Cadet CPU at Orbital Dock, then race one lap of Starlight Speedway with four
-Chill CPUs. A briefing explains each new control scheme and a trip card keeps
-all three results together. You can continue even when you lose a leg.
+Choose **Star Expedition** to launch directly into a continuous, seeded journey.
+Runner escapes, short arena skirmishes, one-lap racing sprints and telegraphed
+Guardian boss encounters flow into one another automatically. Each five-route
+sector reshuffles its approaches before a boss climax; tracks and arenas vary.
+There are no chapter cards, mandatory Continue buttons or recurring result menus.
+Brief in-play cues introduce the next objective and controls without blocking play.
 
-Runner points and earned records are banked once at the end of that leg; arcade
-results do not change runner scores. Pause, restart the current arcade leg, or
-leave the expedition from its pause menu. Progress lasts for the current page;
-reloading starts fresh. Standalone Arena/Racing choices and three-lap races stay
-unchanged. The journey is solo only for now: leave a live room explicitly before
-starting. [Lifecycle boundaries and multiplayer plan](docs/star-expedition.md).
+Every route is bounded, and a fall or loss still carries the journey forward.
+Use Pause and **Finish expedition** whenever you want to stop. Runner records are
+banked once per completed run; standalone modes keep their settings and lengths.
+Route history lasts for the page session. Shared-room integration is still being
+verified; existing Run Together, Arena and Racing invites stay mode-locked.
+[Lifecycle and encounter details](docs/star-expedition.md).
 
 ## Orbital Arena · CPU + Friends
 
