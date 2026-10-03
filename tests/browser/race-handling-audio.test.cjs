@@ -430,3 +430,92 @@ for (const device of [
   assert.equal(await page.locator(".race-pressed").count(), 0);
   t.diagnostic(`${device.name}: ${probe.contacts} contact ticks, longest near-stall ${probe.longestSlow} ticks, minimum contact motion ${probe.minContactMotion.toFixed(3)}`);
 });
+
+// Human-scale authored inputs, not a CPU following the course or injected poses.
+// Screenshots and pass results establish mechanics/layout, not subjective fun.
+for (const device of [
+  {name:'desktop',viewport:{width:1280,height:800}},
+  {name:'phone-portrait',viewport:{width:390,height:844},hasTouch:true,isMobile:true},
+  {name:'phone-landscape',viewport:{width:844,height:390},hasTouch:true,isMobile:true},
+  {name:'tablet',viewport:{width:820,height:1180},hasTouch:true,isMobile:true},
+]) test(`arcade cornering: ${device.name} brake-steer-release and interruption`, {timeout:60000}, async t=>{
+  const {name,...options}=device,{page,context}=await launch(t,options);
+  if(options.hasTouch&&engine===chromium)await nativePartialReleaseProbe(context,t);
+  await menu(page,'Launch race');await playing(page);
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+  await page.keyboard.down('ArrowRight');await page.keyboard.down('ArrowDown');
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
+  const during=await page.evaluate(()=>raceUI.snapshot().actors[0]);
+  assert.ok(during.drifting&&!during.offroad&&during.speed>4.5);
+  assert.equal(await page.locator('.race-drive-feedback').innerText(),'DRIFT');
+  await page.keyboard.up('ArrowDown');await page.keyboard.up('ArrowRight');
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0);
+  assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!');
+  if(process.env.SPACE_MAN_RACE_SCREENSHOTS){
+    await fs.mkdir(process.env.SPACE_MAN_RACE_SCREENSHOTS,{recursive:true});
+    await page.screenshot({path:path.join(process.env.SPACE_MAN_RACE_SCREENSHOTS,`arcade-${name}-exit.png`)});
+  }
+  await page.keyboard.press('Escape');await screen(page,'pause');
+  await menu(page,'Restart race');await playing(page);
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+  await page.keyboard.down('ArrowRight');await page.keyboard.down('ArrowDown');
+  await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
+  await page.keyboard.press('Escape');await screen(page,'pause');
+  assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].driftTicks),0);
+  await page.keyboard.up('ArrowRight');await page.keyboard.up('ArrowDown');
+  await menu(page,'Resume race');
+  assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].padTicks),0,'pause does not cash a corner reward');
+  assert.equal(await page.locator('.race-drive-feedback').isVisible(),false,'residual or collision slip without held brake is not labelled DRIFT');
+  if(options.hasTouch&&engine===chromium){
+    await page.keyboard.press('Escape');await screen(page,'pause');await menu(page,'Restart race');await playing(page);
+    await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+    const right=await page.getByRole('button',{name:'Steer right',exact:true}).boundingBox();
+    const brake=await page.getByRole('button',{name:'Brake',exact:true}).boundingBox();
+    for(const b of[right,brake])assert.ok(b&&b.width>=44&&b.height>=44);
+    const cdp=await context.newCDPSession(page);
+    const point=(b,id)=>({id,x:b.x+b.width/2,y:b.y+b.height/2,radiusX:5,radiusY:5,force:1});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(right,1),point(brake,2)]});
+    await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
+    await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks===0);
+    assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].padTicks),0,'real touch cancellation is not brake release');
+    for(const releaseKind of ['both-fingers','brake-only']){
+      await page.keyboard.press('Escape');await screen(page,'pause');await menu(page,'Restart race');await playing(page);
+      await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
+      await page.evaluate(()=>{window.arcadeTouchEvents=[];for(const type of ['pointerdown','pointerup','pointercancel','lostpointercapture','touchstart','touchmove','touchend','touchcancel'])document.addEventListener(type,e=>{if(window.arcadeTouchEvents.length<32)window.arcadeTouchEvents.push({type,id:e.pointerId,active:e.touches?.length,action:e.target?.dataset?.action});},{capture:true,once:false});});
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(right,1),point(brake,2)]});
+      await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
+      if(releaseKind==='brake-only')await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[point(brake,2)]});
+      else await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      if(releaseKind==='brake-only')await page.waitForFunction(()=>raceDriveProbe.command?.steer===1&&!raceDriveProbe.command?.brake,null,{timeout:2000});
+      try {await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0,null,{timeout:2000});}
+      catch(error){t.diagnostic(JSON.stringify({releaseKind,...await page.evaluate(()=>{const a=raceUI.snapshot().actors[0];return{events:arcadeTouchEvents,command:raceDriveProbe.command,actor:{drifting:a.drifting,driftTicks:a.driftTicks,padTicks:a.padTicks,speed:a.speed,offroad:a.offroad}};})}));throw error;}
+      assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!',releaseKind+' earns an actual authoritative exit boost');
+      if(releaseKind==='brake-only')await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      assert.equal(await page.locator('.race-pressed').count(),0);
+    }
+    await cdp.detach();
+  }
+});
+
+// Chromium's default native touch backend names the *released* ID in a partial
+// touchEnd. An omitted point in touchMove remains down; do not mistake that
+// injector limitation for an app cancellation bug. Verify the native event
+// contract on an isolated page before exercising the game with that sequence.
+async function nativePartialReleaseProbe(context,t){
+  const page=await context.newPage();
+  await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><button id="right" style="position:absolute;left:20px;top:20px;width:80px;height:80px;touch-action:none">Right</button><button id="brake" style="position:absolute;left:130px;top:20px;width:80px;height:80px;touch-action:none">Brake</button>');
+  await page.evaluate(()=>{window.events=[];for(const type of ['pointerdown','pointerup','pointercancel','touchstart','touchend','touchcancel'])document.addEventListener(type,e=>events.push({type,target:e.target.id,active:e.touches?.length}),true);});
+  const cdp=await context.newCDPSession(page),right={id:1,x:60,y:60},brake={id:2,x:170,y:60};
+  try{
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[right,brake]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[brake]});
+    const events=await page.evaluate(()=>window.events);
+    assert.ok(events.some(e=>e.type==='pointerup'&&e.target==='brake'),JSON.stringify(events));
+    assert.ok(events.some(e=>e.type==='touchend'&&e.active===1),JSON.stringify(events));
+    assert.ok(!events.some(e=>e.type==='pointercancel'||e.type==='touchcancel'),JSON.stringify(events));
+    assert.ok(!events.some(e=>e.type==='pointerup'&&e.target==='right'),JSON.stringify(events));
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    t.diagnostic('Verified partial native touch release in '+context.browser().version());
+  }finally{await cdp.detach();await page.close();}
+}

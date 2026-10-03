@@ -120,7 +120,8 @@ Carve corners, catch boost strips, manage rechargeable boost and recover from a
 missed bend. Ordered checkpoints, race position, timing and results are part of
 the actual simulation. Race again, switch circuits or return to the runner.
 
-Auto-drive is on. A/D or Left/Right steer, S/Down brakes, Space/Shift boosts,
+Auto-drive is on. A/D or Left/Right steer. S/Down brakes; hold it while turning
+to drift, then release after a sustained corner for a short exit boost. Space/Shift boosts,
 R rescues and Escape pauses. Touch and standard controllers are supported;
 existing left-handed, steering remaps, mute and reduced-motion preferences carry
 over. Choose Chase (default), Cockpit or Top-down using the camera button,

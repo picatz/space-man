@@ -9,7 +9,7 @@ async function launch(t){
  let base=process.env.SPACE_MAN_BASE_URL;
  if(!base){server=http.createServer(async(req,res)=>{const p=path.resolve(ROOT,'.'+decodeURIComponent(new URL(req.url,'http://localhost').pathname)+(req.url.endsWith('/')?'index.html':''));if(!p.startsWith(ROOT+path.sep))return res.writeHead(400).end();try{const b=await fs.readFile(p);res.writeHead(200,{'content-type':({'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png'})[path.extname(p)]||'application/octet-stream','cache-control':'no-store'}).end(b);}catch(_){res.writeHead(404).end();}});await new Promise(r=>server.listen(0,'127.0.0.1',r));base='http://127.0.0.1:'+server.address().port+'/';}
  browser=await engine.launch(engine===chromium&&process.env.SPACE_MAN_CHROMIUM_PATH?{executablePath:process.env.SPACE_MAN_CHROMIUM_PATH}:{});
- t.after(async()=>{for(const c of peers){console.log('Journey diagnostics',c.name,{deliveryErrors:c.deliveryErrors,maxDeliveryQueue:c.maxDeliveryQueue,...await diagnostics(c.page).catch(()=>({closed:true}))});await capture(c.page,'journey-final-'+c.name.replaceAll(' ','-')).catch(()=>{});}for(const c of peers)await c.page.evaluate(()=>{clearInterval(window.driver);SpaceManNet.leave();}).catch(()=>{});await browser.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}for(const c of peers)assert.deepEqual(c.errors,[],c.name+' has no uncaught errors');});
+ t.after(async()=>{for(const c of peers){console.log('Journey diagnostics',c.name,JSON.stringify({deliveryErrors:c.deliveryErrors,maxDeliveryQueue:c.maxDeliveryQueue,...await diagnostics(c.page).catch(()=>({closed:true}))}));await capture(c.page,'journey-final-'+c.name.replaceAll(' ','-')).catch(()=>{});}for(const c of peers)await c.page.evaluate(()=>{clearInterval(window.driver);SpaceManNet.leave();}).catch(()=>{});await browser.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}for(const c of peers)assert.deepEqual(c.errors,[],c.name+' has no uncaught errors');});
  async function peer(name,device={}){
   const context=await browser.newContext({viewport:{width:1280,height:800},serviceWorkers:'block',...device});const c={name,context,errors:[],sockets:0,unexpectedSockets:0,deliveryErrors:0,sent:0,received:0,encryptedSent:0,encryptedReceived:0,sentTypes:{},receivedTypes:{},offline:false};peers.push(c);
   if(!live)await simulatedRelay(context,c,hub);
@@ -23,10 +23,23 @@ async function capture(p,name){if(!process.env.SPACE_MAN_JOURNEY_SCREENSHOTS)ret
 // Keep evidence for missed UI actions separate from protocol failures. This
 // observer never changes role requests, frame timing, or the native dialog.
 async function observeJourney(p){await p.evaluate(()=>{
- window.journeyHistory=[];window.journeyUIEvents=[];let previous='';
- journeyUI.room.attach({onChange(s){const j=s.journey,entry={index:j?.index,epoch:j?.epoch,phase:j?.phase,role:SpaceManNet.info().role,effectiveRole:s.info.role,pendingRole:s.pendingRole,players:j?.players};const key=JSON.stringify(entry);if(key!==previous){previous=key;journeyHistory.push({...entry,at:Math.round(performance.now())});if(journeyHistory.length>64)journeyHistory.shift();}}});
+ window.journeyHistory=[];window.journeyUIEvents=[];window.journeyUpdateCount=0;let previous='';
+ journeyUI.room.attach({onChange(s){journeyUpdateCount++;const j=s.journey,entry={index:j?.index,epoch:j?.epoch,phase:j?.phase,role:SpaceManNet.info().role,effectiveRole:s.info.role,pendingRole:s.pendingRole,players:j?.players};const key=JSON.stringify(entry);if(key!==previous){previous=key;journeyHistory.push({...entry,at:Math.round(performance.now())});if(journeyHistory.length>64)journeyHistory.shift();}}});
  for(const type of['pointerdown','pointerup','click'])document.addEventListener(type,e=>{const target=e.target.closest?.('#journeyRole,#journeyLeave,#journeyResume');if(target){journeyUIEvents.push({type,id:target.id,at:Math.round(performance.now()),trusted:e.isTrusted});if(journeyUIEvents.length>30)journeyUIEvents.shift();}},true);
 });}
+// A trusted mouse gesture remains held across several genuine room snapshots.
+// Repainting unchanged labels must not replace the pressed text node or cancel
+// activation. No programmatic button.click(), forced input, or fake update.
+async function clickAcrossRoomUpdates(p,selector){
+ const target=p.locator(selector);await target.click({trial:true});const box=await target.boundingBox();assert.ok(box,'Crew button has a hit box');
+ await target.evaluate(el=>{window.journeyHeldButton=el;window.journeyHeldText=el.firstChild;});
+ await p.mouse.move(box.x+box.width/2,box.y+box.height/2);await p.mouse.down();
+ try{
+  const count=await p.evaluate(()=>window.journeyUpdateCount);
+  await p.waitForFunction(n=>window.journeyUpdateCount>=n+3,count,{timeout:5000});
+  assert.equal(await p.evaluate(()=>journeyHeldText?.isConnected&&journeyHeldButton.firstChild===journeyHeldText),true,selector+' preserves its pressed text node across snapshots');
+ }finally{await p.mouse.up();}
+}
 const diagnostics=p=>p.evaluate(()=>{
  const s=journeyUI?.room.status(),j=s?.journey;
  const describe=id=>{const el=document.getElementById(id);if(!el)return null;const r=el.getBoundingClientRect(),x=Math.max(0,Math.min(innerWidth-1,r.left+r.width/2)),y=Math.max(0,Math.min(innerHeight-1,r.top+r.height/2)),hit=document.elementFromPoint(x,y);return{hidden:el.hidden,disabled:el.disabled,inert:!!el.closest('[inert]'),rect:{x:r.x,y:r.y,width:r.width,height:r.height},hit:hit?.id||hit?.className||hit?.tagName};};
@@ -43,7 +56,7 @@ test((live?'LIVE public':'simulated')+' relay: one crew through all engines and 
  // A real socket interruption; session key and role must recover without a new room.
  const key=await friend.page.evaluate(()=>SpaceManNet._n1.bytes.hex(SpaceManNet._n1.session().keys.pub));await friend.page.evaluate(()=>SpaceManNet._n1.session().relay.kick('acceptance socket interruption'));
  await friend.page.waitForFunction(()=>SpaceManNet._n1.session()?.relay.state==='established');assert.equal(await friend.page.evaluate(()=>SpaceManNet._n1.bytes.hex(SpaceManNet._n1.session().keys.pub)),key);
- const late=await peer('late viewer',{viewport:{width:320,height:568},isMobile:true,hasTouch:true});await late.page.locator('#btnExpeditionFriends').click();await observeJourney(late.page);await late.page.locator('#journeyJoinInput').fill(invite);await late.page.locator('#journeyJoin').click();await late.page.waitForFunction(()=>journeyUI.room.active&&SpaceManNet.roster().some(r=>r.you)&&journeyUI.room.current?.phase==='paused');assert.equal((await state(late.page)).role,1);const lateMode=(await state(late.page)).mode;const crew=late.page.locator(lateMode==='runner'?'#btnJourneyCrew':lateMode==='arena'?'#arenaJourneyCrew':'#raceJourneyCrew');if(!await crew.isVisible())await late.page.keyboard.press('Escape');await crew.click();await late.page.locator('#journeyRole').click();await late.page.waitForFunction(()=>journeyUI.room.status().pendingRole===0,undefined,{timeout:5000});assert.equal((await state(late.page)).role,1,'queued request keeps viewer role until host admits it');await late.page.locator('#journeyResume').click();const hostMode=(await state(host.page)).mode;await host.page.locator(hostMode==='runner'?'#btnResume':hostMode==='arena'?'#arenaResume':'#raceResume').click();await late.page.waitForFunction(()=>journeyUI.room.current?.phase==='running');const resume=late.page.locator(lateMode==='runner'?'#btnResume':lateMode==='arena'?'#arenaResume':'#raceResume');if(await resume.isVisible()&&await resume.isEnabled())await resume.click();await driver(host.page);await driver(friend.page);await driver(late.page);
+ const late=await peer('late viewer',{viewport:{width:320,height:568},isMobile:true,hasTouch:true});await late.page.locator('#btnExpeditionFriends').click();await observeJourney(late.page);await late.page.locator('#journeyJoinInput').fill(invite);await late.page.locator('#journeyJoin').click();await late.page.waitForFunction(()=>journeyUI.room.active&&SpaceManNet.roster().some(r=>r.you)&&journeyUI.room.current?.phase==='paused');assert.equal((await state(late.page)).role,1);const lateMode=(await state(late.page)).mode;const crew=late.page.locator(lateMode==='runner'?'#btnJourneyCrew':lateMode==='arena'?'#arenaJourneyCrew':'#raceJourneyCrew');if(!await crew.isVisible())await late.page.keyboard.press('Escape');await crew.click();await clickAcrossRoomUpdates(late.page,'#journeyRole');await late.page.waitForFunction(()=>journeyUI.room.status().pendingRole===0,undefined,{timeout:5000});assert.equal((await state(late.page)).role,1,'queued request keeps viewer role until host admits it');await late.page.locator('#journeyResume').click();const hostMode=(await state(host.page)).mode;await host.page.locator(hostMode==='runner'?'#btnResume':hostMode==='arena'?'#arenaResume':'#raceResume').click();await late.page.waitForFunction(()=>journeyUI.room.current?.phase==='running');const resume=late.page.locator(lateMode==='runner'?'#btnResume':lateMode==='arena'?'#arenaResume':'#raceResume');if(await resume.isVisible()&&await resume.isEnabled())await resume.click();await driver(host.page);await driver(friend.page);await driver(late.page);
  for(let index=1;index<=5;index++){
   await host.page.waitForFunction(n=>journeyUI.room.current?.index>=n,index,{timeout:115000});await friend.page.waitForFunction(n=>journeyUI.room.current?.index>=n,index,{timeout:15000});await watcher.page.waitForFunction(n=>journeyUI.room.current?.index>=n,index,{timeout:15000});
   const states=await Promise.all([host,friend,watcher].map(c=>state(c.page)));states.forEach((s,i)=>{assert.equal(s.room,initial[i].room);assert.equal(s.p,initial[i].p);assert.equal(s.role,initial[i].role);});
@@ -76,7 +89,7 @@ test((live?'LIVE public':'simulated')+' relay: one crew through all engines and 
  };
  host.page.off('dialog',host.acceptDialog);host.page.on('dialog',confirmClose);
  try{
-  await leave.click(); // Await the real human click, including native-dialog handling.
+  await clickAcrossRoomUpdates(host.page,'#journeyLeave'); // Includes native-dialog handling.
   const errors=await Promise.all(responses);for(const error of errors)if(error)throw error;
   assert.deepEqual(confirmations,[{type:'confirm',message:'Close this expedition for everyone?'}],'one genuine host close-room confirmation');
  }finally{host.page.off('dialog',confirmClose);host.page.on('dialog',host.acceptDialog);}

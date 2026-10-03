@@ -8,6 +8,14 @@
   const MODES = Object.freeze(["chase", "cockpit", "topdown"]);
   const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   const mix = (a, b, t) => a + (b - a) * t;
+  // Look toward actual travel during a slide, so rotating the nose does not
+  // sweep the road out of frame. Authoritative velocity works for old snapshots.
+  function travelHeading(actor, weight = 0.7) {
+    const h = actor.heading;
+    if (!(actor.speed > 1.2) || !Number.isFinite(actor.vx) || !Number.isFinite(actor.vy)) return h;
+    const slip = Math.max(-0.55, Math.min(0.55, wrap(Math.atan2(actor.vy, actor.vx) - h)));
+    return h + slip * weight;
+  }
   function create() {
     let current = null,
       lastRecovery = null,
@@ -31,7 +39,7 @@
           current.mode !== mode ||
           lastActor !== actor.id ||
           lastRecovery !== actor.recoveries;
-        const h = actor.heading,
+        const h = travelHeading(actor, mode === "cockpit" ? 0.25 : 0.7),
           fx = Math.cos(h),
           fz = Math.sin(h);
         const cockpit = mode === "cockpit";
@@ -78,5 +86,5 @@
       },
     };
   }
-  return Object.freeze({ MODES, create, wrap });
+  return Object.freeze({ MODES, create, wrap, travelHeading });
 });
