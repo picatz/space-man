@@ -440,6 +440,7 @@ for (const device of [
   {name:'tablet',viewport:{width:820,height:1180},hasTouch:true,isMobile:true},
 ]) test(`arcade cornering: ${device.name} brake-steer-release and interruption`, {timeout:60000}, async t=>{
   const {name,...options}=device,{page,context}=await launch(t,options);
+  if(options.hasTouch&&engine===chromium)await nativePartialReleaseProbe(context,t);
   await menu(page,'Launch race');await playing(page);
   await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
   await page.keyboard.down('ArrowRight');await page.keyboard.down('ArrowDown');
@@ -483,8 +484,9 @@ for (const device of [
       await page.evaluate(()=>{window.arcadeTouchEvents=[];for(const type of ['pointerdown','pointerup','pointercancel','lostpointercapture','touchstart','touchmove','touchend','touchcancel'])document.addEventListener(type,e=>{if(window.arcadeTouchEvents.length<32)window.arcadeTouchEvents.push({type,id:e.pointerId,active:e.touches?.length,action:e.target?.dataset?.action});},{capture:true,once:false});});
       await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point(right,1),point(brake,2)]});
       await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
-      if(releaseKind==='brake-only')await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[point(right,1)]});
+      if(releaseKind==='brake-only')await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[point(brake,2)]});
       else await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      if(releaseKind==='brake-only')await page.waitForFunction(()=>raceDriveProbe.command?.steer===1&&!raceDriveProbe.command?.brake,null,{timeout:2000});
       try {await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0,null,{timeout:2000});}
       catch(error){t.diagnostic(JSON.stringify({releaseKind,...await page.evaluate(()=>{const a=raceUI.snapshot().actors[0];return{events:arcadeTouchEvents,command:raceDriveProbe.command,actor:{drifting:a.drifting,driftTicks:a.driftTicks,padTicks:a.padTicks,speed:a.speed,offroad:a.offroad}};})}));throw error;}
       assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!',releaseKind+' earns an actual authoritative exit boost');
@@ -494,3 +496,25 @@ for (const device of [
     await cdp.detach();
   }
 });
+
+// Chromium's default native touch backend names the *released* ID in a partial
+// touchEnd. An omitted point in touchMove remains down; do not mistake that
+// injector limitation for an app cancellation bug. Verify the native event
+// contract on an isolated page before exercising the game with that sequence.
+async function nativePartialReleaseProbe(context,t){
+  const page=await context.newPage();
+  await page.setContent('<button id="right" style="position:absolute;left:20px;top:20px;width:80px;height:80px;touch-action:none">Right</button><button id="brake" style="position:absolute;left:130px;top:20px;width:80px;height:80px;touch-action:none">Brake</button>');
+  await page.evaluate(()=>{window.events=[];for(const type of ['pointerdown','pointerup','pointercancel','touchstart','touchend','touchcancel'])document.addEventListener(type,e=>events.push({type,target:e.target.id,active:e.touches?.length}),true);});
+  const cdp=await context.newCDPSession(page),right={id:1,x:60,y:60},brake={id:2,x:170,y:60};
+  try{
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[right,brake]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[brake]});
+    const events=await page.evaluate(()=>window.events);
+    assert.ok(events.some(e=>e.type==='pointerup'&&e.target==='brake'),JSON.stringify(events));
+    assert.ok(events.some(e=>e.type==='touchend'&&e.active===1),JSON.stringify(events));
+    assert.ok(!events.some(e=>e.type==='pointercancel'||e.type==='touchcancel'),JSON.stringify(events));
+    assert.ok(!events.some(e=>e.type==='pointerup'&&e.target==='right'),JSON.stringify(events));
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    t.diagnostic('Verified partial native touch release in '+context.browser().version());
+  }finally{await cdp.detach();await page.close();}
+}

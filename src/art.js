@@ -313,6 +313,55 @@ const characterHats = {
     c.restore();
   }
 
+  // Screen-space identity is deliberately independent of suit/team color.
+  // Reserve the local/followed pilot first, then move or omit crowded labels.
+  function identityLayout(items, bounds, obstacles = []) {
+    const placed = [];
+    const overlaps = (a, b, gap = 4) => a.x < b.x + b.w + gap && a.x + a.w > b.x - gap && a.y < b.y + b.h + gap && a.y + a.h > b.y - gap;
+    for (const item of [...items].sort((a, b) => (b.priority || 0) - (a.priority || 0))) {
+      const w = Math.min(item.w, bounds.right - bounds.left), h = item.h || 22;
+      const own = obstacles.find(b => b.id === item.id), primary = !!item.primary || item.priority >= 2;
+      const candidates = [[item.x, item.y], [item.x, item.y - h - 5]];
+      // At the HUD boundary, move beside the pilot instead of clamping onto
+      // their face. Size side placements from the actual body, not text width.
+      if (own) candidates.push([own.x - w / 2 - 7, item.y], [own.x + own.w + w / 2 + 7, item.y]);
+      candidates.push([item.x - w / 2 - 8, item.y], [item.x + w / 2 + 8, item.y], [item.x, item.y - 2 * (h + 5)]);
+      const boxes = candidates.map(([cx, cy]) => ({ ...item, w, h, x: Math.max(bounds.left, Math.min(bounds.right - w, cx - w / 2)), y: Math.max(bounds.top, Math.min(bounds.bottom - h, cy)) }));
+      const available = box => !placed.some(b => overlaps(box, b));
+      let box = boxes.find(b => available(b) && !obstacles.some(o => overlaps(b, o, 2)));
+      // Ownership never disappears merely because somebody else crowds you.
+      // Keep avoiding the local body even when secondary bodies must yield.
+      if (!box && primary) box = boxes.find(b => available(b) && (!own || !overlaps(b, own, 2)));
+      if (box) placed.push(box);
+    }
+    return placed;
+  }
+  function identityBadge(c, text, x, y, w, { primary = false, color = '#A9C2D8', h = 22, pointerX = null, pointerY = null } = {}) {
+    c.save(); c.globalAlpha = 1; c.lineJoin = 'round';
+    if (pointerX !== null && pointerY !== null) {
+      const px = Math.max(x + 7, Math.min(x + w - 7, pointerX));
+      const py = pointerY < y ? y : pointerY > y + h ? y + h : pointerY;
+      c.beginPath(); c.moveTo(px, py); c.lineTo(pointerX, pointerY);
+      c.strokeStyle = '#07111F'; c.lineWidth = 5; c.stroke();
+      c.strokeStyle = primary ? '#FFF3CE' : color; c.lineWidth = primary ? 2.5 : 1.5; c.stroke();
+    }
+    rrPath(c, x, y, w, h, primary ? 7 : 5);
+    c.fillStyle = primary ? '#FFF3CE' : '#091525'; c.fill();
+    c.strokeStyle = '#07111F'; c.lineWidth = primary ? 4 : 3; c.stroke();
+    c.strokeStyle = primary ? '#FFF3CE' : color; c.lineWidth = primary ? 1.5 : 1; c.stroke();
+    c.font = (primary ? '900 11px' : '700 9px') + ' system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = primary ? '#101B29' : '#EDF5FF'; c.fillText(text, x + w / 2, y + h / 2 + .5, w - 10); c.restore();
+  }
+  function identityBrackets(c, x, y, w, h, color = '#FFF3CE') {
+    c.save(); c.globalAlpha = 1; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+      const px = x + sx * w / 2, py = y + sy * h / 2;
+      c.moveTo(px - sx * 6, py); c.lineTo(px, py); c.lineTo(px, py - sy * 7);
+    }
+    c.strokeStyle = '#07111F'; c.lineWidth = 5; c.stroke(); c.strokeStyle = color; c.lineWidth = 2.25; c.stroke(); c.restore();
+  }
+
   // Easing set shared by render code (and mirrored by the CSS --ease tokens).
   const ease = {
     outCubic: (t) => 1 - Math.pow(1 - t, 3),
@@ -321,7 +370,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar };
+  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityBadge, identityBrackets };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

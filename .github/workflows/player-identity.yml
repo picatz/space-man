@@ -1,0 +1,38 @@
+name: Player identity browsers
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - run: node --test player-identity.test.cjs race-identity.test.cjs runner-identity.test.cjs
+        env:
+          SPACE_MAN_IDENTITY_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_IDENTITY_SCREENSHOTS: ${{ runner.temp }}/identity
+          SPACE_MAN_RACE_IDENTITY_SCREENSHOTS: ${{ runner.temp }}/identity
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: player-identity-${{ matrix.engine }}
+          path: ${{ runner.temp }}/identity/*.png
+          retention-days: 5
