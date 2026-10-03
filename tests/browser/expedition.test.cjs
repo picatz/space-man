@@ -27,7 +27,11 @@ async function launch(t, device = {}) {
   const page = await context.newPage(), errors = [], sockets = [];
   page.on('pageerror', e => errors.push(e.message)); page.on('websocket', ws => sockets.push(ws.url()));
   t.after(() => { assert.deepEqual(errors, []); assert.deepEqual(sockets, [], 'solo expedition never opens a room'); });
-  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.goto(process.env.SPACE_MAN_BASE_URL || `http://127.0.0.1:${server.address().port}/`);
+  if (process.env.SPACE_MAN_EXPECTED_SHA) {
+    const identity = await page.locator('meta[name="space-man-preview"]').getAttribute('content');
+    assert.equal(JSON.parse(identity).sha, process.env.SPACE_MAN_EXPECTED_SHA, 'testing the exact published source revision');
+  }
   await page.evaluate(() => { settings.muted = true; settings.reduceMotion = true; });
   return { page, context };
 }
@@ -142,13 +146,13 @@ test('arcade leg interruption aborts cleanly and restores standalone selections'
   const {page} = await launch(t);
   await page.locator('#btnRace').click(); await page.locator('[data-track=ember]').click();
   await page.getByRole('button', {name:'← Back to runner',exact:true}).click();
-  const saved = await page.evaluate(() => localStorage.getItem('sm2.race.v1'));
+  const saved = await page.evaluate(() => localStorage.getItem(BUILD.storageKey('sm2.race.v1')));
   await page.locator('#btnExpedition').click(); await loseRunner(page);
   await page.locator('#btnExpeditionContinue').click(); await page.keyboard.press('Escape');
   await page.getByRole('button', {name:'Leave expedition',exact:true}).filter({visible:true}).first().click();
   assert.equal(await page.evaluate(() => expedition), null);
   assert.equal(await page.evaluate(() => arenaUI.active), false);
-  assert.equal(await page.evaluate(() => localStorage.getItem('sm2.race.v1')), saved);
+  assert.equal(await page.evaluate(() => localStorage.getItem(BUILD.storageKey('sm2.race.v1'))), saved);
   await page.locator('#btnArena').click(); await page.locator('.arena-launch').click();
   assert.equal(await page.evaluate(() => arenaUI.snapshot().difficulty), 'normal');
 });
