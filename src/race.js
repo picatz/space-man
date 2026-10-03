@@ -28,7 +28,7 @@
       name: "Starlight Speedway",
       subtitle: "Wide bends. Big sky. Your first orbit.",
       difficulty: "FLOWING",
-      width: 156,
+      width: 180,
       sky: "#080f24",
       road: "#233550",
       edge: "#62e9e9",
@@ -52,7 +52,7 @@
       name: "Ember Switchback",
       subtitle: "A volcanic slalom with a fast outer sweep.",
       difficulty: "TECHNICAL",
-      width: 148,
+      width: 172,
       sky: "#1b1022",
       road: "#493447",
       edge: "#ffb26e",
@@ -78,7 +78,7 @@
       name: "Bloom Lagoon",
       subtitle: "An emerald ribbon around the orbital gardens.",
       difficulty: "SWEEPING",
-      width: 152,
+      width: 176,
       sky: "#071f25",
       road: "#24464f",
       edge: "#96f1c1",
@@ -306,6 +306,23 @@
     a.lastProgressTick = state.raceTick;
     state.events.push({ type: "recover", id: a.id });
   }
+  // Near a rail, turn only outward drive toward the local tangent. This is a
+  // gradual heading correction, not a position snap or injected forward speed.
+  // Inward steering, braking and free driving stay entirely in the pilot's hands.
+  function guideRail(a, c, n, input) {
+    const limit = c.width / 2 - KART_RADIUS,
+      strength = clamp((n.distance - (limit - 10)) / 10, 0, 1);
+    if (!strength || n.distance > limit + 0.01 || !input.throttle || input.brake) return;
+    const nx = (a.x - n.x) / n.distance, ny = (a.y - n.y) / n.distance;
+    if (Math.cos(a.heading) * nx + Math.sin(a.heading) * ny <= 0) return;
+    // A short secant smooths the sampled centerline's segment joins. Keep
+    // deliberate backwards driving backwards; a sideways impact defaults ahead.
+    const behind = at(c, n.s - 18), ahead = at(c, n.s + 18),
+      heading = Math.atan2(ahead.y - behind.y, ahead.x - behind.x),
+      direction = Math.cos(a.heading - heading) < -0.35 ? -1 : 1,
+      target = heading + (direction < 0 ? Math.PI : 0);
+    a.heading = angle(a.heading + clamp(angle(target - a.heading), -0.09 * strength, 0.09 * strength));
+  }
   // A continuous road-relative rail, shared by CPU and human pilots. Remove
   // only outward velocity (no bouncing); retain tangent motion around bends.
   // Existing invalid/offcourse poses move inward by at most two units per tick
@@ -324,7 +341,7 @@
       a.vy -= ny * outward;
     }
     // Gentle rail friction, independent of rendered frame rate.
-    if (friction) { a.vx *= 0.94; a.vy *= 0.94; }
+    if (friction) { a.vx *= 0.995; a.vy *= 0.995; }
     return readPosition ? nearest(c, a.x, a.y) : null;
   }
   function step(state, inputs = {}) {
@@ -357,10 +374,11 @@
       }
       const n = nearest(c, a.x, a.y);
       previous.set(a.id, { x: a.x, y: a.y, inside: n.distance <= c.width / 2 - KART_RADIUS + 0.01 });
-      // The inner shoulder warns and slows before the physical rail.
+      // The inner shoulder eases speed before the physical rail, without a
+      // sudden low-speed clamp the moment a wheel grazes the painted edge.
       a.offroad = n.distance > c.width / 2 - KART_RADIUS - 12;
       const trapped = n.distance > c.width / 2 - KART_RADIUS - 1 &&
-        a.speed < 0.75 && input.throttle > 0;
+        a.speed < 0.75 && input.throttle > 0 && !input.brake;
       a.offroadTicks = n.distance > c.width / 2 || trapped
         ? finite(a.offroadTicks) + 1 : 0;
       if (n.distance > c.width / 2 + 120 || a.offroadTicks >= OFFCOURSE_TICKS) {
@@ -376,18 +394,21 @@
       a.heading = angle(
         a.heading + input.steer * turnSpeed * (input.brake ? 1.22 : 1),
       );
+      guideRail(a, c, n, input);
       const fx = Math.cos(a.heading),
         fy = Math.sin(a.heading),
         forward = a.vx * fx + a.vy * fy,
         lateral = -a.vx * fy + a.vy * fx;
       const boost = a.boosting || a.padTicks > 0,
-        max = a.offroad ? 2.6 : boost ? 9 : 6.4;
+        invalid = !previous.get(a.id).inside,
+        shoulder = clamp((n.distance - (c.width / 2 - KART_RADIUS - 12)) / 12, 0, 1),
+        max = invalid ? 2.6 : a.offroad ? 6.4 - 2.2 * shoulder : boost ? 9 : 6.4;
       let accel = input.throttle * (boost ? 0.19 : 0.125);
       if (input.brake) accel = -0.2;
       const velocity = clamp(
-          forward * (a.offroad ? 0.965 : 0.991) + accel,
+          forward * (invalid ? 0.965 : 0.991) + accel,
           0,
-          max,
+          invalid ? max : Math.max(max, forward - 0.14),
         ),
         slide = lateral * (input.brake ? 0.82 : 0.65);
       a.vx = fx * velocity - fy * slide;

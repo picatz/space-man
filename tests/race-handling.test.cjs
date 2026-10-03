@@ -39,26 +39,78 @@ for(const track of Race.tracks) {
     }
   });
 }
-test('a stranded offcourse pilot is rescued within two seconds with no ordered gate or lap credit',()=>{
+test('an invalid offcourse pilot returns by bounded correction without false gate credit',()=>{
   const s=playing('starlight'), a=s.actors[0], c=Race.course(s.trackId), p=Race.at(c,c.length*.3);
   Object.assign(a,{x:p.x-p.ty*(c.width/2+70),y:p.y+p.tx*(c.width/2+70),heading:Math.atan2(p.tx,-p.ty),passed:4,nextGate:5,lap:1,progress:4.9});
-  let count=0;
-  while(!a.recoveries && count++<Race.constants.OFFCOURSE_TICKS) drive(s,{throttle:1,boost:true});
-  assert.equal(a.recoveries,1); assert.ok(count<=120); assert.equal(a.passed,4); assert.equal(a.nextGate,5); assert.equal(a.lap,1);
+  for(let count=0;count<120;count++) {
+    const old={...a}, distance=Race.nearest(c,a.x,a.y).distance;
+    drive(s,{throttle:1,boost:true});
+    if(distance>c.width/2-Race.constants.KART_RADIUS+.01){
+      assert.equal(a.passed,old.passed,'invalid-pose correction cannot grant an ordered checkpoint');
+      assert.ok(Math.hypot(a.x-old.x,a.y-old.y)<=4.7,'invalid poses return gradually');
+    }
+  }
+  assert.equal(a.recoveries,0); assert.equal(a.passed,4); assert.equal(a.nextGate,5); assert.equal(a.lap,1);
+  assert.ok(Race.nearest(c,a.x,a.y).distance<=c.width/2-Race.constants.KART_RADIUS+1e-6);
+  assert.ok(a.speed>2,'regained road allows useful driving without another rescue wait');
+});
+test('the bounded stuck timer still rescues at the last verified gate without credit',()=>{
+  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,c.length*.3),distance=c.width/2-Race.constants.KART_RADIUS;
+  Object.assign(a,{x:p.x-p.ty*distance,y:p.y+p.tx*distance,heading:Math.atan2(p.tx,-p.ty),passed:4,nextGate:5,lap:1,progress:4.9,offroadTicks:119});
+  drive(s,{throttle:1});
   const target=Race.at(c,c.length*4/20+12);
+  assert.equal(a.recoveries,1);assert.equal(a.passed,4);assert.equal(a.nextGate,5);assert.equal(a.lap,1);
   assert.equal(a.x,target.x);assert.equal(a.y,target.y);assert.equal(a.speed,0);assert.equal(a.offroadTicks,0);
 });
-test('rail contact never bounces an outward-facing kart or flips its heading',()=>{
-  const s=playing('starlight'), a=s.actors[0], c=Race.course(s.trackId), p=Race.at(c,200), distance=c.width/2-Race.constants.KART_RADIUS;
-  const nx=-p.ty,ny=p.tx;
-  Object.assign(a,{x:p.x+nx*distance,y:p.y+ny*distance,heading:Math.atan2(ny,nx),vx:0,vy:0,speed:0});
-  const heading=a.heading;
-  for(let i=0;i<90;i++) {
-    drive(s,{throttle:1});
-    assert.ok(Math.abs(a.heading-heading)<1e-12);
-    assert.ok(a.vx*nx+a.vy*ny>=-0.01,'contact must not bounce');
-    assert.ok(a.speed<0.15,'continuous outward throttle stays calmly against the rail');
+for(const track of Race.tracks) for(const side of [-1,1]) {
+  test(`${track.id}/${side}: head-on rail drive becomes a smooth forward slide instead of waiting for rescue`,()=>{
+    const s=playing(track.id),a=s.actors[0],c=Race.course(track.id),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS;
+    Object.assign(a,{x:p.x-p.ty*distance*side,y:p.y+p.tx*distance*side,heading:Math.atan2(p.ty,p.tx)+side*Math.PI/2});
+    let traveled=0;
+    for(let i=0;i<180;i++) {
+      const old={...a};drive(s,{throttle:1,boost:true});
+      traveled+=Math.hypot(a.x-old.x,a.y-old.y);
+      assert.ok(Math.abs(Math.atan2(Math.sin(a.heading-old.heading),Math.cos(a.heading-old.heading)))<=.091,'guidance cannot snap heading');
+      assert.ok(Math.hypot(a.x-old.x,a.y-old.y)<=9.1,'guidance cannot teleport position');
+      assert.ok(Race.nearest(c,a.x,a.y).distance<=distance+1e-6);
+      assert.equal(a.recoveries,0);
+      if(i>30)assert.ok(a.speed>1.5,'head-on drive gets moving within half a second');
+    }
+    assert.ok(traveled>500,'three seconds of rail contact make useful physical progress');
+  });
+  test(`${track.id}/${side}: held outward steering keeps momentum and steering away stays responsive`,()=>{
+    const s=playing(track.id),a=s.actors[0],c=Race.course(track.id),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS;
+    Object.assign(a,{x:p.x-p.ty*distance*side,y:p.y+p.tx*distance*side,heading:Math.atan2(p.ty,p.tx)+side*.22,vx:p.tx*6.4,vy:p.ty*6.4,speed:6.4});
+    for(let i=0;i<180;i++){
+      drive(s,{throttle:1,steer:side,boost:true});
+      assert.ok(a.speed>3,'grazing or holding against a rail retains motion');
+      assert.equal(a.recoveries,0);
+      assert.ok(Race.nearest(c,a.x,a.y).distance<=distance+1e-6);
+    }
+    let leftRail=false;
+    for(let i=0;i<20;i++){
+      drive(s,{throttle:1,steer:-side});
+      if(Race.nearest(c,a.x,a.y).distance<distance-16)leftRail=true;
+    }
+    assert.ok(leftRail,'inward steering escapes rail assistance promptly');
+    assert.ok(a.speed>3);
+  });
+}
+test('shoulder contact eases boost speed instead of imposing an instant low-speed clamp',()=>{
+  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS-6;
+  Object.assign(a,{x:p.x-p.ty*distance,y:p.y+p.tx*distance,heading:Math.atan2(p.ty,p.tx),vx:p.tx*9,vy:p.ty*9,speed:9});
+  drive(s,{throttle:1,boost:true});assert.ok(a.speed>8.7);assert.equal(a.boosting,false);
+});
+test('rail guidance respects braking, coasting and deliberate reverse direction',()=>{
+  for(const input of [{throttle:1,brake:true},{}]){
+    const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS;
+    Object.assign(a,{x:p.x-p.ty*distance,y:p.y+p.tx*distance,heading:Math.atan2(p.tx,-p.ty)});const heading=a.heading;
+    for(let i=0;i<180;i++)drive(s,input);
+    assert.equal(a.heading,heading);assert.equal(a.speed,0);assert.equal(a.recoveries,0);
   }
+  const s=playing('starlight'),a=s.actors[0],c=Race.course(s.trackId),p=Race.at(c,200),distance=c.width/2-Race.constants.KART_RADIUS;
+  Object.assign(a,{x:p.x-p.ty*distance,y:p.y+p.tx*distance,heading:Math.atan2(-p.ty,-p.tx)-.2,vx:-p.tx*4,vy:-p.ty*4,speed:4});
+  drive(s,{throttle:1});assert.ok(a.vx*p.tx+a.vy*p.ty<0,'guidance does not reverse intended travel');assert.equal(a.passed,0);
 });
 test('30, 60 and 120 Hz presentation schedules replay identical 60 Hz handling',()=>{
   const snapshots=[];
