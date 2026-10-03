@@ -12,7 +12,7 @@ for(const [width,height] of [[320,568],[390,844],[844,390],[1280,800]])test(`ide
  const page=await launch(t,{width,height});
  // Preserve the real simulation: only the opening arrangement/outfits are authored.
  await page.evaluate(()=>{
-  const A=SpaceManArena;SpaceManArena={...A,create(o){const s=A.create(o);s.actors.forEach((a,i)=>{a.appearance={...G.cosmetics};Object.assign(a,{x:425+i*13,px:425+i*13,y:390,py:390,invulnerable:0});});window.identityArenaState=s;return s;}};
+  const A=SpaceManArena;SpaceManArena={...A,create(o){const s=A.create(o);s.actors.forEach((a,i)=>{a.appearance={...G.cosmetics};if(!s.encounter)Object.assign(a,{x:425+i*13,px:425+i*13,y:390,py:390,invulnerable:0});});window.identityArenaState=s;return s;}};
   const layout=SpaceManArt.identityLayout;
   SpaceManArt.identityLayout=(items,bounds,bodies)=>{
    const labels=layout(items,bounds,bodies),hud=document.querySelector('.arena-hud').getBoundingClientRect(),root=document.querySelector('#arenaRoot').getBoundingClientRect();
@@ -27,17 +27,17 @@ for(const [width,height] of [[320,568],[390,844],[844,390],[1280,800]])test(`ide
  assert.ok((await page.locator('.arena-player-card').nth(1).innerText()).includes('ALLY'));
  assert.ok((await page.locator('.arena-player-card').nth(2).innerText()).includes('RIVAL'));
  const layout=await page.locator('.arena-player-card[data-you="true"]').evaluate(e=>({r:e.getBoundingClientRect().toJSON(),bg:getComputedStyle(e).backgroundColor,border:getComputedStyle(e).borderTopColor}));assert.ok(layout.r.right<=width&&layout.r.left>=0);assert.equal(layout.border,'rgb(255, 243, 206)');
- await page.waitForFunction(()=>arenaUI.snapshot()?.phase==='playing'&&document.querySelector('.arena-countdown').hidden);
+ await page.waitForFunction(()=>arenaUI.snapshot()?.phase==='playing'&&document.querySelector('.arena-countdown').hidden,undefined,{timeout:6000});
  await page.evaluate(()=>{identityArenaState.actors.forEach((a,i)=>Object.assign(a,{x:425+i*13,px:425+i*13,y:390,py:390,vx:0,vy:0,invulnerable:0}));});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  await capture(page,`identity-crowded-teams-${width}`);
  await page.waitForFunction(()=>arenaUI.snapshot()?.phase==='playing');await page.keyboard.press('Space');await page.waitForTimeout(100);await capture(page,`identity-airborne-teams-${width}`);await page.keyboard.press('Escape');await page.locator('#arenaExit').click();
  await page.evaluate(()=>{arenaUI.openSession({encounter:'boss',crewCount:4,wingmate:true,arenaId:'dock',format:'teams',seed:12345},()=>{});});
  await page.waitForFunction(()=>arenaUI.snapshot()?.actors.length===5&&document.querySelector('#arenaRoot').dataset.identity?.includes('YOU:1'));
  assert.equal(await page.locator('.arena-player-card[data-you="true"]').count(),1);assert.equal(await page.locator('.arena-player-card[data-boss="true"]').count(),1);
- await page.waitForFunction(()=>arenaUI.snapshot()?.phase==='playing'&&document.querySelector('.arena-countdown').hidden);
+ await page.waitForFunction(()=>arenaUI.snapshot()?.phase==='playing'&&document.querySelector('.arena-countdown').hidden,undefined,{timeout:6000});
  await page.evaluate(()=>{identityArenaState.actors.forEach((a,i)=>Object.assign(a,{x:425+i*13,px:425+i*13,y:390,py:390,vx:0,vy:0,invulnerable:0}));});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
  await capture(page,`identity-crowded-boss-${width}`);
- await page.waitForTimeout(700);await capture(page,`identity-live-boss-${width}`);
+ await capture(page,`identity-live-boss-${width}`);
  // Author an airborne position near the top HUD, then let real physics and
  // camera interpolation render it. Record the frame even on a fast display.
  await page.evaluate(()=>{
@@ -49,6 +49,8 @@ for(const [width,height] of [[320,568],[390,844],[844,390],[1280,800]])test(`ide
  await page.waitForFunction(()=>!!window.identityNearHudFrame);
  const airborne=await page.evaluate(()=>window.identityNearHudFrame),pilot=airborne.labels.find(b=>b.primary);
  assert.ok(pilot,'airborne pilot keeps its identity badge');
+ const ownBody=airborne.bodies.find(b=>b.id===pilot.id);
+ assert.ok(pilot.x+pilot.w<=ownBody.x||pilot.x>=ownBody.x+ownBody.w||pilot.y+pilot.h<=ownBody.y||pilot.y>=ownBody.y+ownBody.h,'HUD-clamped marker must not cover its own pilot');
  assert.ok(pilot.y-2>=airborne.hudBottom+4,'badge including its outline clears the measured boss HUD');
  assert.ok(pilot.y<=airborne.bounds.top+1,'fixture exercises a badge clamped at the top boundary');
  await capture(page,`identity-airborne-boss-${width}`);

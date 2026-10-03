@@ -5553,7 +5553,9 @@ function drawRunnerIdentity(alpha) {
   ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ART.identityBrackets(ctx, x, y + p.h * scale / 2, Math.max(34, p.w * scale + 11), Math.max(43, p.h * scale + 8));
   const text = watching ? 'WATCHING' : 'YOU', bw = watching ? 86 : 44;
-  ART.identityBadge(ctx, text, clamp(x - bw / 2, 8, w - bw - 8), Math.max(top, y - 41), bw, { primary: true, pointerX: x, pointerY: y - 10 });
+  const body = { id: 1, x: x - p.w * scale / 2 - 5, y: y - 7, w: p.w * scale + 10, h: p.h * scale + 7 };
+  const [badge] = ART.identityLayout([{ id: 1, x, y: y - 41, w: bw, h: 22, primary: true, priority: 2 }], { left: 8, right: w - 8, top, bottom: h - 35 }, [body]);
+  if (badge) ART.identityBadge(ctx, text, badge.x, badge.y, badge.w, { primary: true, pointerX: x, pointerY: y - 10 });
   ctx.restore();
 }
 

@@ -26,3 +26,9 @@ test('runner marker belongs to the scene, does not change outfits and never mark
   assert.deepEqual(got,{solo:['YOU'],watched:['WATCHING'],noTarget:[],unchanged:true});
  } finally {c.close();}
 });
+
+test('a HUD-clamped primary moves beside its own body instead of covering it',()=>{
+ const body={id:1,x:390,y:80,w:25,h:30};
+ const [label]=Art.identityLayout([{id:1,x:402.5,y:45,w:44,h:22,priority:2,primary:true}],{left:8,right:836,top:98,bottom:302},[body]);
+ assert.ok(label);assert.equal(label.y,98);assert.equal(overlap(label,body),false);
+});

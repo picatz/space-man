@@ -320,13 +320,19 @@ const characterHats = {
     const overlaps = (a, b, gap = 4) => a.x < b.x + b.w + gap && a.x + a.w > b.x - gap && a.y < b.y + b.h + gap && a.y + a.h > b.y - gap;
     for (const item of [...items].sort((a, b) => (b.priority || 0) - (a.priority || 0))) {
       const w = Math.min(item.w, bounds.right - bounds.left), h = item.h || 22;
-      const offsets = [[0, 0], [0, -h - 5], [-w / 2 - 8, 0], [w / 2 + 8, 0], [0, -2 * (h + 5)]];
-      for (const [dx, dy] of offsets) {
-        const box = { ...item, w, h, x: Math.max(bounds.left, Math.min(bounds.right - w, item.x - w / 2 + dx)), y: Math.max(bounds.top, Math.min(bounds.bottom - h, item.y + dy)) };
-        if (placed.some(b => overlaps(box, b))) continue;
-        if (!item.priority && obstacles.some(b => b.id !== item.id && overlaps(box, b, 2))) continue;
-        placed.push(box); break;
-      }
+      const own = obstacles.find(b => b.id === item.id), primary = !!item.primary || item.priority >= 2;
+      const candidates = [[item.x, item.y], [item.x, item.y - h - 5]];
+      // At the HUD boundary, move beside the pilot instead of clamping onto
+      // their face. Size side placements from the actual body, not text width.
+      if (own) candidates.push([own.x - w / 2 - 7, item.y], [own.x + own.w + w / 2 + 7, item.y]);
+      candidates.push([item.x - w / 2 - 8, item.y], [item.x + w / 2 + 8, item.y], [item.x, item.y - 2 * (h + 5)]);
+      const boxes = candidates.map(([cx, cy]) => ({ ...item, w, h, x: Math.max(bounds.left, Math.min(bounds.right - w, cx - w / 2)), y: Math.max(bounds.top, Math.min(bounds.bottom - h, cy)) }));
+      const available = box => !placed.some(b => overlaps(box, b));
+      let box = boxes.find(b => available(b) && !obstacles.some(o => overlaps(b, o, 2)));
+      // Ownership never disappears merely because somebody else crowds you.
+      // Keep avoiding the local body even when secondary bodies must yield.
+      if (!box && primary) box = boxes.find(b => available(b) && (!own || !overlaps(b, own, 2)));
+      if (box) placed.push(box);
     }
     return placed;
   }
@@ -334,7 +340,8 @@ const characterHats = {
     c.save(); c.globalAlpha = 1; c.lineJoin = 'round';
     if (pointerX !== null && pointerY !== null) {
       const px = Math.max(x + 7, Math.min(x + w - 7, pointerX));
-      c.beginPath(); c.moveTo(px, y + h); c.lineTo(pointerX, pointerY);
+      const py = pointerY < y ? y : pointerY > y + h ? y + h : pointerY;
+      c.beginPath(); c.moveTo(px, py); c.lineTo(pointerX, pointerY);
       c.strokeStyle = '#07111F'; c.lineWidth = 5; c.stroke();
       c.strokeStyle = primary ? '#FFF3CE' : color; c.lineWidth = primary ? 2.5 : 1.5; c.stroke();
     }

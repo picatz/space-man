@@ -935,7 +935,7 @@
       pulseButton.style.setProperty('--ready', attackReady); dashButton.style.setProperty('--ready', dashReady);
       let label = '', sub = '';
       if (state.phase === 'countdown') { label = String(Math.ceil(state.countdownTicks / 60)); sub = FORMATS.find(f => f.id === state.format).name.toUpperCase() + ' · GET READY'; }
-      else if (state.phase === 'playing' && state.tick < arena.constants.COUNTDOWN_TICKS + 35) { label = 'GO!'; sub = 'MAKE SOME SPACE'; }
+      else if (state.phase === 'playing' && state.tick < (state.encounter ? state.encounter.countdownTicks : arena.constants.COUNTDOWN_TICKS) + 35) { label = 'GO!'; sub = 'MAKE SOME SPACE'; }
       countdownEl.hidden = !label; statusEl.textContent = label; statusSub.textContent = sub;
       if (label && label !== lastCountdown) { announce(label === 'GO!' ? 'Go! Match started.' : 'Match starts in ' + label); sfx(label === 'GO!' ? 'start' : 'countdown'); lastCountdown = label; }
     }
