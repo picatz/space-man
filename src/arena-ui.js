@@ -838,13 +838,13 @@
         identityBoundsDirty = false;
       }
       const portrait = width < height * 1.15, human = watchedActor();
-      const top = Math.max(identityHudBottom, (portrait ? (state.actors.length > 2 && width < 600 ? (state.actors.some(a => a.boss) ? 198 : 178) : 125) : 95) + identitySafeTop);
       const touch = (usingTouch || rootEl.dataset.touch === 'true') && !touchEl.hidden;
+      const top = touch && !portrait && identityHudBottom ? identityHudBottom : Math.max(identityHudBottom, (portrait ? (state.actors.length > 2 && width < 600 ? (state.actors.some(a => a.boss) ? 198 : 178) : 125) : 95) + identitySafeTop);
       if (touch && !thumbBounds) {
         const origin = rootEl.getBoundingClientRect(), zones = [stickZone, rootEl.querySelector('.arena-touch-actions')].map(n => n.getBoundingClientRect());
         // A resize may arrive while Pause hides the controls. Never cache
         // empty rectangles and carry them into a resumed match.
-        if (zones.every(r => r.width > 0 && r.height > 0)) thumbBounds = { top: Math.min(...zones.map(r => r.top - origin.top)), side: Math.max(...zones.map(r => r.width + Math.min(r.left - origin.left, origin.right - r.right))) + 14 };
+        if (zones.every(r => r.width > 0 && r.height > 0)) thumbBounds = { pods: zones.map(r => ({x:r.left-origin.left,y:r.top-origin.top,w:r.width,h:r.height})).sort((a,b)=>a.x-b.x), top: Math.min(...zones.map(r => r.top - origin.top)), side: Math.max(...zones.map(r => r.width + Math.min(r.left - origin.left, origin.right - r.right))) + 14 };
       }
       const lowerDeck = portrait || height > 600;
       const bottom = touch && thumbBounds ? (lowerDeck ? height - thumbBounds.top + 16 : 24) : 66;
@@ -868,7 +868,10 @@
       }
       if (!camera.initialized) { camera = { x, y, scale, initialized: true }; }
       else { const follow = calm() ? .24 : .16; camera.x = lerp(camera.x, x, follow); camera.y = lerp(camera.y, y, follow); camera.scale = scale; }
-      return { x: camera.x, y: camera.y, scale: camera.scale, centerY: cy, top, bottom, portrait };
+      return { x: camera.x, y: camera.y, scale: camera.scale, centerY: cy, top, bottom, portrait, pods: touch && !lowerDeck && thumbBounds ? thumbBounds.pods : [] };
+    }
+    function thumbOccludes(box, c) {
+      return c.pods.some(p => box.x < p.x+p.w && box.x+box.w > p.x && box.y < p.y+p.h && box.y+box.h > p.y);
     }
     function paint(alpha) {
       if (!active || !state || !ctx) return;
@@ -944,6 +947,7 @@
         if (primary) art.identityBrackets(ctx, x, y + actor.h * c.scale / 2, Math.max(37, actor.w * c.scale + 13), Math.max(46, actor.h * c.scale + 10));
         const body = { id: actor.id, x: x - actor.w * c.scale / 2 - 5, y: y - 8, w: actor.w * c.scale + 10, h: actor.h * c.scale + 8 };
         bodies.push(body);
+        if (thumbOccludes(body, c)) continue; // Its clear-corridor cue replaces a label beneath a thumb.
         ctx.font = primary ? '900 11px system-ui,sans-serif' : '700 9px system-ui,sans-serif';
         labels.push({ id: actor.id, text: identity.text, x, y: y - 43, w: ctx.measureText(identity.text).width + 18, h: primary ? 22 : 18, priority: primary ? 2 : actor.boss ? 1 : 0, primary, color: actorColor(actor), targetX: x, targetY: y - 12 });
       }
@@ -953,16 +957,25 @@
       for (const b of layout.slice().reverse()) art.identityBadge(ctx, b.text, b.x, b.y, b.w, { primary: b.primary, color: b.color, h: b.h, pointerX: b.targetX, pointerY: b.targetY });
     }
     function drawIndicators(c, alpha) {
+      const controlCues = [];
       for (const actor of state.actors) {
         if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
         const x = (lerp(actor.px, actor.x, alpha) + actor.w / 2 - c.x) * c.scale + width / 2;
         const y = (lerp(actor.py, actor.y, alpha) + actor.h / 2 - c.y) * c.scale + c.centerY;
-        if (x > 16 && x < width - 16 && y > c.top && y < height - c.bottom) continue;
-        const ix = clamp(x, 32, width - 32), iy = clamp(y, c.top + 20, height - c.bottom - 20), color = actorIdentity(actor).role !== 'other' ? '#FFF3CE' : actorColor(actor);
+        const blocked = thumbOccludes({x:x-actor.w*c.scale/2,y:y-actor.h*c.scale/2,w:actor.w*c.scale,h:actor.h*c.scale},c);
+        if (!blocked && x > 16 && x < width - 16 && y > c.top && y < height - c.bottom) continue;
+        let ix = clamp(x, 32, width - 32);
+        const iy = clamp(y, c.top + 20, height - c.bottom - 20), color = actorIdentity(actor).role !== 'other' ? '#FFF3CE' : actorColor(actor);
+        if (blocked || thumbOccludes({x:ix-25,y:iy-20,w:50,h:40},c)) {
+          // A rival behind either hand is effectively offscreen. Keep the
+          // existing directional cue in the clear corridor, including lefty.
+          ix = clamp(ix,c.pods[0].x+c.pods[0].w+26,c.pods[1].x-26); controlCues.push(actor.id);
+        }
         ctx.save(); ctx.translate(ix, iy); ctx.fillStyle = '#091329'; ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 15, 0, TAU); ctx.fill(); ctx.stroke();
         ctx.fillStyle = color; ctx.font = '700 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(actorIdentity(actor).role === 'you' ? 'YOU' : actorIdentity(actor).role === 'watching' ? 'EYE' : actor.name.slice(0, 1), 0, 0);
         ctx.rotate(Math.atan2(y - iy, x - ix)); ctx.beginPath(); ctx.moveTo(19, -4); ctx.lineTo(25, 0); ctx.lineTo(19, 4); ctx.fill(); ctx.restore();
       }
+      rootEl.dataset.controlCues = controlCues.join(' ');
     }
     function buildRoster() {
       identityBoundsDirty = true;

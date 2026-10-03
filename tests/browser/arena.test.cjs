@@ -507,6 +507,8 @@ test('arena thumb layout keeps comfortable targets and the pilot clear across ph
   const { page } = await launch(t, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await page.evaluate(() => {
     settings.reduceMotion = true; settings.muted = true;
+    const arena = SpaceManArena;
+    SpaceManArena = {...arena,create(o){window.thumbState=arena.create(o);return thumbState;}};
     const layout = SpaceManArt.identityLayout;
     SpaceManArt.identityLayout = (items, bounds, bodies) => {
       window.thumbFrame = { bodies, bounds }; return layout(items, bounds, bodies);
@@ -544,6 +546,15 @@ test('arena thumb layout keeps comfortable targets and the pilot clear across ph
       const own = await page.evaluate(() => thumbFrame.bodies.find(b => b.id === 1));
       assert.ok(own,'the local pilot remains in the visible playfield');
       for (const b of [...controls,zone]) assert.equal(intersects({x:own.x,y:own.y,width:own.w,height:own.h},b),false,'the local pilot is visible outside the controls');
+      await page.waitForFunction(() => document.querySelector('.arena-countdown').hidden);
+      if(width===667&&!lefty) {
+        await page.evaluate(() => {
+          const player=thumbState.actors[0],rival=thumbState.actors[1],body=thumbFrame.bodies.find(b=>b.id===player.id),dash=document.querySelector('.arena-touch-dash').getBoundingClientRect(),scale=(body.h-8)/player.h;
+          rival.x=player.x+(dash.x+dash.width/2-(body.x+body.w/2))/scale;rival.px=rival.x;
+          rival.y=player.y+(dash.y+dash.height/2-(body.y+8+player.h*scale/2))/scale;rival.py=rival.y;rival.vx=rival.vy=0;rival.invulnerable=60;
+        });
+        await page.waitForFunction(() => document.querySelector('#arenaRoot').dataset.controlCues?.split(' ').includes('2'));
+      }
       await capture(page, `arena-thumbs-${width}x${height}-${lefty ? 'left' : 'right'}`);
     }
     // Restart a real match so CPUs cannot eliminate the stationary pilot while
