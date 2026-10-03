@@ -71,11 +71,15 @@ test('reduce motion switches off the card cascade as well as the slide', () => {
   assert.match(css, /body\.reduce-motion \.overlay\.in \.panel > \*\s*\{\s*animation:\s*none/);
 });
 
-test('phone on its side: the title card goes two-column and sits low, clear of the wordmark', () => {
-  const land = css.slice(css.indexOf('@media (orientation: landscape) and (max-height: 560px)'));
-  assert.match(land, /#ovAttract\s*\{\s*justify-content:\s*flex-end/);
-  assert.match(land, /#ovAttract \.panel\s*\{[^}]*grid-template-columns/);
-  assert.match(html, /<div class="attract-main">[\s\S]*id="btnPlay"[\s\S]*<div class="attract-side">[\s\S]*id="attractRow"/);
+test('home is an open responsive launch scene with every legacy entry point', () => {
+  const home = fs.readFileSync(path.join(__dirname, '../src/home.css'), 'utf8');
+  assert.match(home, /grid-template-areas: 'header header' 'world launch' 'footer footer'/);
+  assert.match(home, /grid-template-areas: 'header' 'world' 'launch' 'footer'/);
+  assert.match(home, /max-height: 100%; overflow: auto/);
+  assert.match(html, /class="panel home-shell"/);
+  for (const id of ['btnExpedition', 'btnExpeditionFriends', 'btnPlay', 'btnArena', 'btnRace', 'btnTogether', 'btnDaily', 'btnWardrobe', 'btnTrophy', 'btnSettings']) {
+    assert.equal((html.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1, id + ' remains unique');
+  }
 });
 
 test('death card: eyebrow, hero score, stat tiles in the shared scale; Records and Room keep their key button docked', () => {

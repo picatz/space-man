@@ -86,7 +86,7 @@
   #ovAttract .home-play-actions .btn { min-height: 54px; font-size: 14px; padding: 11px; border-radius: 13px; }
   .home-arcade { margin-top: 24px; }.home-section-heading { margin-bottom: 8px; }.home-section-heading h2 { font-size: 12px; }.home-section-heading > span { font-size: 8px; }
   #ovAttract .launch-modes { gap: 8px; }.home-mode { border-radius: 12px; }.home-mode canvas { height: 67px; object-fit: cover; }
-  #ovAttract .home-mode .mode-link { font-size: 11px; min-height: 42px; padding-inline: 3px; }.home-mode > span { font-size: 8px; }
+  #ovAttract .home-mode .mode-link { font-size: 11px; min-height: 44px; padding-inline: 3px; }.home-mode > span { font-size: 8px; }
   #ovAttract #btnDaily { margin-top: 8px; min-height: 53px; }
   .home-footer { padding-top: 0; border: 0; justify-content: center; gap: 2px; }.home-footer-note { display: none; }
   #ovAttract #attractRow { justify-content: center; gap: 28px; }#ovAttract #attractRow .btn { font-size: 11px; }
@@ -112,3 +112,5 @@
   #ovAttract #btnWardrobe { position: absolute; right: 0; bottom: 0; min-width: 76px; }.home-identity { min-height: 44px; margin-right: 76px; }.home-footer-note { display: none; }
 }
 body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: none !important; transition: none !important; }
+
+#ovAttract .home-mode:focus-within { outline: 3px solid var(--sm-focus); outline-offset: -3px; }
