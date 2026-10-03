@@ -1,5 +1,8 @@
 # Forgiving circuit contact
 
+This records the PR38 first pass. Current steering, rounded Ember and visible
+runoff behavior is documented in `human-race-feel.md` and `race-handling-audio.md`.
+
 ## Diagnosis and checkpoint
 
 The full kart envelope is correctly bounded to the same corridor drawn by the

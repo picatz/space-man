@@ -19,11 +19,12 @@ const hairpin = makeCourse([[0, 0], [160, 0], [160, 35], [0, 35], [0, 70],
   [160, 70], [160, 220], [0, 220]], 148);
 const crossing = makeCourse([[0, 0], [220, 220], [0, 220], [220, 0]], 100);
 
-// Order-independent hashes captured from the unchunked mesh. Positions,
+// Order-independent hashes at fixed reference widths; Ember uses its rounded
+// revision-3 route. Positions,
 // normals, colors, winding, and triangle multiplicity must all stay exact.
 const originalTriangles = {
   starlight: "6c51b8c39be0e0b90e786a40171020a651ced289f14665f83f4ba5c8f883e7f0",
-  ember: "cc0a31378f6870448cfe7e66343b0f7e9d4f90a9f94188f8f66826dfc14b56fb",
+  ember: "1c052269d65a8223ffa59c020d3ff13e8f8d7bb2284b96afbe6ef4269bd7c572",
   bloom: "bd8d303ccf11aebf874837b84458ed58c7539f18b4c947d99513935b28a29ae2",
 };
 

@@ -56,10 +56,10 @@ async function reachable(page, selector, minimum = 44) {
   assert.ok(b && b.height >= minimum - .5, `${selector} has a ${minimum}px target`);
   assert.ok(b.x >= -1 && b.x + b.width <= viewport.width + 1 && b.y >= -1 && b.y + b.height <= viewport.height + 1, `${selector} stays reachable`);
 }
-const sizes = [[320,568],[360,640],[375,667],[390,640],[844,390],[768,1024],[1440,900]];
+const sizes = [[320,568],[360,640],[375,667],[390,640],[390,844],[600,400],[667,375],[844,390],[768,1024],[1440,900]];
 test('before screenshots retain the real production reference', { timeout: 90000, skip: !process.env.SPACE_MAN_THEME_BASE_ROOT }, async t => {
   const page = await launch(t, path.resolve(process.env.SPACE_MAN_THEME_BASE_ROOT));
-  for (const [width,height] of [[320,568],[360,640],[375,667],[390,640],[1440,900]]) {
+  for (const [width,height] of [[320,568],[360,640],[375,667],[390,640],[390,844],[600,400],[667,375],[844,390],[768,1024],[1440,900]]) {
     await page.setViewportSize({ width, height });
     await capture(page, `before-${width}x${height}-title`);
     await page.locator('#btnArena').click(); await page.locator('.arena-root[data-screen=lobby]').waitFor();
@@ -67,7 +67,7 @@ test('before screenshots retain the real production reference', { timeout: 90000
     await page.locator('#arenaBack').click();
     await page.locator('#btnRace').click(); await page.locator('.race-root[data-screen=lobby]').waitFor();
     await capture(page, `before-${width}x${height}-race`);
-    await page.getByRole('button', { name: '← Back to runner', exact: true }).filter({ visible: true }).click();
+    await page.locator('.race-lobby-header button').click();
   }
 });
 for (const [width,height] of sizes) test(`shared chrome ${width}x${height}: launcher, modes, settings and interrupted return`, { timeout: 60000 }, async t => {
@@ -88,10 +88,22 @@ for (const [width,height] of sizes) test(`shared chrome ${width}x${height}: laun
   await reachable(page, '#arenaResume');
   await page.getByRole('button', { name: 'Resume match', exact: true }).click();
   await page.getByRole('button', { name: 'Pause match', exact: true }).click();
-  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).click();
+  await page.getByRole('button', { name: 'All games', exact: true }).filter({ visible: true }).click();
   assert.equal(await page.evaluate(() => document.activeElement.id), 'btnArena');
   await page.locator('#btnRace').click(); await page.locator('.race-root[data-screen=lobby]').waitFor();
-  await fit(page, ['.race-dialog','.race-setup','.race-track-list','.race-track','.race-options']);
+  await fit(page, ['.race-dialog','.race-setup','.race-track-list','.race-track','.race-options','.race-utilities','.race-preferences','.race-camera-options .race-button']);
+  const launchBox = await page.locator('.race-launch').boundingBox();
+  if ((width === 390 && height === 844) || (width >= 768 && height >= 800)) {
+    assert.ok(launchBox.y >= 0 && launchBox.y + launchBox.height <= height, 'launch is visible on the first setup screen');
+  }
+  assert.equal(await page.locator('.race-preferences .race-camera-options').count(), 1, 'camera choices belong to the labelled preferences panel');
+  assert.equal(await page.locator('.race-preferences .race-audio-controls').count(), 1, 'audio shares the same preferences panel');
+  await page.locator('.race-online-panel > summary').click();
+  await reachable(page, '#raceRoomInput');
+  assert.ok(Number(await page.locator('#raceRoomInput').evaluate(n => parseFloat(getComputedStyle(n).fontSize))) >= 16, 'room input avoids iPhone focus zoom');
+  await reachable(page, '#raceJoin');
+  await page.locator('.race-online-panel > summary').click();
+  await page.locator('.race-lobby').evaluate(n => { n.scrollTop = 0; });
   await capture(page, `after-${width}x${height}-race`);
   await page.locator('.race-launch').click(); await page.locator('.race-root[data-screen=play]').waitFor();
   await capture(page, `after-${width}x${height}-race-driving`);
@@ -106,7 +118,27 @@ for (const [width,height] of sizes) test(`shared chrome ${width}x${height}: laun
   await page.locator('.race-root[data-screen=pause]').waitFor();
   await reachable(page, '.race-compact:visible .race-primary');
   await capture(page, `after-${width}x${height}-race-pause`);
-  await page.getByRole('button', { name: 'Back to runner', exact: true }).filter({ visible: true }).click();
+  await reachable(page, '#raceExit');
+  await page.getByRole('slider', { name: 'Race audio volume' }).filter({ visible: true }).scrollIntoViewIfNeeded();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Pause race', exact: true }).click();
+  await page.locator('.race-root[data-screen=pause]').waitFor();
+  assert.equal(await page.locator('.race-compact:visible').evaluate(n => n.scrollTop), 0, 'reopened pause resets its old scroll position');
+  const pointerFocus = await page.evaluate(() => ({ tag: document.activeElement.tagName, id: document.activeElement.id, className: document.activeElement.className }));
+  console.log('pause pointer focus', engineName, width, height, pointerFocus);
+  assert.equal(await page.locator('.race-compact:visible .race-menu-actions button').first().getAttribute('id'), 'raceResume', 'resume remains the first action');
+  // Mobile WebKit retains the range input after a pointer-opened menu. The
+  // keyboard-opened pause below must still focus Resume on every engine.
+  if (engineName !== 'webkit' || width >= 900) assert.equal(pointerFocus.id, 'raceResume', 'pointer-opened pause keeps focus on resume');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.locator('.race-root[data-screen=pause]').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'raceResume', 'keyboard-opened pause focuses resume');
+  if (width >= 600 && height <= 560) {
+    const exit = await page.locator('#raceExit').boundingBox();
+    assert.ok(exit.y >= 0 && exit.y + exit.height <= height, 'landscape exit is visible without scrolling');
+  }
+  await page.getByRole('button', { name: 'All games', exact: true }).filter({ visible: true }).click();
   assert.equal(await page.evaluate(() => document.activeElement.id), 'btnRace');
   await page.locator('#btnSettings').click();
   await page.locator('#ovSettings.show').waitFor();
@@ -157,7 +189,7 @@ test('runner result card fixture shares chrome without clipping retry or score',
   const base = page.url();
   await page.goto(base + '?theme-layout=results#shot=dead&seed=42&frames=600');
   await page.locator('#ovDead.show').waitFor();
-  for (const [width,height] of [[320,568],[390,640],[844,390],[1440,900]]) {
+  for (const [width,height] of [[320,568],[390,640],[390,844],[600,400],[667,375],[844,390],[1440,900]]) {
     await page.setViewportSize({ width,height });
     await reachable(page, '#btnAgain');
     // The retry dock intentionally bleeds through the panel's horizontal

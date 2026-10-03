@@ -112,7 +112,8 @@ test('desktop: full runner → duel → one-lap race, receipt, replay and standa
   await page.locator('#btnRace').click(); await page.locator('.race-launch').click();
   assert.equal(await page.evaluate(() => raceUI.snapshot().laps), 3, 'standalone keeps its full length');
   await page.keyboard.press('Escape');
-  await page.getByRole('button', {name:'Back to runner',exact:true}).filter({visible:true}).click();
+  assert.equal(await page.locator('#raceExit').textContent(), 'All games');
+  await page.locator('#raceExit').click();
   assert.equal(await page.evaluate(() => expedition), null);
   await page.locator('#btnPlay').focus(); await page.keyboard.press('Enter'); await page.keyboard.down('d');
   await page.waitForFunction(() => G.mode === 'play' && G.player.vx > 0); await page.keyboard.up('d');
@@ -145,7 +146,7 @@ for (const viewport of [{width:320,height:568},{width:390,height:844},{width:844
 test('arcade leg interruption aborts cleanly and restores standalone selections', {timeout:50000}, async t => {
   const {page} = await launch(t);
   await page.locator('#btnRace').click(); await page.locator('[data-track=ember]').click();
-  await page.getByRole('button', {name:'← Back to runner',exact:true}).click();
+  await page.getByRole('button', {name:'← All games',exact:true}).click();
   const saved = await page.evaluate(() => localStorage.getItem(BUILD.storageKey('sm2.race.v1')));
   await page.locator('#btnExpedition').click(); await loseRunner(page);
   await page.locator('#btnExpeditionContinue').click(); await page.keyboard.press('Escape');

@@ -564,7 +564,7 @@
       touchEl.append(stickZone, touchActions); rootEl.append(touchEl);
       modal = el('div', 'arena-modal');
       lobby = el('div', 'arena-lobby arena-dialog'); lobby.setAttribute('role', 'dialog'); lobby.setAttribute('aria-labelledby', 'arena-lobby-title');
-      const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), recoveryButton('← Back to runner', 'arena-text-button', close));
+      const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), recoveryButton('← All games', 'arena-text-button', close));
       const lobbyGrid = el('div', 'arena-lobby-grid');
       const intro = el('div', 'arena-intro'); intro.append(el('span', 'arena-pill', 'CPU + FRIEND BATTLES'));
       const h1 = el('h1', 'arena-title'); h1.id = 'arena-lobby-title'; h1.append(document.createTextNode('Small suits.'), el('br'), el('span', '', 'Big knockouts.'));
@@ -604,15 +604,15 @@
       const ph = el('h2', 'arena-panel-title', 'Taking a breather'); ph.id = 'arena-pause-title';
       const pauseReason = el('p', 'arena-panel-copy', 'Your match is paused.'); pauseReason.id = 'arena-pause-reason';
       const resumeButton = recoveryButton('Resume match', 'arena-primary', resumeMatch);
-      pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, resumeButton, button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('Back to runner', 'arena-text-button', close)); modal.append(pausePanel);
+      pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, resumeButton, button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('All games', 'arena-text-button', close)); modal.append(pausePanel);
       resultPanel = el('div', 'arena-small-panel arena-result-panel arena-dialog'); resultPanel.setAttribute('role', 'dialog'); resultPanel.setAttribute('aria-labelledby', 'arena-result-title');
       resultTitle = el('h2', 'arena-panel-title'); resultTitle.id = 'arena-result-title'; resultText = el('p', 'arena-panel-copy'); resultRoster = el('div', 'arena-result-roster');
-      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('Back to runner', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
+      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('All games', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
       live = el('div', 'arena-sr-only'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true'); rootEl.append(live);
       // Events stop at this overlay, before the runner's window-level handlers.
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel']) rootEl.addEventListener(type, e => e.stopPropagation(), { passive: type.startsWith('touch') || type === 'wheel' });
       rootEl.addEventListener('contextmenu', e => e.preventDefault());
-      lobby.querySelector('.arena-lobby-top button').id = 'arenaBack'; pausePanel.querySelector('.arena-primary').id = 'arenaResume'; resultPanel.querySelector('.arena-primary').id = 'arenaRematch'; resultPanel.querySelectorAll('button')[1].id = 'arenaNext'; pausePanel.querySelectorAll('button')[2].id = 'arenaLobby'; buildRoomControls(); document.body.append(rootEl); built = true; syncChoices(); paintHero(lobbyArt);
+      lobby.querySelector('.arena-lobby-top button').id = 'arenaBack'; pausePanel.querySelector('.arena-primary').id = 'arenaResume'; resultPanel.querySelector('.arena-primary').id = 'arenaRematch'; resultPanel.querySelectorAll('button')[1].id = 'arenaNext'; pausePanel.querySelectorAll('button')[2].id = 'arenaLobby'; pausePanel.querySelectorAll('button')[3].id = 'arenaExit'; resultPanel.querySelectorAll('button')[3].id = 'arenaResultExit'; buildRoomControls(); document.body.append(rootEl); built = true; syncChoices(); paintHero(lobbyArt);
     }
     function makeBackground(a) {
       const bg = document.createElement('canvas'); bg.width = Math.ceil(width); bg.height = Math.ceil(height); const g = bg.getContext('2d'), t = themeFor(a), art = root.SpaceManArt;
@@ -978,9 +978,9 @@
       if (savedFocus && savedFocus.isConnected && typeof savedFocus.focus === 'function') savedFocus.focus({ preventScroll: true });
       if (localSession) { selections = localSession.previous; localSession = null; }
       rootEl.dataset.session = 'false';
-      pausePanel.querySelectorAll('button')[2].hidden = false;
-      pausePanel.querySelectorAll('button')[2].textContent = 'Choose a match';
-      pausePanel.querySelectorAll('button')[3].textContent = 'Back to runner';
+      pausePanel.querySelector('#arenaLobby').hidden = false;
+      pausePanel.querySelector('#arenaLobby').textContent = 'Choose a match';
+      pausePanel.querySelector('#arenaExit').textContent = 'All games';
       if (typeof opts.onClose === 'function') opts.onClose();
     }
     function openSession(config, onResult) {
@@ -989,8 +989,8 @@
       localSession = { seed: config.seed >>> 0, previous: { ...selections }, onResult, reported: false };
       selections = { arenaId: arena.getArena(config.arenaId).id, format: 'duel', difficulty: 'easy' };
       rootEl.dataset.session = 'true';
-      pausePanel.querySelectorAll('button')[2].textContent = 'Leave expedition';
-      pausePanel.querySelectorAll('button')[3].textContent = 'Leave expedition';
+      pausePanel.querySelector('#arenaLobby').textContent = 'Leave expedition';
+      pausePanel.querySelector('#arenaExit').textContent = 'Leave expedition';
       syncChoices(); startMatch(); return true;
     }
     function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }

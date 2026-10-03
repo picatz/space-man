@@ -102,10 +102,45 @@ test(
     assert.equal(await page.locator(".race-segment").count(), 3);
     await capture(page, "race-lobby-desktop");
     await page.locator(".race-launch").click();
+    // Let the grid leave through genuine input before measuring braking. A CPU
+    // rear-ending a braking kart correctly transfers momentum and is not a
+    // brake failure (covered separately by deterministic contact regressions).
+    await page.keyboard.down("ArrowDown");
     await playing(page);
     const start = await page.evaluate(() => raceUI.snapshot());
     assert.equal(start.actors.length, 5);
-    await page.waitForFunction(() => raceUI.snapshot().actors[0].speed > 3);
+    await page.waitForFunction(() => {
+      const s = raceUI.snapshot(), a = s.actors[0];
+      return s.actors.slice(1).every(b => Math.hypot(a.x-b.x,a.y-b.y) > 400);
+    });
+    assert.ok((await page.evaluate(() => raceUI.snapshot().actors[0].speed)) < .01,
+      "held brake keeps the pilot stopped while the grid pulls clear");
+    await page.keyboard.up("ArrowDown");
+    await page.waitForFunction(() => raceUI.snapshot().actors[0].speed > 6);
+    await page.keyboard.down("Space");
+    await page.waitForFunction(() => raceUI.snapshot().actors[0].boosting);
+    await page.keyboard.up("Space");
+    const brakeStart = await page.evaluate(() => {
+      const s = raceUI.snapshot(), a = s.actors[0];
+      return { tick:s.tick, speed:a.speed,
+        clearance:Math.min(...s.actors.slice(1).map(b => Math.hypot(a.x-b.x,a.y-b.y))) };
+    });
+    assert.ok(brakeStart.speed > 5, "measure braking from real driving speed");
+    assert.ok(brakeStart.clearance > 250, "brake measurement starts clear of opponent contact");
+    await page.keyboard.down("ArrowDown");
+    const brakeTick = await page.evaluate(() => raceUI.snapshot().tick);
+    // Assert the intended 300 ms of simulation, not wall time: a busy hosted
+    // renderer may deliver fewer ticks while a fixed timeout is running.
+    await page.waitForFunction(tick => raceUI.snapshot().tick >= tick + 18, brakeTick);
+    // Read while braking is still held; auto-throttle resumes on release.
+    const braking = await page.evaluate(() => {
+      const s = raceUI.snapshot(), a = s.actors[0];
+      return { tick:s.tick, speed:a.speed, boosting:a.boosting, padTicks:a.padTicks,
+        offroad:a.offroad, neighbors:s.actors.slice(1).map(b => Math.hypot(a.x-b.x,a.y-b.y)) };
+    });
+    await page.keyboard.up("ArrowDown");
+    assert.ok(braking.neighbors.every(d => d > 56), "no opponent is pushing the braking kart");
+    assert.ok(braking.speed < 5, `held braking after ${braking.tick-brakeTick} ticks: ${JSON.stringify(braking)}`);
     const h = await page.evaluate(() => raceUI.snapshot().actors[0].heading);
     await page.keyboard.down("ArrowRight");
     await page.waitForTimeout(160);
@@ -114,15 +149,6 @@ test(
       Math.abs(
         (await page.evaluate(() => raceUI.snapshot().actors[0].heading)) - h,
       ) > 0.1,
-    );
-    await page.keyboard.down("Space");
-    await page.waitForFunction(() => raceUI.snapshot().actors[0].boosting);
-    await page.keyboard.up("Space");
-    await page.keyboard.down("ArrowDown");
-    await page.waitForTimeout(300);
-    await page.keyboard.up("ArrowDown");
-    assert.ok(
-      (await page.evaluate(() => raceUI.snapshot().actors[0].speed)) < 5,
     );
     await capture(page, "race-desktop-driving");
     await page.keyboard.press("Escape");
@@ -154,7 +180,7 @@ test(
       await page.keyboard.press("Escape");
       await menu(page, "Choose a circuit");
     }
-    await menu(page, "← Back to runner");
+    await menu(page, "← All games");
     assert.equal(await page.evaluate(() => raceUI.active), false);
     assert.equal(
       await page.evaluate(() => document.activeElement.id),
@@ -162,7 +188,7 @@ test(
     );
     await page.locator("#btnRace").click();
     await screen(page, "lobby");
-    await menu(page, "← Back to runner");
+    await menu(page, "← All games");
     assert.equal(
       await page.locator(".race-root").count(),
       1,
@@ -226,6 +252,20 @@ test(
     assert.ok(s.actors[0].finishTick > 600);
     assert.equal(s.results.length, 5);
     await capture(page, "race-results-desktop");
+    for (const [width, height] of [[390,844], [844,390], [768,1024], [1440,900]]) {
+      await page.setViewportSize({ width, height });
+      for (const selector of ['#raceRematch', '#raceNext', '#raceResultExit']) {
+        const action = page.locator(selector);
+        await action.scrollIntoViewIfNeeded();
+        const b = await action.boundingBox();
+        assert.ok(b.height >= 44 && b.y >= -1 && b.y + b.height <= height + 1, 'result actions stay reachable');
+      }
+      const overflow = await page.locator('.race-results').evaluate(n => n.scrollWidth > n.clientWidth + 1);
+      assert.equal(overflow, false, 'result standings do not overflow');
+      assert.equal(await page.locator('.race-result-row[data-you=true]').count(), 1, 'your result is highlighted');
+      await page.locator('.race-compact:visible').evaluate(n => { n.scrollTop = 0; });
+      await capture(page, `race-results-${width}x${height}`);
+    }
     await menu(page, "Race again");
     assert.equal(
       await page.evaluate(() => raceUI.snapshot().phase),
@@ -340,7 +380,7 @@ test(
     }
     await page.getByRole("button", { name: "Pause race" }).tap();
     await page
-      .getByRole("button", { name: "Back to runner", exact: true })
+      .getByRole("button", { name: "All games", exact: true })
       .filter({ visible: true })
       .tap();
     assert.equal(await page.evaluate(() => raceUI.active), false);
