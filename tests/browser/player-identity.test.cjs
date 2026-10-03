@@ -40,13 +40,19 @@ for(const [width,height] of [[320,568],[390,844],[844,390],[1280,800]])test(`ide
  await capture(page,`identity-live-boss-${width}`);
  // Author an airborne position near the top HUD, then let real physics and
  // camera interpolation render it. Record the frame even on a fast display.
- await page.evaluate(()=>{
-  const frame=window.identityLayoutFrame,actor=window.identityArenaState.actors.find(a=>a.controller==='human'),body=frame.bodies.find(b=>b.id===actor.id),label=frame.labels.find(b=>b.id===actor.id);
-  const scale=(body.h-8)/actor.h,dy=(frame.bounds.top-10-(label.targetY+12))/scale;
-  actor.y+=dy;actor.py=actor.y;actor.vy=0;actor.onGround=false;
+ await page.evaluate(async()=>{
   window.identityCheckNearHud=true;window.identityNearHudFrame=null;
+  // The portrait camera follows an airborne pilot; converge using each real
+  // rendered frame rather than assuming a single teleport leaves it still.
+  for(let i=0;i<8&&!window.identityNearHudFrame;i++) {
+   const frame=window.identityLayoutFrame,actor=window.identityArenaState.actors.find(a=>a.controller==='human'),body=frame.bodies.find(b=>b.id===actor.id);
+   if(!body)throw new Error('near-HUD fixture requires a visible living pilot');
+   const scale=(body.h-8)/actor.h,dy=(frame.bounds.top+15-(body.y+8))/scale;
+   actor.y+=dy;actor.py=actor.y;actor.vy=0;actor.onGround=false;actor.invulnerable=60;
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  }
  });
- await page.waitForFunction(()=>!!window.identityNearHudFrame);
+ await page.waitForFunction(()=>!!window.identityNearHudFrame,undefined,{timeout:3000});
  const airborne=await page.evaluate(()=>window.identityNearHudFrame),pilot=airborne.labels.find(b=>b.primary);
  assert.ok(pilot,'airborne pilot keeps its identity badge');
  const ownBody=airborne.bodies.find(b=>b.id===pilot.id);
