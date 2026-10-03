@@ -502,3 +502,52 @@ test('arena native touch can resume immediately after a held gesture is paused',
   await page.locator('#arenaResume').tap(); await screen(page, 'match');
   assert.equal(await page.locator('.arena-stick-active,.arena-pressed').count(), 0);
 });
+
+test('arena thumb layout keeps comfortable targets and the pilot clear across phone and tablet viewports', { timeout: 90000 }, async t => {
+  const { page } = await launch(t, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await page.evaluate(() => {
+    settings.reduceMotion = true; settings.muted = true;
+    const layout = SpaceManArt.identityLayout;
+    SpaceManArt.identityLayout = (items, bounds, bodies) => {
+      window.thumbFrame = { bodies, bounds }; return layout(items, bounds, bodies);
+    };
+  });
+  await page.locator('#btnArena').tap(); await page.locator('.arena-launch').tap(); await playing(page);
+  const intersects = (a, b, gap = 0) => a.x < b.x + b.width + gap && a.x + a.width > b.x - gap && a.y < b.y + b.height + gap && a.y + a.height > b.y - gap;
+  for (const [width, height] of [[320,568],[390,640],[390,844],[667,320],[844,320],[844,390],[768,1024],[1024,768]]) {
+    await page.setViewportSize({ width, height }); await page.waitForTimeout(180);
+    for (const lefty of [false, true]) {
+      await page.evaluate(lefty => { settings.lefty = lefty; }, lefty);
+      // Settings are refreshed through the normal pause/resume path.
+      await page.locator('#arenaPause').tap(); await page.locator('#arenaResume').tap();
+      await page.waitForTimeout(100);
+      const controls = [];
+      for (const action of ['jump', 'attack', 'dash']) {
+        const r = await page.locator('.arena-touch-' + action).boundingBox(); controls.push(r);
+        assert.ok(r.width >= 60 && r.height >= 60, `${action} stays at least 60px at ${width}x${height}`);
+        assert.ok(r.x >= 8 && r.y >= 0 && r.x + r.width <= width - 7 && r.y + r.height <= height - 7, `${action} clears the screen edge`);
+      }
+      for (let i=0;i<controls.length;i++) for (let j=i+1;j<controls.length;j++) assert.equal(intersects(controls[i], controls[j], 8), false, 'action hit rectangles have an 8px gap');
+      const zone = await page.locator('.arena-stick-zone').boundingBox();
+      const base = await page.locator('.arena-stick-base').boundingBox();
+      assert.ok(zone.width <= 160 && zone.height <= 170, 'movement never steals half of the fighting area');
+      assert.ok(base.x >= zone.x && base.y >= zone.y && base.x + base.width <= zone.x + zone.width && base.y + base.height <= zone.y + zone.height, 'visible stick matches its input pod');
+      for(const b of controls) assert.equal(intersects(zone,b,8),false,'movement and action hit zones stay separate');
+      const pause = await page.locator('#arenaPause').boundingBox();
+      assert.ok(pause.width >= 44 && pause.height >= 44); assert.match(await page.locator('#arenaPause').innerText(),/PAUSE/);
+      const hud = await page.locator('.arena-hud').boundingBox();
+      for(const b of [...controls,zone]) assert.equal(intersects(hud,b,8),false,'the HUD stays above the thumb pods');
+      await capture(page, `arena-thumbs-${width}x${height}-${lefty ? 'left' : 'right'}`);
+    }
+    // Restart a real match so CPUs cannot eliminate the stationary pilot while
+    // the viewport matrix is inspecting its UI.
+    await page.locator('#arenaPause').tap(); await page.getByRole('button',{name:'Restart match',exact:true}).tap(); await playing(page);
+  }
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(() => { document.documentElement.style.setProperty('--game-ui-left','20px');document.documentElement.style.setProperty('--game-ui-right','24px');document.documentElement.style.setProperty('--game-ui-bottom','34px');window.dispatchEvent(new Event('resize')); });
+  await page.waitForTimeout(150);
+  for(const selector of ['.arena-touch-jump','.arena-touch-attack','.arena-touch-dash','.arena-stick-zone']) {
+    const b=await page.locator(selector).boundingBox();assert.ok(b.x>=20&&b.x+b.width<=390-24&&b.y+b.height<=844-34,'safe-area-aware control bounds');
+  }
+  await capture(page,'arena-thumbs-safe-areas');
+});
