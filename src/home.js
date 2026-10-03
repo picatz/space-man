@@ -17,7 +17,7 @@
     [[106,139],[210,60],[553,171],[448,42],[383,292],[118,271],[546,69],[239,159]].forEach(([x,y],i)=>ellipse(c,x,y,i%3===0?2:1.3,i%3===0?2:1.3,'#b6d9e377'));
     ellipse(c,320,323,135,29,'#081727');ellipse(c,320,310,115,28,'#26455c');ellipse(c,320,306,115,20,'#3b6175');ellipse(c,320,300,109,16,'#60909c');ellipse(c,320,301,84,9,'#8fbbbc');
     line(c,[[226,310],[242,315]],'#a8efdf',3);line(c,[[399,314],[412,310]],'#a8efdf',3);
-    root.SpaceManArt.drawAvatar(c,320,176,230,appearance,{reduceMotion:true});
+    root.SpaceManArt.drawAvatar(c,320,176,260,appearance,{reduceMotion:true});
     // One playful, unambiguous non-player companion watches the departure.
     ellipse(c,414,289,14,4,'#182f3f');ellipse(c,415,272,14,18,'#7fce92');ellipse(c,417,265,12,10,'#a8e4a1');ellipse(c,411,263,3.4,4.6,'#f0fcdb');ellipse(c,423,263,3.4,4.6,'#f0fcdb');ellipse(c,412,264,1.7,2.8,'#143845');ellipse(c,423,264,1.7,2.8,'#143845');line(c,[[410,248],[408,242]],'#9ce6ac',2);ellipse(c,408,241,3,3,'#c8f5b4');
   }

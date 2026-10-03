@@ -114,3 +114,24 @@
 body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: none !important; transition: none !important; }
 
 #ovAttract .home-mode:focus-within { outline: 3px solid var(--sm-focus); outline-offset: -3px; }
+/* Prevent inherited utility flex-bases and decorative orbit transforms from
+   widening the scroll container on fractional-width phone layouts. */
+.home-world { overflow: hidden; }
+#ovAttract #attractRow { flex-wrap: nowrap; }
+#ovAttract #attractRow .btn { flex: none; }
+@media (min-width: 760px) and (max-width: 1000px) and (min-height: 700px) {
+  #ovAttract .home-shell { grid-template-columns: minmax(0,1fr); grid-template-areas: 'header' 'world' 'launch' 'footer'; gap: 22px; max-width: 620px; padding: 8px 20px; }
+  #homeHero { width: 370px; height: 231px; }
+  .home-tagline { font-size: 14px; margin-bottom: 0; }
+  .home-world { padding-bottom: 2px; }
+  .home-identity { font-size: 12px; }
+  #ovAttract #btnWardrobe { position: absolute; right: 36px; bottom: 0; min-width: 104px; }
+  .home-adventure h2 { font-size: 34px; }
+  .home-adventure p { max-width: none; }
+  .home-play-actions { margin-top: 16px; }
+  .home-arcade { margin-top: 24px; }
+  .home-mode canvas { height: 85px; object-fit: contain; }
+  #ovAttract .home-mode .mode-link { font-size: 13px; }
+  .home-mode > span { font-size: 10px; }
+  .home-footer { padding-top: 4px; }
+}
