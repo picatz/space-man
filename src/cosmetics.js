@@ -122,11 +122,17 @@
     for (const [type, threshold, id] of RULES) if (profile.progress[type] >= threshold && !profile.unlocked.includes(id)) profile.unlocked.push(id);
     return { profile, unlocked: profile.unlocked.filter(id => !before.includes(id)), accepted: true };
   }
+  // Only a public room identifier belongs in receipts; invite links contain
+  // secrets and are never retained here. A finished round's epoch is stable.
+  function roundReceipt(mode, roomId, epoch) {
+    if (!['arena', 'race'].includes(mode) || typeof roomId !== 'string' || !/^[a-f0-9]{16}$/.test(roomId) || !Number.isInteger(epoch) || epoch < 0 || epoch > 0xffffffff) return null;
+    return 'room:' + roomId + ':' + mode + ':' + epoch;
+  }
   function equip(raw, slot, id) {
     const profile = migrateProfile(raw);
     if (!SLOTS.includes(slot) || !ORDERS[slot].includes(id) || !profile.unlocked.includes(id)) return { profile, equipped: false };
     profile[slot] = id; return { profile, equipped: true };
   }
   function item(id) { return META[id] && ALL_IDS.includes(id) ? { id, name: META[id][0], free: META[id][1], hint: META[id][2] || 'Ready to wear' } : null; }
-  return Object.freeze({ VERSION, PROFILE_VERSION, WIRE_BYTES, SLOTS, DEFAULTS, ORDERS, CATALOG, PALETTES, EVENT_TYPES, normalizeAppearance, getAppearance, wireAppearance, encodeAppearance, decodeAppearance, palette, migrateProfile, reward, equip, item });
+  return Object.freeze({ VERSION, PROFILE_VERSION, WIRE_BYTES, SLOTS, DEFAULTS, ORDERS, CATALOG, PALETTES, EVENT_TYPES, normalizeAppearance, getAppearance, wireAppearance, encodeAppearance, decodeAppearance, palette, migrateProfile, reward, roundReceipt, equip, item });
 });

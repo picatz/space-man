@@ -74,3 +74,13 @@ test('event journal is bounded, survives reload and cannot count invalid or repe
   assert.equal(C.reward(JSON.parse(JSON.stringify(p)), { type: 'encounter', id }).accepted, false);
   for (const event of [null, {}, { type: 'daily', id: 'a' }, { type: 'runner', id: 'bad id' }, { type: 'arena', id: 'x'.repeat(97) }]) assert.equal(C.reward(p, event).accepted, false);
 });
+
+test('online award receipts survive reconnects and reject secret-bearing identities', () => {
+  const id = C.roundReceipt('arena', '1234abcd5678ef90', 8);
+  assert.equal(id, 'room:1234abcd5678ef90:arena:8');
+  let p = C.reward(null, { type:'arena', id }).profile;
+  assert.equal(C.reward(JSON.parse(JSON.stringify(p)), { type:'arena', id:C.roundReceipt('arena','1234abcd5678ef90',8) }).accepted, false);
+  assert.equal(C.reward(p, { type:'arena', id:C.roundReceipt('arena','1234abcd5678ef90',9) }).accepted, true);
+  for (const roomId of ['', 'https://game.test/#room=SECRET', '1234ABCD5678EF90', 'f'.repeat(64)]) assert.equal(C.roundReceipt('arena', roomId, 8), null);
+  for (const epoch of [-1, NaN, Infinity, 0x100000000, 1.5]) assert.equal(C.roundReceipt('race','1234abcd5678ef90',epoch), null);
+});

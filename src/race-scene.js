@@ -357,33 +357,23 @@
       pod(-5, 18.5, 0, 6, 1.5, 6, rgb(P.legB));
       b.box(...p(.1, 18, 0), 1.5, 3, 5, [0.14, 0.24, 0.34], h);
       b.box(...p(1, 19, 0), .4, 1.1, 3, color, h);
-      const helmetRadius = appearance.helmet === 'bubble' ? 9.2 : 8.5;
+      const helmetRadius = appearance.helmet === 'round' ? 8.5 : 9.2;
       if (appearance.helmet === 'retro') pod(-5, 24, 0, 8.2, 8, 9.1, white);
       else b.sphere(...p(-5, 24, 0), helmetRadius, white, 12, 7);
-      // Visor follows the helmet sphere rather than becoming a square box.
-      for (let i = 0; i < 10; i++) {
+      // A tessellated outer glass shell. One tall chord used to intersect the
+      // helmet's different triangle grid, showing white teeth through the glass.
+      // Short 2px strips plus radial clearance keep every triangle outside it.
+      for (let i = 0; i < 20; i++) {
         const range = appearance.helmet === 'bubble' ? 2.35 : 2.15;
-        const a0 = -range + i * range / 5, a1 = a0 + range / 5;
-        const visor = (angle, y) =>
-          p(
-            -5 + Math.sqrt((helmetRadius + .15) ** 2 - (y - 24) ** 2) * Math.cos(angle),
-            y,
-            Math.sqrt((helmetRadius + .15) ** 2 - (y - 24) ** 2) * Math.sin(angle),
-          );
-        b.quad(
-          visor(a0, 21.5),
-          visor(a0, 27.5),
-          visor(a1, 27.5),
-          visor(a1, 21.5),
-          [0.063, 0.176, 0.286],
-        );
-        b.quad(
-          visor(a0, 27.5),
-          visor(a0, 28.3),
-          visor(a1, 28.3),
-          visor(a1, 27.5),
-          rgb(P.visTop),
-        );
+        const a0 = -range + i * range / 10, a1 = a0 + range / 10;
+        const visor = (angle, y) => p(
+          -5 + Math.sqrt((helmetRadius + .45) ** 2 - (y - 24) ** 2) * Math.cos(angle), y,
+          Math.sqrt((helmetRadius + .45) ** 2 - (y - 24) ** 2) * Math.sin(angle));
+        for (let band = 0; band < 3; band++) {
+          const bottom = 21.5 + band * 2, top = bottom + 2;
+          b.quad(visor(a0, bottom), visor(a0, top), visor(a1, top), visor(a1, bottom), [0.063, 0.176, 0.286]);
+        }
+        b.quad(visor(a0, 27.5), visor(a0, 28.3), visor(a1, 28.3), visor(a1, 27.5), rgb(P.visTop));
       }
       // Ear pods, precise rear gasket and short comms aerial make the chase
       // silhouette recognizably Arena-derived without a fake rear-facing face.
@@ -477,7 +467,7 @@
     }
   }
   function faceMesh(appearance, pose) {
-    const b = builder(), r = (appearance.helmet === 'bubble' ? 9.2 : 8.5) + .35;
+    const b = builder(), r = (appearance.helmet === 'round' ? 8.5 : 9.2) + .7;
     const point = (angle,y) => [-5+Math.sqrt(Math.max(0,r*r-(y-24)*(y-24)))*Math.cos(angle),y,Math.sqrt(Math.max(0,r*r-(y-24)*(y-24)))*Math.sin(angle)];
     const patch = (angle,y,width,height) => b.quad(point(angle-width/2,y-height/2),point(angle-width/2,y+height/2),point(angle+width/2,y+height/2),point(angle+width/2,y-height/2),rgb('#DFFBFF'));
     for (const side of [-1,1]) {
@@ -511,7 +501,7 @@
       const pose = Art.facePose({ eyes: appearance.eyes, tick: snapshot.tick, id: a.id, calm: options.calm, mood: a.recoveryTicks ? 2 : boosted ? 1 : 0 });
       const faceKey = [appearance.helmet, pose.happy,pose.determined,pose.height,pose.width,pose.closed].join(':');
       const faceVertices = cache(faceModels, faceKey, () => faceMesh(appearance,pose), 24);
-      out.push({ vertices: faceVertices, static: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[5,33,11] }, model });
+      out.push({ vertices: faceVertices, static: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[6,33,11] }, model });
     }
     return out;
   }

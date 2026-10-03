@@ -59,3 +59,17 @@ test('a real Arena pulse drives the impact-wide expression from stun', () => {
   assert.equal(Art.arenaMood(s.actors[1]),2);
   assert.ok(Art.facePose({mood:Art.arenaMood(s.actors[1]),tick:20}).height>3.2);
 });
+
+test('every visor triangle stays outside the helmet shell at its centroid', () => {
+  for(const helmet of Cosmetics.ORDERS.helmet) {
+    const radius=helmet==='round'?8.5:9.2;
+    const vertices=Scene.actors({tick:20,actors:[{id:1,x:0,y:0,heading:0,color:'#38E1FF',appearance:{...Cosmetics.DEFAULTS,helmet}}]}).vertices;
+    let n=0;
+    for(let i=0;i<vertices.length;i+=27) {
+      if(Math.abs(vertices[i+6]-.063)>.00001||Math.abs(vertices[i+7]-.176)>.00001||Math.abs(vertices[i+8]-.286)>.00001)continue;
+      const x=(vertices[i]+vertices[i+9]+vertices[i+18])/3+5,y=(vertices[i+1]+vertices[i+10]+vertices[i+19])/3-24,z=(vertices[i+2]+vertices[i+11]+vertices[i+20])/3;
+      assert.ok(Math.hypot(x,y,z)>radius+.2,helmet+' glass cannot cut through shell');n++;
+    }
+    assert.ok(n>=120,'curved visor is vertically subdivided');
+  }
+});

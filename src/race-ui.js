@@ -1311,7 +1311,8 @@
         resultRows.append(row);
       }
       if (me && typeof opts.onReward === "function") {
-        const found = opts.onReward({ type: "race", id: cosmeticSession + ":" + cosmeticRound }) || [];
+        const receipt = onlineActive() ? root.SpaceManCosmetics.roundReceipt("race", opts.net.info().roomId, networkEpoch) : cosmeticSession + ":" + cosmeticRound;
+        const found = receipt ? opts.onReward({ type: "race", id: receipt }) || [] : [];
         if (found.length) resultRows.append(el("p", "race-cosmetic-reward", "Found: " + found.map(id => root.SpaceManCosmetics.item(id)?.name || "").join(", ")));
       }
       setPanel(resultPanel);
