@@ -97,13 +97,13 @@
   const VERTEX_SHADER = [
     'attribute vec3 aPosition;', 'attribute vec3 aNormal;', 'attribute vec3 aColor;',
     'uniform mat4 uViewProjection;', 'uniform mat4 uModel;', 'uniform mat3 uNormal;',
-    'uniform vec3 uEye;', 'varying mediump vec3 vColor;', 'varying mediump float vDistance;',
+    'uniform vec3 uEye;', 'uniform float uEmissive;', 'varying mediump vec3 vColor;', 'varying mediump float vDistance;',
     'void main() {',
     '  vec4 world = uModel * vec4(aPosition, 1.0);',
     '  vec3 normal = uNormal * aNormal;',
     '  normal /= max(length(normal), 0.00001);',
     '  float diffuse = max(dot(normal, normalize(vec3(-0.4, 0.8, 0.35))), 0.0);',
-    '  vColor = aColor * (0.42 + 0.58 * diffuse);',
+    '  vColor = aColor * mix(0.42 + 0.58 * diffuse, 1.0, uEmissive);',
     '  vDistance = length(world.xyz - uEye);',
     '  gl_Position = uViewProjection * world;', '}'
   ].join('\n');
@@ -175,7 +175,7 @@
         }
         locations = {};
         ['aPosition', 'aNormal', 'aColor'].forEach(name => { locations[name] = gl.getAttribLocation(program, name); });
-        ['uViewProjection', 'uModel', 'uNormal', 'uEye', 'uFogColor', 'uFogRange'].forEach(name => {
+        ['uViewProjection', 'uModel', 'uNormal', 'uEye', 'uFogColor', 'uFogRange', 'uEmissive'].forEach(name => {
           locations[name] = gl.getUniformLocation(program, name);
         });
         stream = gl.createBuffer();
@@ -282,6 +282,9 @@
           gl.vertexAttribPointer(locations.aPosition, 3, gl.FLOAT, false, 36, 0);
           gl.vertexAttribPointer(locations.aNormal, 3, gl.FLOAT, false, 36, 12);
           gl.vertexAttribPointer(locations.aColor, 3, gl.FLOAT, false, 36, 24);
+          // Tiny LED face overlays emit their own light, while retaining depth
+          // and distance fog. Reset per mesh so it cannot brighten the hull.
+          gl.uniform1f(locations.uEmissive, mesh.emissive === true ? 1 : 0);
           gl.uniformMatrix4fv(locations.uModel, false, model);
           gl.uniformMatrix3fv(locations.uNormal, false, model === IDENTITY ? IDENTITY_NORMAL : normalMatrix(model));
           gl.drawArrays(gl.TRIANGLES, 0, Math.floor(vertices.length / 27) * 3);

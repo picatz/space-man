@@ -44,7 +44,8 @@ test('race coordinator shows actionable update instructions for a legacy host', 
 test('same revision race players and watchers still join, while runner and Arena caps stay unchanged', async t => {
   const hub = relay(), host = peer(hub), player = peer(hub), watcher = peer(hub);
   t.after(() => { host.close(); player.close(); watcher.close(); });
-  assert.equal(host.net._room.CAPS,0x1f);
+  assert.equal(host.net._room.CAPS & ~host.net._room.caps.CAP_APPEARANCE,0x1f);
+  assert.equal(host.net._room.caps.CAP_APPEARANCE,1<<10);
   assert.equal(host.net._room.caps.CAP_ARENA,1<<5);
   assert.equal(host.net._n1.PROTO,6);
   assert.equal(host.net._room.caps.CAP_RACE,1<<8);

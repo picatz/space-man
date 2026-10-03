@@ -7,7 +7,7 @@
     const card=doc.createElement('div');card.className='journey-friends-card';el.appendChild(card);doc.body.appendChild(el);
     const text=(tag,value,cls)=>{const n=doc.createElement(tag);n.textContent=value;if(cls)n.className=cls;card.appendChild(n);return n;};
     const title=text('h1','A shared Star Expedition');title.id='journeyFriendsTitle';text('p','Run, race and take on the stars together. One crew, one invite, a journey that keeps going.');
-    text('p','Up to 4 players + 4 watchers. Empty seats get CPU companions. The host keeps this tab open. Joining mid-encounter starts in watch mode; ask for a seat at the next change.','journey-friends-note');
+    text('p','Up to 4 players + 4 watchers. Arcade encounters fill empty seats with CPUs. The host keeps this tab open. Joining mid-encounter starts in watch mode; ask for a seat at the next change.','journey-friends-note');
     const hint=text('p','','journey-friends-status');hint.setAttribute('role','status');hint.setAttribute('aria-live','polite');
     const entry=doc.createElement('div');entry.className='journey-friends-card';card.appendChild(entry);
     const makeButton=(parent,label,fn,cls)=>{const b=doc.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.addEventListener('click',fn);parent.appendChild(b);return b;};
@@ -34,7 +34,7 @@
       const next=JSON.stringify(s.roster.map(r=>[r.p,r.role,r.callsign]));if(next!==signature){signature=next;members.replaceChildren();for(const r of s.roster){const row=doc.createElement('li');row.textContent=(r.callsign||'PLAYER '+r.p)+(r.you?' · YOU':'')+(r.host?' · HOST':'')+(r.role===1?' · WATCHING':'');members.appendChild(row);}}
       options.onChange?.(s);
     }
-    const room=root.SpaceManJourneyRoom.create({...options,onChange:update,onEncounter(config,context){hide();return options.onEncounter?.(config,context,room);},onExit(reason){hide();options.onExit?.(reason);}});
+    const room=root.SpaceManJourneyRoom.create({...options,onOpenCrew:()=>open(),onChange:update,onEncounter(config,context){hide();return options.onEncounter?.(config,context,room);},onExit(reason){hide();options.onExit?.(reason);}});
     function open(){if(visible)return;visible=true;oldFocus=doc.activeElement;inert=Array.from(doc.body.children).filter(n=>n!==el&&n.tagName!=='SCRIPT'&&n.tagName!=='STYLE').map(n=>({n,value:n.inert}));for(const r of inert)r.n.inert=true;el.hidden=false;update(room.status());(room.active?resume.hidden?start:resume:hostButton).focus();}
     function hide(){if(!visible)return;visible=false;el.hidden=true;for(const r of inert)r.n.inert=r.value;inert=[];if(oldFocus?.isConnected)oldFocus.focus({preventScroll:true});}
     el.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();if(room.active&&room.current?.phase!=='lobby')hide();else leave.click();}if(e.key==='Tab'){const controls=Array.from(el.querySelectorAll('button,input')).filter(n=>!n.hidden&&!n.disabled&&n.getClientRects().length);const first=controls[0],last=controls[controls.length-1];if(e.shiftKey&&doc.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&doc.activeElement===last){e.preventDefault();first?.focus();}}});

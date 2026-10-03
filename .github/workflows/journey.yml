@@ -1,0 +1,65 @@
+name: Shared expedition browsers
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+permissions:
+  contents: read
+jobs:
+  journey:
+    if: github.event.action != 'labeled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - run: node --test journey.test.cjs
+        env:
+          SPACE_MAN_JOURNEY_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_JOURNEY_SCREENSHOTS: ${{ runner.temp }}/journey-screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: journey-${{ matrix.engine }}
+          path: ${{ runner.temp }}/journey-screenshots/*.png
+          retention-days: 3
+  live-journey:
+    if: github.event.action == 'labeled' && github.event.label.name == 'journey-live-check' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node --test journey.test.cjs
+        env:
+          SPACE_MAN_RELAY_HOST: default
+          SPACE_MAN_JOURNEY_SCREENSHOTS: ${{ runner.temp }}/journey-live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: journey-live
+          path: ${{ runner.temp }}/journey-live/*.png
+          retention-days: 3

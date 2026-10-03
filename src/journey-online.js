@@ -27,7 +27,7 @@
   }
   const hasPlayer=(mask,p)=>uint(p,32)&&p>0&&!!(mask&(1<<(p-1)));
   function runnerSample(raw){
-    if(!raw||!['x','y','vx','vy','score','dist','frame'].every(k=>Number.isFinite(raw[k]))||Math.abs(raw.x)>1e7||Math.abs(raw.y)>1e5||Math.abs(raw.vx)>1e4||Math.abs(raw.vy)>1e4||raw.score<0||raw.score>1e8||raw.dist<0||raw.dist>1e6||!uint(raw.frame)||!uint(raw.state,31)||!uint(raw.chain,255))return null;
+    if(!raw||!['x','y','vx','vy','score','dist','frame'].every(k=>Number.isFinite(raw[k]))||Math.abs(raw.x)>1e7||Math.abs(raw.y)>1e5||Math.abs(raw.vx)>1e4||Math.abs(raw.vy)>1e4||raw.score<0||raw.score>1e8||raw.dist<0||raw.dist>1e6||!uint(raw.frame)||!uint(raw.state,63)||!uint(raw.chain,255))return null;
     return{x:raw.x,y:raw.y,vx:raw.vx,vy:raw.vy,score:Math.floor(raw.score),dist:Math.floor(raw.dist),frame:raw.frame,state:raw.state,chain:raw.chain};
   }
   function encodeRunner(rows){
@@ -58,7 +58,7 @@
       if(o.type!==INPUT||phase!=='running'||!seats.some(s=>s.identity===identity&&s.p===p))return false;
       if(engine)return engine.receive(p,identity,o.payload,now);
       const rr=decodeRunner(o.payload);if(!rr||rr.length!==1||rr[0].p!==p||o.revision<=(runnerSeq.get(identity)||0))return false;
-      runnerSeq.set(identity,o.revision);samples.set(identity,{...rr[0],state:rr[0].state|((samples.get(identity)?.state||0)&20),at:now});return true;
+      runnerSeq.set(identity,o.revision);samples.set(identity,{...rr[0],state:rr[0].state|((samples.get(identity)?.state||0)&36),at:now});return true;
     }
     function step(now){
       if(!Number.isFinite(now)||now<lastNow)return false;lastNow=now;
@@ -71,13 +71,13 @@
       if(engine)engine.step(now);
       const maxTicks=Math.max(60,Math.min(60*180,config.maxTicks||config.durationTicks||60*60));
       const finished=engine&&(engine.state.phase==='over'||engine.state.phase==='finished');
-      const runnerDone=!engine&&tick>120&&seats.length>0&&seats.every(s=>{const r=samples.get(s.identity);return r&&(r.state&20);});
+      const runnerDone=!engine&&tick>120&&seats.length>0&&seats.every(s=>{const r=samples.get(s.identity);return r&&(r.state&36);});
       if(finished||runnerDone||tick>=maxTicks){index++;return prepare(now);}return true;
     }
     function pause(on){if(!['running','paused'].includes(phase))return false;phase=on?'paused':'running';if(engine)engine.pause(on);return true;}
     function packet(){
       if(revision===0xffffffff)return null;const players=rows.filter(r=>r.role===0&&seats.some(s=>s.identity===r.identity)).reduce((m,r)=>m|(1<<(r.p-1)),0)>>>0;
-      const payload=engine?engine.packet():encodeRunner(seats.map(s=>samples.get(s.identity)).filter(Boolean));
+      const payload=engine?engine.packet():encodeRunner(seats.filter(s=>rows.some(r=>r.identity===s.identity&&r.role===0&&r.p===s.p)).map(s=>samples.get(s.identity)).filter(Boolean));
       return encode({type:SNAPSHOT,session,epoch,index,seed,revision:++revision,tick,players,phase,mode:config.id},payload||new Uint8Array());
     }
     return{syncRoster,start,receive,step,pause,packet,get config(){return config;},get phase(){return phase;},get epoch(){return epoch;},get index(){return index;},get engine(){return engine;},get seats(){return seats;}};

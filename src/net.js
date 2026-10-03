@@ -64,8 +64,8 @@
   // Capability bitfield (Addendum D) — features negotiate, never assume. HELLO
   // and WELCOME carry a u32; peers AND-mask before using a feature.
   const CAP_CALLSIGN = 1 << 0, CAP_SPECTATE = 1 << 1, CAP_ROLECHANGE = 1 << 2,
-        CAP_ANTICHEAT = 1 << 3, CAP_HOSTEPOCH = 1 << 4;
-  const CAPS = CAP_CALLSIGN | CAP_SPECTATE | CAP_ROLECHANGE | CAP_ANTICHEAT | CAP_HOSTEPOCH;
+        CAP_ANTICHEAT = 1 << 3, CAP_HOSTEPOCH = 1 << 4, CAP_APPEARANCE = 1 << 10;
+  const CAPS = CAP_CALLSIGN | CAP_SPECTATE | CAP_ROLECHANGE | CAP_ANTICHEAT | CAP_HOSTEPOCH | CAP_APPEARANCE;
   // Arcade rooms are explicit modes, never inferred from capability alone.
   // Runner HELLO/WELCOME bytes stay unchanged; each arcade mode requires its
   // own invite bit, HELLO/WELCOME marker and negotiated capability.
@@ -76,6 +76,7 @@
   const CAP_RACE = 1 << 8, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
   // Journey revision 1 owns encounter epochs above the transport. Standalone
   // modes cannot opt in accidentally, even with an advertised capability.
+  const A_APPEARANCE = 0x43;
   const CAP_JOURNEY = 1 << 9, INV_JOURNEY = 0x40, MODE_JOURNEY = 3, A_JOURNEY = 0x42;
   const ARENA_MAX = 1024, ARENA_HEAD = 8, ARENA_CHUNK = WIRE_MAX - 27 - ARENA_HEAD;
   const ARENA_TTL = 1000, ARENA_ABSENT_GRACE = 15000, SEAL_QUEUE_MAX = 32;
@@ -94,6 +95,20 @@
   const modeRejection = (o, peerMode) => o.mode === 'journey' || peerMode === MODE_JOURNEY ? INV_JOURNEY : o.mode === 'race' || peerMode === MODE_RACE ? INV_RACE : INV_ARENA;
   const modeError = () => new Error('This invite is for a different game mode. Open Star Expedition for journey rooms, Star Circuit for racing rooms, Arena for arena rooms or Run Together for runner rooms.');
   const raceVersionError = () => new Error('This Star Circuit room uses an incompatible race version. Refresh both games, then ask the host to create a new invite.');
+
+  // Optional fixed catalog identity. No URLs, text, assets or executable data.
+  const appearanceCodec = () => root.SpaceManCosmetics;
+  function appearanceValue(value, fallback) {
+    const c = appearanceCodec(); if (!c) return null;
+    return c.wireAppearance(value) || c.normalizeAppearance(fallback || {});
+  }
+  function appearancePacket(p, value) {
+    const c = appearanceCodec(), bytes = c && c.encodeAppearance(value);
+    if (!bytes) return null;
+    const out = new Uint8Array(9); out[0] = A_APPEARANCE; out[1] = p; out.set(bytes, 2); return out;
+  }
+  function readAppearance(pt) { return pt.length === 9 && appearanceCodec() ? appearanceCodec().decodeAppearance(pt.subarray(2)) : null; }
+  const copyAppearance = (a) => a ? Object.assign({}, a) : null;
 
   // Mobility rate-limit tables (Addendum F.1) — GUEST-enforced; the host is
   // never trusted to self-limit. Move/handoff FLOWS are M2 (reserved frame
@@ -1589,6 +1604,7 @@
       roster: new Map(),         // pubHex → {p, pub, tag, suit, hat, role, adjIdx, nounIdx, pair, pres, strikes, bucket, lastHello, helloN, unverified, lastRole, runT0}
       banned: new Set(), joinTimes: [], prelim: new Map(),
       approveJoins: opts.approve === true, pending: new Map(), selfEmoteSeq: 0,   // held joins (approve mode) + host self-emote seq
+      appearance: appearanceValue(opts.appearance, opts),
       p: 1, tag: wTag(opts.tag || 'AAA'), suit: opts.suit | 0, hat: opts.hat | 0,
       role: opts.role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER,   // host may sit out while hosting
       adjIdx: opts.adjIdx == null ? CALLSIGN_NONE : opts.adjIdx & 0xff,
@@ -1677,6 +1693,28 @@
         const why = arenaReceive(row, pt, (bytes) => S.ev.emit(S.mode + '-data', { p: row.p, pubHex: key, bytes }));
         if (why) strike(row, why);
         return;
+      }
+      if (pt[0] === A_APPEARANCE) {
+        if (!(row.caps & CAP_APPEARANCE)) return;
+        const value = readAppearance(pt);
+        if (pt[1] !== 0 || !value) return strike(row, 'appearance');
+        const t = performance.now();
+        const remaining = 250 - (t - (row.appearanceAt == null ? -Infinity : row.appearanceAt));
+        if (remaining > 0) {
+          row.appearancePending = value;
+          if (!row.appearanceTimer) row.appearanceTimer = setTimeout(() => {
+            row.appearanceTimer = null;
+            const latest = row.appearancePending; row.appearancePending = null;
+            if (!latest || S.closed || S.roster.get(key) !== row) return;
+            row.appearance = latest; row.appearanceAt = performance.now();
+            broadcastAppearance(row.p, latest).catch(() => {}); S.ev.emit('appearance', { p: row.p });
+          }, remaining);
+          return;
+        }
+        if (row.appearanceTimer) clearTimeout(row.appearanceTimer);
+        row.appearanceTimer = null; row.appearancePending = null;
+        row.appearanceAt = t; row.appearance = value;
+        broadcastAppearance(row.p, value).catch(() => {}); S.ev.emit('appearance', { p: row.p }); return;
       }
       if (pt[0] > FRAME_CORE_HI) return;
       if (arcadeMode(S) && (pt[0] === A_PRES || pt[0] === A_KILL)) return strike(row, 'runner-frame');
@@ -2006,7 +2044,20 @@
         const pt = encRoster(S.outRoster, op, ci, chunks.length, chunks[ci]).slice();
         for (const r of to) S.relay.send(r.pub, await sealApp(r.pair, pt));
       }
+      if (op !== 2 && op !== 3) for (const e of entries) { const row = e.p === 1 ? S : Array.from(S.roster.values()).find(r => r.p === e.p); if (row && row.appearance) await broadcastAppearance(e.p, row.appearance, to); }
     }
+
+    async function broadcastAppearance(p, value, targets) {
+      if (!S.relay || S.closed || S.relay.state !== 'established') return;
+      const pt = appearancePacket(p, value); if (!pt) return;
+      for (const r of targets || members()) if ((r.caps & CAP_APPEARANCE) && (r.pair.sealPending || 0) < SEAL_QUEUE_MAX - 2) {
+        try { S.relay.send(r.pub, await sealApp(r.pair, pt)); } catch (_) {}
+      }
+    }
+    S.setAppearance = (value) => {
+      const c = appearanceCodec(), valid = c && c.wireAppearance(value); if (!valid) return false;
+      S.appearance = valid; broadcastAppearance(1, valid).catch(() => {}); S.ev.emit('appearance', { p: 1 }); return true;
+    };
 
     // Emote re-broadcast (H→all): one encode, n seals. Fans the sender's P# +
     // clamped id + host-stamped seq to every peer (incl. the sender, whose UI
@@ -2252,14 +2303,14 @@
       const out = [];
       const selfCall = cs(S.adjIdx, S.nounIdx, 1), sp = S.self;
       if (S.role !== ROLE_SPECTATOR && sp) {
-        out.push({ p: 1, you: true, host: true, spectator: false, x: sp.x, y: sp.y, vx: sp.vx, vy: sp.vy, t: sp.t, state: sp.state, chain: sp.chain, score: sp.score, dist: sp.dist, runId: sp.runId, suit: S.suit, hat: S.hat, callsign: selfCall, unverified: false });
+        out.push({ p: 1, you: true, host: true, spectator: false, x: sp.x, y: sp.y, vx: sp.vx, vy: sp.vy, t: sp.t, state: sp.state, chain: sp.chain, score: sp.score, dist: sp.dist, runId: sp.runId, suit: S.suit, hat: S.hat, appearance: copyAppearance(S.appearance), callsign: selfCall, unverified: false });
         boardBump(1, selfCall, sp.score, sp.dist, sp.chain, false);
       }
       for (const r of S.roster.values()) {
         const call = cs(r.adjIdx, r.nounIdx, r.p);
         if (r.pres && !r.absent && r.role !== ROLE_SPECTATOR && performance.now() - r.lastSeen <= PRES_STALE) {
           const q = r.pres;
-          out.push({ p: r.p, you: false, host: false, spectator: false, x: q.x, y: q.y, vx: q.vx, vy: q.vy, t: q.t, hist: r.hist, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: r.suit, hat: r.hat, callsign: call, unverified: !!r.unverified, emoteId: r.emoteId, emoteSeq: r.emoteSeq });
+          out.push({ p: r.p, you: false, host: false, spectator: false, x: q.x, y: q.y, vx: q.vx, vy: q.vy, t: q.t, hist: r.hist, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: r.suit, hat: r.hat, appearance: copyAppearance(r.appearance), callsign: call, unverified: !!r.unverified, emoteId: r.emoteId, emoteSeq: r.emoteSeq });
           boardBump(r.p, call, q.score, q.dist, q.chain, r.unverified);
         }
       }
@@ -2447,6 +2498,7 @@
     const S = {
       isHost: false, mode: modeName(opts), playerCap: modeByte(opts) ? 4 : PLAYER_CAP, spectatorCap: modeByte(opts) ? 4 : SPECTATOR_CAP,
       keys: null, relay: null, inv, welcomed: null,
+      appearance: appearanceValue(opts.appearance, opts), appearances: new Map(),
       p: 0, tag: wTag(opts.tag || 'AAA'), suit: opts.suit | 0, hat: opts.hat | 0,
       role: opts.role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER,
       adjIdx: opts.adjIdx == null ? CALLSIGN_NONE : opts.adjIdx & 0xff,
@@ -2457,6 +2509,12 @@
       ev: emitter(), out: makeScratch(), seq: 0, roleSeq: 0, emoteSeq: 0, hostHex: hex(inv.hostPub),
       helloTimer: null, slots: makeSlots(), byed: null, welcomeGen: 0, hostGoneTimer: null, boardPub: new Map(), snapshotPs: null,
       link: makeLink(), pingTimer: null, rxTicks: 0, everUp: false, presN: 0, lastPresState: -1, lastPresRun: -1, roundRaw: null, closed: false,
+    };
+    S.setAppearance = (value) => {
+      const c = appearanceCodec(), valid = c && c.wireAppearance(value); if (!valid) return false; S.appearance = valid;
+      if (!S.welcomed || !(S.caps & CAP_APPEARANCE) || !S.relay || S.relay.state !== 'established' || S.byed != null) return false;
+      const pt = appearancePacket(0, valid); if (!pt || (S.pair.sealPending || 0) >= SEAL_QUEUE_MAX - 2) return false;
+      sealApp(S.pair, pt).then(w => { if (!S.closed && S.byed == null) S.relay.send(S.inv.hostPub, w); }).catch(() => {}); return true;
     };
     S.resumeToken = () => arcadeMode(S) ? null : ({ v: 1, host: false, invite: S.payload || '', priv: S.keys ? hex(S.keys.priv) : '', role: S.role,
       tag: S.tag, suit: S.suit, hat: S.hat, adjIdx: S.adjIdx, nounIdx: S.nounIdx });
@@ -2554,6 +2612,11 @@
         return;
       }
       if (arcadeMode(S) && (pt[0] === A_SNAP || pt[0] === A_KILLB || pt[0] === A_KILLS || pt[0] === A_ROUND)) return;
+      if (pt[0] === A_APPEARANCE) {
+        if (!S.welcomed || !(S.caps & CAP_APPEARANCE) || S.byed != null || pt[1] < 1 || pt[1] > 48) return;
+        const value = readAppearance(pt); if (!value) return;
+        S.appearances.set(pt[1], value); S.ev.emit('appearance', { p: pt[1] }); return;
+      }
       if (pt[0] > FRAME_CORE_HI) return;                         // reserved/experimental: ignore, never strike (Addendum D)
       if (pt[0] === A_WELCOME) {
         const w = decWelcome(pt);
@@ -2572,16 +2635,17 @@
         // frames the stale-epoch rule already declared dead on arrival.
         if (w.hostEpoch > S.hostEpoch) S.hostEpoch = w.hostEpoch;
         if (w.hostEpoch > S.gate.epoch) S.gate.epoch = w.hostEpoch;
+        S.setAppearance(S.appearance);
         S.ev.emit('welcomed', { p: w.yourP, seed: w.seed, runId: w.runId, hostTag: w.hostTag, rosterN: w.rosterN, caps: w.caps, hostEpoch: w.hostEpoch });
         return;
       }
       if (pt[0] === A_ROSTER) {                                  // roster with roles + callsigns (addenda A/C)
         const r = decRoster(pt);
         if (!r) return;
-        if (r.op === 2 || r.op === 3) { for (const e of r.entries) { S.rosterMap.delete(e.p); S.peers.delete(e.p); if (r.op === 3) S._board.delete(e.p); } }   // leave: drop the ghost too, not just the roster row
+        if (r.op === 2 || r.op === 3) { for (const e of r.entries) { S.rosterMap.delete(e.p); S.peers.delete(e.p); S.appearances.delete(e.p); if (r.op === 3) S._board.delete(e.p); } }   // leave: drop the ghost too, not just the roster row
         else for (const e of r.entries) {
           const pubHex = hex(e.pub);
-          if ((S.boardPub.get(e.p) || pubHex) !== pubHex) S._board.delete(e.p);   // a reused P# starts a fresh board row
+          if ((S.boardPub.get(e.p) || pubHex) !== pubHex) { S._board.delete(e.p); S.appearances.delete(e.p); }   // a reused P# starts a fresh board row
           S.boardPub.set(e.p, pubHex);
           S.rosterMap.set(e.p, {
             tag: e.tag, suit: e.suit, hat: e.hat, role: e.role, adjIdx: e.adjIdx, nounIdx: e.nounIdx,
@@ -2594,7 +2658,7 @@
           if (r.chunkIdx === 0) S.snapshotPs = new Set();
           if (S.snapshotPs) for (const e of r.entries) S.snapshotPs.add(e.p);
           if (S.snapshotPs && r.chunkIdx >= r.chunkTot - 1) {
-            for (const p of Array.from(S.rosterMap.keys())) if (p !== S.p && !S.snapshotPs.has(p)) { S.rosterMap.delete(p); S.peers.delete(p); }
+            for (const p of Array.from(S.rosterMap.keys())) if (p !== S.p && !S.snapshotPs.has(p)) { S.rosterMap.delete(p); S.peers.delete(p); S.appearances.delete(p); }
             S.snapshotPs = null;
           }
         }
@@ -2824,7 +2888,7 @@
         if (id.role === ROLE_SPECTATOR) continue;               // spectators stream no ghost
         if (q.x == null || performance.now() - q.receivedAt > PRES_STALE) continue;
         const call = id.callsign || ('P' + p);
-        out.push({ p, you: p === S.p, host: p === 1, spectator: false, x: q.x, y: q.y, vx: q.vx, vy: q.vy, t: q.t, hist: q.hist, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: id.suit || 0, hat: id.hat || 0, callsign: call, unverified: false, emoteId: q.emoteId, emoteSeq: q.emoteSeq });
+        out.push({ p, you: p === S.p, host: p === 1, spectator: false, x: q.x, y: q.y, vx: q.vx, vy: q.vy, t: q.t, hist: q.hist, state: q.state, chain: q.chain, score: q.score, dist: q.dist, runId: q.runId, suit: id.suit || 0, hat: id.hat || 0, appearance: copyAppearance(S.appearances.get(p)), callsign: call, unverified: false, emoteId: q.emoteId, emoteSeq: q.emoteSeq });
         gBoardBump(p, call, q.score, q.dist, q.chain, false);
       }
       return out;
@@ -3090,6 +3154,7 @@
     setJourneyRoleLock(locked) { return !!(session && session.setJourneyRoleLock && session.setJourneyRoleLock(locked)); },
     // Callsigns (Addendum C) — indexes only; the picker uses the validator to
     // re-roll out-of-range / denied pairs. UI (N2b) owns the spinner.
+    setAppearance(value) { return !!(session && session.setAppearance && session.setAppearance(value)); },
     setCallsign(adjIdx, nounIdx) { if (session && session.setCallsign) session.setCallsign(adjIdx, nounIdx); },
     callsignValid(a, n) { return callsignValid(a, n); },
     callsignText(a, n) { return callsignText(a, n); },
@@ -3127,9 +3192,9 @@
       // is accepted here; missing legacy/mock identity uses the wire sentinel.
       const indexOrNone = (i) => i == null ? CALLSIGN_NONE : i;
       if (session.isHost) {
-        const out = [{ p: 1, tag: session.tag, you: true, host: true, role: session.role, spectator: session.role === ROLE_SPECTATOR, adjIdx: indexOrNone(session.adjIdx), nounIdx: indexOrNone(session.nounIdx), callsign: cs(session.adjIdx, session.nounIdx, 1), unverified: false }];
+        const out = [{ p: 1, tag: session.tag, suit: session.suit, hat: session.hat, appearance: copyAppearance(session.appearance), you: true, host: true, role: session.role, spectator: session.role === ROLE_SPECTATOR, adjIdx: indexOrNone(session.adjIdx), nounIdx: indexOrNone(session.nounIdx), callsign: cs(session.adjIdx, session.nounIdx, 1), unverified: false }];
         for (const r of session.roster.values()) { if (r.absent) continue; out.push({
-          p: r.p, tag: r.tag, role: r.role, spectator: r.role === ROLE_SPECTATOR,
+          p: r.p, tag: r.tag, suit: r.suit, hat: r.hat, appearance: copyAppearance(r.appearance), role: r.role, spectator: r.role === ROLE_SPECTATOR,
           adjIdx: indexOrNone(r.adjIdx), nounIdx: indexOrNone(r.nounIdx),
           callsign: cs(r.adjIdx, r.nounIdx, r.p), unverified: !!r.unverified, dimmed: !!r.unverified,
           pubHex: r.pub ? hex(r.pub) : undefined,   // for the hide/block/kick sheet (§7); guests can't see peer pubs
@@ -3138,7 +3203,7 @@
       }
       const out = [];
       for (const [p, e] of session.rosterMap) out.push({
-        p, tag: e.tag, role: e.role, spectator: e.role === ROLE_SPECTATOR,
+        p, tag: e.tag, suit: e.suit, hat: e.hat, appearance: copyAppearance(session.appearances && session.appearances.get(p)), role: e.role, spectator: e.role === ROLE_SPECTATOR,
         adjIdx: indexOrNone(e.adjIdx), nounIdx: indexOrNone(e.nounIdx),
         callsign: e.callsign || ('P' + p), you: p === session.p, host: p === 1,
       });
@@ -3160,6 +3225,7 @@
         players: c ? c.players : Array.from(session.rosterMap.values()).filter((r) => r.role !== ROLE_SPECTATOR).length,
         spectators: c ? c.spectators : Array.from(session.rosterMap.values()).filter((r) => r.role === ROLE_SPECTATOR).length,
         mode: session.mode || 'runner',
+        roomId: hex(session.roomId || (session.inv && session.inv.roomId) || new Uint8Array()),
         cap: session.playerCap || PLAYER_CAP, specCap: session.spectatorCap || SPECTATOR_CAP,
         code: session.code || '',
         joinCode: session.isHost && session.codeOk ? joinCodeText(session.region, session.code) : '',
@@ -3292,10 +3358,11 @@
     // Room-protocol seam (N2): additive over _n1 for the harness + N2b UI.
     _room: {
       ROLE_PLAYER, ROLE_SPECTATOR, PLAYER_CAP, SPECTATOR_CAP, CAPS, CALLSIGN_NONE,
-      caps: { CAP_CALLSIGN, CAP_SPECTATE, CAP_ROLECHANGE, CAP_ANTICHEAT, CAP_HOSTEPOCH, CAP_ARENA, CAP_RACE, CAP_JOURNEY },
+      caps: { CAP_CALLSIGN, CAP_SPECTATE, CAP_ROLECHANGE, CAP_ANTICHEAT, CAP_HOSTEPOCH, CAP_ARENA, CAP_RACE, CAP_JOURNEY, CAP_APPEARANCE },
       arena: { A_ARENA, INV_ARENA, MODE_ARENA, ARENA_MAX, ARENA_CHUNK, ARENA_TTL, ARENA_ABSENT_GRACE, SEAL_QUEUE_MAX, arenaFragment, arenaReceive },
       race: { A_RACE, INV_RACE, MODE_RACE, RACE_MAX: ARENA_MAX, RACE_CHUNK: ARENA_CHUNK, RACE_TTL: ARENA_TTL, RACE_ABSENT_GRACE: ARENA_ABSENT_GRACE, SEAL_QUEUE_MAX, raceFragment, raceReceive: arenaReceive },
       journey: { A_JOURNEY, INV_JOURNEY, MODE_JOURNEY, MAX_BYTES: ARENA_MAX, fragment: (bytes, id, index) => arenaFragment(bytes, id, index, A_JOURNEY) },
+      appearance: { A_APPEARANCE, appearancePacket, readAppearance },
       frameRange: { FRAME_CORE_HI, FRAME_RESERVED_HI },
       callsign: { text: callsignText, valid: callsignValid, denied: (a, n) => { const cs = callsignData(); return cs ? callsignDenied(cs, a, n) : false; }, data: callsignData },
       anticheat: { check: checkEnvelope, AC },

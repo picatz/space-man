@@ -45,6 +45,8 @@
 `;
   function create(opts = {}) {
     const R = root.SpaceManRace;
+    const cosmeticSession = Date.now().toString(36) + ":" + Math.random().toString(36).slice(2, 9);
+    let cosmeticRound = 0;
     let active = false,
       built = false,
       destroyed = false,
@@ -95,7 +97,7 @@
       previousPose = null,
       renderDt = 1 / 60;
     const audioControls = [], audioOverrides = {};
-    let localSession = null;
+    let localSession = null, sharedSession = null;
     let selected = { trackId: "starlight", difficulty: "normal" },
       keys = new Map(),
       touches = new Map(),
@@ -173,10 +175,11 @@
         online && ((!host && roomPaused) || !!roomStatus?.connection),
       );
       setText(resume, resume.disabled ? "Waiting for host…" : "Resume race");
-      rootEl.querySelector("#raceLobby").hidden = !!localSession;
+      rootEl.querySelector("#raceLobby").hidden = !!(localSession || sharedSession);
+      rootEl.querySelector("#raceRestart").hidden = !!sharedSession;
       setText(
         rootEl.querySelector("#raceLobby"),
-        localSession ? "Leave expedition" : online
+        (localSession || sharedSession) ? "Finish expedition" : online
           ? host
             ? "Back to room lobby"
             : "Leave race room"
@@ -310,6 +313,7 @@
       state = next;
       networkEpoch = snapshot.epoch;
       if (newRound) {
+        cosmeticRound++;
         previousPose = null;
         perspective?.reset();
         resetInput();
@@ -521,7 +525,7 @@
       } catch (_) {}
     }
     function save() {
-      if (localSession) return; // Expedition settings are temporary.
+      if (localSession || sharedSession) return; // Expedition settings are temporary.
       try {
         root.localStorage.setItem(
           opts.storageKey || "sm2.race.v1",
@@ -1186,6 +1190,7 @@
     }
     let rescueRequest = false;
     function start() {
+      if (sharedSession) return;
       if (!active) return;
       raceAudio()?.unlock();
       if (onlineActive()) {
@@ -1201,7 +1206,9 @@
       resetInput();
       rescueRequest = false;
       preferences();
-      state = R.create(localSession ? { ...selected, laps: 1, seed: localSession.seed } : selected);
+      state = R.create(localSession ? { ...localSession.config, ...selected, expedition: true, laps: 1, seed: localSession.seed } : selected);
+      cosmeticRound++;
+      if (root.SpaceManCosmetics && typeof opts.appearance === "function") { const human = state.actors.find(a => a.controller === "human"); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       previousPose = null;
       perspective?.reset();
       view = "play";
@@ -1215,13 +1222,13 @@
         rotation: height > width && !calm() ? -a.heading - Math.PI / 2 : 0,
       };
       setPanel(null);
-      announce(localSession ? "Expedition finale. One lap home. Auto-drive is on. Race starts in three." : "Three laps. Auto-drive is on. Race starts in three.");
+      announce(localSession ? "Expedition sprint. One lap. Auto-drive is on." : "Three laps. Auto-drive is on. Race starts in three.");
       audio?.update(state, followActor());
       ensureFrame();
     }
     function showLobby() {
       if (!active) return;
-      if (localSession) { close(); return; }
+      if (localSession || sharedSession) { close(); return; }
       if (onlineActive()) {
         if (!room.isHost) {
           leaveRaceRoom();
@@ -1284,10 +1291,18 @@
       ensureFrame();
     }
     function results() {
+      if (sharedSession) { resetInput(); return; }
       resetInput();
       view = "results";
       resultRows.replaceChildren();
       const me = state.results.find((r) => r.id === ownActor()?.id);
+      if (localSession) {
+        if (!localSession.reported) {
+          localSession.reported = true;
+          localSession.onResult({ position: me?.position || 5, finished: !!me?.finished, time: me?.time ?? null });
+        }
+        return;
+      }
       resultTitle.textContent = !me
         ? "The stars have spoken."
         : me.position === 1
@@ -1305,6 +1320,11 @@
         );
         resultRows.append(row);
       }
+      if (me && typeof opts.onReward === "function") {
+        const receipt = onlineActive() ? root.SpaceManCosmetics.roundReceipt("race", opts.net.info().roomId, networkEpoch) : cosmeticSession + ":" + cosmeticRound;
+        const found = receipt ? opts.onReward({ type: "race", id: receipt }) || [] : [];
+        if (found.length) resultRows.append(el("p", "race-cosmetic-reward", "Found: " + found.map(id => root.SpaceManCosmetics.item(id)?.name || "").join(", ")));
+      }
       setPanel(resultPanel);
       announce(
         "Race complete. You placed " +
@@ -1314,10 +1334,6 @@
       );
       audio?.update(state, followActor());
       syncRoomChoices();
-      if (localSession && !localSession.reported) {
-        localSession.reported = true;
-        localSession.onResult({ position: me?.position || 5, finished: !!me?.finished, time: me?.time ?? null });
-      }
     }
     function resize() {
       if (!active) return;
@@ -1444,59 +1460,10 @@
       g.restore();
     }
     function kart(ctx, a, scale = 1, hero = false) {
-      ctx.save();
-      ctx.translate(a.x, a.y);
-      ctx.rotate(a.heading);
-      ctx.scale(scale, scale);
-      ctx.fillStyle = "#0006";
-      ctx.beginPath();
-      ctx.ellipse(2, 5, 24, 17, 0, 0, TAU);
-      ctx.fill();
-      const glow = a.boosting || a.padTicks > 0;
-      if (glow || hero) {
-        ctx.fillStyle = a.color + "48";
-        ctx.beginPath();
-        ctx.moveTo(-16, -7);
-        ctx.lineTo(-42 - (calm() ? 0 : (state?.tick || 0) % 6), 0);
-        ctx.lineTo(-16, 7);
-        ctx.fill();
-        ctx.fillStyle = "#d7ffff";
-        ctx.beginPath();
-        ctx.moveTo(-17, -3);
-        ctx.lineTo(-31, 0);
-        ctx.lineTo(-17, 3);
-        ctx.fill();
-      }
-      ctx.fillStyle = a.color;
-      round(ctx, -17, -15, 31, 8, 4);
-      ctx.fill();
-      round(ctx, -17, 7, 31, 8, 4);
-      ctx.fill();
-      ctx.fillStyle = "#eff9fc";
-      ctx.beginPath();
-      ctx.moveTo(26, 0);
-      ctx.quadraticCurveTo(15, -11, -12, -11);
-      ctx.lineTo(-19, -5);
-      ctx.lineTo(-19, 5);
-      ctx.lineTo(-12, 11);
-      ctx.quadraticCurveTo(15, 11, 26, 0);
-      ctx.fill();
-      ctx.fillStyle = a.color;
-      round(ctx, 8, -4, 13, 8, 4);
-      ctx.fill();
-      ctx.fillStyle = "#577489";
-      round(ctx, -18, -5, 8, 10, 3);
-      ctx.fill();
-      ctx.fillStyle = "#f6ffff";
-      ctx.beginPath();
-      ctx.arc(0, 0, 10, 0, TAU);
-      ctx.fill();
-      ctx.fillStyle = "#16374b";
-      round(ctx, 0, -7, 8, 14, 4);
-      ctx.fill();
-      ctx.fillStyle = a.color;
-      round(ctx, 2, -5, 3, 9, 2);
-      ctx.fill();
+      const appearance = a.appearance || ((hero || a.id === ownActor()?.id) && typeof opts.appearance === 'function' ? opts.appearance() : null);
+      const style = root.SpaceManArt.characterStyle(appearance, a.color);
+      ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.heading); ctx.scale(scale, scale);
+      root.SpaceManArt.hoverpod(ctx, style, { tick: state?.tick || 20, id: a.id, calm: calm(), boosting: !!(a.boosting || a.padTicks > 0), hero });
       ctx.restore();
     }
     function drawHero() {
@@ -1899,8 +1866,15 @@
       if (room) roomChanged(room.status());
       ensureFrame();
     }
-    function close() {
+    function close(options = {}) {
       if (!active) return;
+      const shared = sharedSession;
+      if (shared && !options.transition && shared.adapter.confirmLeave && !shared.adapter.confirmLeave()) return;
+      if (shared) {
+        const crewButton = pausePanel.querySelector('#raceJourneyCrew'); if (crewButton) crewButton.hidden = true;
+        shared.detach?.(); sharedSession = null;
+        room.release(); room = shared.previousRoom; selected = shared.previous;
+      }
       if (room && (room.active || room.busy) && !leaveRaceRoom()) return;
       resetInput();
       active = false;
@@ -1928,16 +1902,33 @@
       pausePanel.querySelector("#raceLobby").hidden = false;
       pausePanel.querySelector("#raceLobby").textContent = "Choose a circuit";
       pausePanel.querySelector("#raceExit").textContent = "All games";
-      opts.onClose?.();
+      pausePanel.querySelector("#raceRestart").hidden = false;
+      if (shared && !options.transition) shared.adapter.leave();
+      if (!options.transition && !shared) opts.onClose?.();
     }
+    function openSharedSession(config, adapter) {
+      if (active || destroyed || !adapter || typeof adapter.attach !== "function") return false;
+      open();
+      sharedSession = { previousRoom: room, previous: { ...selected }, adapter, detach: null };
+      room = adapter;
+      selected = { trackId: R.course(config.trackId).id, difficulty: "easy" };
+      rootEl.dataset.session = "true";
+      pausePanel.querySelector("#raceExit").textContent = "Leave expedition";
+      let crewButton = pausePanel.querySelector('#raceJourneyCrew');
+      if (!crewButton) { crewButton = button('Crew · seats & invite', 'race-text-button', () => sharedSession?.adapter.openCrew?.()); crewButton.id = 'raceJourneyCrew'; pausePanel.append(crewButton); }
+      crewButton.hidden = false;
+      sharedSession.detach = adapter.attach({ onChange: roomChanged, onSnapshot: networkSnapshot });
+      syncRoomChoices(); if (!state) { setPanel(null); touch.hidden = true; } return true;
+    }
+    function closeSharedSession() { if (sharedSession) close({ transition: true }); }
     function openSession(config, onResult) {
       if (active || destroyed || opts.net?.active || typeof onResult !== "function") return false;
       open();
-      localSession = { seed: config.seed >>> 0, previous: { ...selected }, onResult, reported: false };
-      selected = { trackId: R.tracks[0].id, difficulty: "easy" };
+      localSession = { config: { ...config }, seed: config.seed >>> 0, previous: { ...selected }, onResult, reported: false };
+      selected = { trackId: R.course(config.trackId).id, difficulty: "easy" };
       rootEl.dataset.session = "true";
-      pausePanel.querySelector("#raceLobby").textContent = "Leave expedition";
-      pausePanel.querySelector("#raceExit").textContent = "Leave expedition";
+      pausePanel.querySelector("#raceLobby").textContent = "Finish expedition";
+      pausePanel.querySelector("#raceExit").textContent = "Finish expedition";
       syncChoices(); start(); return true;
     }
     function destroy() {
@@ -1951,6 +1942,8 @@
     return Object.freeze({
       open,
       openSession,
+      openSharedSession,
+      closeSharedSession,
       close,
       destroy,
       joinInvite(payload, role) {

@@ -2,7 +2,7 @@
    scattering localStorage migrations through UI and physics code. */
 (function () {
   'use strict';
-  const VERSION = 4;
+  const VERSION = 5;
   const num = (v, fb) => (typeof v === 'number' && isFinite(v) ? v : fb);
   const clamp01 = (v) => Math.min(1, Math.max(0, v));
   const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});   // strings/arrays must not Object.assign-spread
@@ -43,14 +43,9 @@
     // Additive a11y fields (no version bump): the reduce-motion switch and key map.
     s.reduceMotion = typeof s.reduceMotion === 'boolean' ? s.reduceMotion : !!(opts && opts.reduceMotion);
     s.keys = sanitizeKeys(s.keys);
-    const c = Object.assign(
-      { companion: 'default', patches: [], suit: 'classic', hat: 'none', unlocked: FREE_IDS.slice() },
-      obj(input.cosmetics));
-    if (SUIT_IDS.indexOf(c.suit) < 0) c.suit = 'classic';
-    if (HAT_IDS.indexOf(c.hat) < 0) c.hat = 'none';
-    c.unlocked = (Array.isArray(c.unlocked) ? c.unlocked : [])
-      .filter((x, i, a) => (SUIT_IDS.indexOf(x) >= 0 || HAT_IDS.indexOf(x) >= 0) && a.indexOf(x) === i);
-    for (const f of FREE_IDS) if (c.unlocked.indexOf(f) < 0) c.unlocked.push(f);   // defaults can never lock
+    const c = window.SpaceManCosmetics.migrateProfile(input.cosmetics, { stats: input.stats, flags: input.flags });
+    if (c.companion === undefined) c.companion = 'default';
+    if (c.patches === undefined) c.patches = [];
     return {
       version: VERSION,
       settings: s,

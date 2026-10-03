@@ -480,4 +480,4 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     throw new Error(`Simulated-relay arena acceptance: ${stage}: ${redact(error.message)}`);
   }
 }
-module.exports = { runAcceptance, validateRelayHost };
+module.exports = { runAcceptance, validateRelayHost, simulatedRelay };
