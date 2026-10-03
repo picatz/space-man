@@ -585,6 +585,7 @@
       }
     }
     function resetInput() {
+      rescueRequest = false;
       if (onlineActive()) room.release();
       keys.clear();
       resetTouch();
@@ -700,6 +701,7 @@
       const a = actionFor(e);
       if (a) {
         e.preventDefault();
+        if (e.repeat && !keys.has(e.code)) return;
         keys.set(e.code, a);
       }
     }

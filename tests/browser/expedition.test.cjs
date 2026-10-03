@@ -228,3 +228,26 @@ for (const mode of ['arena','race']) test(mode+' input yields to an inert siblin
   assert.equal(await page.evaluate(mode=>mode==='arena'?arenaUI.screen:raceUI.screen,mode),'play');
   await page.keyboard.press('Escape');await page.locator(mode==='arena'?'#arenaExit':'#raceExit').click();
 });
+
+test('an inert crew dialog cancels a queued race recovery before the next simulation tick',{timeout:25000},async t=>{
+  const {page}=await launch(t,{hasTouch:true,isMobile:true});
+  await page.locator('#btnRace').click();await page.locator('.race-launch').click();
+  await page.waitForFunction(()=>raceUI.snapshot()?.phase==='racing');
+  const before=await page.evaluate(()=>raceUI.snapshot().actors[0].recoveries);
+  await page.evaluate(()=>{
+    // Dispatch the normal button action and transfer dialog ownership atomically.
+    document.querySelector('.race-recover').click();
+    document.querySelector('.race-root').inert=true;
+  });
+  await page.waitForTimeout(120);
+  assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].recoveries),before);
+  await page.keyboard.down('d');
+  await page.evaluate(()=>{document.querySelector('.race-root').inert=false;});
+  await page.keyboard.down('d'); // A held dialog key produces repeat:true after restoration.
+  await page.waitForTimeout(120);
+  assert.ok(Math.abs(await page.evaluate(()=>raceUI.snapshot().actors[0].steering))<.001);
+  await page.keyboard.up('d');await page.keyboard.down('d');await page.waitForTimeout(120);
+  assert.ok(Math.abs(await page.evaluate(()=>raceUI.snapshot().actors[0].steering))>.001,'a fresh press regains steering');
+  await page.keyboard.up('d');
+  await page.keyboard.press('Escape');await page.locator('#raceExit').click();
+});
