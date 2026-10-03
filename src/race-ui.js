@@ -176,7 +176,7 @@
       rootEl.querySelector("#raceLobby").hidden = !!localSession;
       setText(
         rootEl.querySelector("#raceLobby"),
-        localSession ? "Leave expedition" : online
+        localSession ? "Finish expedition" : online
           ? host
             ? "Back to room lobby"
             : "Leave race room"
@@ -1201,7 +1201,7 @@
       resetInput();
       rescueRequest = false;
       preferences();
-      state = R.create(localSession ? { ...selected, laps: 1, seed: localSession.seed } : selected);
+      state = R.create(localSession ? { ...localSession.config, ...selected, expedition: true, laps: 1, seed: localSession.seed } : selected);
       previousPose = null;
       perspective?.reset();
       view = "play";
@@ -1215,7 +1215,7 @@
         rotation: height > width && !calm() ? -a.heading - Math.PI / 2 : 0,
       };
       setPanel(null);
-      announce(localSession ? "Expedition finale. One lap home. Auto-drive is on. Race starts in three." : "Three laps. Auto-drive is on. Race starts in three.");
+      announce(localSession ? "Expedition sprint. One lap. Auto-drive is on." : "Three laps. Auto-drive is on. Race starts in three.");
       audio?.update(state, followActor());
       ensureFrame();
     }
@@ -1288,6 +1288,13 @@
       view = "results";
       resultRows.replaceChildren();
       const me = state.results.find((r) => r.id === ownActor()?.id);
+      if (localSession) {
+        if (!localSession.reported) {
+          localSession.reported = true;
+          localSession.onResult({ position: me?.position || 5, finished: !!me?.finished, time: me?.time ?? null });
+        }
+        return;
+      }
       resultTitle.textContent = !me
         ? "The stars have spoken."
         : me.position === 1
@@ -1314,10 +1321,6 @@
       );
       audio?.update(state, followActor());
       syncRoomChoices();
-      if (localSession && !localSession.reported) {
-        localSession.reported = true;
-        localSession.onResult({ position: me?.position || 5, finished: !!me?.finished, time: me?.time ?? null });
-      }
     }
     function resize() {
       if (!active) return;
@@ -1933,11 +1936,11 @@
     function openSession(config, onResult) {
       if (active || destroyed || opts.net?.active || typeof onResult !== "function") return false;
       open();
-      localSession = { seed: config.seed >>> 0, previous: { ...selected }, onResult, reported: false };
-      selected = { trackId: R.tracks[0].id, difficulty: "easy" };
+      localSession = { config: { ...config }, seed: config.seed >>> 0, previous: { ...selected }, onResult, reported: false };
+      selected = { trackId: R.course(config.trackId).id, difficulty: "easy" };
       rootEl.dataset.session = "true";
-      pausePanel.querySelector("#raceLobby").textContent = "Leave expedition";
-      pausePanel.querySelector("#raceExit").textContent = "Leave expedition";
+      pausePanel.querySelector("#raceLobby").textContent = "Finish expedition";
+      pausePanel.querySelector("#raceExit").textContent = "Finish expedition";
       syncChoices(); start(); return true;
     }
     function destroy() {

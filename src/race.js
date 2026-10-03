@@ -251,7 +251,8 @@
       tick: 0,
       raceTick: 0,
       phase: "countdown",
-      countdown: 180,
+      countdown: options.expedition === true ? clamp(Math.floor(finite(options.countdownTicks, 60)), 0, 180) : 180,
+      ...(options.expedition === true ? { maxRaceTicks: clamp(Math.floor(finite(options.maxTicks, 5400)), 1800, 10800) } : {}),
       actors,
       events: [],
       results: null,
@@ -550,7 +551,7 @@
       : humans.length > 0 && humans[0].finishTick !== null;
     const graceDone = state.finishMode === "all-humans" &&
       state.firstFinishTick !== null && state.raceTick - state.firstFinishTick >= 60 * 30;
-    if (allDone || humansDone || graceDone || state.raceTick >= 60 * 300) {
+    if (allDone || humansDone || graceDone || state.raceTick >= (state.maxRaceTicks || 60 * 300)) {
       state.finishReason = humansDone ? "humans" : allDone ? "all" : graceDone ? "grace" : "time";
       state.phase = "finished";
       state.results = standings(state).map((a, i) => ({

@@ -307,6 +307,7 @@
       const action = actionForKey(e);
       if (action) {
         e.preventDefault();
+        if (e.repeat && !held.has(e.code)) return;
         if (!held.has(e.code) && !e.repeat) {
           if (action === 'jump') jumpEdge = true;
           if (action === 'fire') attackEdge = true;
@@ -446,7 +447,7 @@
       if (rematch) { rematch.disabled = online && !host; rematch.textContent = online ? (host ? 'Rematch together' : 'Waiting for host…') : 'Rematch'; }
       if (next) next.disabled = online && !host;
       const restart = pausePanel && pausePanel.querySelectorAll('button')[1]; if (restart) restart.disabled = online && !host;
-      const back = rootEl.querySelector('#arenaLobby'); if (back) { back.hidden = !!localSession; back.textContent = localSession ? 'Leave expedition' : online ? (host ? 'Back to room lobby' : 'Leave arena room') : 'Choose a match'; }
+      const back = rootEl.querySelector('#arenaLobby'); if (back) { back.hidden = !!localSession; back.textContent = localSession ? 'Finish expedition' : online ? (host ? 'Back to room lobby' : 'Leave arena room') : 'Choose a match'; }
       const resume = rootEl.querySelector('#arenaResume'); if (resume) { resume.disabled = (roomPaused && !host) || !!(roomStatus && roomStatus.connection); resume.textContent = roomStatus && roomStatus.connection ? 'Reconnecting…' : roomPaused && !host ? 'Waiting for host…' : 'Resume match'; }
     }
     function cycleWatch(direction) {
@@ -500,7 +501,7 @@
       networkReceived = performance.now(); priorNetworkTick = state.tick;
       if (view !== 'match' || newRound) {
         resetInput(); view = 'match'; paused = false; localRoomMenu = false; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; resultAt = 0; effects = []; spectatorId = null; camera.initialized = false;
-        rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION 2/3 · ' : '') + selectedArena().name + ' · FRIEND ARENA'; setModal(null); unlockAudio();
+        rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION · ' : '') + selectedArena().name + ' · FRIEND ARENA'; setModal(null); unlockAudio();
       }
       const wasPaused = roomPaused; roomPaused = snapshot.status === 'paused';
       if (roomPaused) { resetInput(); paused = true; pausePanel.querySelector('#arena-pause-reason').textContent = snapshot.isHost ? 'The whole arena is paused. Resume when you’re ready.' : 'The host paused the arena. Everyone’s match is safely frozen.'; if (activeModal !== pausePanel) setModal(pausePanel); }
@@ -757,6 +758,18 @@
       ctx.strokeStyle = t.accent; ctx.globalAlpha = .055; ctx.lineWidth = 1 / c.scale; ctx.beginPath(); ctx.ellipse(a.width / 2, 420, 445, 130, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
       a.platforms.forEach(p => platform(ctx, p, a, false));
       for (const actor of state.actors) {
+        const warning = actor.boss && arena.bossAttackBox && arena.bossAttackBox(actor);
+        if (warning) {
+          ctx.fillStyle = warning.active ? '#FF745788' : '#FFCA4630';
+          ctx.strokeStyle = warning.active ? '#FF9C8B' : '#FFE39A';
+          ctx.lineWidth = warning.active ? 3 : 2; ctx.setLineDash(warning.active ? [] : [9, 7]);
+          ctx.fillRect(warning.x, warning.y, warning.w, warning.h); ctx.strokeRect(warning.x, warning.y, warning.w, warning.h);
+          ctx.setLineDash([]);
+          ctx.font = '800 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#FFF3CE';
+          ctx.fillText(warning.move === 'shockwave' ? 'JUMP THE WAVE' : 'DASH CLEAR', warning.x + warning.w / 2, warning.y - 9);
+        }
+      }
+      for (const actor of state.actors) {
         if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
         const x = lerp(actor.px, actor.x, alpha), y = lerp(actor.py, actor.y, alpha);
         const under = a.platforms.filter(p => x + actor.w / 2 >= p.x && x + actor.w / 2 <= p.x + p.w && p.y >= y + actor.h - 3).sort((a, b) => a.y - b.y)[0];
@@ -793,6 +806,18 @@
     }
     function drawIndicators(c, alpha) {
       for (const actor of state.actors) {
+        const warning = actor.boss && arena.bossAttackBox && arena.bossAttackBox(actor);
+        if (warning) {
+          ctx.fillStyle = warning.active ? '#FF745788' : '#FFCA4630';
+          ctx.strokeStyle = warning.active ? '#FF9C8B' : '#FFE39A';
+          ctx.lineWidth = warning.active ? 3 : 2; ctx.setLineDash(warning.active ? [] : [9, 7]);
+          ctx.fillRect(warning.x, warning.y, warning.w, warning.h); ctx.strokeRect(warning.x, warning.y, warning.w, warning.h);
+          ctx.setLineDash([]);
+          ctx.font = '800 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#FFF3CE';
+          ctx.fillText(warning.move === 'shockwave' ? 'JUMP THE WAVE' : 'DASH CLEAR', warning.x + warning.w / 2, warning.y - 9);
+        }
+      }
+      for (const actor of state.actors) {
         if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
         const x = (lerp(actor.px, actor.x, alpha) + actor.w / 2 - c.x) * c.scale + width / 2;
         const y = (lerp(actor.py, actor.y, alpha) + actor.h / 2 - c.y) * c.scale + c.centerY;
@@ -818,9 +843,16 @@
       const seconds = Math.max(0, Math.ceil(state.timeLeftTicks / 60)); timerEl.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0'); timerEl.classList.toggle('arena-clock-urgent', seconds <= 30);
       for (const actor of state.actors) {
         const card = rosterEl.querySelector('[data-actor="' + actor.id + '"]'); if (!card) continue;
+        if (actor.boss) {
+          card.querySelector('.arena-player-tag').textContent = actor.boss.phase === 'recover' ? 'CORE EXPOSED · PULSE NOW' : actor.boss.phase === 'charging' ? 'WARNING · DODGE' : 'GUARDIAN';
+          card.querySelector('.arena-damage').textContent = Math.max(0, Math.ceil(actor.boss.health)) + ' HP';
+          card.querySelector('.arena-stocks').textContent = 'CORE ' + Math.round(100 * actor.boss.health / actor.boss.maxHealth) + '%';
+          card.setAttribute('aria-label', actor.name + ', boss core ' + Math.round(actor.boss.health) + ' health, ' + actor.boss.phase);
+          continue;
+        }
         card.classList.toggle('arena-player-out', actor.stocks <= 0); card.querySelector('.arena-damage').textContent = actor.stocks <= 0 ? 'OUT' : Math.round(actor.damage) + '%';
         card.querySelector('.arena-damage').style.color = actor.damage >= 100 ? '#FF8E9A' : actor.damage >= 60 ? '#FFD180' : '';
-        card.querySelector('.arena-stocks').textContent = '●'.repeat(Math.max(0, actor.stocks)) + '○'.repeat(Math.max(0, (arena.constants.STOCKS || 3) - actor.stocks));
+        card.querySelector('.arena-stocks').textContent = '●'.repeat(Math.max(0, actor.stocks)) + '○'.repeat(Math.max(0, (state.encounter ? state.encounter.stocks : arena.constants.STOCKS || 3) - actor.stocks));
         card.setAttribute('aria-label', actor.name + (actor.controller === 'human' ? ', you' : '') + (state.format === 'teams' ? (actor.team === 0 ? ', blue team' : ', gold team') : '') + ', ' + actor.stocks + ' lives, ' + Math.round(actor.damage) + ' percent damage');
       }
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
@@ -840,6 +872,9 @@
       for (const event of state.events || []) {
         const who = state.actors.find(a => a.id === event.actorId), type = event.type;
         if (['hit', 'ringout', 'respawn', 'jump'].includes(type)) effects.push({ type, x: event.x, y: event.y, color: who ? actorColor(who) : '#FFE59A', life: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14, max: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14 });
+        if (type === 'boss-warning') { announce(event.move === 'shockwave' ? 'Guardian charging a ground wave. Jump!' : 'Guardian aiming. Dash out of the warning!'); sfx('countdown'); }
+        else if (type === 'boss-exposed') announce('Guardian core exposed. Pulse now!');
+        else if (type === 'boss-defeated') { announce('Guardian defeated!'); sfx('win'); }
         if (type === 'ringout' && who) { announce(who.name + (who.stocks > 0 ? ' has ' + who.stocks + ' lives left.' : ' is out.')); sfx('ko'); }
         else if (type === 'hit') sfx('hit');
         else if (who && who.controller === 'human' && ['jump', 'attack', 'dash'].includes(type)) sfx(type);
@@ -885,9 +920,9 @@
       // Seed ownership belongs to the pure simulation. No gameplay randomness
       // comes from frame time or presentation effects.
       matchSerial++; const seed = localSession ? localSession.seed : ((Date.now() >>> 0) ^ Math.imul(matchSerial, 2654435761)) >>> 0;
-      state = arena.create({ arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty });
+      state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty });
       view = 'match'; paused = false; resultAt = 0; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; effects = []; spectatorId = null; camera.initialized = false;
-      rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION 2/3 · ' : '') + selectedArena().name + ' · ' + FORMATS.find(f => f.id === state.format).name;
+      rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION · ' : '') + selectedArena().name + ' · ' + FORMATS.find(f => f.id === state.format).name;
       buildRoster(); setModal(null); updateHud(true); paint(1); ensureFrame();
       if (typeof opts.onStart === 'function') opts.onStart({ arenaId: selections.arenaId, format: selections.format });
     }
@@ -920,6 +955,13 @@
       updateHud(true); // The final stock loss must bypass the five-tick HUD throttle.
       resetInput(); const result = state.result, human = state.actors.find(a => a.controller === 'human');
       const won = !!human && (result.winnerIds.includes(human.id) || (state.format === 'teams' && result.winnerTeam === human.team));
+      if (localSession) {
+        if (!localSession.reported) {
+          localSession.reported = true;
+          localSession.onResult({ won, tie: result.tie, kos: human ? human.kos : 0, stocks: human ? human.stocks : 0 });
+        }
+        return;
+      }
       resultTitle.textContent = result.tie ? 'A cosmic stalemate' : won ? (state.format === 'teams' ? 'Your crew wins!' : 'You held your orbit!') : 'One more orbit?';
       const winners = state.actors.filter(a => result.winnerIds.includes(a.id)).map(a => a.name).join(' & ');
       resultText.textContent = result.tie ? 'An even match among the stars. Ready for a tiebreaker?' : won ? 'Nice flying. The last launch belongs to you.' : (winners || 'The other crew') + ' took this round. A fresh launch is one tap away.';
@@ -927,10 +969,6 @@
       for (const actor of state.actors) { const row = el('div', 'arena-result-row'); row.style.setProperty('--fighter', actorColor(actor)); row.append(el('strong', '', actor.name + (actor.controller === 'human' ? ' · YOU' : '')), el('span', '', (actor.kos || 0) + ' KO' + ((actor.kos || 0) === 1 ? '' : 's')), el('span', '', actor.stocks + ' lives')); resultRoster.append(row); }
       if (onlineActive() && !human && !result.tie) { resultTitle.textContent = winners + ' win!'; resultText.textContent = 'Shared match complete. The host can launch another round.'; }
       syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent);
-      if (localSession && !localSession.reported) {
-        localSession.reported = true;
-        localSession.onResult({ won, tie: result.tie, kos: human ? human.kos : 0, stocks: human ? human.stocks : 0 });
-      }
     }
     function onVisibility() {
       if (!active) return;
@@ -986,11 +1024,11 @@
     function openSession(config, onResult) {
       if (active || destroyed || (opts.net && opts.net.active) || typeof onResult !== 'function') return false;
       open();
-      localSession = { seed: config.seed >>> 0, previous: { ...selections }, onResult, reported: false };
-      selections = { arenaId: arena.getArena(config.arenaId).id, format: 'duel', difficulty: 'easy' };
+      localSession = { config: { ...config }, seed: config.seed >>> 0, previous: { ...selections }, onResult, reported: false };
+      selections = { arenaId: arena.getArena(config.arenaId).id, format: config.format === 'teams' ? 'teams' : 'duel', difficulty: 'easy' };
       rootEl.dataset.session = 'true';
-      pausePanel.querySelector('#arenaLobby').textContent = 'Leave expedition';
-      pausePanel.querySelector('#arenaExit').textContent = 'Leave expedition';
+      pausePanel.querySelector('#arenaLobby').textContent = 'Finish expedition';
+      pausePanel.querySelector('#arenaExit').textContent = 'Finish expedition';
       syncChoices(); startMatch(); return true;
     }
     function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }

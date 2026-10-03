@@ -819,7 +819,7 @@
       <button class="btn ghost mode-link" id="btnArena" data-description="Small suits. Big knockouts." aria-label="Orbital Arena. Battle CPUs or friends.">Orbital Arena</button>
       <button class="btn ghost mode-link" id="btnRace" data-description="Carve the corners. Catch a boost." aria-label="Star Circuit. Arcade hover racing.">Star Circuit</button>
     </div>
-    <button class="btn ghost expedition-launch" id="btnExpedition"><span>Star Expedition<small>RUN → ARENA → RACE</small></span><span class="expedition-solo">SOLO</span></button>
+    <button class="btn ghost expedition-launch" id="btnExpedition"><span>Star Expedition<small>ONE CONTINUOUS ADVENTURE</small></span><span class="expedition-solo">SOLO</span></button>
     <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info" id="dailyInfo"></span></button>
     <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
     </div>
@@ -853,9 +853,10 @@
 </div>
 
 <!-- Solo connected itinerary: uses the runner's accessible overlay navigation. -->
-<div class="overlay" id="ovExpedition">
-  <section class="panel expedition-panel" role="dialog" aria-modal="true" aria-labelledby="expeditionTitle">
-    <div class="expedition-topline"><span>STAR EXPEDITION</span><span>SOLO · CPU RIVALS</span></div>
+<div class="expedition-cue" id="expeditionCue" role="status" aria-live="polite" aria-atomic="true" hidden>
+  <span id="expeditionCueRoute"></span><strong id="expeditionCueTitle"></strong><span id="expeditionCueHelp"></span>
+</div>
+
     <ol class="expedition-route" aria-label="Expedition itinerary">
       <li id="expeditionLeg0"><span>01</span><strong>RUN</strong></li>
       <li id="expeditionLeg1"><span>02</span><strong>ARENA</strong></li>
@@ -2266,9 +2267,9 @@ function inMuteHit(p) { const h = G._muteHit; return !!h && p.x >= h.x0 && p.x <
 /* ---- menu focus: keyboard Tab/Enter is native; a gamepad drives the same DOM
    focus (D-pad/stick moves, A activates, B backs out). Never active in a run. ---- */
 // Stacking order: later ids sit on top when two overlays are ever shown at once.
-const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovTogether', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions', 'ovExpedition'];
+const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovTogether', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'];
 const PRIMARY_OVERLAY = { attract: 'ovAttract', pause: 'ovPause', dead: 'ovDead' };
-const MENU_BACK = { ovExpedition: 'btnExpeditionExit', ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
+const MENU_BACK = { ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
 function topOverlayId() {
   for (let i = OVERLAY_IDS.length - 1; i >= 0; i--) if (document.getElementById(OVERLAY_IDS[i]).classList.contains('show')) return OVERLAY_IDS[i];
   return null;
@@ -4263,8 +4264,8 @@ function update() {
     updateCamera();
     if (netSpectating()) netFollowCamera();   // spectator follows the watched runner, not the local bot
     updateDistance();
-    if (!G.player.dead && expeditionRunnerActive() && (G.dist >= SpaceManExpedition.legs[0].goal || G.frameCount >= SpaceManExpedition.legs[0].maxTicks)) {
-      G.finalScore = Math.floor(G.score); finalizeDeath(true); finishExpeditionRunner(G.dist >= SpaceManExpedition.legs[0].goal); return;
+    if (!G.player.dead && expeditionRunnerActive() && (G.dist >= expedition.snapshot().current.goal || G.frameCount >= expedition.snapshot().current.maxTicks)) {
+      G.finalScore = Math.floor(G.score); finalizeDeath(true); finishExpeditionRunner(G.dist >= expedition.snapshot().current.goal); return;
     }
     // Run Together presence feed (§4.1): capture at 10Hz; no-op solo / spectating
     // / under the offline mock (NET.active is false there).
@@ -6031,7 +6032,7 @@ function drawHUD() {
   }
 
   if (G.mission) {
-    const m = expeditionRunnerActive() ? { done: false, kind: 'expedition', label: 'LEG 1/3 · REACH 400m', progress: G.dist, target: SpaceManExpedition.legs[0].goal } : G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
+    const m = expeditionRunnerActive() ? { done: false, kind: 'expedition', label: 'ROUTE ' + (expedition.snapshot().index + 1) + ' · REACH ' + expedition.snapshot().current.goal + 'm', progress: G.dist, target: expedition.snapshot().current.goal } : G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
     ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 22 * us, 6 * us); ctx.fill();
     ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = fontStr(700, Math.max(9.5, 7.5 * us), FONT); ctx.textAlign = 'left';
     const label = m.done ? 'MISSION COMPLETE' : (view.w < 480 ? (MISSION_SHORT[m.kind] || m.label) : m.label);
@@ -8577,98 +8578,106 @@ function getRaceUI() {
   });
   return raceUI;
 }
-// Local journey director. It never opens, leaves or changes a room.
+// Continuous solo director. Shared journeys use the same deterministic encounters.
+let expeditionCueTimer = 0;
+const expeditionHeldKeys = new Set(), expeditionKeyGate = new Set();
+window.addEventListener('keydown', e => {
+  if (expedition && expeditionKeyGate.has(e.code) && e.code !== 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); }
+  expeditionHeldKeys.add(e.code);
+}, true);
+window.addEventListener('keyup', e => { expeditionHeldKeys.delete(e.code); expeditionKeyGate.delete(e.code); }, true);
+window.addEventListener('blur', () => { expeditionHeldKeys.clear(); expeditionKeyGate.clear(); });
 function expeditionRunnerActive() {
   const s = expedition && expedition.snapshot();
-  return !!s && s.phase === 'playing' && s.index === 0;
+  return !!s && s.phase === 'playing' && s.current.id === 'runner';
 }
 function closeModeOverlay(focusId) {
   clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
   Audio.resume(); hideAllOverlays();
   if (expedition) {
     if (expedition.snapshot().phase === 'playing') { exitExpedition(); return; }
-    showExpedition(); return;
+    launchExpeditionLeg(); return;
   }
   showOverlay('ovAttract'); $(focusId).focus();
 }
 function expeditionRecordText(r) {
-  if (r.id === 'runner') return (r.reached ? 'Rendezvous reached' : 'Rescue shuttle caught you') + ' · ' + r.distance + 'm · ' + r.score.toLocaleString() + ' points';
-  if (r.id === 'arena') return (r.tie ? 'Arena tied' : r.won ? 'Arena won' : 'Duel complete') + ' · ' + r.kos + ' KOs · ' + r.stocks + ' lives left';
-  return (r.finished ? 'Home in ' + r.position + (r.position === 1 ? 'st' : r.position === 2 ? 'nd' : r.position === 3 ? 'rd' : 'th') : 'Race complete · unfinished') + (r.time === null ? '' : ' · ' + r.time.toFixed(1) + 's');
+  if (r.id === 'runner') return (r.reached ? 'Rendezvous reached' : 'Rescue shuttle caught you') + ' · ' + r.distance + 'm';
+  if (r.id === 'arena') return (r.kind === 'boss' ? (r.won ? 'Guardian defeated' : 'Guardian escaped') : r.won ? 'Path cleared' : 'Shuttle extracted you');
+  return r.finished ? 'Sprint finished · ' + r.position + (r.position === 1 ? 'st' : r.position === 2 ? 'nd' : r.position === 3 ? 'rd' : 'th') : 'Race extraction complete';
 }
-function showExpedition() {
-  if (!expedition) return;
-  const s = expedition.snapshot(), finished = s.phase === 'complete';
-  const next = Math.min(2, s.index + (s.phase === 'debrief' ? 1 : 0));
-  const leg = SpaceManExpedition.legs[next];
-  clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
-  G.mode = 'attract';
-  hideAllOverlays();
-  $('expeditionTitle').textContent = finished ? 'You made the whole trip.' : s.records.length ? 'Next stop: ' + leg.name.toLowerCase() + '.' : 'One trip. Three adventures.';
-  $('expeditionDestination').textContent = finished ? 'EXPEDITION COMPLETE' : 'LEG ' + (next + 1) + ' OF 3 · ' + leg.destination;
-  $('expeditionCopy').textContent = finished ? 'From the flare to the finish line. Every leg is part of your story, whatever the result.' : leg.briefing;
-  $('expeditionControls').textContent = finished ? 'Take another trip, or explore each mode at your own pace.' : leg.controls;
-  $('expeditionReceipt').innerHTML = s.records.map(r => '<li>' + escapeHtml(expeditionRecordText(r)) + '</li>').join('');
-  $('expeditionReceipt').hidden = s.records.length === 0;
-  for (let i = 0; i < 3; i++) {
-    const el = $('expeditionLeg' + i); el.dataset.state = i < s.records.length ? 'done' : i === next ? 'next' : 'later';
-    if (!finished && i === next) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current');
-  }
-  $('btnExpeditionContinue').textContent = finished ? 'New expedition' : leg.action;
-  $('btnExpeditionExit').textContent = s.records.length && !finished ? 'Leave expedition' : 'Back to all modes';
-  showOverlay('ovExpedition'); $('btnExpeditionContinue').focus();
-  announce($('expeditionDestination').textContent + '. ' + $('expeditionCopy').textContent);
+function showExpeditionCue(leg, previous) {
+  const cue = $('expeditionCue');
+  clearTimeout(expeditionCueTimer);
+  const owner = document.querySelector(leg.id === 'arena' ? '.arena-root' : leg.id === 'race' ? '.race-root' : 'body') || document.body;
+  owner.appendChild(cue); cue.inert = false;
+  cue.dataset.kind = leg.kind;
+  $('expeditionCueRoute').textContent = (previous ? expeditionRecordText(previous) + ' · ' : '') + 'SECTOR ' + leg.sector + ' · ROUTE ' + (leg.index + 1);
+  $('expeditionCueTitle').textContent = leg.name;
+  const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  $('expeditionCueHelp').textContent = touch ? leg.cue + ' · Use the on-screen controls' : leg.cue + ' · ' + leg.controls;
+  cue.hidden = false;
+  expeditionCueTimer = setTimeout(() => { cue.hidden = true; }, 4600);
 }
 function openExpedition() {
   if (modeOverlayActive() || G.mode !== 'attract' || expedition) return;
   if (netLive()) { announce('Leave your room before starting a solo expedition. Your room is still connected.'); queueToast('Leave your room before starting a solo expedition.', 'sys'); return; }
   expedition = SpaceManExpedition.create((Math.random() * 0xffffffff) >>> 0);
-  showExpedition();
+  launchExpeditionLeg();
+}
+function completeExpeditionEncounter(session, leg, record) {
+  if (expedition !== session || !session.finish(leg.id, leg.token, record)) return false;
+  if (typeof earnCosmeticEvent === 'function') earnCosmeticEvent({ type: 'encounter', id: 'solo:' + session.snapshot().seed + ':' + leg.index, mode: leg.id, kind: leg.kind });
+  return true;
 }
 function launchExpeditionLeg() {
   if (!expedition || netLive() || modeOverlayActive()) return;
-  const s = expedition.snapshot();
-  if (s.phase === 'complete') { expedition = SpaceManExpedition.create((Math.random() * 0xffffffff) >>> 0); showExpedition(); return; }
-  if (s.phase === 'debrief') expedition.advance();
+  const s = expedition.snapshot(), previous = s.records[s.records.length - 1];
+  if (s.phase === 'transition') expedition.advance();
   const leg = expedition.begin(); if (!leg) return;
   expeditionToken = leg.token;
-  hideAllOverlays(); clearInput();
+  for (const key of expeditionHeldKeys) expeditionKeyGate.add(key);
+  hideAllOverlays(); clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
   if (leg.id === 'runner') {
-    $('btnQuit').textContent = 'Leave expedition';
+    $('btnQuit').textContent = 'Finish expedition';
     startRun({ course: { kind: 'seed', seed: leg.seed, gen: COURSE.GEN, beat: 0 } });
-    announce('Expedition leg one. Reach 400 meters. Your shuttle continues even if you fall.');
+    showExpeditionCue(leg, previous);
     return;
   }
+  G.mode = 'attract';
   const ui = leg.id === 'arena' ? getArenaUI() : getRaceUI();
   Audio.suspend();
   const session = expedition;
   const opened = ui.openSession(leg, (record) => {
-    if (expedition !== session || !session.finish(leg.id, leg.token, record)) return;
-    ui.close(); // Result is recorded before onClose chooses the next briefing.
+    if (!completeExpeditionEncounter(session, leg, record)) return;
+    ui.close(); // Release the old engine before synchronously starting the next.
   });
-  if (!opened) { exitExpedition(); announce('Could not start that expedition leg. Please try again.'); }
+  if (!opened) { exitExpedition(); announce('Could not start that route. Please try again.'); return; }
+  showExpeditionCue(leg, previous);
 }
 function finishExpeditionRunner(reached) {
   if (!expeditionRunnerActive()) return;
-  if (!expedition.finish('runner', expeditionToken, { reached, distance: G.dist, score: G.finalScore })) return;
+  const leg = expedition.snapshot().current;
+  if (!completeExpeditionEncounter(expedition, leg, { reached, distance: G.dist, score: G.finalScore })) return;
   cancelDeathAnim(); Audio.killSting(); G.deathCardShown = true; G.showPicker = false;
   $('btnQuit').textContent = 'Quit to Title';
-  showAttract(); showExpedition();
+  G.mode = 'attract';
+  launchExpeditionLeg();
 }
 function exitExpedition() {
   if (!expedition) return;
-  const runner = expeditionRunnerActive();
+  const runner = expeditionRunnerActive(), completed = expedition.snapshot().completed;
   if (runner && G.player && G.player.dead && !G.deathCardShown) { G.deathCardShown = true; finalizeDeath(); }
   expedition.cancel(); expedition = null; expeditionToken = 0;
+  clearTimeout(expeditionCueTimer); $('expeditionCue').hidden = true; document.body.appendChild($('expeditionCue'));
   if (arenaUI && arenaUI.active) arenaUI.close();
   if (raceUI && raceUI.active) raceUI.close();
   cancelDeathAnim(); Audio.killSting(); Audio.resume(); clearInput(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
+  expeditionKeyGate.clear();
   $('btnQuit').textContent = 'Quit to Title';
   showAttract(); $('btnExpedition').focus();
+  if (completed) queueToast('Expedition complete · ' + completed + ' routes explored', 'sys');
 }
 $('btnExpedition').onclick = openExpedition;
-$('btnExpeditionContinue').onclick = launchExpeditionLeg;
-$('btnExpeditionExit').onclick = exitExpedition;
 
 // Pointer clicks drop focus so a later Space still means start/retry; keyboard
 // activation (detail 0) keeps it where the player put it.
