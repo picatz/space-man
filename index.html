@@ -4704,6 +4704,7 @@ function render(alpha) {
   drawArrivalFront();
   drawParticles(alpha);
   drawHints(iCamX, iCamY);
+  drawRunnerIdentity(alpha);
   ctx.restore();
 
   drawPopups(iCamX, iCamY);
@@ -5532,6 +5533,27 @@ function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
   rrPath(ctx, -2, -3.6, 7, 3.4, 1.4); ctx.fill();     // rounded body
   ctx.fillRect(-1.4, -0.8, 2.2, 2.2);                  // grip drops into the glove
   ctx.fillStyle = P.visTop; ctx.fillRect(5, -3.3, 1.6, 1.5);   // emitter
+}
+
+// A screen-space ownership marker survives matching outfits and busy scenery.
+// It is drawn once by the scene, never by drawPlayer's borrowed ghost/wardrobe rig.
+function drawRunnerIdentity(alpha) {
+  if (!['play', 'pause', 'resume'].includes(G.mode) || !G.player || (!netSpectating() && G.player.dead) || !ART.identityBadge) return;
+  const watching = netSpectating(), target = watching ? ghosts.find(g => g.active && g.p === spec.watchP && g.alpha > .1) : null;
+  if (watching && !target) return;
+  if (!watching && vigPose && vigPose.a < .85) return;
+  const p = G.player, wx = target ? target.rx : lerp(p.px, p.x, alpha) + p.w / 2;
+  const wy = target ? target.ry - CFG.ph / 2 : lerp(p.py, p.y, alpha) + p.landDip;
+  const m = ctx.getTransform && ctx.getTransform(); if (!m || !Number.isFinite(m.a)) return;
+  const dpr = view.dpr, x = (m.a * wx + m.c * wy + m.e) / dpr, y = (m.b * wx + m.d * wy + m.f) / dpr;
+  const scale = Math.hypot(m.a, m.b) / dpr, w = vpW(), h = vpH();
+  const top = (viewInset('top') * view.scale / dpr) + (netInRun() ? 112 : 84);
+  if (x < -15 || x > w + 15 || y > h - 35 || y + p.h * scale < top) return;
+  ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ART.identityBrackets(ctx, x, y + p.h * scale / 2, Math.max(34, p.w * scale + 11), Math.max(43, p.h * scale + 8));
+  const text = watching ? 'WATCHING' : 'YOU', bw = watching ? 86 : 44;
+  ART.identityBadge(ctx, text, clamp(x - bw / 2, 8, w - bw - 8), Math.max(top, y - 41), bw, { primary: true, pointerX: x, pointerY: y - 10 });
+  ctx.restore();
 }
 
 function drawPlayer(alpha) {
@@ -7976,8 +7998,7 @@ function drawGhostActor(g) {
   // Plates and emotes of runners far above you stop at the race strip instead of sliding under it.
   const floorY = raceFloorWorldY(g.rx);
   const under = g.ry < floorY + CFG.ph / 2;   // the runner itself is up behind the strip: no plate floating over nothing
-  if (!under) ctx.drawImage(b.canvas, g.rx - b.w / 2, Math.max(g.ry - CFG.ph / 2 - 22, floorY), b.w, b.h);
-  if (spec.watchP === g.p && netSpectating()) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(g.rx, g.ry, CFG.ph / 2 + 6, 0, TAU); ctx.stroke(); }
+  if (!under && !(spec.watchP === g.p && netSpectating())) ctx.drawImage(b.canvas, g.rx - b.w / 2, Math.max(g.ry - CFG.ph / 2 - 22, floorY), b.w, b.h);
   ctx.restore();
   if (g.emoteT > 0 && !under) drawEmoteBubble(g.rx, Math.max(g.ry - CFG.ph / 2 - 34, floorY + b.h + 12), g.emoteId, g.emoteT);
 }

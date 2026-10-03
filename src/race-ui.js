@@ -33,11 +33,11 @@
 .race-button{min-height:46px;padding:10px 17px;color:#d9edf8;border:1px solid #38536b;border-radius:13px;background:#192f45;font-weight:700;font-size:12px;line-height:1.4;max-width:100%}.race-button:hover{background:#26445b}.race-button:active,.race-pressed{transform:translateY(2px);background:#38617b!important}.race-primary{background:#c7f47d;color:#152b30;border-color:#deffae;min-height:54px;box-shadow:0 4px 0 #53783d;font-size:14px}.race-primary:hover{background:#e0ffa9}.race-text{border-color:transparent;background:transparent;color:#9eb9cc}.race-small{padding:8px 12px;min-height:44px}.race-kicker{font-size:10px;font-weight:800;letter-spacing:.18em;color:#90acbf}.race-tag{color:#c7f47d;font-size:10px;font-weight:800;letter-spacing:.12em}.race-pill{padding:7px 11px;border:1px solid #628754;border-radius:20px;background:#172d2e;display:inline-block;color:#d3f9a6;font-size:10px;letter-spacing:.12em;font-weight:750}
 .race-modal{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:calc(var(--race-top) + 20px) calc(var(--race-right) + 24px) calc(var(--race-bottom) + 20px) calc(var(--race-left) + 24px);background:linear-gradient(110deg,#080f24ed,#080f2466);overflow:hidden}.race-dialog{width:min(1060px,100%);max-height:100%;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#38617b transparent;min-width:0}.race-lobby-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px}.race-grid{display:grid;grid-template-columns:1fr 1.12fr;align-items:center;gap:48px}.race-intro{min-width:0}.race-title{font-size:clamp(42px,5vw,68px);font-weight:950;letter-spacing:-.06em;line-height:.95;margin:20px 0}.race-title span{display:block;color:#c7f47d}.race-lede{max-width:310px;color:#a9bed0;font-size:14px;line-height:1.65}.race-hero{width:100%;height:auto;display:block;max-width:390px;margin:-8px 0}.race-facts{display:flex;gap:18px;color:#9eb8ca;font-size:11px;flex-wrap:wrap}.race-facts strong{color:#eef7fb;display:block;font-size:15px}
 .race-setup{padding:23px;border:1px solid #344e64;border-radius:22px;background:linear-gradient(130deg,#172b41ef,#0e1e33ef);min-width:0}.race-label{margin:0 0 10px;color:#a9bed0;font-size:10px;letter-spacing:.12em;font-weight:800}.race-track-list{display:grid;gap:8px}.race-track{width:100%;display:flex;align-items:center;gap:13px;text-align:left;min-height:78px;padding:9px 12px;background:#0d1e32;min-width:0}.race-track[aria-pressed=true]{border-color:#c7f47d;background:#203b3d}.race-track canvas{width:95px;height:57px;flex:0 0 95px}.race-track strong{display:block;font-size:12px;color:#eff9ff;letter-spacing:-.01em}.race-track small{font-size:8px;font-weight:800;letter-spacing:.15em;color:#8faaBE}.race-track-description{color:#91aabf;font-size:11px;min-height:30px;margin:10px 0 14px}.race-options{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 20px}.race-segments{display:flex;gap:3px;background:#0b1a2b;border:1px solid #2a4258;padding:3px;border-radius:10px}.race-segment{background:transparent;border-color:transparent;min-height:36px;padding:7px 12px;font-size:11px}.race-segment[aria-pressed=true]{background:#35516a;color:#fff}.race-launch{width:100%}.race-local-note{font-size:10px;color:#92aabf;text-align:center;margin:15px 0 0}.race-help{border-top:1px solid #293f56;padding-top:10px;margin-top:17px;color:#a4bdcf;font-size:11px}.race-help summary{min-height:35px;cursor:pointer;color:#c4d9e7;padding:7px 0}.race-help p{margin:5px 0 12px}
-.race-hud{position:absolute;left:calc(var(--race-left) + 20px);right:calc(var(--race-right) + 20px);top:calc(var(--race-top) + 16px);z-index:3;pointer-events:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.race-hud-box{display:flex;align-items:center;gap:18px;background:#091727df;border:1px solid #426174;border-radius:15px;padding:11px 15px;box-shadow:0 4px 24px #0004;min-width:0}.race-position{font-size:39px;font-weight:900;line-height:1;color:#c7f47d;letter-spacing:-.05em}.race-position small{font-size:14px;color:#8facbf}.race-metric{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}.race-metric strong{font-size:17px}.race-metric span{font-size:8px;color:#93adbf;font-weight:700;letter-spacing:.14em}.race-hud-right{display:flex;gap:8px;align-items:center}.race-pause{pointer-events:auto;width:48px;height:48px;padding:10px;font-size:19px;background:#112a3ee8}.race-time{color:#e7f3fb;font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;background:#091727df;border:1px solid #344e64;border-radius:12px;padding:10px 13px}.race-speed{position:absolute;left:calc(var(--race-left) + 23px);bottom:calc(var(--race-bottom) + 22px);z-index:3;color:#e5f6ff;pointer-events:none}.race-speed strong{font-size:29px;line-height:1;font-variant-numeric:tabular-nums}.race-speed span{font-size:9px;letter-spacing:.1em;color:#94b7ca}.race-boostbar{width:130px;height:5px;background:#2d4456;border-radius:9px;overflow:hidden;margin-top:7px}.race-boostfill{height:100%;background:#c7f47d;transform-origin:left}.race-hint{position:absolute;bottom:calc(var(--race-bottom) + 23px);left:50%;transform:translateX(-50%);padding:6px 10px;background:#091727d9;color:#a8c7d9;z-index:3;font-size:10px;white-space:nowrap;border-radius:8px;pointer-events:none}.race-minimap{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 20px);width:170px;height:120px;background:#091727a9;border:1px solid #426174;border-radius:14px;z-index:3;pointer-events:none}.race-banner{position:absolute;left:50%;top:35%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:4;color:#eefaff;font-size:72px;font-weight:950;text-shadow:0 5px 0 #122c42}.race-banner small{display:block;font-size:10px;letter-spacing:.18em;color:#c7f47d;background:#091727c9;border-radius:18px;padding:7px 12px;text-shadow:none}.race-warning{position:absolute;top:calc(var(--race-top) + 103px);left:50%;transform:translateX(-50%);background:#543421e0;border:1px solid #c18c5e;border-radius:20px;padding:6px 14px;font-size:10px;color:#ffe0b5;z-index:3;pointer-events:none;white-space:nowrap}
+.race-hud{position:absolute;left:calc(var(--race-left) + 20px);right:calc(var(--race-right) + 20px);top:calc(var(--race-top) + 16px);z-index:3;pointer-events:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.race-hud-box{display:flex;align-items:center;gap:18px;background:#091727df;border:1px solid #426174;border-radius:15px;padding:11px 15px;box-shadow:0 4px 24px #0004;min-width:0}.race-position{font-size:39px;font-weight:900;line-height:1;color:#c7f47d;letter-spacing:-.05em}.race-position small{font-size:14px;color:#8facbf}.race-metric{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}.race-metric strong{font-size:17px}.race-metric span{font-size:8px;color:#93adbf;font-weight:700;letter-spacing:.14em}.race-hud-left{display:grid;gap:6px;min-width:0;max-width:190px}.race-identity{display:flex;align-items:center;gap:8px;min-width:0;padding:5px 9px;background:#091727f2;border:1.5px solid #FFF3CE;border-radius:11px;color:#FFF3CE;box-shadow:0 2px 8px #0006}.race-identity canvas{width:30px;height:30px;flex:0 0 30px;background:#23354a;border-radius:50%}.race-identity-copy{display:flex;flex-direction:column;min-width:0;line-height:1.25}.race-identity-role{font-size:10px;letter-spacing:.1em;font-weight:900}.race-identity-name{font-size:11px;font-weight:650;color:#eef7fb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-hud-right{display:flex;gap:8px;align-items:center}.race-pause{pointer-events:auto;width:48px;height:48px;padding:10px;font-size:19px;background:#112a3ee8}.race-time{color:#e7f3fb;font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;background:#091727df;border:1px solid #344e64;border-radius:12px;padding:10px 13px}.race-speed{position:absolute;left:calc(var(--race-left) + 23px);bottom:calc(var(--race-bottom) + 22px);z-index:3;color:#e5f6ff;pointer-events:none}.race-speed strong{font-size:29px;line-height:1;font-variant-numeric:tabular-nums}.race-speed span{font-size:9px;letter-spacing:.1em;color:#94b7ca}.race-boostbar{width:130px;height:5px;background:#2d4456;border-radius:9px;overflow:hidden;margin-top:7px}.race-boostfill{height:100%;background:#c7f47d;transform-origin:left}.race-hint{position:absolute;bottom:calc(var(--race-bottom) + 23px);left:50%;transform:translateX(-50%);padding:6px 10px;background:#091727d9;color:#a8c7d9;z-index:3;font-size:10px;white-space:nowrap;border-radius:8px;pointer-events:none}.race-minimap{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 20px);width:170px;height:120px;background:#091727a9;border:1px solid #426174;border-radius:14px;z-index:3;pointer-events:none}.race-banner{position:absolute;left:50%;top:35%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:4;color:#eefaff;font-size:72px;font-weight:950;text-shadow:0 5px 0 #122c42}.race-banner small{display:block;font-size:10px;letter-spacing:.18em;color:#c7f47d;background:#091727c9;border-radius:18px;padding:7px 12px;text-shadow:none}.race-warning{position:absolute;top:calc(var(--race-top) + 142px);left:50%;transform:translateX(-50%);background:#543421e0;border:1px solid #c18c5e;border-radius:20px;padding:6px 14px;font-size:10px;color:#ffe0b5;z-index:3;pointer-events:none;white-space:nowrap}
 .race-touch{display:none;position:absolute;inset:0;z-index:4;pointer-events:none}.race-root[data-touch=true] .race-touch{display:block}.race-root[data-touch=true] .race-hint,.race-root[data-screen=lobby] .race-hint{display:none}.race-touch-group{display:flex;align-items:end;gap:10px;position:absolute;bottom:calc(var(--race-bottom) + 22px);pointer-events:auto;touch-action:none}.race-steering{left:calc(var(--race-left) + 18px)}.race-actions{right:calc(var(--race-right) + 18px)}.race-touch-button{width:65px;height:65px;border-radius:20px;background:#102e42d9;border:1.5px solid #73a9bd;color:#e7faff;font-size:27px;padding:5px;box-shadow:0 4px 0 #071522;touch-action:none}.race-touch-button small{display:block;font-size:8px;letter-spacing:.08em;color:#b3d1e1}.race-touch-boost{background:#334735db;border-color:#c7f47d;color:#daffae}.race-touch-boost span{font-size:22px}.race-root[data-handed=left] .race-steering{left:auto;right:calc(var(--race-right) + 18px)}.race-root[data-handed=left] .race-actions{right:auto;left:calc(var(--race-left) + 18px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 104px)}.race-root[data-touch=true] .race-minimap{bottom:calc(var(--race-bottom) + 106px);width:132px;height:92px}.race-recover{position:absolute;left:50%;bottom:calc(var(--race-bottom) + 25px);transform:translateX(-50%);pointer-events:auto;background:#0b2235d9;font-size:9px;padding:7px 10px;min-height:44px}
 .race-compact{width:min(430px,100%);padding:25px;background:#0d2035f5;border:1px solid #456174;border-radius:23px;box-shadow:0 18px 100px #0006}.race-compact h2{font-size:34px;letter-spacing:-.05em;line-height:1.08;margin:16px 0 12px}.race-compact p{color:#aac3d3;font-size:13px}.race-compact>.race-button{width:100%;margin-top:10px}.race-results{margin:20px 0}.race-result-row{display:flex;align-items:center;gap:14px;padding:10px 4px;border-bottom:1px solid #294054;color:#d2e6f3;font-size:12px}.race-result-row strong{flex:1}.race-result-row span:first-child{font-size:19px;color:#c7f47d;font-weight:800}.race-result-row span:last-child{font-variant-numeric:tabular-nums;color:#93b2c6}.race-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
-@media(max-width:760px){.race-grid{gap:22px;grid-template-columns:1fr}.race-intro{display:grid;grid-template-columns:1fr .8fr;column-gap:10px;align-items:center}.race-intro>.race-pill{grid-column:1;justify-self:start;font-size:8px;letter-spacing:.1em;padding:6px 9px}.race-title{font-size:34px;line-height:1;margin:13px 0;grid-column:1}.race-lede{font-size:12px;margin:0;grid-column:1/-1;max-width:none}.race-hero{grid-column:2;grid-row:1/4;width:100%;margin:0}.race-facts{display:none}.race-lobby-header{margin-bottom:8px}.race-setup{padding:17px}.race-track{min-height:68px}.race-track canvas{width:85px;height:50px;flex-basis:85px}.race-options{margin-bottom:15px}.race-modal{padding:calc(var(--race-top) + 12px) calc(var(--race-right) + 16px) calc(var(--race-bottom) + 14px) calc(var(--race-left) + 16px)}.race-hud{left:calc(var(--race-left) + 12px);right:calc(var(--race-right) + 12px);top:calc(var(--race-top) + 12px);gap:7px}.race-hud-box{gap:13px;padding:10px 12px}.race-position{font-size:32px}.race-metric strong{font-size:15px}.race-time{font-size:14px;padding:11px 10px}.race-pause{width:44px;height:44px;min-height:44px}.race-touch-group{gap:7px}.race-touch-button{width:59px;height:63px}.race-steering{left:calc(var(--race-left) + 13px)}.race-actions{right:calc(var(--race-right) + 13px)}.race-recover{font-size:8px;padding:7px;bottom:calc(var(--race-bottom) + 31px)}.race-hint{max-width:60%;white-space:normal;text-align:center}.race-warning{top:calc(var(--race-top) + 85px)}}
-@media(max-height:520px) and (min-width:600px){.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:11px}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:48%;font-size:55px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
+@media(max-width:760px){.race-grid{gap:22px;grid-template-columns:1fr}.race-intro{display:grid;grid-template-columns:1fr .8fr;column-gap:10px;align-items:center}.race-intro>.race-pill{grid-column:1;justify-self:start;font-size:8px;letter-spacing:.1em;padding:6px 9px}.race-title{font-size:34px;line-height:1;margin:13px 0;grid-column:1}.race-lede{font-size:12px;margin:0;grid-column:1/-1;max-width:none}.race-hero{grid-column:2;grid-row:1/4;width:100%;margin:0}.race-facts{display:none}.race-lobby-header{margin-bottom:8px}.race-setup{padding:17px}.race-track{min-height:68px}.race-track canvas{width:85px;height:50px;flex-basis:85px}.race-options{margin-bottom:15px}.race-modal{padding:calc(var(--race-top) + 12px) calc(var(--race-right) + 16px) calc(var(--race-bottom) + 14px) calc(var(--race-left) + 16px)}.race-hud{left:calc(var(--race-left) + 12px);right:calc(var(--race-right) + 12px);top:calc(var(--race-top) + 12px);gap:7px}.race-hud-box{gap:13px;padding:10px 12px}.race-position{font-size:32px}.race-metric strong{font-size:15px}.race-time{font-size:14px;padding:11px 10px}.race-pause{width:44px;height:44px;min-height:44px}.race-touch-group{gap:7px}.race-touch-button{width:59px;height:63px}.race-steering{left:calc(var(--race-left) + 13px)}.race-actions{right:calc(var(--race-right) + 13px)}.race-recover{font-size:8px;padding:7px;bottom:calc(var(--race-bottom) + 31px)}.race-hint{max-width:60%;white-space:normal;text-align:center}.race-warning{top:calc(var(--race-top) + 128px)}}
+@media(max-height:520px) and (min-width:600px){.race-hud-left{grid-template-columns:auto minmax(0,170px);align-items:center;max-width:360px}.race-warning{top:calc(var(--race-top) + 103px)}.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:11px}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:48%;font-size:55px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
 @media(max-width:350px){.race-touch-button{width:54px;height:60px}.race-root .race-recover{width:44px;font-size:0;padding:5px 2px}.race-recover:after{content:"↺";font-size:23px}.race-boostbar{width:100px}.race-root[data-touch=true] .race-minimap{width:100px;height:70px}.race-hud-box{padding:9px 10px;gap:10px}.race-hud{gap:5px}.race-time{padding:10px 8px}}
 .race-online-panel{margin-top:18px;padding:13px 18px;border:1px solid #38536b;border-radius:16px;background:#10263be8}.race-online-panel>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750;color:#d6efbf}.race-online-entry{display:grid;gap:10px}.race-online-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.race-room-input{width:100%;min-height:46px;border:1px solid #547183;border-radius:10px;background:#071c2e;color:#e1f5ff;font:inherit;padding:10px;user-select:text;touch-action:auto}.race-room-members{padding-left:20px;color:#c7e2ef;font-size:12px}.race-room-code{font-size:18px;letter-spacing:.08em}.race-watch-tools{position:absolute;bottom:calc(var(--race-bottom) + 18px);left:50%;transform:translateX(-50%);z-index:4;background:#10263be8;border:1px solid #38536b;border-radius:12px;display:flex;align-items:center;gap:8px;max-width:95%;font-size:10px}.race-watch-tools>.race-button{width:44px;min-width:44px;height:44px;padding:8px;flex:0 0 44px}.race-watch-tools>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-root button:disabled{opacity:.5;cursor:default}.race-root[data-online=true] .race-hint{display:none}
 .race-audio-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.race-audio-volume{display:flex;gap:8px;align-items:center;font-size:11px;color:#a9bed0}.race-audio-volume input{max-width:140px;min-height:44px;touch-action:pan-x}.race-compact .race-audio-controls{border-top:1px solid #294054;padding-top:12px}
@@ -73,6 +73,11 @@
       minimap,
       mg,
       position,
+      identity,
+      identityPortrait,
+      identityRole,
+      identityName,
+      identitySignature = "",
       lap,
       time,
       speed,
@@ -929,12 +934,23 @@
       lap = el("strong");
       lapWrap.append(el("span", "", "LAP"), lap);
       stats.append(position, lapWrap);
+      const left = el("div", "race-hud-left");
+      identity = el("div", "race-identity");
+      identityPortrait = el("canvas");
+      identityPortrait.width = identityPortrait.height = 72;
+      identityPortrait.setAttribute("aria-hidden", "true");
+      const identityCopy = el("div", "race-identity-copy");
+      identityRole = el("span", "race-identity-role");
+      identityName = el("span", "race-identity-name");
+      identityCopy.append(identityRole, identityName);
+      identity.append(identityPortrait, identityCopy);
+      left.append(stats, identity);
       const right = el("div", "race-hud-right");
       time = el("div", "race-time", "0:00.00");
       const pb = button("Ⅱ", "race-pause", () => pause());
       pb.setAttribute("aria-label", "Pause race");
       right.append(time, pb);
-      hud.append(stats, right);
+      hud.append(left, right);
       rootEl.append(hud);
       const speedWrap = el("div", "race-speed");
       speed = el("strong", "", "0");
@@ -1507,6 +1523,26 @@
       h.font = "700 16px system-ui";
       h.fillText("01", 508, 204);
     }
+    function updateIdentity(actor) {
+      const own = actor.id === ownActor()?.id;
+      const role = own ? "YOU" : "WATCHING";
+      const name = actor.name || "Pilot";
+      identity.dataset.actorId = actor.id;
+      identity.dataset.role = own ? "you" : "watching";
+      setText(identityRole, role);
+      setText(identityName, name);
+      identity.setAttribute("aria-label", role + " · " + name);
+      const appearance = actor.appearance || (own && typeof opts.appearance === "function" ? opts.appearance() : null);
+      const signature = JSON.stringify([actor.id, appearance, actor.color]);
+      if (signature === identitySignature) return;
+      identitySignature = signature;
+      const ctx = identityPortrait.getContext("2d");
+      ctx.clearRect(0, 0, 72, 72);
+      ctx.save(); ctx.translate(36, 42); ctx.scale(2, 2);
+      root.SpaceManArt.characterHelmet(ctx, 0, 0,
+        root.SpaceManArt.characterStyle(appearance, actor.color), { calm: true });
+      ctx.restore();
+    }
     function drawMap(ctx, c, w, h, actors) {
       ctx.clearRect(0, 0, w, h);
       ctx.save();
@@ -1522,19 +1558,22 @@
       ctx.strokeStyle = c.edge + "77";
       ctx.lineJoin = "round";
       ctx.stroke();
-      if (actors)
-        for (const a of actors) {
-          ctx.fillStyle = a.color;
+      if (actors) {
+        // Draw the focused pilot last, with a shape/contrast cue independent of suit color.
+        const focused = followActor();
+        for (const a of [...actors.filter(a => a.id !== focused?.id), ...(focused ? [focused] : [])]) {
+          const selected = a.id === focused?.id;
+          ctx.fillStyle = selected ? "#FFF3CE" : a.color;
           ctx.beginPath();
-          ctx.arc(a.x, a.y, a.controller === "human" ? 38 : 26, 0, TAU);
+          ctx.arc(a.x, a.y, selected ? 40 : 26, 0, TAU);
           ctx.fill();
-          if (a.controller === "human") {
-            ctx.strokeStyle = "#fff";
-            ctx.lineWidth = 12;
+          if (selected) {
+            ctx.strokeStyle = "#091727";
+            ctx.lineWidth = 16;
             ctx.stroke();
           }
         }
-      else {
+      } else {
         const p = c.segments[0];
         ctx.fillStyle = c.accent;
         ctx.fillRect(p.x - 30, p.y - 30, 60, 60);
@@ -1549,6 +1588,7 @@
         a &&
         perspective?.render(R.snapshot(state), {
           actorId: a.id,
+          localActorId: ownActor()?.id || null,
           previous: onlineActive() ? null : previousPose,
           network: onlineActive(),
           paused: onlineActive() ? roomPaused : paused,
@@ -1649,61 +1689,61 @@
           kart(g, actor);
         }
         g.restore();
-        // Screen-space labels remain upright in the chase view. Keep YOU first
-        // and omit crowded CPU labels rather than stacking names over the grid.
+        // Reserve the followed pilot's label first and paint it last. Array/seat
+        // order must never let a CPU label hide the one that identifies you.
         const topClip = Math.max(
           83,
-          hud.getBoundingClientRect().bottom - (viewport?.top || 0) + 10,
+          hud.getBoundingClientRect().bottom - (viewport?.top || 0) + 8,
         );
         const controlsTop =
           rootEl.dataset.touch === "true" && !touch.hidden
             ? touch.querySelector(".race-touch-group").getBoundingClientRect()
                 .top - (viewport?.top || 0)
             : height;
-        const bottomClip = Math.min(height - 100, controlsTop - 16);
-        const labels = [],
-          cos = Math.cos(camera.rotation),
-          sin = Math.sin(camera.rotation);
-        g.font = "700 11px system-ui";
+        const bottomClip = Math.min(height - 65, controlsTop - 12);
+        const cos = Math.cos(camera.rotation), sin = Math.sin(camera.rotation);
+        const project = actor => {
+          const dx = actor.x - camera.x, dy = actor.y - camera.y;
+          return { x: width / 2 + (dx * cos - dy * sin) * zoom,
+            y: height * 0.48 + (dx * sin + dy * cos) * zoom };
+        };
+        const focus = project(a), own = a.id === ownActor()?.id;
+        const label = own ? "YOU" : "WATCHING";
+        g.font = "900 12px system-ui";
+        const labelWidth = g.measureText(label).width + 22;
+        const focusX = clamp(focus.x, labelWidth / 2 + 6, width - labelWidth / 2 - 6);
+        const focusY = clamp(focus.y - 38 * zoom, topClip + 27, Math.max(topClip + 27, bottomClip - 8));
+        const focusBox = { left: focusX - labelWidth / 2, right: focusX + labelWidth / 2,
+          top: focusY - 27, bottom: focusY + 8 };
+        const labels = [focusBox];
+        g.font = "700 10px system-ui";
         g.textAlign = "center";
         for (const actor of state.actors) {
-          const dx = actor.x - camera.x,
-            dy = actor.y - camera.y;
-          const x = width / 2 + (dx * cos - dy * sin) * zoom;
-          const y = height * 0.48 + (dx * sin + dy * cos) * zoom - 30;
-          const name = actor.controller === "human" ? "YOU" : actor.name;
-          const w = g.measureText(name).width + 10;
-          const box = {
-            left: x - w / 2,
-            right: x + w / 2,
-            top: y - 12,
-            bottom: y + 5,
-          };
-          if (
-            box.left < 5 ||
-            box.right > width - 5 ||
-            box.top < topClip ||
-            box.bottom > bottomClip
-          )
-            continue;
-          if (
-            labels.some(
-              (b) =>
-                box.left < b.right + 6 &&
-                box.right > b.left - 6 &&
-                box.top < b.bottom + 5 &&
-                box.bottom > b.top - 5,
-            )
-          )
-            continue;
+          if (actor.id === a.id) continue;
+          const p = project(actor), x = p.x, y = p.y - 30;
+          const name = actor.name, w = g.measureText(name).width + 10;
+          const box = { left: x - w / 2, right: x + w / 2, top: y - 12, bottom: y + 5 };
+          if (box.left < 5 || box.right > width - 5 || box.top < topClip || box.bottom > bottomClip ||
+            labels.some(b => box.left < b.right + 6 && box.right > b.left - 6 && box.top < b.bottom + 5 && box.bottom > b.top - 5)) continue;
           labels.push(box);
-          g.fillStyle = "#071626bb";
-          round(g, box.left, box.top, w, 18, 6);
-          g.fill();
-          g.fillStyle = actor.color;
+          g.fillStyle = "#071626dd";
+          round(g, box.left, box.top, w, 18, 6); g.fill();
+          g.fillStyle = "#cfdfeb";
           g.fillText(name, x, y + 1);
         }
+        // The double outline stays legible on bright track markings and dark sky.
+        g.beginPath();
+        g.ellipse(focus.x, focus.y, 36 * zoom, 29 * zoom, camera.rotation + a.heading, 0, TAU);
+        g.strokeStyle = "#091727"; g.lineWidth = 6; g.stroke();
+        g.strokeStyle = "#FFF3CE"; g.lineWidth = 2.5; g.stroke();
+        g.fillStyle = "#FFF3CE"; g.strokeStyle = "#07111F"; g.lineWidth = 4;
+        round(g, focusBox.left, focusBox.top, labelWidth, 26, 9); g.fill(); g.stroke();
+        g.beginPath(); g.moveTo(focusX - 5, focusY - 1); g.lineTo(focusX, focusY + 6); g.lineTo(focusX + 5, focusY - 1); g.closePath();
+        g.fillStyle = "#FFF3CE"; g.fill();
+        g.font = "900 12px system-ui"; g.fillStyle = "#101B29";
+        g.fillText(label, focusX, focusY - 9);
       }
+      updateIdentity(a);
       drawMap(mg, c, 340, 240, state.actors);
       position.replaceChildren(
         document.createTextNode(
