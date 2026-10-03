@@ -119,7 +119,10 @@ test(
     await page.waitForFunction(() => raceUI.snapshot().actors[0].boosting);
     await page.keyboard.up("Space");
     await page.keyboard.down("ArrowDown");
-    await page.waitForTimeout(300);
+    // Assert the intended 300 ms of simulation, not wall time: a busy hosted
+    // renderer may deliver fewer ticks while a fixed timeout is running.
+    const brakeTick = await page.evaluate(() => raceUI.snapshot().tick);
+    await page.waitForFunction(tick => raceUI.snapshot().tick >= tick + 18, brakeTick);
     await page.keyboard.up("ArrowDown");
     assert.ok(
       (await page.evaluate(() => raceUI.snapshot().actors[0].speed)) < 5,
