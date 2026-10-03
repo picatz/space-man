@@ -1736,6 +1736,7 @@
         const cue = root.SpaceManArt.identityMarkerLayout(a.id, bodies,
           {left:6,right:width-6,top:topClip,bottom:bottomClip});
         const labels = cue ? [{left:cue.x,right:cue.x+cue.w,top:cue.y,bottom:cue.y+cue.h}] : [];
+        if(cue?.leader){const l=cue.leader;labels.push({left:l.x,right:l.x+l.w,top:l.y,bottom:l.y+l.h});}
         // Browser QA observes the actual projection, not a parallel mock layout.
         rootEl.dataset.identity = cue ? (own ? 'YOU:' : 'WATCHING:') + a.id : '';
         rootEl.dataset.identityCue = JSON.stringify({cue,bodies});

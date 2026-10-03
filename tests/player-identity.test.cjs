@@ -44,3 +44,10 @@ test('secondary crew names omit a crowded label instead of laddering over anothe
  const rows=Art.identityLayout([{id:1,x:160,y:180,w:20,h:16,primary:true,priority:2},{id:2,x:162,y:180,w:100,h:16,fixed:true}],bounds);
  assert.deepEqual(rows.map(r=>r.id),[1]);
 });
+
+test('a five-craft cardinal pile-up keeps a diagonally placed cue and clear leader',()=>{
+ const bodies=[[140,200],[140,150],[140,250],[90,200],[190,200]].map(([x,y],id)=>({id,x,y,w:43,h:43}));
+ const cue=Art.identityMarkerLayout(0,bodies,{left:6,right:314,top:110,bottom:460});
+ assert.ok(cue);assert.equal(cue.link,true);assert.ok(cue.leader);
+ for(const b of bodies)assert.equal(overlap(cue,b),false);
+});

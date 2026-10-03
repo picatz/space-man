@@ -342,18 +342,33 @@ const characterHats = {
     const own = bodies.find(b => b.id === id); if (!own) return null;
     const w = 20, h = 16, cx = own.x + own.w / 2, cy = own.y + own.h / 2;
     const overlap = (a, b) => a.x < b.x + b.w + 2 && a.x + a.w > b.x - 2 && a.y < b.y + b.h + 2 && a.y + a.h > b.y - 2;
+    const crosses = (x1,y1,x2,y2,b) => {
+      let lo=0, hi=1;
+      for(const [start,delta,min,max] of [[x1,x2-x1,b.x-2,b.x+b.w+2],[y1,y2-y1,b.y-2,b.y+b.h+2]]) {
+        if(Math.abs(delta)<1e-6){if(start<min||start>max)return false;continue;}
+        const a=(min-start)/delta,z=(max-start)/delta;
+        lo=Math.max(lo,Math.min(a,z));hi=Math.min(hi,Math.max(a,z));if(lo>hi)return false;
+      }
+      return true;
+    };
     for (const gap of [6, 18, 30]) {
       const candidates = [
         [cx - w / 2, own.y - gap - h], [own.x - gap - w, cy - h / 2],
         [own.x + own.w + gap, cy - h / 2], [cx - w / 2, own.y + own.h + gap],
+        [own.x-gap-w,own.y-gap-h],[own.x+own.w+gap,own.y-gap-h],
+        [own.x-gap-w,own.y+own.h+gap],[own.x+own.w+gap,own.y+own.h+gap],
       ];
       for (const [x, y] of candidates) {
         const box = { id, x, y, w, h };
         if (x < bounds.left || x + w > bounds.right || y < bounds.top || y + h > bounds.bottom || bodies.some(b => overlap(box, b))) continue;
         const dx = x + w / 2 - cx, dy = y + h / 2 - cy;
         const edge = 1 / Math.max(Math.abs(dx) / (own.w / 2), Math.abs(dy) / (own.h / 2));
-        return { ...box, targetX: cx + dx * edge, targetY: cy + dy * edge,
-          link: Math.abs(dx) > 1 || dy > 0 || gap > 6 };
+        const targetX=cx+dx*edge,targetY=cy+dy*edge,link=Math.abs(dx)>1||dy>0||gap>6;
+        const length=Math.hypot(dx,dy),lineX=x+w/2-dx/length*9,lineY=y+h/2-dy/length*9;
+        if(link&&bodies.some(b=>b.id!==id&&crosses(lineX,lineY,targetX,targetY,b)))continue;
+        const leader=link?{x:Math.min(lineX,targetX)-2,y:Math.min(lineY,targetY)-2,
+          w:Math.abs(lineX-targetX)+4,h:Math.abs(lineY-targetY)+4}:null;
+        return { ...box, targetX, targetY, link, leader };
       }
     }
     return null; // The HUD remains authoritative when the visible corridor is full.
