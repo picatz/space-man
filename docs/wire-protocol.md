@@ -873,8 +873,25 @@ feature — features negotiate, they are never assumed.
 | 2 | `0x04` | ROLECHANGE |
 | 3 | `0x08` | ANTICHEAT |
 | 4 | `0x10` | HOSTEPOCH |
+| 5 | `0x20` | ARENA (explicit mode 1) |
+| 6 | `0x40` | Legacy RACE geometry revision 1; no longer advertised |
+| 7 | `0x80` | RACE geometry/contact revision 2 (explicit mode 2) |
 
-Full mask advertised by this snapshot: `0x1F`.
+The runner mask remains `0x1F`; Arena adds bit 5, and current Star Circuit adds
+only bit 7. Race revisions are mutually exclusive compatibility requirements,
+not optional features. Revision 2 changes authored road widths and contact rules;
+guests reconstruct course geometry from their local build, so old/new race
+clients must not share a match even though snapshot field widths are unchanged.
+
+Both HELLO and WELCOME require the local race revision capability. A current
+host rejects a legacy guest before assigning a seat; a current guest refuses a
+legacy host's WELCOME (and legacy hosts reject its new HELLO). This also applies
+to watchers. New clients show an instruction to refresh both games and create a
+new invite. Already-cached legacy clients may show their older generic mode
+mismatch message, but cannot enter the incompatible match. Runner protocol 6,
+Arena, invite mode flags, and race snapshot schema version 1 stay unchanged.
+Changes to race geometry or simulation compatibility must update this exclusive
+capability atomically with the authored data/rules and the offline cache version.
 
 ### 12.3 Callsigns
 

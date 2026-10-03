@@ -119,7 +119,11 @@ for (const viewport of [{width:320,height:568},{width:390,height:844},{width:844
     const {page} = await launch(t, {viewport, hasTouch:true, isMobile:true});
     await page.locator('#btnExpedition').tap(); await briefing(page);
     assert.equal(await page.locator('.expedition-panel').evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, 'no horizontal clipping');
-    if (viewport.width > viewport.height) assert.equal(await page.locator('.expedition-panel').evaluate(el => el.scrollHeight <= el.clientHeight + 1), true, 'landscape briefing fits without scrolling');
+    if (viewport.width > viewport.height) {
+      await capture(page, `expedition-${viewport.width}x${viewport.height}-top`);
+      const size = await page.locator('.expedition-panel').evaluate(el => ({scroll:el.scrollHeight,client:el.clientHeight}));
+      assert.ok(size.scroll <= size.client + 1, 'landscape briefing fits without scrolling: ' + JSON.stringify(size));
+    }
     for (const id of ['btnExpeditionContinue','btnExpeditionExit']) {
       await page.locator('#'+id).scrollIntoViewIfNeeded();
       const box = await page.locator('#'+id).boundingBox(); assert.ok(box.height >= 44 && box.width >= 44);

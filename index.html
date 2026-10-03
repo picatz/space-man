@@ -8614,7 +8614,7 @@ function showExpedition() {
     const el = $('expeditionLeg' + i); el.dataset.state = i < s.records.length ? 'done' : i === next ? 'next' : 'later';
     if (!finished && i === next) el.setAttribute('aria-current', 'step'); else el.removeAttribute('aria-current');
   }
-  $('btnExpeditionContinue').textContent = finished ? 'New expedition' : leg.action + '  ↗';
+  $('btnExpeditionContinue').textContent = finished ? 'New expedition' : leg.action;
   $('btnExpeditionExit').textContent = s.records.length && !finished ? 'Leave expedition' : 'Back to all modes';
   showOverlay('ovExpedition'); $('btnExpeditionContinue').focus();
   announce($('expeditionDestination').textContent + '. ' + $('expeditionCopy').textContent);

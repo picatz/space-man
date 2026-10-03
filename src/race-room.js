@@ -173,7 +173,9 @@
           sync();
         } else if (event === "bye") {
           const message =
-            data && data.reason === 4
+            data && data.reason === 3 && data.detail === 32
+              ? "This Star Circuit room uses an incompatible race version. Refresh both games, then ask the host to create a new invite."
+              : data && data.reason === 4
               ? "This race room is full."
               : data && data.reason === 3 && data.detail === 16
                 ? "This invite is for a different game mode."
