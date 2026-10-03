@@ -11,8 +11,8 @@
     function status(){return{active,busy,error,closedReason,connection,host:!!host,info:info(),roster:roster(),current:client.current,stale:active&&!host&&now()-lastReceived>1500};}
     function changed(){if(opts.onChange)opts.onChange(status());}
     function present(snapshot){
-      const s=sim.snapshot(snapshot.state),rows=roster(),myP=info().myP;
-      for(const a of s.actors){const seat=snapshot.seats.find(p=>p.actorId===a.id),row=seat&&rows.find(r=>r.p===seat.p);a.controller=seat?(seat.p===myP?'human':'remote'):'cpu';if(seat){a.name=row&&row.callsign||('PLAYER '+seat.p);a.peerP=seat.p;a.connected=seat.connected;}}
+      const s=sim.snapshot(snapshot.state),rows=roster(),local=info(),myP=local.myP;
+      for(const a of s.actors){const seat=snapshot.seats.find(p=>p.actorId===a.id),row=seat&&seat.connected&&rows.find(r=>r.p===seat.p&&r.role===0);a.controller=seat?(seat.p===myP&&local.role===0&&seat.connected?'human':'remote'):'cpu';if(seat){a.name=row&&row.callsign||('PLAYER '+seat.p);a.peerP=seat.p;a.connected=seat.connected;}}
       if(opts.onSnapshot)opts.onSnapshot(Object.assign({},snapshot,{state:s,receivedAt:now(),isHost:!!host}));
     }
     function publish(force){
@@ -54,7 +54,7 @@
         else{const resolved=opts.build?opts.build.resolveJoin(target):{value:target};if(resolved.error)throw new Error(resolved.error);const parsed=net.parseJoin(resolved.value);if(parsed.kind==='invite')payload=parsed.payload;else if(parsed.kind==='code')payload=(await net.lookupCode(resolved.value)).invite;else throw new Error('Paste your friend’s arena invite link or room code.');}
         if(mine!==serial)return false;const peek=net.peekInvite(payload);
         if(peek.err)throw new Error(peek.err==='expired'?'This arena invite has expired.':'This invite is not compatible. Refresh both games.');
-        if(peek.mode!=='arena')throw new Error('That is a Run Together room. Join it from the runner.');
+        if(peek.mode!=='arena')throw new Error(peek.mode==='race'?'That is a Star Circuit room. Join it from Star Circuit.':'That is a Run Together room. Join it from the runner.');
         if(net.blocklist().some(b=>b.pubkey===peek.hostHex))throw new Error('This host is blocked. Manage blocked hosts in the runner settings first.');
         await net.acceptJoin(payload,Object.assign({},typeof opts.identity==='function'?opts.identity():{},{mode:'arena',role:role===1?1:0}));
         if(mine!==serial)return false;active=true;busy=false;lastReceived=now();if(client.current)present(client.current);changed();return true;

@@ -208,3 +208,49 @@ test('simultaneous real rescues choose clear backwards-only recovery slots',()=>
     for(let j=i+1;j<6;j++)assert.ok(Math.hypot(a.x-s.actors[j].x,a.y-s.actors[j].y)>=56);
   }
 });
+
+for (const track of Race.tracks) {
+  test(`${track.id}: head-on contact escapes across the entire course, including tight bends`, () => {
+    const c = Race.course(track.id), distance = c.width / 2 - Race.constants.KART_RADIUS;
+    for (let station = 0; station < 30; station++) for (const side of [-1, 1]) {
+      const s = playing(track.id), a = s.actors[0], p = Race.at(c, station * c.length / 30);
+      Object.assign(a, { x: p.x - p.ty * distance * side, y: p.y + p.tx * distance * side,
+        heading: Math.atan2(p.ty, p.tx) + side * Math.PI / 2 });
+      let slow = 0;
+      for (let tick = 0; tick < 180; tick++) {
+        const old = { ...a };
+        drive(s, { throttle: 1, boost: true });
+        assert.equal(a.recoveries, 0, `station ${station}/${side}`);
+        assert.ok(Race.nearest(c, a.x, a.y).distance <= distance + 1e-6);
+        assert.ok(Math.hypot(a.x-old.x,a.y-old.y) <= 9.1, 'guidance never teleports');
+        if (tick === 30) assert.ok(a.speed > 2.2, 'a head-on kart regains motion promptly');
+        slow = a.speed < .75 ? slow + 1 : 0;
+        assert.ok(slow < 30, 'tight bends never create a sustained stall');
+      }
+    }
+  });
+  test(`${track.id}: sustained rail guidance costs time compared with skilled clean driving`, () => {
+    function finish(guide) {
+      const s = Race.create({ trackId: track.id, count: 1, laps: 3, difficulty: 'hard' });
+      s.phase = 'racing';
+      const a = s.actors[0];
+      while (s.phase !== 'finished') drive(s, guide ? { throttle: 1, steer: 1, boost: true } : Race.cpuInput(s,a));
+      assert.equal(a.passed, 60); assert.equal(a.recoveries, 0);
+      return a.finishTick;
+    }
+    const clean = finish(false), rail = finish(true);
+    assert.ok(rail > clean * 1.12, 'forgiving contact must not become the fastest racing line');
+  });
+}
+
+test('invalid-pose rail correction that crosses the expected gate never awards progress', () => {
+  const s = playing('starlight'), a = s.actors[0], c = Race.course(s.trackId), gate = c.gates[18];
+  Object.assign(a, { x: 210.42554179178595, y: 578.6684425416568,
+    passed: 17, nextGate: 18, progress: 17, vx: 0, vy: 0, speed: 0 });
+  const plane = () => (a.x-gate.x)*gate.tx+(a.y-gate.y)*gate.ty;
+  assert.ok(Race.nearest(c,a.x,a.y).distance > c.width/2-Race.constants.KART_RADIUS);
+  assert.ok(plane() < 0);
+  Race.step(s);
+  assert.ok(plane() > 0, 'inward correction really crosses the expected checkpoint plane');
+  assert.equal(a.passed,17);assert.equal(a.nextGate,18);assert.equal(a.lap,1);
+});

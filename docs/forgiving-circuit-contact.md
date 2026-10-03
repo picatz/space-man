@@ -33,14 +33,28 @@ road/mesh agreement, and rendered portrait/landscape/tablet/desktop controls.
   credit; regaining the road resumes driving, and stuck/extreme poses retain the
   last-verified-gate rescue.
 
-The full Node suite passes 719 tests. Focused checks cover both rail sides on all
+The complete Node regression suite passes. Focused checks cover both rail sides on all
 three circuits, head-on escape, held outward steering, prompt steer-away,
 boost-speed easing, brake/coast/reverse behavior, six-kart pileups, deterministic
 replay/online poses, ordered gates, and every CPU circuit/difficulty. Original
 mesh byte regressions retain their historical authored widths; all wider live
 meshes pass the independent full-lane coverage/union/collision checks.
 
-Browser checks are pending. Local Chromium cannot create its process socket in
-this cloud sandbox; hosted Chromium/WebKit CI runs the production controls,
-held touch/keyboard inputs, native audio and rendered screenshots. No physical
-mobile device validation is claimed.
+Hosted Chromium and WebKit both pass the eight audio/contact browser cases,
+including 300 ticks of real held input on desktop, portrait phone, landscape
+phone and tablet layouts, with zero near-stall ticks and successful release and
+cancel. Screenshots were inspected at those sizes. A slow-WebKit test now holds
+the actual R key until its fixed-tick input consumer sees it, instead of assuming
+a zero-duration pulse spans a frame. The final combined-head browser matrix is
+rerun after integration. Local Chromium cannot create its process socket and
+local WebKit lacks required shared libraries; hosted engines provide rendering
+coverage. No physical mobile device validation is claimed.
+
+## Online compatibility
+
+The width change lands atomically with exclusive race capability revision 2
+(bit 7 replaces legacy bit 6). Host admission and guest WELCOME validation reject
+mixed geometry for players and watchers; current clients explain how to refresh
+both games and create a new invite. Same-version race, runner and Arena behavior
+remain covered. The packet shapes remain unchanged. This prevents old cached
+guest meshes from drawing a narrower road under new authoritative poses.

@@ -451,11 +451,18 @@ test(
       const recoveries = await page.evaluate(
         () => raceUI.snapshot().actors[0].recoveries,
       );
-      await page.keyboard.press("r");
-      await page.waitForFunction(
-        (n) => raceUI.snapshot().actors[0].recoveries > n,
-        recoveries,
-      );
+      // The production loop samples held keys. A zero-duration Playwright
+      // press can land entirely between software-WebKit frames; hold the real
+      // key until a physics tick consumes it, then verify release normally.
+      await page.keyboard.down("r");
+      try {
+        await page.waitForFunction(
+          (n) => raceUI.snapshot().actors[0].recoveries > n,
+          recoveries,
+        );
+      } finally {
+        await page.keyboard.up("r");
+      }
       await capture(page, `perspective-${track}-recovery`);
       assert.equal(
         await page.locator(".race-root").getAttribute("data-renderer"),

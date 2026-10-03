@@ -159,3 +159,26 @@ test('coordinator cancel during directory lookup cannot resurrect or replace a r
   assert.equal(c.net.active, true); assert.equal(room.active, true);
   assert.equal(room.current.state.format, 'teams'); assert.equal(room.status().error, '');
 });
+
+test('recycled player number never gives a late watcher a departed fighter', async t => {
+  const { host, join } = await setup(t), player = await join();
+  const p = player.net.info().myP;
+  assert.equal(host.room.start(77), true);
+  await until(() => player.room.current.status === 'running', 'arena starts');
+  assert.equal(await host.net.kick(p), true);
+  await until(() => !player.room.active && !seat(host, p).connected, 'departed fighter disconnected');
+  const watcher = await join(1);
+  assert.equal(watcher.net.info().myP, p, 'transport recycled the vacated player number');
+  assert.equal(watcher.net.info().role, 1);
+  assert.ok(state(watcher).actors.every(a => a.controller !== 'human'), 'watcher must keep watch controls rather than inherit the old fighter');
+  assert.equal(state(host).actors.find(a => a.peerP === p).connected, false);
+});
+
+test('an Arena join explains how to open a Star Circuit invite', async t => {
+  const { peer } = await setup(t), guest = peer(), racer = peer();
+  await racer.net.openRoom({ relayHost: 'relay.test', code: false, mode: 'race' });
+  assert.equal(await guest.room.join(racer.net.info().link, 0), false);
+  assert.match(guest.room.status().error, /Star Circuit/);
+  assert.equal(guest.net.active, false);
+  assert.equal(guest.room.busy, false);
+});
