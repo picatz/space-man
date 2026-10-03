@@ -490,7 +490,7 @@ for (const device of [
       try {await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0,null,{timeout:2000});}
       catch(error){t.diagnostic(JSON.stringify({releaseKind,...await page.evaluate(()=>{const a=raceUI.snapshot().actors[0];return{events:arcadeTouchEvents,command:raceDriveProbe.command,actor:{drifting:a.drifting,driftTicks:a.driftTicks,padTicks:a.padTicks,speed:a.speed,offroad:a.offroad}};})}));throw error;}
       assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!',releaseKind+' earns an actual authoritative exit boost');
-      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      if(releaseKind==='brake-only')await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
       assert.equal(await page.locator('.race-pressed').count(),0);
     }
     await cdp.detach();
@@ -503,7 +503,7 @@ for (const device of [
 // contract on an isolated page before exercising the game with that sequence.
 async function nativePartialReleaseProbe(context,t){
   const page=await context.newPage();
-  await page.setContent('<button id="right" style="position:absolute;left:20px;top:20px;width:80px;height:80px;touch-action:none">Right</button><button id="brake" style="position:absolute;left:130px;top:20px;width:80px;height:80px;touch-action:none">Brake</button>');
+  await page.setContent('<meta name="viewport" content="width=device-width,initial-scale=1"><button id="right" style="position:absolute;left:20px;top:20px;width:80px;height:80px;touch-action:none">Right</button><button id="brake" style="position:absolute;left:130px;top:20px;width:80px;height:80px;touch-action:none">Brake</button>');
   await page.evaluate(()=>{window.events=[];for(const type of ['pointerdown','pointerup','pointercancel','touchstart','touchend','touchcancel'])document.addEventListener(type,e=>events.push({type,target:e.target.id,active:e.touches?.length}),true);});
   const cdp=await context.newCDPSession(page),right={id:1,x:60,y:60},brake={id:2,x:170,y:60};
   try{
