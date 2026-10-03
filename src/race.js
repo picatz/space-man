@@ -221,6 +221,9 @@
         heading: Math.atan2(spawn.ty, spawn.tx),
         steering: 0,
         neutralAssist: 1,
+        driftTicks: 0,
+        driftDirection: 0,
+        drifting: false,
         vx: 0,
         vy: 0,
         speed: 0,
@@ -300,6 +303,9 @@
     a.heading = Math.atan2(p.ty, p.tx);
     a.steering = 0;
     a.neutralAssist = 1;
+    a.driftTicks = 0;
+    a.driftDirection = 0;
+    a.drifting = false;
     a.vx = a.vy = a.speed = 0;
     a.fuel = Math.max(0, a.fuel - 25);
     a.boosting = false;
@@ -328,7 +334,7 @@
     // opposite correction. Reintroduce neutral assistance over 200 ms.
     a.neutralAssist = desired || input.brake || !input.throttle
       ? 0 : Math.min(1, finite(a.neutralAssist, 1) + 1 / 12);
-    const yawLimit = turnSpeed * (input.brake ? 1.22 : 1);
+    const yawLimit = a.drifting ? 0.055 : turnSpeed * (input.brake ? 1.18 : 1);
     let yaw = a.steering * yawLimit;
     const strength = clamp((n.distance - (c.width / 2 - KART_RADIUS - 6)) / 54, 0, 1);
     if (strength && n.distance <= safetyLimit(c) + 0.01 && input.throttle && !input.brake) {
@@ -414,31 +420,54 @@
       a.boosting = input.boost && a.fuel > 1 && !a.offroad && !input.brake;
       a.fuel = clamp(a.fuel + (a.boosting ? -0.72 : 0.17), 0, 100);
       const speed = Math.hypot(a.vx, a.vy),
-        turnSpeed = 0.052 + Math.min(speed, 8) * 0.0042;
+        // A small high-speed correction must not become a spin. Low-speed
+        // manoeuvres stay nimble, while boost asks for a wider, cleaner line.
+        turnSpeed = (0.054 - clamp(speed / 9, 0, 1) * 0.018) * clamp(speed / 2, 0.45, 1);
+      const wasDrifting = !!a.drifting,
+        driftDirection = Math.sign(input.steer),
+        canDrift = input.throttle > 0 && input.brake && Math.abs(input.steer) >= 0.35 &&
+          speed >= (wasDrifting ? 2.8 : 3.6) && !a.offroad && a.padTicks === 0;
+      // Brake + steer carves a controlled slide. A sustained, same-direction
+      // road corner earns one short exit boost; tapping, reversing, offroad,
+      // input expiry and rescue cannot bank or release a reward.
+      if (canDrift) {
+        if (!wasDrifting || a.driftDirection !== driftDirection) a.driftTicks = 0;
+        a.driftTicks = Math.min(60, finite(a.driftTicks) + 1);
+        a.driftDirection = driftDirection;
+      } else {
+        if (wasDrifting && a.driftTicks >= 24 && !input.brake && input.throttle > 0 &&
+            !a.offroad && speed >= 2.8 && (Math.abs(input.steer) < 0.1 || driftDirection === a.driftDirection)) {
+          a.padTicks = Math.max(a.padTicks, 30);
+          state.events.push({ type: "pad", id: a.id });
+        }
+        a.driftTicks = 0;
+        a.driftDirection = 0;
+      }
+      a.drifting = canDrift;
       roadSteering(a, c, n, input, turnSpeed);
       const fx = Math.cos(a.heading),
         fy = Math.sin(a.heading),
         invalid = !previous.get(a.id).inside,
         runoff = a.offroad && !invalid,
-        forward = runoff ? speed : a.vx * fx + a.vy * fy,
+        forward = runoff || a.drifting ? speed : a.vx * fx + a.vy * fy,
         lateral = -a.vx * fy + a.vy * fx;
       const boost = a.boosting || a.padTicks > 0,
         shoulder = clamp((n.distance - (c.width / 2 - 4)) / RUNOFF, 0, 1),
-        max = invalid ? 2.6 : a.offroad ? 5.2 - 1.5 * shoulder : boost ? 9 : 6.4;
+        max = invalid ? 2.6 : a.offroad ? 5.2 - 1.5 * shoulder : a.drifting ? 5.6 : boost ? 9 : 6.4;
       let accel = input.throttle * (boost ? 0.19 : 0.125);
-      if (input.brake) accel = -0.2;
+      if (input.brake) accel = a.drifting ? 0.06 : -0.2;
       const velocity = clamp(
           forward * (invalid ? 0.965 : 0.991) + accel,
           0,
           invalid ? max : Math.max(max, forward - 0.2),
         ),
         slide = lateral * (input.brake ? 0.82 : a.offroad && !invalid ? 0.88 : 0.65);
-      if (runoff && speed > 0.001) {
+      if ((runoff || a.drifting) && speed > 0.001) {
         // Retain scalar momentum while the travel direction catches the nose.
         // A safety-edge slide can be sideways; projecting it onto the nose on
         // the next tick would erase the very momentum contact just preserved.
         const travel = Math.atan2(a.vy, a.vx),
-          direction = travel + angle(a.heading - travel) * (input.brake ? 0.2 : 0.32);
+          direction = travel + angle(a.heading - travel) * (a.drifting ? 0.16 : input.brake ? 0.2 : 0.32);
         a.vx = Math.cos(direction) * velocity;
         a.vy = Math.sin(direction) * velocity;
       } else {
@@ -449,7 +478,7 @@
       a.y += a.vy;
       a.speed = Math.hypot(a.vx, a.vy);
       if (
-        !a.offroad &&
+        !a.offroad && !a.drifting &&
         a.padCooldown === 0 &&
         c.pads.some(
           (p) =>
