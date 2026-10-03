@@ -1729,14 +1729,16 @@
             y: height * 0.48 + (dx * sin + dy * cos) * zoom };
         };
         const focus = project(a), own = a.id === ownActor()?.id;
-        const label = own ? "YOU" : "WATCHING";
-        g.font = "900 12px system-ui";
-        const labelWidth = 20;
-        const focusX = clamp(focus.x, labelWidth / 2 + 6, width - labelWidth / 2 - 6);
-        const focusY = clamp(focus.y - 38 * zoom, topClip + 10, Math.max(topClip + 10, bottomClip - 8));
-        const focusBox = { left: focusX - labelWidth / 2, right: focusX + labelWidth / 2,
-          top: focusY - 8, bottom: focusY + 8 };
-        const labels = [focusBox];
+        const bodies = state.actors.map(actor => {
+          const p = project(actor), r = 33 * zoom;
+          return {id:actor.id,x:p.x-r,y:p.y-r,w:r*2,h:r*2};
+        });
+        const cue = root.SpaceManArt.identityMarkerLayout(a.id, bodies,
+          {left:6,right:width-6,top:topClip,bottom:bottomClip});
+        const labels = cue ? [{left:cue.x,right:cue.x+cue.w,top:cue.y,bottom:cue.y+cue.h}] : [];
+        // Browser QA observes the actual projection, not a parallel mock layout.
+        rootEl.dataset.identity = cue ? (own ? 'YOU:' : 'WATCHING:') + a.id : '';
+        rootEl.dataset.identityCue = JSON.stringify({cue,bodies});
         g.font = "700 10px system-ui";
         g.textAlign = "center";
         for (const actor of state.actors) {
@@ -1752,8 +1754,7 @@
           g.fillStyle = "#cfdfeb";
           g.fillText(name, x, y + 1);
         }
-        root.SpaceManArt.identityCue(g, focusX, focusY, own ? 'you' : 'watching', focus.x, focus.y);
-        rootEl.dataset.identity = (own ? 'YOU:' : 'WATCHING:') + a.id;
+        if (cue) root.SpaceManArt.identityCue(g, cue.x+cue.w/2, cue.y+cue.h/2, own ? 'you' : 'watching', cue.targetX, cue.targetY, cue.link);
       }
       updateIdentity(a);
       drawMap(mg, c, 340, 240, state.actors);

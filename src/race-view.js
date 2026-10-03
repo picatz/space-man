@@ -236,7 +236,13 @@
         );
         // Anchor above the same interpolated pilot and camera used for this draw.
         // Cockpit deliberately has no floating self marker or hidden-craft proxy.
-        const point = math.project([a.x, 49, a.y], matrix);
+        // Project the actual helmet/accessory silhouette, then add a CSS-pixel
+        // gap. A fixed world-height label anchor floated far above small pilots.
+        const hatTop = { antenna: 40, sprout: 37, beanie: 38.1, halo: 37.2,
+          crown: 37, cone: 44.5, catears: 39, phones: 34 };
+        const pilotTop = hatTop[a.appearance?.hat] || 34;
+        const point = math.project([a.x - Math.cos(a.heading) * 5, pilotTop,
+          a.y - Math.sin(a.heading) * 5], matrix);
         if (point.visible) {
           const own = a.id === config.localActorId && a.controller === "human";
           const role = own ? "you" : "watching";
@@ -246,9 +252,10 @@
           }
           marker.dataset.actorId = a.id;
           marker.dataset.role = own ? "you" : "watching";
+          marker.dataset.anchor = JSON.stringify({x:(point.x+1)*w/2,y:(1-point.y)*h/2});
           const margin = 14;
           marker.style.left = Math.max(margin, Math.min(w - margin, (point.x + 1) * w / 2)) + "px";
-          marker.style.top = Math.max(35, Math.min(h - 10, (1 - point.y) * h / 2 - 7)) + "px";
+          marker.style.top = Math.max(35, Math.min(h - 10, (1 - point.y) * h / 2 - 6)) + "px";
           marker.hidden = false;
         }
       }

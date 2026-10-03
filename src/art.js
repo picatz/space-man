@@ -326,7 +326,7 @@ const characterHats = {
       // their face. Size side placements from the actual body, not text width.
       if (own) candidates.push([own.x - w / 2 - 7, item.y], [own.x + own.w + w / 2 + 7, item.y]);
       candidates.push([item.x - w / 2 - 8, item.y], [item.x + w / 2 + 8, item.y], [item.x, item.y - 2 * (h + 5)]);
-      const boxes = candidates.map(([cx, cy]) => ({ ...item, w, h, x: Math.max(bounds.left, Math.min(bounds.right - w, cx - w / 2)), y: Math.max(bounds.top, Math.min(bounds.bottom - h, cy)) }));
+      const boxes = (item.fixed ? candidates.slice(0, 1) : candidates).map(([cx, cy]) => ({ ...item, w, h, x: Math.max(bounds.left, Math.min(bounds.right - w, cx - w / 2)), y: Math.max(bounds.top, Math.min(bounds.bottom - h, cy)) }));
       const available = box => !placed.some(b => overlaps(box, b));
       let box = boxes.find(b => available(b) && !obstacles.some(o => overlaps(b, o, 2)));
       // Ownership never disappears merely because somebody else crowds you.
@@ -336,28 +336,41 @@ const characterHats = {
     }
     return placed;
   }
-  function identityBadge(c, text, x, y, w, { primary = false, color = '#A9C2D8', h = 22, pointerX = null, pointerY = null } = {}) {
-    c.save(); c.globalAlpha = 1; c.lineJoin = 'round';
-    if (pointerX !== null && pointerY !== null) {
-      const px = Math.max(x + 7, Math.min(x + w - 7, pointerX));
-      const py = pointerY < y ? y : pointerY > y + h ? y + h : pointerY;
-      c.beginPath(); c.moveTo(px, py); c.lineTo(pointerX, pointerY);
-      c.strokeStyle = '#07111F'; c.lineWidth = 5; c.stroke();
-      c.strokeStyle = primary ? '#FFF3CE' : color; c.lineWidth = primary ? 2.5 : 1.5; c.stroke();
+  // Place a compact cue around the projected craft, not on another racer.
+  // Side placements include a short line back to the focused craft's edge.
+  function identityMarkerLayout(id, bodies, bounds) {
+    const own = bodies.find(b => b.id === id); if (!own) return null;
+    const w = 20, h = 16, cx = own.x + own.w / 2, cy = own.y + own.h / 2;
+    const overlap = (a, b) => a.x < b.x + b.w + 2 && a.x + a.w > b.x - 2 && a.y < b.y + b.h + 2 && a.y + a.h > b.y - 2;
+    for (const gap of [6, 18, 30]) {
+      const candidates = [
+        [cx - w / 2, own.y - gap - h], [own.x - gap - w, cy - h / 2],
+        [own.x + own.w + gap, cy - h / 2], [cx - w / 2, own.y + own.h + gap],
+      ];
+      for (const [x, y] of candidates) {
+        const box = { id, x, y, w, h };
+        if (x < bounds.left || x + w > bounds.right || y < bounds.top || y + h > bounds.bottom || bodies.some(b => overlap(box, b))) continue;
+        const dx = x + w / 2 - cx, dy = y + h / 2 - cy;
+        const edge = 1 / Math.max(Math.abs(dx) / (own.w / 2), Math.abs(dy) / (own.h / 2));
+        return { ...box, targetX: cx + dx * edge, targetY: cy + dy * edge,
+          link: Math.abs(dx) > 1 || dy > 0 || gap > 6 };
+      }
     }
-    rrPath(c, x, y, w, h, primary ? 7 : 5);
-    c.fillStyle = primary ? '#FFF3CE' : '#091525'; c.fill();
-    c.strokeStyle = '#07111F'; c.lineWidth = primary ? 4 : 3; c.stroke();
-    c.strokeStyle = primary ? '#FFF3CE' : color; c.lineWidth = primary ? 1.5 : 1; c.stroke();
-    c.font = (primary ? '900 11px' : '700 9px') + ' system-ui,sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillStyle = primary ? '#101B29' : '#EDF5FF'; c.fillText(text, x + w / 2, y + h / 2 + .5, w - 10); c.restore();
+    return null; // The HUD remains authoritative when the visible corridor is full.
   }
   // A quiet, screen-pixel ownership cue. Local and followed pilots differ by
   // silhouette, not suit color. No box, selection frame, or animation competes
   // with the character. The dark keyline survives bright platform/effect pixels.
-  function identityCue(c, x, y, role = 'you', targetX = x, targetY = y + 20) {
+  function identityCue(c, x, y, role = 'you', targetX = x, targetY = y + 20, link = false) {
     c.save(); c.globalAlpha = 1; c.translate(x, y);
-    c.lineJoin = 'round'; c.lineCap = 'round'; c.beginPath();
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    if (link) {
+      const angle = Math.atan2(targetY-y, targetX-x), dx = Math.cos(angle), dy = Math.sin(angle);
+      c.beginPath(); c.moveTo(dx*9, dy*9); c.lineTo(targetX-x, targetY-y);
+      c.strokeStyle = '#071522'; c.lineWidth = 3.5; c.stroke();
+      c.strokeStyle = '#EAF7FF'; c.lineWidth = 1.25; c.stroke();
+    }
+    c.beginPath();
     if (role === 'watching') {
       c.moveTo(-7, 0); c.quadraticCurveTo(0, -7, 7, 0);
       c.quadraticCurveTo(0, 7, -7, 0); c.closePath();
@@ -383,7 +396,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityBadge, identityCue };
+  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

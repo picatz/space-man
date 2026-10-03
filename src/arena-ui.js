@@ -180,11 +180,10 @@
 .arena-player-info{grid-template-columns:minmax(0,1fr);gap:3px}
 .arena-player-name{display:flex;align-items:center;gap:4px;white-space:nowrap;min-width:0}
 .arena-player-name-text{overflow:hidden;text-overflow:ellipsis}
-.arena-you-badge{flex-shrink:0;background:#FFF3CE;color:#101B29;font:900 9px/1.3 system-ui,sans-serif;letter-spacing:.02em;border-radius:4px;padding:2px 4px}
 .arena-player-tag{display:block!important;font-size:8px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .arena-stocks{margin-top:0}
-@media(max-width:650px){.arena-player-card{gap:5px}.arena-player-portrait{flex-basis:27px;width:27px;height:34px}.arena-player-name{font-size:10px}.arena-player-tag{font-size:8px}.arena-root[data-format=teams] .arena-player-card,.arena-root[data-format=ffa] .arena-player-card{padding:6px}.arena-you-badge{font-size:8px;padding:2px 3px}.arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none!important;padding:6px 10px!important}.arena-player-card[data-boss=true] .arena-player-info{display:flex;gap:8px;align-items:center}.arena-player-card[data-boss=true] .arena-player-tag{font-size:8px}}
-@media(max-height:600px) and (min-width:651px){.arena-player-portrait{display:none}.arena-player-card{min-width:0}.arena-player-tag{font-size:7px}.arena-player-name{font-size:9px}.arena-you-badge{font-size:7px}.arena-player-card[data-you=true]{padding:6px}}
+@media(max-width:650px){.arena-player-card{gap:5px}.arena-player-portrait{flex-basis:27px;width:27px;height:34px}.arena-player-name{font-size:10px}.arena-player-tag{font-size:8px}.arena-root[data-format=teams] .arena-player-card,.arena-root[data-format=ffa] .arena-player-card{padding:6px}.arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none!important;padding:6px 10px!important}.arena-player-card[data-boss=true] .arena-player-info{display:flex;gap:8px;align-items:center}.arena-player-card[data-boss=true] .arena-player-tag{font-size:8px}}
+@media(max-height:600px) and (min-width:651px){.arena-player-portrait{display:none}.arena-player-card{min-width:0}.arena-player-tag{font-size:7px}.arena-player-name{font-size:9px}.arena-player-card[data-you=true]{padding:6px}}
 @media(max-width:360px){.arena-player-portrait{display:none}.arena-player-tag{font-size:8px}}
 .arena-root[data-touch=true] .arena-player-card[data-you=true] .arena-player-portrait{display:block;flex-basis:22px;width:22px;height:30px}
 .arena-root[data-touch=true] .arena-player-card[data-you=true]{gap:4px}
@@ -203,7 +202,7 @@
 .arena-root[data-touch=true] .arena-pause-button{width:48px;height:48px;min-height:48px}
 .arena-root[data-touch=true] .arena-roster{display:flex;margin:0 116px 0 0;max-width:none;padding:0;gap:6px}
 .arena-root[data-touch=true] .arena-player-card{min-width:0;max-width:230px;padding:6px 8px;gap:6px;border-radius:9px}
-.arena-root[data-touch=true] .arena-player-name{font-size:10px}.arena-root[data-touch=true] .arena-player-tag{font-size:8px}.arena-root[data-touch=true] .arena-you-badge{font-size:8px}
+.arena-root[data-touch=true] .arena-player-name{font-size:10px}.arena-root[data-touch=true] .arena-player-tag{font-size:8px}
 .arena-root[data-touch=true] .arena-player-portrait{display:none}.arena-root[data-touch=true] .arena-player-info{grid-template-columns:minmax(0,1fr)}
 .arena-root[data-touch=true] .arena-roster:has([data-boss=true]){display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
 .arena-root[data-touch=true] .arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none;padding:4px 8px!important;min-height:26px}
@@ -950,7 +949,7 @@
         bodies.push(body);
         if (thumbOccludes(body, c)) continue; // Its clear-corridor cue replaces a label beneath a thumb.
         ctx.font = primary ? '900 11px system-ui,sans-serif' : '700 9px system-ui,sans-serif';
-        labels.push({ id: actor.id, role: identity.role, text: identity.text, x, y: y - 32, w: primary ? 20 : ctx.measureText(identity.text).width + 12, h: primary ? 16 : 16, priority: primary ? 2 : actor.boss ? 1 : 0, primary, color: actorColor(actor), targetX: x, targetY: y - 9 });
+        labels.push({ id: actor.id, role: identity.role, fixed: !primary, text: identity.text, x, y: y - 32, w: primary ? 20 : ctx.measureText(identity.text).width + 12, h: primary ? 16 : 16, priority: primary ? 2 : actor.boss ? 1 : 0, primary, color: actorColor(actor), targetX: x, targetY: y - 9 });
       }
       const layout = art.identityLayout(labels, bounds, bodies);
       // A small diagnostic describes the actual painted labels for browser QA.

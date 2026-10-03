@@ -32,3 +32,15 @@ test('a HUD-clamped primary moves beside its own body instead of covering it',()
  const [label]=Art.identityLayout([{id:1,x:402.5,y:45,w:44,h:22,priority:2,primary:true}],{left:8,right:836,top:98,bottom:302},[body]);
  assert.ok(label);assert.equal(label.y,98);assert.equal(overlap(label,body),false);
 });
+
+test('a watched craft cue avoids nearby racers on a rotated crowded track',()=>{
+ const bodies=[{id:'you',x:180,y:310,w:40,h:40},{id:'rival',x:174,y:276,w:40,h:40}];
+ const cue=Art.identityMarkerLayout('you',bodies,{left:8,right:312,top:110,bottom:450});
+ assert.ok(cue);assert.equal(cue.link,true);
+ for(const body of bodies)assert.equal(overlap(cue,body),false);
+ assert.ok(cue.targetX>=180&&cue.targetX<=220&&cue.targetY>=310&&cue.targetY<=350);
+});
+test('secondary crew names omit a crowded label instead of laddering over another pilot',()=>{
+ const rows=Art.identityLayout([{id:1,x:160,y:180,w:20,h:16,primary:true,priority:2},{id:2,x:162,y:180,w:100,h:16,fixed:true}],bounds);
+ assert.deepEqual(rows.map(r=>r.id),[1]);
+});
