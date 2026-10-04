@@ -340,3 +340,142 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 #ovPause #btnQuit { background:transparent; border-color:transparent; color:#a9c2d4; box-shadow:none; margin-top:12px; }
 @media(max-height:560px) { #ovPause .panel { padding:18px 24px; }#ovPause .title-lg { margin-bottom:10px; font-size:27px; }#ovPause .control-guide { margin:0 0 8px; }#ovPause .dock.top { margin-bottom:10px; } }
 #ovPause .pause-session-note { margin:-7px 0 16px; color:#aac2d3; font:450 12px/1.5 var(--sm-font-body); }
+
+/* Secondary screens share the studio's quiet, readable surface language.
+   Keep each panel's existing scrolling and action IDs: these are places to
+   read and choose, rather than another animated game world. */
+.overlay .secondary-panel {
+  --px: 28px; --py: 24px;
+  width: min(680px,100%); max-width: 680px;
+  padding: var(--py) var(--px);
+  background: #101e31;
+  font: 400 15px/1.5 var(--sm-font-body);
+  text-align: left;
+  scrollbar-gutter: stable;
+}
+.overlay.in:has(.secondary-panel) { background: rgba(3,8,18,.78); }
+.overlay .secondary-panel > .title-lg { font-size: clamp(26px,3vw,34px); margin: 0 0 24px; text-align: left; }
+.overlay .secondary-panel .btn { font: 650 15px/1.4 var(--sm-font-body); letter-spacing: 0; min-height: 46px; }
+.overlay .secondary-panel .sub { font-size: 14px; letter-spacing: 0; }
+.overlay .secondary-panel .section-head { color: #dbe8f4; font: 700 15px/1.4 var(--sm-font-body); letter-spacing: 0; text-transform: none; margin: 22px 0 10px; padding: 0; border: 0; }
+.overlay .secondary-panel .stats-line { font-size: 13px; line-height: 1.6; letter-spacing: 0; color: #a9c0d4; }
+.overlay .secondary-panel .dock { margin-top: 22px; padding-top: 14px; background: #101e31; border-top: 1px solid var(--sm-line); box-shadow: 0 -10px 15px #101e31; }
+.overlay .secondary-panel .dock .btn { width: auto; min-width: 120px; margin-left: auto; display: block; }
+.overlay .secondary-panel table.scores { font: 500 15px/1.5 var(--sm-font-body); margin: 10px 0 18px; letter-spacing: 0; }
+.overlay .secondary-panel table.scores td { padding: 12px 8px; font-size: 15px; }
+.overlay .secondary-panel table.scores td.sc { font: 700 20px/1.3 var(--sm-font-body); color: var(--sm-ink); font-variant-numeric: tabular-nums; }
+.overlay .secondary-panel table.scores .empty { padding: 24px 0; color: var(--sm-copy); letter-spacing: 0; text-align: left; }
+#ovTrophy .panel { max-width: 740px; width: min(740px,100%); }
+#ovTrophy #logbook { grid-template-columns: minmax(0,1fr); gap: 0; max-height: none; overflow: visible; }
+#ovTrophy .log-row { min-height: 44px; padding: 10px 0; gap: 14px; font: 450 14px/1.45 var(--sm-font-body); letter-spacing: 0; }
+#ovTrophy .log-glyph { flex-basis: 26px; font-size: 18px; }
+#ovTrophy .log-name { text-transform: none; color: var(--sm-ink); }
+#ovTrophy .log-row.unfound .log-hint { color: #9eb5ca; opacity: 1; font-family: var(--sm-font-body); }
+#ovTrophy #logCount { margin-top: 18px; }
+#ovSettings .panel { width: min(820px,100%); max-width: 820px; }
+#ovSettings .settings-list { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 22px 30px; align-items: start; }
+.settings-group { min-width: 0; }
+.settings-group .section-head { margin: 0 0 8px; }
+#ovSettings .settings-group > .section-head { margin-top: 0; }
+.settings-group .toggle-row { font: 500 14px/1.45 var(--sm-font-body); min-height: 52px; gap: 14px; padding: 5px 0; }
+.settings-group .toggle-row > span:first-child { min-width: 0; }
+.settings-group .slider-row { flex-wrap: wrap; }
+.settings-group .slider-row > span:first-child { flex: 1 1 100%; }
+.settings-group .slider-row input { flex: 1; min-width: 0; }
+.settings-group .switch { min-width: 48px; min-height: 44px; flex-shrink: 0; border-radius: 22px; }
+.settings-group .switch::after { top: 10px; }
+.settings-group .mini-chip { min-height: 44px; min-width: 48px; font: 600 13px/1.3 var(--sm-font-body); }
+.settings-group .settings-action, .settings-group .net-radio-opt { width: 100%; color: var(--sm-copy); background: transparent; text-align: left; border: 0; border-bottom: 1px solid var(--sm-line); border-radius: 0; cursor: pointer; }
+.settings-group .net-radio-opt { min-height: 44px; font: 500 14px/1.4 var(--sm-font-body); letter-spacing: 0; }
+.settings-group .net-radio-opt.sel { color: var(--sm-ink); }
+.settings-group .net-sub { font: 700 15px/1.4 var(--sm-font-body); color: #dbe8f4; }
+.settings-group .net-val { overflow-wrap: anywhere; text-align: right; }
+.settings-group .hint { opacity: 1; color: #9eb5ca; font: 400 12px/1.5 var(--sm-font-body); padding-left: 26px; }
+#ovSettings #btnWardrobe2, #ovSettings #btnReset { display: inline-flex; align-items: center; justify-content: center; width: auto; padding: 11px 18px; margin: 24px 12px 0 0; }
+#ovTogether .sub { margin-bottom: 24px; }
+#ovTogether .together-or { font: 600 13px/1.5 var(--sm-font-body); letter-spacing: 0; text-transform: none; margin: 26px 0 12px; color: var(--sm-copy); }
+#ovTogether .join-label, #ovTogether .join-hint { font: 450 14px/1.5 var(--sm-font-body); letter-spacing: 0; text-transform: none; }
+#ovTogether #btnTogetherBack { background: transparent; border-color: transparent; box-shadow: none; color: var(--sm-copy); }
+#ovCallsign .callsign-cols { gap: 24px; margin: 28px 0; }
+#ovCallsign .callsign-col { min-width: 0; flex: 1; }
+#ovCallsign .callsign-word { font: 700 clamp(18px,4vw,24px)/1.4 var(--sm-font-body); width: 100%; letter-spacing: 0; text-shadow: none; text-transform: none; color: var(--sm-ink); overflow-wrap: anywhere; }
+.secondary-panel .arrow-btn { min-height: 44px; min-width: 64px; border-radius: 12px; color: var(--sm-copy); background: var(--sm-surface); }
+#ovCallsign #callsignPreview { font: 450 14px/1.5 var(--sm-font-body); text-transform: none; letter-spacing: 0; color: var(--sm-copy); text-align: center; }
+#ovInitials .initial-char { text-shadow: none; color: var(--sm-ink); }
+#ovDead .secondary-panel { width: min(720px,100%); max-width: 720px; }
+#ovDead .secondary-panel #deadScore { margin: 12px 0; font-size: clamp(44px,8vw,72px); }
+#ovDead .secondary-panel .stat { font-family: var(--sm-font-body); }
+#ovDead .secondary-panel .dock .btn { width: 100%; }
+#ovDead .secondary-panel #deadTapHint { font-size: 11px; text-align: center; }
+@media (hover:hover) and (pointer:fine) {
+ .secondary-panel .settings-action:hover, .secondary-panel .net-radio-opt:hover { background: var(--sm-surface-hover); }
+}
+@media (max-width:620px) {
+ .overlay .secondary-panel { --px: 20px; --py: 20px; scrollbar-gutter: auto; }
+ #ovSettings .settings-list { grid-template-columns: minmax(0,1fr); gap: 24px; }
+ .overlay .secondary-panel > .title-lg { margin-bottom: 20px; }
+ #ovSettings #btnWardrobe2, #ovSettings #btnReset { width: 100%; margin: 16px 0 0; }
+}
+@media (max-height:560px) {
+ .overlay .secondary-panel { --px: 22px; --py: 16px; }
+ .overlay .secondary-panel > .title-lg { margin-bottom: 16px; font-size: 26px; }
+ .overlay .secondary-panel .dock { margin-top: 16px; padding-top: 10px; }
+}
+
+.settings-group .switch::before { inset: 0; }
+/* The hit target is 44px; the switch track stays visually light. */
+.settings-group .switch, .settings-group .switch.on { background: transparent; }
+.settings-group .switch::before { inset: 8px 0; background: #354357; border-radius: 14px; }
+.settings-group .switch.on::before { background: #61d4e7; }
+.settings-group .switch::after { top: 11px; }
+.settings-group .slider-row { flex-wrap: nowrap; }
+.settings-group .slider-row > span:first-child { flex: 0 1 110px; }
+@media(min-width:800px) {
+ #ovTrophy #logbook { grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 28px; }
+ #ovTrophy .log-row { min-height: 62px; }
+}
+
+#ovCallsign .secondary-panel, #ovInitials .secondary-panel { width:min(520px,100%); max-width:520px; }
+#ovCallsign #btnCallsignReroll { width:auto; display:block; margin:16px auto 20px; padding:10px 24px; }
+.secondary-panel .surface-actions { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+.secondary-panel .surface-actions .btn { margin:0; }
+.secondary-panel .mini-chip { min-height:44px; min-width:44px; font:600 13px/1.4 var(--sm-font-body); }
+.secondary-panel .net-relayurl, .secondary-panel .net-relaylist, .secondary-panel .join-input { min-height:46px; font:400 15px/1.5 var(--sm-font-body); }
+#ovRoom #roomCode { min-height:44px; display:flex; align-items:center; justify-content:center; }
+#ovRoom .switch { height:44px; background:transparent; }
+#ovRoom .switch::before { inset:8px 0; border-radius:14px; background:#354357; }
+#ovRoom .switch.on::before { background:#61d4e7; }
+#ovRoom .switch::after { top:11px; }
+
+.secondary-panel .haptic-test .mini-chip { min-height:46px; }
+
+#ovRoom .room-qr { max-width:100%; height:auto; aspect-ratio:1; }
+.secondary-panel textarea:focus-visible,
+.secondary-panel [role="button"]:focus-visible,
+body.gamepad-active .secondary-panel textarea:focus,
+body.gamepad-active .secondary-panel [role="button"]:focus { outline:3px solid var(--sm-focus); outline-offset:-3px; }
+/* A short landscape viewport must expose the complete invite, not only a
+   scrollable canvas whose lower half is permanently under the action dock. */
+@media (min-width:600px) {
+ #ovRoom .dock { display:flex; justify-content:flex-end; align-items:center; gap:12px; }
+ #ovRoom .dock .btn { margin:0; }
+}
+@media (min-width:600px) and (max-height:560px) {
+ #ovRoom .room-qr { width:min(245px,calc(100dvh - 136px - var(--game-ui-top, 0px) - var(--game-ui-bottom, 0px))); }
+}
+.secondary-panel .net-sub, .secondary-panel .room-relay,
+.secondary-panel .code-note, .secondary-panel .offline-note { opacity:1; color:var(--sm-copy); font:400 13px/1.5 var(--sm-font-body); letter-spacing:0; }
+.secondary-panel .invite-block .k { font:600 12px/1.5 var(--sm-font-body); letter-spacing:.04em; color:var(--sm-copy); }
+.secondary-panel .mini-chip { text-transform:none; letter-spacing:0; }
+.secondary-panel .roster-row { font:500 14px/1.5 var(--sm-font-body); letter-spacing:0; }
+.secondary-panel .room-log summary { min-height:44px; display:flex; align-items:center; font:500 13px/1.4 var(--sm-font-body); letter-spacing:0; opacity:1; }
+#ovRoom .secondary-panel, #ovSettings .secondary-panel {
+ max-height:calc(100dvh - 2 * var(--oy) - var(--game-ui-top, env(safe-area-inset-top, 0px)) - var(--game-ui-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+/* Real keyboard input owns a persistent cursor, including browsers that lose
+   :focus-visible after native-switch haptic feedback. Pointerdown clears it. */
+body.keyboard-active .overlay :is(button, summary, input, textarea, [role="button"]):focus,
+body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, textarea):focus {
+ outline:3px solid var(--sm-focus) !important; outline-offset:-3px !important;
+}
