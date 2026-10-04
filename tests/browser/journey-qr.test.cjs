@@ -25,7 +25,24 @@ async function decodeCanvas(p){
  return decodePixels(pixels.width,pixels.height,Buffer.from(pixels.data,'base64'));
 }
 
-test('legacy Journey host QR is visible, decodes and joins the exact isolated expedition',{timeout:60000},async t=>{
+// Decode the screenshot itself, not just the backing canvas. PNG decoding is
+// delegated to the browser; QR interpretation remains independent in libzbar.
+async function decodeScreenshot(page, png) {
+ const raster=await page.evaluate(async base64=>{
+  const image=new Image();image.src='data:image/png;base64,'+base64;await image.decode();
+  const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+  const c=canvas.getContext('2d');c.drawImage(image,0,0);const pixels=c.getImageData(0,0,canvas.width,canvas.height).data;
+  let text='';for(let i=0;i<pixels.length;i+=16384)text+=String.fromCharCode(...pixels.subarray(i,i+16384));
+  return{width:canvas.width,height:canvas.height,data:btoa(text)};
+ },png.toString('base64'));
+ return{...raster,link:decodePixels(raster.width,raster.height,Buffer.from(raster.data,'base64'))};
+}
+async function qrGeometry(page) {return page.locator('#journeyInviteQr').evaluate(e=>{
+ const r=e.getBoundingClientRect(),v=visualViewport;
+ return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height,innerHeight,clientHeight:document.documentElement.clientHeight,visualHeight:v?.height,visualWidth:v?.width,visualTop:v?.offsetTop||0,visualLeft:v?.offsetLeft||0,scrollTop:document.getElementById('journeyFriends').scrollTop};
+});}
+
+test('legacy Journey host QR is visible, decodes and joins the exact isolated expedition',{timeout:90000},async t=>{
  const {peer}=await launch(t),host=await peer('QR host'),friend=await peer('QR phone',{viewport:{width:390,height:844},isMobile:true,hasTouch:true});
  // This compatibility flow remains covered even when its home launcher is hidden.
  await host.page.evaluate(()=>openSharedJourney());await host.page.locator('#journeyHost').click();
@@ -40,11 +57,24 @@ test('legacy Journey host QR is visible, decodes and joins the exact isolated ex
  assert.deepEqual(await state(friend.page),await state(host.page),'decoded QR joins same room and mode');
  assert.equal(await friend.page.locator('#journeyInviteQr').isVisible(),false,'guest does not display a host capability');
  for(const [width,height] of [[320,568],[390,844],[667,375],[820,1180],[1440,900]]){
-  await host.page.setViewportSize({width,height});await qr.scrollIntoViewIfNeeded();
-  const fit=await qr.evaluate(e=>{const b=e.getBoundingClientRect();return{inside:b.left>=0&&b.right<=innerWidth&&b.top>=0&&b.bottom<=innerHeight,width:b.width,height:b.height,overflow:document.getElementById('journeyFriends').scrollWidth>innerWidth};});
-  assert.ok(fit.inside&&fit.width>=240&&fit.height>=240&&!fit.overflow,'QR fits and remains scannable at '+width+'x'+height);
-  assert.equal(await decodeCanvas(host.page),decoded,'resizing keeps invite pixels correct');
-  if(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS){await fs.mkdir(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS,{recursive:true});await host.page.screenshot({path:path.join(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS,`journey-qr-${width}x${height}.png`)});}
+  await host.page.setViewportSize({width,height});
+  await host.page.waitForFunction(width=>document.documentElement.clientWidth===width,width);
+  await host.page.evaluate(()=>document.fonts.ready);
+  await host.page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  const first=await qrGeometry(host.page);
+  // A normal wheel gesture centers the code in the real screenshot viewport.
+  // This host context is desktop WebKit/Chromium at each responsive size.
+  await host.page.mouse.move(width/2,height/2);await host.page.mouse.wheel(0,first.y+first.height/2-height/2);
+  await host.page.waitForFunction(({width,height})=>{const r=document.getElementById('journeyInviteQr').getBoundingClientRect();return r.left>=0&&r.right<=width&&r.top>=0&&r.bottom<=height;},{width,height});
+  await host.page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  const before=await qrGeometry(host.page),png=await host.page.screenshot(),after=await qrGeometry(host.page);
+  console.log('QR screenshot geometry',JSON.stringify({width,height,before,after}));
+  for(const g of [before,after]){const visibleHeight=Math.min(height,g.clientHeight,g.visualHeight||height),visibleWidth=Math.min(width,g.visualWidth||width);assert.ok(g.x>=g.visualLeft&&g.right<=g.visualLeft+visibleWidth&&g.y>=g.visualTop&&g.bottom<=g.visualTop+visibleHeight&&g.width>=240&&g.height>=240,'entire QR is inside the actual screenshot and visual viewport');}
+  assert.ok(Math.abs(before.y-after.y)<1&&Math.abs(before.height-after.height)<1,'capture geometry is settled');
+  const screen=await decodeScreenshot(host.page,png);
+  assert.equal(screen.width,width);assert.equal(screen.height,height);assert.equal(screen.link,decoded,'on-screen QR pixels preserve the complete invite');
+  assert.equal(await decodeCanvas(host.page),decoded,'resizing keeps backing pixels correct');
+  if(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS){await fs.mkdir(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS,{recursive:true});await fs.writeFile(path.join(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS,`journey-qr-${width}x${height}.png`),png);}
   for(const id of ['journeyCopy','journeyStart','journeyLeave']){const b=host.page.locator('#'+id);await b.scrollIntoViewIfNeeded();assert.equal(await b.evaluate(e=>{const r=e.getBoundingClientRect();const h=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return r.top>=0&&r.bottom<=innerHeight&&(h===e||e.contains(h));}),true,id+' reachable after QR');}
  }
  await friend.page.locator('#journeyLeave').click();await friend.page.waitForFunction(()=>!journeyUI.room.active);

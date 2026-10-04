@@ -200,15 +200,19 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
         const snapshot = window.SpaceManArenaOnline.decodeSnapshot(data.bytes);
         if (snapshot) { window.__arenaAcceptance.snapshots++; collect(snapshot.state); }
       });
-      const observe = () => {
-        if (typeof arenaUI !== 'undefined' && arenaUI?.active) {
+      // Observe the actual UI callback boundary, after the production handler
+      // applies its event watermark. A render frame may contain several fixed
+      // ticks; sampling only at rAF can miss a real, already-consumed jump.
+      const roomAPI = window.SpaceManArenaRoom;
+      window.SpaceManArenaRoom = Object.freeze({ ...roomAPI, create(options) {
+        return roomAPI.create({ ...options, onSnapshot(snapshot) {
+          options.onSnapshot?.(snapshot);
+          if (typeof arenaUI === 'undefined' || !arenaUI?.active) return;
           const s = arenaUI.snapshot(); collect(s);
           for (const e of s?.events || []) __arenaAcceptance.uiEvents.push({type:e.type,actorId:e.actorId,serial:e.serial});
           if (__arenaAcceptance.uiEvents.length > 200) __arenaAcceptance.uiEvents.splice(0,__arenaAcceptance.uiEvents.length-200);
-        }
-        requestAnimationFrame(observe);
-      };
-      requestAnimationFrame(observe);
+        } });
+      } });
     });
     return c;
   }
@@ -461,7 +465,10 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await host.page.locator('#arenaStart').click();
     await Promise.all([host,guest].map(c => wait(c,() => arenaUI.snapshot()?.phase === 'playing')));
     await host.page.keyboard.press('Space');
-    await Promise.all([host,guest].map(c => wait(c,() => __arenaAcceptance.uiEvents.some(e => e.type === 'jump' && e.actorId === 1))));
+    await Promise.all([host,guest].map(async c => {
+      try { await wait(c,() => __arenaAcceptance.uiEvents.some(e => e.type === 'jump' && e.actorId === 1)); }
+      catch (error) { throw new Error(c.name + ' did not present the new room first jump (' + (error.name || 'Error') + ')'); }
+    }));
     await host.page.locator('#arenaPause').click(); await host.page.locator('#arenaLobby').click();
     const freshConfirmation = host.page.waitForEvent('dialog').then(dialog => dialog.accept());
     await host.page.locator('#arenaRoomLeave').click(); await freshConfirmation;
