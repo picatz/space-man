@@ -222,12 +222,19 @@
         lastTick = null;
       }
       const catalog = root.SpaceManRace.features?.(course);
+      const view = camera.update(a, course, root.SpaceManRace.at, {
+        mode,
+        dt: config.dt,
+        aspect: w / h,
+        reduceMotion: config.reduceMotion,
+      });
       // Reuse immutable local-space craft meshes on the GPU. Only small model
       // transforms change each display frame, including interpolated frames.
       const moving = root.SpaceManRaceScene.actorMeshes(snapshot, {
         hideId: mode === "cockpit" ? a.id : null,
         calm: !!config.reduceMotion,
         chaseActor: mode === "chase" ? a : null,
+        cockpitEye: mode === "cockpit" ? view.eye : null,
         course, catalog, nearest: root.SpaceManRace.nearest,
       });
       const features = root.SpaceManRaceScene.featureMeshes?.(snapshot, course, root.SpaceManRace.at, catalog, {
@@ -235,12 +242,6 @@
         chaseActor: mode === "chase" ? a : null,
         calm: !!config.reduceMotion, nearest: root.SpaceManRace.nearest,
       }) || [];
-      const view = camera.update(a, course, root.SpaceManRace.at, {
-        mode,
-        dt: config.dt,
-        aspect: w / h,
-        reduceMotion: config.reduceMotion,
-      });
       const started = root.performance.now();
       const ok = renderer.draw({
         ...scene,

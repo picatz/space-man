@@ -115,6 +115,8 @@
 @media(max-height:520px) and (min-width:600px){.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 18px);width:57px;height:48px;bottom:calc(var(--race-bottom) + 87px)}.race-root[data-touch=true][data-handed=left] .race-item{left:calc(var(--race-left) + 18px)}.race-root[data-touch=true][data-features=true] .race-minimap{bottom:calc(var(--race-bottom) + 145px)}.race-warning[data-kind=pulse]{top:calc(var(--race-top) + 70px)}}
 @media(max-width:350px){.race-root[data-touch=true] .race-item{width:54px;bottom:calc(var(--race-bottom) + 93px)}}
 @media(prefers-reduced-motion:reduce){.race-root *{transition:none!important}}
+
+@media(max-width:360px) and (max-height:650px){.race-root[data-touch=true] .race-minimap{display:none}}
 `;
   function create(opts = {}) {
     const R = root.SpaceManRace;
@@ -1648,7 +1650,7 @@
       if (!state) return;
       const actor = ownActor();
       if (state.tick < noticeTick) { noticeSerial = 0; noticeUntil = 0; noticeText = ""; }
-      const messages = { coin: "+6 BOOST", block: "BLOCKED", hit: "PULSE HIT · KEEP STEERING", "land-pulse": "LAND TO PULSE" };
+      const messages = { coin: "+6 BOOST", shield: "SHIELD ON", pulse: "PULSE CHARGING", block: "BLOCKED", hit: "PULSE HIT · KEEP STEERING", "land-pulse": "LAND TO PULSE" };
       for (const event of state.events || []) {
         const serial = event.serial || 0;
         const fresh = serial ? serial > noticeSerial : state.tick !== noticeTick;

@@ -93,3 +93,47 @@ test('shield and pulse have distinct bounded, snapshot-driven states in reduced 
   const next=meshes(state,{calm:false}).filter(m=>m.featureKind==='pulse');
   effects.forEach((m,i)=>assert.deepEqual(m.vertices,next[i].vertices,'motion preference cannot remove charge lanes or fabricate wave motion'));
 });
+
+test('Cockpit removes only close rival flame triangles, retaining the boosted pilot, hull and shadow',()=>{
+  const original=R.snapshot(R.create()),owner={...original.actors[0],x:0,y:0,heading:0},
+    rival={...original.actors[1],x:56,y:0,heading:0,airRamp:1,airTicks:12,z:28,boosting:true,padTicks:0};
+  const state=frozen({...original,tick:97,actors:[owner,rival]}),before=JSON.stringify(state),
+    options={course:c,catalog,nearest:R.nearest,hideId:owner.id,calm:true},
+    regular=Scene.actorMeshes(state,options),safe=Scene.actorMeshes(state,{...options,cockpitEye:[6,34,0]}),
+    bare=Scene.actorMeshes({...state,actors:[owner,{...rival,boosting:false}]},options);
+  assert.equal(safe.filter(m=>m.actorId).length,1,'the nearby opponent is never hidden');
+  const hull=list=>list.find(m=>m.actorId===rival.id),face=list=>list.find(m=>m.faceActorId===rival.id),shadow=list=>list.find(m=>m.shadowActorId===rival.id);
+  assert.equal(hull(regular).vertices.length-hull(safe).vertices.length,4*27,'exactly four decorative triangles removed');
+  assert.equal(hull(safe).vertices,hull(bare).vertices,'hull and helmet use the unchanged no-flame geometry');
+  assert.equal(face(safe).vertices,face(regular).vertices,'real boost face cues survive plume suppression');
+  assert.deepEqual(hull(safe).model,hull(regular).model);assert.equal(hull(safe).model[13],28);
+  assert.equal(shadow(safe).vertices,shadow(regular).vertices);assert.deepEqual(shadow(safe).model,shadow(regular).model);
+  assert.equal(shadow(safe).model[13],0);safe.forEach(bounds);
+  assert.equal(JSON.stringify(state),before,'no physics or authoritative appearance changes');
+});
+test('Cockpit plume clearance uses the actual three-dimensional eye and rotates with a rival',()=>{
+  const base=R.snapshot(R.create()),rival=base.actors[1],options={course:c,catalog,nearest:R.nearest,calm:true};
+  for(const heading of [0,Math.PI/2,Math.PI,-Math.PI/2]) for(const z of [0,28]) for(const eyeHeight of [34,42,52]) {
+    const co=Math.cos(heading),si=Math.sin(heading),a={...rival,x:100+56*co,y:80+56*si,heading,boosting:true,padTicks:0,z,airRamp:z?1:0};
+    const state={...base,actors:[a]},full=Scene.actorMeshes(state,options).find(m=>m.actorId);
+    const eye=[100+6*co,eyeHeight,80+6*si];
+    const near=Scene.actorMeshes(state,{...options,cockpitEye:eye}).find(m=>m.actorId);
+    // A ground plume is safely below an eye52 units up, so it remains visible.
+    const shouldSuppress=z>0||eyeHeight<52;
+    assert.equal(near.vertices.length,full.vertices.length-(shouldSuppress?108:0));
+    for(const farEye of [[eye[0],180,eye[2]],[100-120*si,eyeHeight,80+120*co],
+      [100-150*co,eyeHeight,80-150*si]]) {
+      assert.equal(Scene.actorMeshes(state,{...options,cockpitEye:farEye}).find(m=>m.actorId).vertices,full.vertices,
+        'distant, high or laterally separated effects remain unchanged');
+    }
+  }
+});
+test('Cockpit eye motion reuses two bounded mesh variants and never changes ordinary Chase exhaust',()=>{
+  const base=R.snapshot(R.create()),a={...base.actors[1],x:56,y:0,heading:0,z:28,airRamp:1,boosting:true,padTicks:0},
+    state={...base,actors:[a]},options={course:c,catalog,nearest:R.nearest,calm:true},models=new Set();
+  const chase=Scene.actorMeshes(state,options).find(m=>m.actorId).vertices;
+  for(let x=-140;x<=80;x+=2) models.add(Scene.actorMeshes(state,{...options,cockpitEye:[x,34,0]}).find(m=>m.actorId).vertices);
+  assert.equal(models.size,2,'eye movement cannot create per-frame geometry caches');
+  assert.equal(Scene.actorMeshes(state,options).find(m=>m.actorId).vertices,chase);
+  assert.equal(Scene.actorMeshes(state,{...options,cockpitEye:[NaN,0,0]}).find(m=>m.actorId).vertices,chase);
+});

@@ -83,7 +83,7 @@ test('challenge fragments accept valid links and reject everything else', () => 
 test('a challenge link plays its seed once, and Play Again races it again', (t) => {
   const c = solo(t);
   c.run("challenge = COURSE.parse('#seed=77&beat=500', Date.now()); renderDailyCard();");
-  assert.equal(c.elements.get('challengeBanner').textContent, 'Beat 500 on this course');
+  assert.equal(c.elements.get('challengeBanner').textContent, 'Beat 500 on this course · Choose Endless Run to play');
   const quiet = terrain(c, 'startRun()', false);
   assert.equal(c.run('G.runSeed'), 77); assert.equal(c.run('G.course.target'), 500);
   assert.ok(c.run('G.worldRng !== null'));
@@ -158,12 +158,12 @@ test('share falls back to copying on real failures, never after a cancelled shar
 test('links without a real score show no zero target anywhere', (t) => {
   const c = solo(t);
   c.run("challenge = COURSE.parse('#seed=77&beat=0', Date.now()); renderDailyCard();");
-  assert.equal(c.elements.get('challengeBanner').textContent, 'A friend’s course — start to play it');
+  assert.equal(c.elements.get('challengeBanner').textContent, 'A friend’s course · Choose Endless Run to play');
   c.run("startRun(); G.score=5; die('void'); showDeathCard();");
   assert.equal(c.run('G.runSeed'), 77); assert.equal(c.run('G.course.target'), 0);
   assert.doesNotMatch(c.elements.get('deadCourse').textContent, /\b0\b/);
   c.run("challenge = COURSE.parse('#daily=' + COURSE.dayKey(Date.now()) + '&beat=0', Date.now()); renderDailyCard();");
-  assert.match(c.elements.get('challengeBanner').textContent, /^Daily Course \d{4}-\d{2}-\d{2} — start to play it$/);
+  assert.match(c.elements.get('challengeBanner').textContent, /^Daily Course \d{4}-\d{2}-\d{2} · Choose Endless Run to play$/);
   c.run('startRun()');                                                    // first daily of the day: best is 0
   assert.equal(c.run('G.course.target'), 0);
   c.run('G.score=1; for (let i=0;i<5;i++) update();');

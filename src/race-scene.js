@@ -489,16 +489,32 @@
     if (!map.has(key)) { map.set(key, build()); if(map.size > limit) map.delete(map.keys().next().value); }
     return map.get(key);
   }
+  function plumeNearEye(actor, height, eye) {
+    if (!eye || eye.length !== 3 || !eye.every(Number.isFinite)) return false;
+    const c = Math.cos(actor.heading), s = Math.sin(actor.heading),
+      dx = eye[0] - actor.x, dz = eye[2] - actor.y,
+      forward = dx * c + dz * s, side = -dx * s + dz * c, up = eye[1] - height;
+    // Cached boost flames occupy [-58,-23] x [6,12] x [-21,21]. Use a
+    // conservative 36-unit eye clearance so their decorative triangles cannot
+    // cross the Cockpit lens or fill it as a rival hops. This changes neither
+    // the rival's hull/helmet nor its ground footprint or authoritative state.
+    const x = Math.max(-58 - forward, 0, forward + 23),
+      y = Math.max(6 - up, 0, up - 12), z = Math.max(-21 - side, 0, side - 21);
+    return x * x + y * y + z * z < 36 * 36;
+  }
   function actorMeshes(snapshot, options = {}) {
     const out = [];
     for (const a of snapshot.actors) {
       if (!visibleActor(a, options)) continue;
       const style = Art.characterStyle(a.appearance, a.color), appearance = style.appearance;
-      const boosted = !!(a.boosting || a.padTicks > 0);
-      const key = [style.accent, appearance.suit, appearance.helmet, appearance.hat, appearance.detail, appearance.ship, boosted].join(':');
-      const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, z: 0, airRamp: 0, heading: 0, boosting: boosted, padTicks: 0 }] }, { calm: true, shadows: false }).vertices, 32);
+      const boosted = !!(a.boosting || a.padTicks > 0),
+        height = actorHeight(a, options.course, options.catalog, options.nearest),
+        plume = boosted && !plumeNearEye(a, height, options.cockpitEye);
+      // Reuse the existing two cached hull variants. Only the four decorative
+      // flame triangles differ; face animation still reads the real boost cue.
+      const key = [style.accent, appearance.suit, appearance.helmet, appearance.hat, appearance.detail, appearance.ship, plume].join(':');
+      const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, z: 0, airRamp: 0, heading: 0, boosting: plume, padTicks: 0 }] }, { calm: true, shadows: false }).vertices, 32);
       const c = Math.cos(a.heading), s = Math.sin(a.heading);
-      const height = actorHeight(a, options.course, options.catalog, options.nearest);
       const model = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,height,a.y,1]);
       const groundModel = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,0,a.y,1]);
       out.push({ vertices, static: true, actorId: a.id, bounds: { min: [-72,0,-32], max: [32,46,32] }, model });

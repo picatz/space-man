@@ -57,6 +57,7 @@ for(const device of[
  {name:'tablet',viewport:{width:820,height:1180},isMobile:true,hasTouch:true},
 ])test(`Starlight ${device.name}: genuine ramp, coin route, item tap and interruption`,{timeout:90000},async t=>{
  const{name,camera,calm,...options}=device,{page}=await launch(t,options,{camera,calm});await controlsFit(page);
+ if(name==='small-phone')assert.equal(await page.locator('.race-minimap').isVisible(),false,'compact portrait prioritizes the driving view over the minimap');
  await page.waitForFunction(()=>{const s=raceUI.snapshot(),c=SpaceManRace.course(s.trackId),n=SpaceManRace.nearest(c,s.actors[0].x,s.actors[0].y),r=SpaceManRace.features(c).ramps[0];return n.s>r.startS-150&&n.s<r.startS-35;},null,{timeout:30000});
  await shot(page,'track-'+name+'-approach');
  await page.waitForFunction(()=>{const a=raceUI.snapshot().actors[0];return a.airRamp&&a.airTicks>=8&&a.airTicks<23;},null,{timeout:30000});
@@ -70,6 +71,8 @@ for(const device of[
  await page.touchscreen.tap(box.x+box.width/2,box.y+box.height/2);
  await page.waitForFunction(item=>(trackProbe.events[item]||0)>0,item,{timeout:3000});
  assert.equal(await page.evaluate(item=>trackProbe.events[item],item),1,'one native tap activates once');
+ await page.waitForFunction(item=>document.querySelector('.race-drive-feedback').textContent===(item==='shield'?'SHIELD ON':'PULSE CHARGING'),item);
+ await shot(page,'track-'+name+'-active');
  const probe=await page.evaluate(()=>trackProbe);assert.ok(probe.airMax>20);assert.ok((probe.events.coin||0)>0,'route collected real boost coins');
  assert.equal(probe.emptyWarningInputs,0,'no warning acknowledgement without visible warning');
  if(name==='phone-portrait'){
@@ -84,12 +87,17 @@ test('Starlight desktop: real keyboard and controller item edges, full ordered r
  await page.keyboard.press('Escape');await page.locator('#raceResume').click();
  await page.keyboard.press('KeyF');await page.waitForFunction(()=>raceUI.snapshot().actors[0].item===null);
  assert.ok(await page.evaluate(item=>(trackProbe.events[item]||0)>0,item));
+ await page.waitForFunction(()=>{const w=document.querySelector('.race-warning');return w&&!w.hidden&&w.dataset.kind==='pulse';},null,{timeout:10000});
+ assert.equal(await page.locator('.race-warning-source').isVisible(),true);
+ await shot(page,'track-desktop-pulse-warning');
  await page.waitForFunction(()=>!!raceUI.snapshot().actors[0].item,null,{timeout:30000});
  await page.evaluate(()=>{testPad.buttons[5].pressed=true;testPad.buttons[5].value=1;});await page.waitForFunction(()=>raceUI.snapshot().actors[0].item===null);await page.evaluate(()=>{testPad.buttons[5].pressed=false;testPad.buttons[5].value=0;autoItem=true;});
+ await page.waitForFunction(()=>{const s=raceUI.snapshot();return s.effects.some(e=>e.ownerId===s.actors[0].id&&e.phase==='wave');},null,{timeout:5000});
+ await shot(page,'track-desktop-pulse-wave');
  await page.waitForFunction(()=>raceUI.snapshot().phase==='finished',null,{timeout:80000});
  const result=await page.evaluate(()=>({state:raceUI.snapshot(),probe:trackProbe}));t.diagnostic(JSON.stringify(result.probe));
  assert.equal(result.state.actors[0].passed,60);assert.equal(result.state.actors[0].recoveries,0);
  assert.ok(result.probe.events.jump>=6);assert.ok(result.probe.events.coin>=6);assert.ok(result.probe.items.includes('shield')&&result.probe.items.includes('pulse'));
  assert.ok(result.probe.warningInputs>0,'actual screen warning was acknowledged');assert.equal(result.probe.emptyWarningInputs,0);
- await shot(page,'track-desktop-finish');t.diagnostic(JSON.stringify(result.probe));
+ await shot(page,'track-desktop-finish');
 });

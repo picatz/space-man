@@ -447,3 +447,26 @@ test('same-track same-tick epoch changes and follow changes discard buffered air
   assert.equal(h.marker.dataset.role,'watching');
   h.view.destroy();
 });
+
+test('Cockpit uses its exact rendered eye to suppress only nearby rival exhaust and Chase restores it',()=>{
+  const h=harness({width:844,height:390}),owner=h.snapshot.actors[0],co=Math.cos(owner.heading),si=Math.sin(owner.heading),
+    rival={...h.snapshot.actors[1],x:owner.x+56*co,y:owner.y+56*si,heading:owner.heading,
+      airRamp:1,airTicks:12,z:28,boosting:true,padTicks:0},
+    state=freeze({...h.snapshot,tick:97,actors:[{...owner,airRamp:1,airTicks:12,z:28},rival]});
+  const full=Scene.actorMeshes(state).find(m=>m.actorId===rival.id);
+  h.view.setMode('cockpit');h.view.render(state,h.config);
+  const cockpit=h.frames.at(-1),body=cockpit.meshes.find(m=>m.actorId===rival.id),face=cockpit.meshes.find(m=>m.faceActorId===rival.id);
+  assert.ok(body&&face,'the near rival and helmet remain visible');
+  assert.ok(!cockpit.meshes.some(m=>m.actorId===owner.id),'only the ordinary self-craft omission applies');
+  assert.equal(full.vertices.length-body.vertices.length,108);
+  assert.equal(face.vertices,Scene.actorMeshes(state).find(m=>m.faceActorId===rival.id).vertices);
+  const expected=Scene.actorMeshes(state,{cockpitEye:cockpit.camera.eye}).find(m=>m.actorId===rival.id);
+  assert.equal(body.vertices,expected.vertices,'suppression uses the same eye that draws this frame');
+  h.view.setMode('chase');h.view.render(state,h.config);
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===rival.id).vertices,full.vertices);
+  h.view.setMode('cockpit');
+  const far={...state,actors:[state.actors[0],{...rival,x:owner.x+200*co,y:owner.y+200*si}]};
+  h.view.render(far,h.config);
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===rival.id).vertices,full.vertices,'distant Cockpit exhaust remains intact');
+  h.view.destroy();
+});
