@@ -458,7 +458,11 @@ test('Cockpit uses its exact rendered eye to suppress only nearby rival exhaust 
   const cockpit=h.frames.at(-1),body=cockpit.meshes.find(m=>m.actorId===rival.id),face=cockpit.meshes.find(m=>m.faceActorId===rival.id);
   assert.ok(body&&face,'the near rival and helmet remain visible');
   assert.ok(!cockpit.meshes.some(m=>m.actorId===owner.id),'only the ordinary self-craft omission applies');
-  assert.equal(full.vertices.length-body.vertices.length,108);
+  assert.equal(full.vertices,body.vertices,'the opaque hull does not change when exhaust is suppressed');
+  const fullEngine=Scene.actorMeshes(state).find(m=>m.engineActorId===rival.id),safeEngine=cockpit.meshes.find(m=>m.engineActorId===rival.id);
+  assert.equal(fullEngine.vertices,safeEngine.vertices,'emissive engine cores remain');
+  assert.ok(Scene.actorMeshes(state).some(m=>m.plumeActorId===rival.id));
+  assert.ok(!cockpit.meshes.some(m=>m.plumeActorId===rival.id),'only nearby translucent wakes are suppressed');
   assert.equal(face.vertices,Scene.actorMeshes(state).find(m=>m.faceActorId===rival.id).vertices);
   const expected=Scene.actorMeshes(state,{cockpitEye:cockpit.camera.eye}).find(m=>m.actorId===rival.id);
   assert.equal(body.vertices,expected.vertices,'suppression uses the same eye that draws this frame');
@@ -469,4 +473,14 @@ test('Cockpit uses its exact rendered eye to suppress only nearby rival exhaust 
   h.view.render(far,h.config);
   assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===rival.id).vertices,full.vertices,'distant Cockpit exhaust remains intact');
   h.view.destroy();
+});
+
+test('Cockpit shell uses the equipped paint of the current local or watched pilot',()=>{
+ const h=harness(),Art=require('../src/art.js'),state={...h.snapshot,actors:h.snapshot.actors.map((a,i)=>({...a,appearance:{...a.appearance,suit:i?'mint':'rose'}}))};
+ h.view.setMode('cockpit');
+ for(const a of state.actors.slice(0,2)){
+  h.view.render(state,{...h.config,actorId:a.id,localActorId:a.id===state.actors[0].id?a.id:null});
+  const cockpit=h.nodes.find(n=>n.className==='race-cockpit'),style=Art.characterStyle(a.appearance,a.color);
+  assert.equal(cockpit.style.borderTopColor,style.accent);assert.ok(cockpit.style.backgroundImage.includes(style.palette.suit));assert.equal(cockpit.hidden,false);
+ }
 });
