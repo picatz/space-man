@@ -40,7 +40,10 @@ of AI models for web game development.
 
 ## Star Expedition · Continuous adventure
 
-Choose **Star Expedition** to launch directly into a continuous, seeded journey.
+The home launcher now keeps **Endless Run**, **Orbital Arena** and **Star Circuit**
+separate. Mixed Star Expedition is deferred while encounter pacing and art
+transitions are refined. Existing shared-expedition invites and session compatibility
+remain supported. The preserved expedition engine runs a continuous, seeded journey.
 Runner escapes, short arena skirmishes, one-lap racing sprints and telegraphed
 Guardian boss encounters flow into one another automatically. Each five-route
 sector reshuffles its approaches before a boss climax; tracks and arenas vary.

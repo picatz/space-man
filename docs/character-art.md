@@ -29,3 +29,19 @@ touch and simulated standard-controller input, reduced-motion/saver checks,
 cache bounds, immutable snapshot tests and the full existing regression suite.
 Passing tests alone is not evidence of polished art; inspect screenshots and
 record which views and input methods were actually exercised.
+
+## Suit studio
+
+The studio is the same small universe as the home screen, rather than a modal
+painted over a live runner scene. Slate-blue surfaces, pale pressure suits,
+cyan glass and warm gold primary actions give the character room to breathe.
+A single scroll container must retain all controls at small sizes and zoom;
+portrait stacks the workbench beneath the pilot, while landscape splits them.
+
+Every option uses the shared renderer to show the actual item. Equipped is an
+outlined cool tile; available is quiet; locked uses a dashed border and written
+label. A locked click previews without equipping or touching the saved profile.
+Successful equip earns one short wave and delighted eyes, not a looping reward.
+The existing runner animation clock owns the studio; no extra frame loop is
+created. Reduced motion freezes decorative motion, and hidden/mode transitions
+keep the original scheduler ownership. Appearance never changes mechanics.

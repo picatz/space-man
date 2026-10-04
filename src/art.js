@@ -278,8 +278,9 @@ const characterHats = {
       if(ship==='leaf'){c.beginPath();c.moveTo(-21,side*17);for(let i=0;i<=16;i++){const t=i/16;c.lineTo(-21+17*t,side*(17+9*Math.sin(t*Math.PI)));}c.lineTo(-4,side*17);c.closePath();c.fill();}
       const center=side*17;
       if(boosting||hero) {
-        c.save();c.globalAlpha*=.22;c.fillStyle=accent;c.beginPath();c.moveTo(-23,center-2.4);c.quadraticCurveTo(-30,center-3,-36,center);c.quadraticCurveTo(-30,center+3,-25,center+2.4);c.fill();
-        c.globalAlpha*=2.7;c.fillStyle='#DFFBFF';c.beginPath();c.moveTo(-23,center-1.2);c.lineTo(-35,center);c.lineTo(-23,center+1.2);c.fill();c.restore();
+        // Layered faint ovals approximate the same soft engine-energy falloff
+        // as WebGL without allocating gradients or painting a hard white spear.
+        for(let ring=3;ring>0;ring--) {c.save();c.globalAlpha*=(4-ring)*.04;c.fillStyle=ring===1?'#CBF7FF':accent;c.beginPath();c.ellipse(-26-ring*.6,center,3+ring*1.1,.6+ring*.5,0,0,TAU);c.fill();c.restore();}
       }
       // Same truncated rear / slim waist / rounded leading tip as the 3D pod.
       c.fillStyle=accent;c.beginPath();c.moveTo(-23,center-3.3);c.bezierCurveTo(-18,center-4.5,5,center-4.2,15,center-2.3);c.quadraticCurveTo(21,center,15,center+2.3);c.bezierCurveTo(5,center+4.2,-17,center+4.5,-23,center+3.3);c.closePath();c.fill();
@@ -302,9 +303,10 @@ const characterHats = {
   }
   // Full appearance preview with no dependency on a running game or player.
   // x/y is the slot center; size is the total headwear-to-boot height in pixels.
-  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false } = {}) {
+  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0 } = {}) {
     const style = characterStyle(appearance), P = style.palette;
     const bob = reduceMotion ? 0 : Math.sin(time * 2) * .65;
+    const hello = reduceMotion ? 0 : clamp(greeting, 0, 1);
     c.save(); c.translate(x, y + size * .13); c.scale(size / 54, size / 54);
     if (ship) { c.scale(.78, .78); c.rotate(-.18); hoverpod(c, style, { tick: time * 60 + 20, calm: reduceMotion, hero: true }); c.restore(); return; }
     c.fillStyle = '#0005'; c.beginPath(); c.ellipse(0, 18, 12, 2.8, 0, 0, TAU); c.fill();
@@ -313,9 +315,15 @@ const characterHats = {
     c.fillStyle = '#415D78'; rrPath(c, -14, -5 + bob, 7, 15, 3); c.fill(); c.fillStyle = style.accent; c.fillRect(-13, -2 + bob, 2, 6);
     c.strokeStyle = P.legB; c.lineWidth = 4.5; c.beginPath(); c.moveTo(-5, bob); c.lineTo(-10, 7 + bob); c.stroke();
     c.fillStyle = P.suit; rrPath(c, -8, -5 + bob, 16, 17, 6); c.fill(); suitDetails(c, 0, bob, style);
-    characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion });
-    c.strokeStyle = P.arm; c.beginPath(); c.moveTo(6, bob); c.lineTo(11, 6 + bob); c.stroke();
-    c.fillStyle = style.accent; rrPath(c, 8, 4 + bob, 5, 5, 2); c.fill();
+    // The shoulder starts beneath the neck seal. Helmet paints last, so no
+    // limb can pop over the face during idle or the brief equip greeting.
+    const handX = 11 + hello * 3, handY = 6 + bob - hello * 13;
+    c.strokeStyle = P.arm; c.lineWidth = 4.5; c.beginPath(); c.moveTo(5, 2 + bob); c.quadraticCurveTo(10, 4 + bob, handX, handY); c.stroke();
+    c.fillStyle = P.legB; rrPath(c, handX - 2.4, handY - 1.5, 4.8, 3, 1); c.fill();
+    c.fillStyle = P.suit; c.beginPath(); c.ellipse(handX, handY + 1.1, 2.7, 3.1, -.2, 0, TAU); c.fill();
+    c.beginPath(); c.ellipse(handX - 2, handY + .6, 1.2, 1.6, -.45, 0, TAU); c.fill();
+    c.strokeStyle = style.accent; c.lineWidth = .8; c.beginPath(); c.moveTo(handX - 1.3, handY + 2.2); c.lineTo(handX + 1, handY + 2.2); c.stroke();
+    characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: hello > .15 ? 1 : 0 });
     c.restore();
   }
 
