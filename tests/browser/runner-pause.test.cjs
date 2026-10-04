@@ -54,6 +54,7 @@ async function state(page) {
 }
 async function assertFrozen(page) {
   await page.waitForFunction(() => G.mode === 'pause');
+  await page.locator('#ovPause.in').waitFor();
   assert.equal(await page.locator('#ovPause.in').count(), 1, 'visible pause dialog opens');
   const before = await state(page); await page.waitForTimeout(1600);
   assert.deepEqual(await state(page), before, 'physics, AI, projectiles, simulation clocks and route director freeze');
@@ -64,8 +65,9 @@ for (const expeditionMode of [false, true]) for (const touch of [false, true]) {
   test(`${expeditionMode ? 'preserved expedition' : 'standalone runner'} visible ${touch ? 'tablet touch' : 'desktop mouse'} Pause freezes and resumes neutrally`, { timeout: 45000 }, async t => {
     const page = await launch(t, touch); await start(page, expeditionMode);
     // Put a genuine fired projectile in motion before pausing.
-    await page.keyboard.press('f');
+    await page.keyboard.down('f');
     await page.waitForFunction(() => G.bullets.length > 0);
+    await page.keyboard.up('f');
     const p = await pausePoint(page);
     if (touch) await page.touchscreen.tap(p.x, p.y); else await page.mouse.click(p.x, p.y);
     const before = await assertFrozen(page);

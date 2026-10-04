@@ -6656,7 +6656,8 @@ function wardrobePreview() {
   if (canvas.width !== 480 * dpr || canvas.height !== 360 * dpr) { canvas.width = 480 * dpr; canvas.height = 360 * dpr; }
   const c = canvas.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, 480, 360);
   const appearance = wardrobeInspect || equippedAppearance(), quiet = lessMotion() || !!SHOT;
-  const reaction = quiet ? 0 : Math.max(0, 1 - (G.time - wardrobeReactionAt) / .85);
+  const elapsed = G.time - wardrobeReactionAt;
+  const reaction = quiet || elapsed < 0 || elapsed >= .85 ? 0 : Math.sin(Math.PI * elapsed / .85);
   // A quiet pressure-suit work light and landing pad, using the home materials.
   c.fillStyle = '#081423'; c.beginPath(); c.ellipse(240, 312, 130, 20, 0, 0, TAU); c.fill();
   c.fillStyle = '#254B59'; c.beginPath(); c.ellipse(240, 302, 115, 18, 0, 0, TAU); c.fill();
@@ -8478,10 +8479,11 @@ function doRosterKick() { const r = rosterActionTarget; hideAllOverlays(); if (G
 // the shared round starts. The existing keyboard shortcut stays unchanged.
 function netLabelPlayButton() {
   const b = $('btnPlay'); if (!b) return;
-  if (!netLive() || NET.mockActive) { b.textContent = 'Endless Run'; b.setAttribute('aria-label', 'Endless Run. Outrun the flare, solo or with friends.'); return; }
-  if (NET.info().isHost) { b.textContent = 'Start Round'; b.setAttribute('aria-label', 'Start the round — everyone runs this course together.'); }
-  else if (netRoundActive()) { b.textContent = 'Join Round'; b.setAttribute('aria-label', 'Join the round already in progress.'); }
-  else { b.textContent = 'Ready to Run'; b.setAttribute('aria-label', 'Wait at the start line for the host’s countdown.'); }
+  const label = b.querySelector('.mode-link') || b; // Preserve the full-card illustration and native hit target.
+  if (!netLive() || NET.mockActive) { label.textContent = 'Endless Run'; b.setAttribute('aria-label', 'Endless Run. Outrun the flare, solo or with friends.'); return; }
+  if (NET.info().isHost) { label.textContent = 'Start Round'; b.setAttribute('aria-label', 'Start the round — everyone runs this course together.'); }
+  else if (netRoundActive()) { label.textContent = 'Join Round'; b.setAttribute('aria-label', 'Join the round already in progress.'); }
+  else { label.textContent = 'Ready to Run'; b.setAttribute('aria-label', 'Wait at the start line for the host’s countdown.'); }
 }
 function netLabelAgainButton() {
   const b = $('btnAgain'); if (!b) return;

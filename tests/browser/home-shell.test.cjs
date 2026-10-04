@@ -133,7 +133,12 @@ for (const [width,height] of [[320,568],[390,844],[430,932],[667,375],[844,390],
     await page.setViewportSize({width,height:Math.min(height,280)});
     await shell.evaluate(e=>e.scrollTop=0);
     assert.ok(await shell.evaluate(e=>e.scrollHeight>e.clientHeight),'test genuinely overflows');
-    const box=await shell.boundingBox(); await page.mouse.move(box.x+box.width/2,box.y+box.height/2); await page.mouse.wheel(0,2000);
+    const box=await shell.boundingBox();
+    if(engineName==='webkit' && width<1000) {
+      // Playwright cannot synthesize wheel/swipe in mobile WebKit. Verify the
+      // scroll container here, then actual keyboard focus scrolling below.
+      await shell.evaluate(e=>e.scrollBy(0,2000));
+    } else { await page.mouse.move(box.x+box.width/2,box.y+box.height/2); await page.mouse.wheel(0,2000); }
     await page.waitForFunction(()=>document.querySelector('.home-shell').scrollTop>0);
     await page.locator('#btnPlay').focus();
     for(let i=0;i<12&&await page.evaluate(()=>document.activeElement.id!=='btnSettings');i++) await page.keyboard.press('Tab');

@@ -321,7 +321,7 @@ for (const [width,height] of [[390,844],[1440,900]]) test(`home ${width}x${heigh
   for(const id of ['btnPlay','btnArena','btnRace']) {
     const button=page.locator('#'+id);
     assert.equal(await button.evaluate(e=>e.tagName),'BUTTON','whole card is one native control');
-    assert.equal(await button.locator('button,a,input,[tabindex]').count(),0,'no nested focus targets');
+    assert.equal(await button.locator('button,a,input,[tabindex]').evaluateAll(nodes=>nodes.filter(n=>!(n.closest('.hapt')?.getAttribute('aria-hidden')==='true' && n.tabIndex===-1)).length),0,'no nested accessible or focus targets; the existing aria-hidden iOS haptic shim never becomes a second action');
     for(const region of ['illustration','edge']) {
       await button.scrollIntoViewIfNeeded();
       const point=await button.evaluate((e,region)=>{
