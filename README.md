@@ -75,7 +75,11 @@ edge of space. Double jump and dash to recover; each spacefarer has three lives.
   Shift/K to dash, Escape to pause. Existing remapped movement/jump/fire keys
   carry over. Controller: stick/D-pad, A, X, B/trigger, Menu. Touch: a floating
   stick plus Jump, Pulse and Dash; handedness, motion, mute and power preferences
-  carry over
+  carry over. Touch actions keep 60–78px targets with clear spacing and cooldown
+  bars on Pulse/Dash. Portrait reserves a lower thumb area; wide landscape keeps
+  the stage between the controls, while compact landscape follows your pilot.
+  The visible movement pod matches its touch area. Controls mirror for left-handed
+  play, clear safely on rotation/interruption and leave Pause directly accessible
 
 Play locally against CPUs, or open **Play with friends** to create, join or watch
 an arena room. Up to four players and four spectators share authoritative combat,
@@ -116,7 +120,8 @@ Carve corners, catch boost strips, manage rechargeable boost and recover from a
 missed bend. Ordered checkpoints, race position, timing and results are part of
 the actual simulation. Race again, switch circuits or return to the runner.
 
-Auto-drive is on. A/D or Left/Right steer, S/Down brakes, Space/Shift boosts,
+Auto-drive is on. A/D or Left/Right steer. S/Down brakes; hold it while turning
+to drift, then release after a sustained corner for a short exit boost. Space/Shift boosts,
 R rescues and Escape pauses. Touch and standard controllers are supported;
 existing left-handed, steering remaps, mute and reduced-motion preferences carry
 over. Choose Chase (default), Cockpit or Top-down using the camera button,

@@ -98,9 +98,32 @@
 .arena-player-card[data-boss=true] .arena-player-helmet{display:none}.arena-player-card[data-boss=true] .arena-player-info{grid-template-columns:minmax(0,1fr);gap:4px}.arena-player-card[data-boss=true] .arena-player-name{white-space:nowrap}.arena-player-card[data-boss=true] .arena-player-tag{overflow:hidden;text-overflow:ellipsis}.arena-player-card[data-boss=true] .arena-stocks{display:none}.arena-root .arena-player-card[data-boss=true] .arena-damage{font-size:18px;min-width:0;white-space:nowrap}
 .arena-countdown{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);z-index:4;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;pointer-events:none}.arena-countdown-value{font-size:clamp(70px,14vw,140px);font-weight:900;line-height:1;color:#F4F7FF;text-shadow:0 6px 0 #183650,0 0 55px rgba(56,225,255,.18)}.arena-countdown-label{font:700 10px/1.5 system-ui,sans-serif;letter-spacing:.2em;color:#9FF1FF;white-space:nowrap;padding:6px 10px;background:rgba(6,13,28,.8);border-radius:20px}
 .arena-bottom-hud{position:absolute;left:calc(var(--arena-safe-left) + 24px);right:calc(var(--arena-safe-right) + 24px);bottom:calc(var(--arena-safe-bottom) + 18px);display:flex;align-items:center;justify-content:space-between;gap:16px;pointer-events:none;z-index:3}.arena-control-hint{font:500 10px/1.6 system-ui,sans-serif;word-spacing:4px;color:#7F9DB9}.arena-abilities{display:flex;gap:9px}.arena-ability{position:relative;overflow:hidden;display:flex;align-items:center;gap:7px;min-width:100px;padding:9px 11px 11px;border:1px solid rgba(133,184,220,.23);border-radius:9px;background:rgba(8,19,34,.85)}.arena-ability-key{font:700 9px/1.2 system-ui,sans-serif;color:#DCEEFF}.arena-ability-label{font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.1em;color:#A8C7E0}.arena-ability-meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:#38E1FF;transform-origin:left}.arena-ability:last-child .arena-ability-meter{background:#FFC66B}
-.arena-touch{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}.arena-root[data-touch=true] .arena-touch{display:block}.arena-stick-zone{position:absolute;bottom:0;left:var(--arena-safe-left);width:calc(48% - var(--arena-safe-left));height:42%;min-height:140px;pointer-events:auto;touch-action:none}.arena-stick-base{position:absolute;left:76px;top:calc(100% - 88px - var(--arena-safe-bottom));width:94px;height:94px;border-radius:50%;border:1.5px solid rgba(159,241,255,.4);background:rgba(20,51,73,.18);transform:translate(-50%,-50%);opacity:.6;pointer-events:none}.arena-stick-base:before,.arena-stick-base:after{content:'';position:absolute;left:50%;top:50%;background:rgba(159,241,255,.12);transform:translate(-50%,-50%)}.arena-stick-base:before{width:76%;height:1px}.arena-stick-base:after{height:76%;width:1px}.arena-stick-knob{position:absolute;left:50%;top:50%;width:40px;height:40px;border:1px solid rgba(159,241,255,.58);border-radius:50%;background:rgba(56,225,255,.2);transform:translate(-50%,-50%)}.arena-stick-active{opacity:1;border-color:rgba(159,241,255,.8)}.arena-stick-label{position:absolute;left:76px;bottom:calc(var(--arena-safe-bottom) + 24px);transform:translateX(-50%);font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.15em;color:#7796AD;pointer-events:none}
-.arena-touch-actions{position:absolute;right:calc(var(--arena-safe-right) + 17px);bottom:calc(var(--arena-safe-bottom) + 23px);width:192px;height:150px;pointer-events:none}.arena-touch-button{position:absolute;min-height:60px;min-width:60px;padding:8px;display:flex;flex-direction:column;gap:2px;border-radius:50%;pointer-events:auto;touch-action:none;box-shadow:0 4px 0 rgba(0,0,0,.3);background:rgba(20,44,67,.91);border:1.5px solid #6593B1;color:#CBEBFF}.arena-touch-symbol{font:700 23px/1 system-ui,sans-serif}.arena-touch-word{font:700 8px/1.3 system-ui,sans-serif;letter-spacing:.07em}.arena-touch-jump{width:76px;height:76px;right:0;bottom:0;color:#A9F1FF;border-color:#70DCEE;background:rgba(16,56,75,.92)}.arena-touch-attack{width:70px;height:70px;left:17px;bottom:27px;color:#FFE4B3;border-color:#E3AF62;background:rgba(70,49,38,.92)}.arena-touch-dash{width:58px;height:58px;right:20px;top:0}.arena-touch-button.arena-pressed{transform:translateY(3px) scale(.96);filter:brightness(1.2);box-shadow:none}.arena-touch-button.arena-cooling{opacity:.56}.arena-root[data-lefty=true] .arena-stick-zone{left:auto;right:var(--arena-safe-right);width:calc(48% - var(--arena-safe-right))}.arena-root[data-lefty=true] .arena-stick-base{left:calc(100% - 76px)}.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 76px)}.arena-root[data-lefty=true] .arena-touch-actions{right:auto;left:calc(var(--arena-safe-left) + 17px);transform:scaleX(-1)}.arena-root[data-lefty=true] .arena-touch-button{transform:scaleX(-1)}.arena-root[data-lefty=true] .arena-touch-button.arena-pressed{transform:scaleX(-1) translateY(3px) scale(.96)}
-.arena-root[data-touch=true] .arena-bottom-hud{justify-content:center;bottom:calc(var(--arena-safe-bottom) + 8px)}.arena-root[data-touch=true] .arena-control-hint{display:none}.arena-root[data-touch=true] .arena-abilities{gap:6px}.arena-root[data-touch=true] .arena-ability{padding:4px 7px 6px;min-width:65px}.arena-root[data-touch=true] .arena-ability-key{display:none}.arena-root[data-touch=true] .arena-ability-label{font-size:7px}
+/* Thumb-sized actions share a deliberate lower edge. The floating stick is
+   bounded to its visible pod instead of stealing the bottom half of play. */
+.arena-touch{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}
+.arena-root[data-touch=true] .arena-touch{display:block}
+.arena-stick-zone{position:absolute;left:calc(var(--arena-safe-left) + 12px);bottom:calc(var(--arena-safe-bottom) + 16px);width:min(132px,calc(100% - 208px - var(--arena-safe-left) - var(--arena-safe-right)));height:148px;pointer-events:auto;touch-action:none}
+.arena-stick-base{position:absolute;left:50%;top:72px;width:96px;height:96px;border-radius:50%;border:1.5px solid #88C1DB88;background:radial-gradient(circle,#1C445C55,#091D3244);transform:translate(-50%,-50%);opacity:.8;pointer-events:none;box-shadow:inset 0 0 0 8px #81CBE908}
+.arena-stick-base:before,.arena-stick-base:after{content:'';position:absolute;left:50%;top:50%;background:#9FF1FF22;transform:translate(-50%,-50%)}
+.arena-stick-base:before{width:76%;height:1px}.arena-stick-base:after{height:76%;width:1px}
+.arena-stick-knob{position:absolute;left:50%;top:50%;width:44px;height:44px;border:1.5px solid #91D6EFA6;border-radius:50%;background:#38E1FF25;transform:translate(-50%,-50%)}
+.arena-stick-active{opacity:1;border-color:#BAEFFF}
+.arena-stick-label{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);font:700 10px/1.2 system-ui,sans-serif;letter-spacing:.13em;color:#9BBED1;pointer-events:none}
+.arena-touch-actions{position:absolute;right:calc(var(--arena-safe-right) + 12px);bottom:calc(var(--arena-safe-bottom) + 16px);width:176px;height:156px;pointer-events:none}
+.arena-touch-button{position:absolute;min-height:60px;min-width:60px;padding:8px;display:flex;flex-direction:column;gap:3px;border-radius:50%;pointer-events:auto;touch-action:none;box-shadow:0 4px 0 #02091580,inset 0 1px 0 #DCFAFF16;background:#102B43E8;border:1.5px solid #78ABC6;color:#DDF3FF}
+.arena-touch-symbol{font:700 24px/1 system-ui,sans-serif}.arena-touch-word{font:750 10px/1.3 system-ui,sans-serif;letter-spacing:.06em}
+.arena-touch-jump{width:78px;height:78px;right:0;bottom:0;color:#BFF5FF;border-color:#80E1EF;background:#103A4DEB}
+.arena-touch-attack{width:72px;height:72px;left:0;bottom:16px;color:#FFEAC4;border-color:#EFC37E;background:#463526EB}
+.arena-touch-dash{width:60px;height:60px;right:17px;top:0}
+.arena-touch-attack:after,.arena-touch-dash:after{content:'';position:absolute;left:19px;right:19px;bottom:9px;height:3px;border-radius:3px;background:currentColor;transform:scaleX(var(--ready,1));transform-origin:left;opacity:.9}
+.arena-touch-button.arena-pressed{transform:translateY(2px) scale(.97);filter:brightness(1.2);box-shadow:none}
+.arena-touch-button.arena-cooling{background:#0D1C2DDD;border-color:#7692A1;color:#9CB4C5}
+.arena-root[data-lefty=true] .arena-stick-zone{left:auto;right:calc(var(--arena-safe-right) + 12px)}
+.arena-root[data-lefty=true] .arena-touch-actions{right:auto;left:calc(var(--arena-safe-left) + 12px);transform:scaleX(-1)}
+.arena-root[data-lefty=true] .arena-touch-button{transform:scaleX(-1)}
+.arena-root[data-lefty=true] .arena-touch-button.arena-pressed{transform:scaleX(-1) translateY(2px) scale(.97)}
+.arena-root[data-touch=true] .arena-bottom-hud{display:none}
+.arena-pause-label{font:750 8px/1 system-ui,sans-serif;letter-spacing:.06em}.arena-pause-button{flex-direction:column;gap:4px}
 .arena-root[data-screen=lobby] .arena-hud,.arena-root[data-screen=lobby] .arena-bottom-hud,.arena-root[data-screen=lobby] .arena-touch,.arena-root[data-screen=lobby] .arena-countdown,.arena-root[data-screen=pause] .arena-touch,.arena-root[data-screen=results] .arena-touch{display:none}
 .arena-small-panel{width:min(440px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:11px;text-align:center;padding:30px;border:1px solid rgba(115,197,230,.27);border-radius:22px;background:linear-gradient(160deg,#14293D,#0A1224 80%);box-shadow:0 22px 70px rgba(0,0,0,.55)}.arena-small-panel .arena-pill{align-self:center;margin-bottom:8px}.arena-panel-title{font-size:27px;font-weight:900;letter-spacing:-.025em;line-height:1.25;color:#F4F7FF;margin:0}.arena-panel-copy{font:400 14px/1.6 system-ui,sans-serif;color:#9FBBD2;margin:2px 0 14px}.arena-small-panel .arena-primary{margin-bottom:7px}.arena-small-panel>.arena-text-button{min-height:40px;padding:7px}.arena-result-roster{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}.arena-result-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:16px;align-items:center;text-align:left;padding:10px 12px;border-radius:8px;background:rgba(2,9,22,.45);border-left:2px solid var(--fighter);font:500 11px/1.4 system-ui,sans-serif;color:#8FAEC7}.arena-result-row strong{color:var(--fighter);font-weight:700}
 .arena-root[data-calm=true] *, .arena-root[data-saver=true] *{transition:none!important;animation:none!important}.arena-root[data-saver=true] .arena-primary{box-shadow:none}
@@ -147,8 +170,54 @@
 .arena-controls-help summary{min-height:44px;padding:12px 0;font-size:11px}
 .arena-help-grid{grid-template-columns:minmax(0,1fr);gap:10px}
 .arena-hud{top:calc(var(--arena-safe-top) + 10px);left:calc(var(--arena-safe-left) + 13px);right:calc(var(--arena-safe-right) + 13px)}.arena-hud-top{margin-bottom:9px}.arena-match-brand .arena-eyebrow{font-size:8px}.arena-match-name{font-size:9px;max-width:255px}.arena-hud-tools{gap:10px}.arena-clock{font-size:17px}.arena-icon-button{width:44px;height:44px;min-height:44px;border-radius:10px}.arena-roster{gap:7px}.arena-player-card{padding:9px 8px;gap:7px;border-radius:9px;max-width:210px}.arena-player-name{font-size:10px}.arena-player-tag{display:block;font-size:6px}.arena-player-info{grid-template-columns:auto auto;gap:2px 4px}.arena-damage{font-size:22px;min-width:36px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-stocks{font-size:9px;letter-spacing:3px}.arena-root[data-format=ffa] .arena-roster,.arena-root[data-format=teams] .arena-roster{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-width:430px}.arena-root[data-format=ffa] .arena-player-card,.arena-root[data-format=teams] .arena-player-card{max-width:none;padding:7px 9px}.arena-root[data-format=ffa] .arena-damage,.arena-root[data-format=teams] .arena-damage{font-size:20px}.arena-root[data-format=ffa] .arena-player-helmet,.arena-root[data-format=teams] .arena-player-helmet{flex-basis:21px;height:22px}.arena-bottom-hud{left:calc(var(--arena-safe-left) + 14px);right:calc(var(--arena-safe-right) + 14px)}.arena-control-hint{font-size:8px;max-width:140px}.arena-ability{min-width:70px;padding:8px 8px 10px;gap:5px}.arena-ability-key{font-size:7px}.arena-ability-label{font-size:7px}.arena-small-panel{padding:25px 22px;border-radius:19px}.arena-panel-title{font-size:24px}.arena-panel-copy{font-size:13px}.arena-countdown-value{font-size:104px}}
-@media(max-height:600px) and (min-width:651px){.arena-modal{padding-top:calc(var(--arena-safe-top) + 10px);padding-bottom:calc(var(--arena-safe-bottom) + 10px)}.arena-lobby-top{margin-bottom:12px}.arena-lobby-grid{align-items:start}.arena-title{font-size:34px;margin:14px 0}.arena-lobby-art{max-width:280px}.arena-setup{padding:17px}.arena-format-card{min-height:78px;gap:6px;padding:9px}.arena-choice-group+.arena-choice-group{margin-top:16px}.arena-stage-card{min-height:94px}.arena-stage-preview{max-height:66px}.arena-setup-options{margin:5px 0 13px}.arena-local-note{margin-top:12px}.arena-controls-help{margin-top:14px}.arena-hud{top:calc(var(--arena-safe-top) + 8px);left:calc(var(--arena-safe-left) + 20px);right:calc(var(--arena-safe-right) + 20px)}.arena-hud-top{margin-bottom:0}.arena-match-brand{position:absolute;top:6px;left:0}.arena-hud-tools{position:absolute;top:0;right:0}.arena-match-brand .arena-eyebrow{font-size:7px}.arena-match-name{font-size:8px;max-width:160px}.arena-roster{max-width:500px;padding:0 5px}.arena-player-card{padding:7px;max-width:124px;gap:5px}.arena-player-helmet{display:none}.arena-player-tag{display:none}.arena-player-name{font-size:9px}.arena-damage{font-size:20px;min-width:30px}.arena-clock{font-size:15px}.arena-hud-tools{gap:8px}.arena-icon-button{width:44px;height:44px;min-height:44px}.arena-touch-actions{height:120px;width:179px;bottom:calc(var(--arena-safe-bottom) + 12px)}.arena-touch-jump{width:66px;height:66px}.arena-touch-attack{width:62px;height:62px;left:13px;bottom:19px}.arena-touch-dash{width:52px;height:52px;min-width:52px;min-height:52px;right:40px;top:0}.arena-stick-base{left:68px;top:calc(100% - 68px - var(--arena-safe-bottom));width:80px;height:80px}.arena-stick-label{left:68px;bottom:calc(var(--arena-safe-bottom) + 12px)}.arena-root[data-lefty=true] .arena-stick-base,.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 68px)}.arena-countdown{top:48%}.arena-countdown-value{font-size:78px}.arena-countdown-label{font-size:8px}.arena-small-panel{max-width:420px;padding:20px;gap:8px}.arena-small-panel .arena-pill{margin-bottom:2px}.arena-panel-title{font-size:23px}.arena-panel-copy{font-size:12px;margin:0 0 6px}.arena-small-panel .arena-button{min-height:42px;padding:10px}.arena-small-panel>.arena-text-button{min-height:36px;padding:5px}.arena-result-row{padding:6px 10px;font-size:10px}}
-@media(max-width:360px){.arena-modal{padding-left:calc(var(--arena-safe-left) + 8px);padding-right:calc(var(--arena-safe-right) + 8px)}.arena-setup{padding:10px}.arena-format-card{padding:9px 6px}.arena-segment{padding:8px 9px}.arena-player-helmet{display:none}.arena-player-card{gap:6px}.arena-touch-actions{right:calc(var(--arena-safe-right) + 9px);width:181px}.arena-stick-base,.arena-stick-label{left:65px}.arena-root[data-lefty=true] .arena-stick-base,.arena-root[data-lefty=true] .arena-stick-label{left:calc(100% - 65px)}}
+@media(max-height:600px) and (min-width:651px){.arena-modal{padding-top:calc(var(--arena-safe-top) + 10px);padding-bottom:calc(var(--arena-safe-bottom) + 10px)}.arena-lobby-top{margin-bottom:12px}.arena-lobby-grid{align-items:start}.arena-title{font-size:34px;margin:14px 0}.arena-lobby-art{max-width:280px}.arena-setup{padding:17px}.arena-format-card{min-height:78px;gap:6px;padding:9px}.arena-choice-group+.arena-choice-group{margin-top:16px}.arena-stage-card{min-height:94px}.arena-stage-preview{max-height:66px}.arena-setup-options{margin:5px 0 13px}.arena-local-note{margin-top:12px}.arena-controls-help{margin-top:14px}.arena-hud{top:calc(var(--arena-safe-top) + 8px);left:calc(var(--arena-safe-left) + 20px);right:calc(var(--arena-safe-right) + 20px)}.arena-hud-top{margin-bottom:0}.arena-match-brand{position:absolute;top:6px;left:0}.arena-hud-tools{position:absolute;top:0;right:0}.arena-match-brand .arena-eyebrow{font-size:7px}.arena-match-name{font-size:8px;max-width:160px}.arena-roster{max-width:500px;padding:0 5px}.arena-player-card{padding:7px;max-width:124px;gap:5px}.arena-player-helmet{display:none}.arena-player-tag{display:none}.arena-player-name{font-size:9px}.arena-damage{font-size:20px;min-width:30px}.arena-clock{font-size:15px}.arena-hud-tools{gap:8px}.arena-icon-button{width:44px;height:44px;min-height:44px}.arena-countdown{top:48%}.arena-countdown-value{font-size:78px}.arena-countdown-label{font-size:8px}.arena-small-panel{max-width:420px;padding:20px;gap:8px}.arena-small-panel .arena-pill{margin-bottom:2px}.arena-panel-title{font-size:23px}.arena-panel-copy{font-size:12px;margin:0 0 6px}.arena-small-panel .arena-button{min-height:42px;padding:10px}.arena-small-panel>.arena-text-button{min-height:36px;padding:5px}.arena-result-row{padding:6px 10px;font-size:10px}}
+@media(max-width:360px){.arena-modal{padding-left:calc(var(--arena-safe-left) + 8px);padding-right:calc(var(--arena-safe-right) + 8px)}.arena-setup{padding:10px}.arena-format-card{padding:9px 6px}.arena-segment{padding:8px 9px}.arena-player-helmet{display:none}.arena-player-card{gap:6px}}
+`;
+  const IDENTITY_STYLES = `
+.arena-player-card[data-you=true]{border-top-color:#EAF7FF;background:#152738;box-shadow:inset 0 1px 0 #EAF7FF18}
+.arena-player-card[data-watching=true]{border-top:2px dashed #EAF7FF}
+.arena-player-portrait{flex:0 0 30px;width:30px;height:38px;object-fit:contain;align-self:center}
+.arena-player-info{grid-template-columns:minmax(0,1fr);gap:3px}
+.arena-player-name{display:flex;align-items:center;gap:4px;white-space:nowrap;min-width:0}
+.arena-player-name-text{overflow:hidden;text-overflow:ellipsis}
+.arena-player-tag{display:block!important;font-size:8px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arena-stocks{margin-top:0}
+@media(max-width:650px){.arena-player-card{gap:5px}.arena-player-portrait{flex-basis:27px;width:27px;height:34px}.arena-player-name{font-size:10px}.arena-player-tag{font-size:8px}.arena-root[data-format=teams] .arena-player-card,.arena-root[data-format=ffa] .arena-player-card{padding:6px}.arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none!important;padding:6px 10px!important}.arena-player-card[data-boss=true] .arena-player-info{display:flex;gap:8px;align-items:center}.arena-player-card[data-boss=true] .arena-player-tag{font-size:8px}}
+@media(max-height:600px) and (min-width:651px){.arena-player-portrait{display:none}.arena-player-card{min-width:0}.arena-player-tag{font-size:7px}.arena-player-name{font-size:9px}.arena-player-card[data-you=true]{padding:6px}}
+@media(max-width:360px){.arena-player-portrait{display:none}.arena-player-tag{font-size:8px}}
+.arena-root[data-touch=true] .arena-player-card[data-you=true] .arena-player-portrait{display:block;flex-basis:22px;width:22px;height:30px}
+.arena-root[data-touch=true] .arena-player-card[data-you=true]{gap:4px}
+
+`;
+  const THUMB_STYLES = `
+/* These rules follow identity styles so compact HUDs keep names and YOU intact. */
+@media(max-aspect-ratio: 114/100), (min-height:601px){
+.arena-root[data-touch=true] .arena-touch:before{content:'';position:absolute;inset:auto 0 0;height:calc(184px + var(--arena-safe-bottom));background:linear-gradient(0deg,#060D1CCE,#060D1C66 55%,transparent);pointer-events:none}
+}
+@media(min-aspect-ratio: 115/100) and (max-height:600px){
+.arena-root[data-touch=true] .arena-hud{top:calc(var(--arena-safe-top) + 8px);left:calc(var(--arena-safe-left) + 12px);right:calc(var(--arena-safe-right) + 12px)}
+.arena-root[data-touch=true] .arena-hud-top{position:absolute;inset:0;margin:0;pointer-events:none}
+.arena-root[data-touch=true] .arena-match-brand{display:none}
+.arena-root[data-touch=true] .arena-hud-tools{position:absolute;top:0;right:0;gap:10px;pointer-events:auto}
+.arena-root[data-touch=true] .arena-pause-button{width:48px;height:48px;min-height:48px}
+.arena-root[data-touch=true] .arena-roster{display:flex;margin:0 116px 0 0;max-width:none;padding:0;gap:6px}
+.arena-root[data-touch=true] .arena-player-card{min-width:0;max-width:230px;padding:6px 8px;gap:6px;border-radius:9px}
+.arena-root[data-touch=true] .arena-player-name{font-size:10px}.arena-root[data-touch=true] .arena-player-tag{font-size:8px}
+.arena-root[data-touch=true] .arena-player-portrait{display:none}.arena-root[data-touch=true] .arena-player-info{grid-template-columns:minmax(0,1fr)}
+.arena-root[data-touch=true] .arena-roster:has([data-boss=true]){display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.arena-root[data-touch=true] .arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none;padding:4px 8px!important;min-height:26px}
+.arena-root[data-touch=true] .arena-player-card[data-boss=true] .arena-player-info{display:flex;gap:8px;align-items:center}
+.arena-root[data-touch=true] .arena-player-card[data-boss=true] .arena-damage{font-size:16px}
+.arena-root[data-touch=true] .arena-stick-zone{bottom:calc(var(--arena-safe-bottom) + 8px)}
+.arena-root[data-touch=true] .arena-touch-actions{bottom:calc(var(--arena-safe-bottom) + 8px)}
+}
+@media(min-width:700px) and (min-height:700px){
+.arena-stick-zone{left:calc(var(--arena-safe-left) + 24px);bottom:calc(var(--arena-safe-bottom) + 26px);width:152px;height:160px}
+.arena-stick-base{top:78px;width:108px;height:108px}
+.arena-touch-actions{right:calc(var(--arena-safe-right) + 24px);bottom:calc(var(--arena-safe-bottom) + 26px)}
+.arena-root[data-lefty=true] .arena-stick-zone{right:calc(var(--arena-safe-right) + 24px)}
+.arena-root[data-lefty=true] .arena-touch-actions{left:calc(var(--arena-safe-left) + 24px)}
+}
 `;
   const ONLINE_STYLES = `
 .arena-online-panel{margin:18px 0 0;padding:18px;border:1px solid #36526d;border-radius:18px;background:#071527cc;color:#dcefff}
@@ -173,6 +242,8 @@
     let cosmeticRound = 0;
     let arena, state = null, view = 'lobby', paused = false, activeModal = null, selections = { arenaId: '', format: 'duel', difficulty: 'normal' };
     let frameId = 0, lastTime = 0, accumulator = 0, lastDraw = 0, lastHudTick = -1, lastCountdown = '', resultAt = 0, matchSerial = 0;
+    let identitySafeTop = 0, identityHudBottom = 0, identityBoundsDirty = true;
+    let thumbBounds = null;
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
@@ -243,7 +314,9 @@
     function updatePrefs() {
       currentPrefs = getSettings();
       if (!rootEl) return;
-      rootEl.dataset.lefty = String(leftyOverride === null ? !!currentPrefs.lefty : leftyOverride);
+      const lefty = String(leftyOverride === null ? !!currentPrefs.lefty : leftyOverride);
+      if (rootEl.dataset.lefty !== lefty) { resetTouchInput(); thumbBounds = null; }
+      rootEl.dataset.lefty = lefty;
       rootEl.dataset.calm = String(calm()); rootEl.dataset.saver = String(saver());
       if (mirrorButton) mirrorButton.setAttribute('aria-pressed', rootEl.dataset.lefty);
       const allowed = currentPrefs.sfx !== false && !currentPrefs.muted;
@@ -350,7 +423,7 @@
     }
     function buttonTouchDown(e, action) {
       if (!isRunning() || !canControl() || e.pointerType === 'mouse') return;
-      e.preventDefault(); e.stopPropagation(); usingTouch = true; rootEl.dataset.touch = 'true';
+      e.preventDefault(); e.stopPropagation(); if (!usingTouch) { thumbBounds = null; identityBoundsDirty = true; } usingTouch = true; rootEl.dataset.touch = 'true';
       const n = e.currentTarget; try { n.setPointerCapture(e.pointerId); } catch (_) {}
       touches.set(e.pointerId, { action, el: n }); n.classList.add('arena-pressed');
       touchEdges[action] = true;
@@ -368,8 +441,8 @@
     }
     function stickDown(e) {
       if (!isRunning() || !canControl() || e.pointerType === 'mouse' || stick) return;
-      e.preventDefault(); usingTouch = true; rootEl.dataset.touch = 'true';
-      const r = stickZone.getBoundingClientRect(), x = clamp(e.clientX - r.left, 44, r.width - 44), y = clamp(e.clientY - r.top, 46, r.height - 46);
+      e.preventDefault(); if (!usingTouch) { thumbBounds = null; identityBoundsDirty = true; } usingTouch = true; rootEl.dataset.touch = 'true';
+      const r = stickZone.getBoundingClientRect(), x = clamp(e.clientX - r.left, 48, r.width - 48), y = clamp(e.clientY - r.top, 48, r.height - 48);
       stick = { id: e.pointerId, x: x + r.left, y: y + r.top };
       touches.set(e.pointerId, { action: 'move', el: stickZone });
       try { stickZone.setPointerCapture(e.pointerId); } catch (_) {}
@@ -522,7 +595,7 @@
       const wasPaused = roomPaused; roomPaused = snapshot.status === 'paused';
       if (roomPaused) { resetInput(); paused = true; pausePanel.querySelector('#arena-pause-reason').textContent = snapshot.isHost ? 'The whole arena is paused. Resume when you’re ready.' : 'The host paused the arena. Everyone’s match is safely frozen.'; if (activeModal !== pausePanel) setModal(pausePanel); }
       else if (wasPaused && !localRoomMenu) { paused = false; setModal(null); }
-      const signature = state.actors.map(a => [a.id,a.name,a.controller,a.team,a.connected].join(':')).join('|'); if (signature !== rosterSignature) { rosterSignature=signature;buildRoster(); }
+      const signature = state.actors.map(a => [a.id,a.name,a.controller,a.team,a.connected,JSON.stringify(a.appearance)].join(':')).join('|'); if (signature !== rosterSignature) { rosterSignature=signature;buildRoster(); }
       effects.forEach(e => e.life--); effects=effects.filter(e=>e.life>0); consumeEvents(); updateHud(true); syncRoomChoices();
       if (state.phase === 'over' && !resultAt) { resultAt=performance.now()+450;resetInput(); } ensureFrame();
     }
@@ -553,14 +626,14 @@
       arena = root.SpaceManArena;
       if (!arena || !Array.isArray(arena.arenas) || !arena.arenas.length) throw new Error('Arena simulation is not available.');
       loadSelection();
-      rootEl = el('section', 'arena-root'); rootEl.id = 'arenaRoot'; const scopedStyle = el('style'); scopedStyle.textContent = STYLES + ONLINE_STYLES; rootEl.append(scopedStyle); rootEl.hidden = true; rootEl.setAttribute('aria-label', 'Space Man Orbital Arena'); rootEl.dataset.touch = 'false';
+      rootEl = el('section', 'arena-root'); rootEl.id = 'arenaRoot'; const scopedStyle = el('style'); scopedStyle.textContent = STYLES + ONLINE_STYLES + IDENTITY_STYLES + THUMB_STYLES; rootEl.append(scopedStyle); rootEl.hidden = true; rootEl.setAttribute('aria-label', 'Space Man Orbital Arena'); rootEl.dataset.touch = 'false';
       canvas = el('canvas', 'arena-canvas'); canvas.tabIndex = -1; canvas.setAttribute('aria-label', 'Orbital Arena match. Move with A and D or arrows. Space jumps twice. F pulses. Shift dashes. Escape pauses.');
       ctx = canvas.getContext('2d', { alpha: false }); rootEl.append(canvas);
       const header = el('header', 'arena-hud');
       const headTop = el('div', 'arena-hud-top');
       const brand = el('div', 'arena-match-brand'); brand.append(el('span', 'arena-eyebrow', 'SPACE MAN / ARENA')); matchTitle = el('span', 'arena-match-name'); brand.append(matchTitle);
       const tools = el('div', 'arena-hud-tools'); timerEl = el('span', 'arena-clock', '3:00'); timerEl.setAttribute('aria-label', 'Match time remaining');
-      pauseButton = button('Ⅱ', 'arena-icon-button', () => pauseMatch('Match paused')); pauseButton.id = 'arenaPause'; pauseButton.setAttribute('aria-label', 'Pause match'); pauseButton.title = 'Pause · Esc'; tools.append(timerEl, pauseButton); headTop.append(brand, tools);
+      pauseButton = button('', 'arena-icon-button arena-pause-button', () => pauseMatch('Match paused')); pauseButton.append(el('span', '', 'Ⅱ'), el('span', 'arena-pause-label', 'PAUSE')); pauseButton.id = 'arenaPause'; pauseButton.setAttribute('aria-label', 'Pause match'); pauseButton.title = 'Pause · Esc'; tools.append(timerEl, pauseButton); headTop.append(brand, tools);
       rosterEl = el('div', 'arena-roster'); header.append(headTop, rosterEl); rootEl.append(header);
       countdownEl = el('div', 'arena-countdown'); countdownEl.setAttribute('aria-hidden', 'true'); statusEl = el('strong', 'arena-countdown-value'); statusSub = el('span', 'arena-countdown-label'); countdownEl.append(statusEl, statusSub); rootEl.append(countdownEl);
       const bottom = el('div', 'arena-bottom-hud');
@@ -729,6 +802,8 @@
       const moved = viewportBox && Object.keys(box).some(key => Math.abs(box[key] - viewportBox[key]) > 1);
       if (moved) resetTouchInput();
       viewportBox = box;
+      identitySafeTop = Math.max(0, (parseFloat(getComputedStyle(rootEl).getPropertyValue('--game-ui-top')) || 0) - box.top);
+      identityBoundsDirty = true; thumbBounds = null;
       for (const key of ['left', 'top', 'width', 'height']) {
         const value = box[key] + 'px'; if (rootEl.style[key] !== value) rootEl.style[key] = value;
       }
@@ -757,21 +832,48 @@
       return target;
     }
     function updateCamera(a, alpha) {
+      // Measure only after roster/viewport changes, once the populated HUD is
+      // visible. Boss and accessibility-sized rows must not hide pilot badges.
+      if (identityBoundsDirty && rosterEl) {
+        const hud = rosterEl.parentElement.getBoundingClientRect();
+        identityHudBottom = hud.height ? hud.bottom - (viewportBox?.top || 0) + 8 : 0;
+        identityBoundsDirty = false;
+      }
       const portrait = width < height * 1.15, human = watchedActor();
-      const top = portrait ? (state.actors.length > 2 && width < 600 ? 168 : 125) : 95;
-      const bottom = usingTouch || rootEl.dataset.touch === 'true' ? (portrait ? 150 : 80) : 66;
-      const playHeight = Math.max(170, height - top - bottom), cy = top + playHeight / 2;
+      const touch = (usingTouch || rootEl.dataset.touch === 'true') && !touchEl.hidden;
+      const top = touch && !portrait && identityHudBottom ? identityHudBottom : Math.max(identityHudBottom, (portrait ? (state.actors.length > 2 && width < 600 ? (state.actors.some(a => a.boss) ? 198 : 178) : 125) : 95) + identitySafeTop);
+      if (touch && !thumbBounds) {
+        const origin = rootEl.getBoundingClientRect(), zones = [stickZone, rootEl.querySelector('.arena-touch-actions')].map(n => n.getBoundingClientRect());
+        // A resize may arrive while Pause hides the controls. Never cache
+        // empty rectangles and carry them into a resumed match.
+        if (zones.every(r => r.width > 0 && r.height > 0)) thumbBounds = { pods: zones.map(r => ({x:r.left-origin.left,y:r.top-origin.top,w:r.width,h:r.height})).sort((a,b)=>a.x-b.x), top: Math.min(...zones.map(r => r.top - origin.top)), side: Math.max(...zones.map(r => r.width + Math.min(r.left - origin.left, origin.right - r.right))) + 14 };
+      }
+      const lowerDeck = portrait || height > 600;
+      const bottom = touch && thumbBounds ? (lowerDeck ? height - thumbBounds.top + 16 : 24) : 66;
+      const playHeight = Math.max(100, height - top - bottom), cy = top + playHeight / 2;
       let scale, x, y;
       if (portrait) {
         scale = clamp(width / 390, .86, 1.32); const span = width / scale;
         x = clamp(lerp(human.px, human.x, alpha) + human.w / 2 + human.facing * 28, span * .38, a.width - span * .38);
         y = clamp(lerp(human.py, human.y, alpha) + human.h / 2, 245, 460);
       } else {
-        scale = Math.min((width - 65) / 880, playHeight / 430, 1.7); scale = Math.max(.63, scale); x = a.width / 2; y = 330;
+        const safeWidth = touch && thumbBounds && !lowerDeck ? width - thumbBounds.side * 2 : width - 65;
+        scale = Math.min(safeWidth / 880, playHeight / 430, 1.7);
+        // A wide phone shows the complete stage between the two thumb pods.
+        // On narrower landscape screens, follow the pilot instead of reducing
+        // everyone to tiny dots. The center remains clear of both hands.
+        if (touch && scale < .48) {
+          scale = .82;
+          x = clamp(lerp(human.px, human.x, alpha) + human.w / 2, 220, a.width - 220);
+          y = clamp(lerp(human.py, human.y, alpha) + human.h / 2, 220, 500);
+        } else { scale = Math.max(touch ? .48 : .63, scale); x = a.width / 2; y = 330; }
       }
       if (!camera.initialized) { camera = { x, y, scale, initialized: true }; }
       else { const follow = calm() ? .24 : .16; camera.x = lerp(camera.x, x, follow); camera.y = lerp(camera.y, y, follow); camera.scale = scale; }
-      return { x: camera.x, y: camera.y, scale: camera.scale, centerY: cy, top, bottom, portrait };
+      return { x: camera.x, y: camera.y, scale: camera.scale, centerY: cy, top, bottom, portrait, pods: touch && !lowerDeck && thumbBounds ? thumbBounds.pods : [] };
+    }
+    function thumbOccludes(box, c) {
+      return c.pods.some(p => box.x < p.x+p.w && box.x+box.w > p.x && box.y < p.y+p.h && box.y+box.h > p.y);
     }
     function paint(alpha) {
       if (!active || !state || !ctx) return;
@@ -810,11 +912,7 @@
           }
         }
         astronaut(ctx, actor, x, y, state.tick, false);
-        ctx.textAlign = 'center'; ctx.font = 'bold 9px system-ui, sans-serif'; ctx.fillStyle = actorColor(actor);
-        const you = localActor();
-        const label = actor.controller === 'human' ? 'YOU' : actor.name.toUpperCase() + (state.format === 'teams' ? (you ? (actor.team === you.team ? ' · ALLY' : ' · RIVAL') : (actor.team === 0 ? ' · BLUE' : ' · GOLD')) : '');
-        ctx.fillText(label, x + actor.w / 2, y - 16);
-        if (actor.controller === 'human') { ctx.beginPath(); ctx.moveTo(x + actor.w / 2 - 3, y - 12); ctx.lineTo(x + actor.w / 2 + 3, y - 12); ctx.lineTo(x + actor.w / 2, y - 8); ctx.fill(); }
+
       }
       for (const e of effects) {
         const k = 1 - e.life / e.max, radius = e.type === 'ringout' ? 18 + k * 56 : 7 + k * 20;
@@ -826,28 +924,80 @@
         }
       }
       ctx.globalAlpha = 1; ctx.restore();
+      drawIdentity(c, alpha);
       drawIndicators(c, alpha);
       if (isMatch() && localActor() && localActor().stocks <= 0 && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText(localSession ? 'Rescue shuttle incoming' : 'You’re out · watching ' + watchedActor().name, width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
     }
+    function actorIdentity(actor) {
+      const you = localActor(), watching = !you || you.stocks <= 0;
+      if (actor.id === you?.id) return { role: 'you', text: 'YOU', tag: state.format === 'teams' ? 'YOU · ' + (actor.team === 0 ? '◇ BLUE' : '△ GOLD') : 'YOUR PILOT' };
+      const relation = actor.boss ? 'BOSS' : state.format === 'teams' ? (you ? (actor.team === you.team ? 'ALLY' : 'RIVAL') : (actor.team === 0 ? 'BLUE' : 'GOLD')) : 'RIVAL';
+      const control = actor.controller === 'remote' ? (actor.connected ? 'FRIEND' : 'RECONNECTING') : 'CPU';
+      const followed = watching && watchedActor().id === actor.id;
+      return { role: followed ? 'watching' : 'other', text: followed ? 'WATCHING' : (state.format === 'teams' ? (actor.team === 0 ? '◇ ' : '△ ') : '') + relation + ' · ' + actor.name.toUpperCase(), tag: control + ' · ' + relation };
+    }
+    function drawIdentity(c, alpha) {
+      const art = root.SpaceManArt, labels = [], bodies = [];
+      const bounds = { left: 8, right: width - 8, top: c.top + 3, bottom: height - c.bottom - 8 };
+      for (const actor of state.actors) {
+        if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
+        const x = (lerp(actor.px, actor.x, alpha) + actor.w / 2 - c.x) * c.scale + width / 2;
+        const y = (lerp(actor.py, actor.y, alpha) - c.y) * c.scale + c.centerY;
+        if (x < 12 || x > width - 12 || y + actor.h * c.scale < bounds.top || y > bounds.bottom) continue;
+        const identity = actorIdentity(actor), primary = identity.role !== 'other';
+        const body = { id: actor.id, x: x - actor.w * c.scale / 2 - 5, y: y - 8, w: actor.w * c.scale + 10, h: actor.h * c.scale + 8 };
+        bodies.push(body);
+        if (thumbOccludes(body, c)) continue; // Its clear-corridor cue replaces a label beneath a thumb.
+        ctx.font = primary ? '900 11px system-ui,sans-serif' : '700 9px system-ui,sans-serif';
+        labels.push({ id: actor.id, role: identity.role, fixed: !primary, text: identity.text, x, y: y - 32, w: primary ? 20 : ctx.measureText(identity.text).width + 12, h: primary ? 16 : 16, priority: primary ? 2 : actor.boss ? 1 : 0, primary, color: actorColor(actor), targetX: x, targetY: y - 9 });
+      }
+      const layout = art.identityLayout(labels, bounds, bodies);
+      // A small diagnostic describes the actual painted labels for browser QA.
+      rootEl.dataset.identity = layout.filter(b => b.primary).map(b => b.text + ':' + b.id).join(',');
+      for (const b of layout.slice().reverse()) {
+        if (b.primary) art.identityCue(ctx, b.x + b.w / 2, b.y + b.h / 2, b.role, b.targetX, b.targetY);
+        else {
+          // Crew/rival names stay secondary to the astronaut, without signposts.
+          ctx.save(); ctx.font = '650 9px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.strokeStyle = '#071522'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+          ctx.strokeText(b.text, b.x + b.w / 2, b.y + b.h / 2);
+          ctx.fillStyle = '#CEE0EA'; ctx.fillText(b.text, b.x + b.w / 2, b.y + b.h / 2); ctx.restore();
+        }
+      }
+    }
     function drawIndicators(c, alpha) {
+      const controlCues = [];
       for (const actor of state.actors) {
         if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
         const x = (lerp(actor.px, actor.x, alpha) + actor.w / 2 - c.x) * c.scale + width / 2;
         const y = (lerp(actor.py, actor.y, alpha) + actor.h / 2 - c.y) * c.scale + c.centerY;
-        if (x > 16 && x < width - 16 && y > c.top && y < height - c.bottom) continue;
-        const ix = clamp(x, 32, width - 32), iy = clamp(y, c.top + 20, height - c.bottom - 20), color = actorColor(actor);
+        const blocked = thumbOccludes({x:x-actor.w*c.scale/2-5,y:y-actor.h*c.scale/2-8,w:actor.w*c.scale+10,h:actor.h*c.scale+8},c);
+        if (!blocked && x > 16 && x < width - 16 && y > c.top && y < height - c.bottom) continue;
+        let ix = clamp(x, 32, width - 32);
+        const iy = clamp(y, c.top + 20, height - c.bottom - 20), color = actorIdentity(actor).role !== 'other' ? '#FFF3CE' : actorColor(actor);
+        if (blocked || thumbOccludes({x:ix-25,y:iy-20,w:50,h:40},c)) {
+          // A rival behind either hand is effectively offscreen. Keep the
+          // existing directional cue in the clear corridor, including lefty.
+          ix = clamp(ix,c.pods[0].x+c.pods[0].w+26,c.pods[1].x-26); controlCues.push(actor.id);
+        }
         ctx.save(); ctx.translate(ix, iy); ctx.fillStyle = '#091329'; ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 15, 0, TAU); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = color; ctx.font = '700 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(actor.controller === 'human' ? 'YOU' : actor.name.slice(0, 1), 0, 0);
+        ctx.fillStyle = color; ctx.font = '700 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(actorIdentity(actor).role === 'you' ? 'YOU' : actorIdentity(actor).role === 'watching' ? 'EYE' : actor.name.slice(0, 1), 0, 0);
         ctx.rotate(Math.atan2(y - iy, x - ix)); ctx.beginPath(); ctx.moveTo(19, -4); ctx.lineTo(25, 0); ctx.lineTo(19, 4); ctx.fill(); ctx.restore();
       }
+      rootEl.dataset.controlCues = controlCues.join(' ');
     }
     function buildRoster() {
+      identityBoundsDirty = true;
       rosterEl.replaceChildren();
       for (const actor of state.actors) {
-        const card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.dataset.boss = String(!!actor.boss); card.style.setProperty('--fighter', actorColor(actor));
-        const icon = el('span', 'arena-player-helmet'); icon.setAttribute('aria-hidden', 'true');
-        const info = el('div', 'arena-player-info'); const name = el('strong', 'arena-player-name', (state.format === 'teams' && !actor.boss ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name); const tag = el('span', 'arena-player-tag', (actor.controller === 'human' ? 'YOU' : actor.controller === 'remote' ? (actor.connected ? 'FRIEND' : 'RECONNECTING') : 'CPU') + (state.format === 'teams' ? (actor.team === 0 ? ' · BLUE' : ' · GOLD') : ''));
-        const lives = el('span', 'arena-stocks'); info.append(name, tag, lives); const damage = el('strong', 'arena-damage', '0%'); card.append(icon, info, damage); rosterEl.append(card);
+        const identity = actorIdentity(actor), card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.dataset.boss = String(!!actor.boss); card.dataset.you = String(identity.role === 'you'); card.dataset.watching = String(identity.role === 'watching'); card.style.setProperty('--fighter', actorColor(actor));
+        const icon = el('canvas', 'arena-player-portrait'); icon.width = 72; icon.height = 88; icon.setAttribute('aria-hidden', 'true');
+        if (!actor.boss) root.SpaceManArt.drawAvatar(icon.getContext('2d'), 36, 40, 78, actor.appearance, { reduceMotion: true });
+        else icon.hidden = true;
+        const info = el('div', 'arena-player-info'), name = el('strong', 'arena-player-name');
+        name.append(el('span', 'arena-player-name-text', (state.format === 'teams' && !actor.boss ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name));
+        const tag = el('span', 'arena-player-tag', identity.tag), lives = el('span', 'arena-stocks'); info.append(name, tag, lives);
+        const damage = el('strong', 'arena-damage', '0%'); card.append(icon, info, damage); rosterEl.append(card);
       }
     }
     function updateHud(force) {
@@ -856,6 +1006,8 @@
       const seconds = Math.max(0, Math.ceil(state.timeLeftTicks / 60)); timerEl.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0'); timerEl.classList.toggle('arena-clock-urgent', seconds <= 30);
       for (const actor of state.actors) {
         const card = rosterEl.querySelector('[data-actor="' + actor.id + '"]'); if (!card) continue;
+        const identity = actorIdentity(actor); card.dataset.watching = String(identity.role === 'watching');
+        if (!actor.boss) card.querySelector('.arena-player-tag').textContent = identity.role === 'watching' ? 'WATCHING · ' + identity.tag : identity.tag;
         if (actor.boss) {
           card.querySelector('.arena-player-tag').textContent = actor.boss.phase === 'recover' ? 'EXPOSED · PULSE' : actor.boss.phase === 'charging' ? (actor.boss.move === 'shockwave' ? 'JUMP WAVE' : 'DASH CLEAR') : 'GUARDIAN';
           card.querySelector('.arena-damage').textContent = Math.max(0, Math.ceil(actor.boss.health)) + ' HP';
@@ -877,7 +1029,7 @@
       pulseButton.style.setProperty('--ready', attackReady); dashButton.style.setProperty('--ready', dashReady);
       let label = '', sub = '';
       if (state.phase === 'countdown') { label = String(Math.ceil(state.countdownTicks / 60)); sub = FORMATS.find(f => f.id === state.format).name.toUpperCase() + ' · GET READY'; }
-      else if (state.phase === 'playing' && state.tick < arena.constants.COUNTDOWN_TICKS + 35) { label = 'GO!'; sub = 'MAKE SOME SPACE'; }
+      else if (state.phase === 'playing' && state.tick < (state.encounter ? state.encounter.countdownTicks : arena.constants.COUNTDOWN_TICKS) + 35) { label = 'GO!'; sub = 'MAKE SOME SPACE'; }
       countdownEl.hidden = !label; statusEl.textContent = label; statusSub.textContent = sub;
       if (label && label !== lastCountdown) { announce(label === 'GO!' ? 'Go! Match started.' : 'Match starts in ' + label); sfx(label === 'GO!' ? 'start' : 'countdown'); lastCountdown = label; }
     }
@@ -1017,12 +1169,12 @@
       inertSiblings = Array.from(document.body.children).filter(n => n !== rootEl && !['SCRIPT', 'STYLE', 'LINK'].includes(n.tagName)).map(n => ({ node: n, inert: n.inert }));
       inertSiblings.forEach(s => { s.node.inert = true; });
       rootEl.hidden = false; prefersReduced = !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
-      usingTouch = !!(root.matchMedia && root.matchMedia('(pointer: coarse)').matches); rootEl.dataset.touch = String(usingTouch); updatePrefs();
+      thumbBounds = null; usingTouch = !!(root.matchMedia && root.matchMedia('(pointer: coarse)').matches); rootEl.dataset.touch = String(usingTouch); updatePrefs();
       listen(root, 'keydown', onKeyDown, true); listen(root, 'keyup', onKeyUp, true); listen(root, 'blur', onBlur); listen(document, 'visibilitychange', onVisibility, true); listen(root, 'pagehide', onPageHide); listen(root, 'pageshow', onPageShow); listen(root, 'resize', resize);
       if (root.visualViewport) { listen(root.visualViewport, 'resize', resize); listen(root.visualViewport, 'scroll', resize); }
       listen(root, 'touchend', onTouchEnd, { capture: true, passive: true }); listen(root, 'touchcancel', onTouchEnd, { capture: true, passive: true });
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'click']) listen(root, type, guardPointer, { capture: true, passive: false });
-      if (root.ResizeObserver) { resizeObserver = new root.ResizeObserver(resize); resizeObserver.observe(rootEl); }
+      if (root.ResizeObserver) { resizeObserver = new root.ResizeObserver(resize); resizeObserver.observe(rootEl); resizeObserver.observe(rosterEl.parentElement); }
       resize(); showLobby(); if (room) roomChanged(room.status()); ensureFrame();
     }
     function close(options = {}) {

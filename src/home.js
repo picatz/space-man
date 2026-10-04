@@ -39,7 +39,11 @@
       root.SpaceManArt.drawAvatar(c,132,59,165,appearance,{reduceMotion:true,ship:true});
     }
   }
-  root.SpaceManHome=Object.freeze({render(appearance) {
+  root.SpaceManHome=Object.freeze({notice(text) {
+    const el=root.document.getElementById('homeNotice');if(!el)return;
+    if(el.textContent!==text)el.textContent=text;
+    el.hidden=!text;
+  },render(appearance) {
     const c=surface('homeHero',640,400);if(c&&root.SpaceManArt?.drawAvatar)hero(c,appearance);
     [['homeRunArt','run'],['homeArenaArt','arena'],['homeRaceArt','race']].forEach(([id,mode])=>{const g=surface(id,260,156);if(g&&root.SpaceManArt?.drawAvatar)tile(g,mode,appearance);});
   }});

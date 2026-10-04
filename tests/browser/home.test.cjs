@@ -167,6 +167,15 @@ for (const [width, height] of sizes) test(`home ${width}x${height}: exact screen
   const { page } = await launch(t, { width, height });
   await capture(page, `home-${width}x${height}-top`);
   await fit(page);
+  if ((width < 760 && height > 560) || (width >= 760 && width <= 1000 && height >= 700)) {
+    const boxes = await page.evaluate(() => ['.home-header', '#homeHero', '.home-identity', '.home-launch'].map(selector => {
+      const box = document.querySelector(selector).getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom };
+    }));
+    assert.ok(boxes[1].top >= boxes[0].bottom - 1, 'hero stays below the brand header');
+    assert.ok(boxes[2].top >= boxes[1].bottom - 2, 'identity stays below the illustration');
+    assert.ok(boxes[3].top >= boxes[2].bottom - 1, 'adventure copy never overlaps the hero identity');
+  }
   const art = await artPixels(page);
   for (const [id, pixels] of Object.entries(art)) assert.ok(pixels.opaque > 500, `${id}: production illustration is painted`);
   for (const id of entries) await reachable(page, id);
@@ -279,4 +288,20 @@ test('keyboard and controller focus, repeated friends dismissal, and saved reduc
   await page.reload(); await home(page);
   assert.equal(await page.evaluate(() => settings.reduceMotion), true);
   assert.equal(await page.locator('.home-mode').first().evaluate(n => getComputedStyle(n).transitionDuration), '0s');
+});
+
+test('home mirrors timed feedback above its opaque scene and points challenges at the runner', { timeout: 30000 }, async t => {
+  const { page } = await launch(t, { width: 390, height: 844 });
+  // UI feedback fixture uses the production queue; it does not open a relay.
+  await page.evaluate(() => queueToast('Leave your room before starting a solo expedition.', 'sys'));
+  const notice = page.locator('#homeNotice'); await notice.waitFor({ state: 'visible' });
+  assert.equal(await notice.textContent(), 'Leave your room before starting a solo expedition.');
+  const box = await notice.boundingBox(); assert.ok(box.y >= 0 && box.y + box.height <= 844);
+  await capture(page, 'home-visible-room-guard-feedback');
+  await notice.waitFor({ state: 'hidden' });
+  const target = new URL(page.url()); target.hash = 'seed=77&beat=500';
+  await page.goto(target.href); await page.reload(); await home(page);
+  assert.match(await page.locator('#challengeBanner').innerText(), /Choose Endless Run to play/);
+  await activate(page, 'btnPlay'); await page.waitForFunction(() => G.mode === 'play');
+  assert.equal(await page.evaluate(() => G.course.seed), 77);
 });

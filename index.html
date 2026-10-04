@@ -876,6 +876,7 @@
       <div id="offlineNote" class="offline-note" role="status" style="display:none">Offline · single player ready</div>
     </footer>
   </div>
+  <div id="homeNotice" class="home-notice" role="status" aria-live="polite" hidden></div>
 </div>
 
 <!-- Nonblocking orientation cue follows the active expedition scene. -->
@@ -2671,7 +2672,7 @@ function popup(x, y, text, color) {
 }
 function updatePopups() { for (let i = popups.length - 1; i >= 0; i--) { const p = popups[i]; p.life--; p.y -= 0.6; if (p.life <= 0) popups.splice(i, 1); } }
 
-// ONE canvas toast queue — never DOM, never a tap target. 'sys' keeps the
+// One toast queue; the opaque home mirrors it in DOM, never a tap target. 'sys' keeps the
 // controller-toast look; 'gold' (discoveries, unlocks) waits for a calm beat
 // and is fully suppressed once the death card owns the screen.
 const toastQ = [];
@@ -4710,6 +4711,7 @@ function render(alpha) {
   drawArrivalFront();
   drawParticles(alpha);
   drawHints(iCamX, iCamY);
+  drawRunnerIdentity(alpha);
   ctx.restore();
 
   drawPopups(iCamX, iCamY);
@@ -4750,6 +4752,7 @@ function render(alpha) {
 }
 
 function drawToast() {
+  window.SpaceManHome.notice(G.mode === 'attract' && G.toastT > 0 && !G.deathCardShown ? G.toast : '');
   if (G.toastT <= 0 || G.deathCardShown) return;   // the death card owns the screen
   const gold = G.toastStyle === 'gold';
   const a = Math.min(1, G.toastT * 3, (G.toastMax - G.toastT) * 5);
@@ -5540,6 +5543,29 @@ function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
   ctx.fillStyle = P.visTop; ctx.fillRect(5, -3.3, 1.6, 1.5);   // emitter
 }
 
+// A screen-space ownership marker survives matching outfits and busy scenery.
+// It is drawn once by the scene, never by drawPlayer's borrowed ghost/wardrobe rig.
+function drawRunnerIdentity(alpha) {
+  if (!['play', 'pause', 'resume'].includes(G.mode) || !G.player || (!netSpectating() && G.player.dead) || !ART.identityCue) return;
+  const watching = netSpectating(), target = watching ? ghosts.find(g => g.active && g.p === spec.watchP && g.alpha > .1) : null;
+  if (watching && !target) return;
+  if (!watching && vigPose && vigPose.a < .85) return;
+  const p = G.player, wx = target ? target.rx : lerp(p.px, p.x, alpha) + p.w / 2;
+  const wy = target ? target.ry - CFG.ph / 2 : lerp(p.py, p.y, alpha) + p.landDip;
+  const m = ctx.getTransform && ctx.getTransform(); if (!m || !Number.isFinite(m.a)) return;
+  const dpr = view.dpr, x = (m.a * wx + m.c * wy + m.e) / dpr, y = (m.b * wx + m.d * wy + m.f) / dpr;
+  const scale = Math.hypot(m.a, m.b) / dpr, w = vpW(), h = vpH();
+  const hudBottom = watching ? 60 + viewInset('top') + 23 * uiScale() : 12 + (netInRun() ? 32 : 0) + viewInset('top') + (G.mission ? 79 : 55) * uiScale();
+  const top = hudBottom * view.scale / dpr + 8;
+  if (x < -15 || x > w + 15 || y > h - 35 || y + p.h * scale < top) return;
+  ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const role = watching ? 'watching' : 'you', bw = 20;
+  const body = { id: 1, x: x - p.w * scale / 2 - 5, y: y - 7, w: p.w * scale + 10, h: p.h * scale + 7 };
+  const [badge] = ART.identityLayout([{ id: 1, x, y: y - 32, w: bw, h: 16, primary: true, priority: 2 }], { left: 8, right: w - 8, top, bottom: h - 35 }, [body]);
+  if (badge) ART.identityCue(ctx, badge.x + badge.w / 2, badge.y + badge.h / 2, role, x, y - 9);
+  ctx.restore();
+}
+
 function drawPlayer(alpha) {
   const p = G.player;
   // The rig belongs to the LOCAL player. drawGhostActor (and anything else that
@@ -6317,7 +6343,8 @@ function renderDailyCard() {
   const cb = $('challengeBanner'), c = solo ? challenge : null;
   // A link without a real score (beat=0) names the course but never a target of 0.
   if (c) cb.textContent = c.beat > 0 ? 'Beat ' + c.beat.toLocaleString() + (c.kind === 'daily' ? ' on the ' + c.day + ' Daily Course' : ' on this course')
-    : (c.kind === 'daily' ? 'Daily Course ' + c.day : 'A friend’s course') + ' — start to play it';
+    : (c.kind === 'daily' ? 'Daily Course ' + c.day : 'A friend’s course');
+  if (c) cb.textContent += ' · Choose Endless Run to play';
   cb.style.display = c ? '' : 'none';
 }
 function startDaily() { Audio.ensure(); Audio.resume(); startRun({ course: dailyCourse() }); }
@@ -7985,8 +8012,7 @@ function drawGhostActor(g) {
   // Plates and emotes of runners far above you stop at the race strip instead of sliding under it.
   const floorY = raceFloorWorldY(g.rx);
   const under = g.ry < floorY + CFG.ph / 2;   // the runner itself is up behind the strip: no plate floating over nothing
-  if (!under) ctx.drawImage(b.canvas, g.rx - b.w / 2, Math.max(g.ry - CFG.ph / 2 - 22, floorY), b.w, b.h);
-  if (spec.watchP === g.p && netSpectating()) { ctx.strokeStyle = '#38E1FF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(g.rx, g.ry, CFG.ph / 2 + 6, 0, TAU); ctx.stroke(); }
+  if (!under && !(spec.watchP === g.p && netSpectating())) ctx.drawImage(b.canvas, g.rx - b.w / 2, Math.max(g.ry - CFG.ph / 2 - 22, floorY), b.w, b.h);
   ctx.restore();
   if (g.emoteT > 0 && !under) drawEmoteBubble(g.rx, Math.max(g.ry - CFG.ph / 2 - 34, floorY + b.h + 12), g.emoteId, g.emoteT);
 }

@@ -8,6 +8,7 @@
 #ovAttract .home-shell {
   display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr);
   grid-template-areas: 'header header' 'world launch' 'footer footer';
+  grid-auto-rows: max-content;
   align-items: center; gap: 26px 52px; width: 100%; max-width: 1080px;
   padding: 12px 24px; border: 0; border-radius: 0; background: none;
   box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
@@ -116,7 +117,7 @@ body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: no
 #ovAttract .home-mode:focus-within { outline: 3px solid var(--sm-focus); outline-offset: -3px; }
 /* Prevent inherited utility flex-bases and decorative orbit transforms from
    widening the scroll container on fractional-width phone layouts. */
-.home-world { overflow: hidden; }
+.home-world { min-height: min-content; }
 #ovAttract #attractRow { flex-wrap: nowrap; }
 #ovAttract #attractRow .btn { flex: none; }
 @media (min-width: 760px) and (max-width: 1000px) and (min-height: 700px) {
@@ -142,3 +143,6 @@ body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: no
 #ovAttract .home-play-arrow, #ovAttract .home-run-together b { position: relative; display: block; width: 16px; height: 16px; flex: 0 0 16px; font-size: 0; }
 .home-play-arrow::before, .home-run-together b::before { content: ''; position: absolute; width: 8px; height: 8px; top: 2px; right: 2px; border-top: 2px solid currentColor; border-right: 2px solid currentColor; }
 .home-play-arrow::after, .home-run-together b::after { content: ''; position: absolute; width: 13px; height: 2px; left: 0; top: 8px; background: currentColor; transform: rotate(-45deg); }
+/* Canvas feedback would sit beneath this opaque home. Mirror its existing
+   timed queue in a non-interactive, readable toast above the home only. */
+#ovAttract .home-notice { position: fixed; z-index: 2; left: 50%; bottom: calc(var(--sm-safe-bottom) + 14px); transform: translateX(-50%); width: max-content; max-width: min(450px,calc(100% - 32px)); padding: 13px 18px; border: 1px solid #86c7db88; border-radius: 14px; background: #102d43; box-shadow: 0 8px 32px #0008; color: #e6f8ff; font: 650 13px/1.5 var(--sm-font-body); pointer-events: none; }
