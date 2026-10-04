@@ -41,10 +41,27 @@ test('Prism snapshots round trip a complete authoritative race and reject every 
 });
 test('Prism shared architecture has safe footprint, a high open-sided gallery and separate top-down cutaway',()=>{
   const s=Scene.course(c,R.at),forms=Art.circuitStructures(c,R.at,Mesh.distance);
+  const edgeClear=(a,b)=>{const count=Math.ceil(Math.hypot(b[0]-a[0],b[2]-a[2])/8);
+    for(let n=0;n<=count;n++){const u=count?n/count:0;
+      assert.ok(Mesh.distance(c,a[0]+(b[0]-a[0])*u,a[2]+(b[2]-a[2])*u)>=c.width/2+c.runoff+40,'entire shelf/mesa edge clears course');}};
+  for(const shelf of Art.circuitCanyonShelves(c,R.at,Mesh.distance))for(let i=0;i<shelf.length-1;i++)for(let lane=0;lane<3;lane++){
+    const poly=[shelf[i][lane],shelf[i+1][lane],shelf[i+1][lane+1],shelf[i][lane+1]];
+    for(let j=0;j<4;j++)edgeClear(poly[j],poly[(j+1)%4]);edgeClear(poly[0],poly[2]);}
+  for(const form of forms)for(const ring of Art.circuitMesaRings(form))for(let i=0;i<8;i++)edgeClear(ring[i],ring[(i+1)%8]);
+  assert.equal(Art.circuitCanyonShelves(c,R.at,Mesh.distance).length,3);
+  for(const shelf of Art.circuitCanyonShelves(c,R.at,Mesh.distance)) for(const section of shelf) for(const [x,y,z]of section)
+    assert.ok(Mesh.distance(c,x,z)>=c.width/2+c.runoff+71);
+  for(const form of forms)for(const ring of Art.circuitMesaRings(form))for(const [x,y,z]of ring)
+    assert.ok(Mesh.distance(c,x,z)>=c.width/2+c.runoff+40,'visible rock geometry clears road');
   assert.equal(forms.length,10);assert.ok(forms.every(f=>f.kind==='mesa'));
   for(const f of forms)assert.ok(Mesh.distance(c,f.x,f.z)>=c.width/2+f.radius+c.runoff+40);
   assert.equal(s.roofMeshes.length,1);const roof=s.roofMeshes[0];assert.ok(roof.bounds.min[1]>=210);
   assert.ok(!s.meshes.includes(roof));assert.equal(s.clearances.filter(f=>f.type==='gallery').length,12);
   for(const f of s.clearances)assert.ok(Mesh.distance(c,f.x,f.z)>=c.width/2+c.runoff+28+f.radius-1,JSON.stringify(f));
+  let ceiling=0,roofTop=0;
+  for(let i=0;i<roof.vertices.length;i+=27){const triangle=[0,9,18].map(k=>roof.vertices[i+k+1]);
+    if(triangle.every(y=>y===220)){assert.ok(roof.vertices[i+4]<-.99);ceiling++;}
+    if(triangle.every(y=>y===224)&&Math.abs(roof.vertices[i+4])>.99){assert.ok(roof.vertices[i+4]>.99);roofTop++;}}
+  assert.ok(ceiling>0&&roofTop>0);
   assert.ok(roof.vertices.every(Number.isFinite));assert.ok(roof.vertices.length/9<700);
 });

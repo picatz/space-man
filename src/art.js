@@ -55,12 +55,12 @@
       const bluffs = [[.025,-1,120,130],[.10,-1,148,190],[.215,-1,125,145],
         [.32,-1,130,205],[.42,-1,165,175],[.51,-1,115,110],
         [.77,-1,145,185],[.87,-1,120,145],[.18,1,80,95],[.70,1,75,105]];
-      for(const [fraction,side,radius,height] of bluffs) {
+      for(const [index,[fraction,side,radius,height]] of bluffs.entries()) {
         const p=at(course,fraction*course.length), offset=half+radius+clearance+24,
           x=p.x-p.ty*offset*side,z=p.y+p.tx*offset*side;
         if(distance(course,x,z)<half+radius+clearance) continue;
         structures.push(Object.freeze({x,z,heading:Math.atan2(p.ty,p.tx),radius,
-          kind:'mesa',width:radius*1.7,depth:radius*1.05,height}));
+          kind:'mesa',variant:index%3,width:radius*(index%3===1?1.85:1.55),depth:radius*(index%3===2?1.25:.95),height}));
       }
       const result=Object.freeze(structures);circuitStructureCache.set(course,result);return result;
     }
@@ -82,10 +82,32 @@
 
   // The mesh and Canvas share these exact authored mesa footprint rings.
   function circuitMesaRings(structure) {
-    const {x,z,width,depth,height,heading}=structure,co=Math.cos(heading),si=Math.sin(heading);
+    const {x,z,width,depth,height,heading,variant=0}=structure,co=Math.cos(heading),si=Math.sin(heading);
     return [[-8,1],[height*.45,.87],[height*.48,.91],[height*.88,.66],[height,.58]].map(([y,scale]) =>
       Array.from({length:8},(_,i)=>{const a=i*Math.PI/4,f=Math.cos(a)*width/2*scale,d=Math.sin(a)*depth/2*scale;
-        return [x+co*f-si*d,y,z+si*f+co*d];}));
+        const lean=y>0?height*.09*(y/height)*(variant-1):0;
+        return [x+co*(f+lean)-si*d,y+(y===height?Math.sin(a*2+variant)*height*.055:0),z+si*(f+lean)+co*d];}));
+  }
+  const circuitShelfCache = new WeakMap();
+  function circuitCanyonShelves(course,at,distance) {
+    if(course.id!=='prism')return [];
+    if(circuitShelfCache.has(course))return circuitShelfCache.get(course);
+    const shelves=[],front=course.width/2+(course.runoff||0)+72;
+    // Three long rock shelves bind the separate outcrops into a canyon wall.
+    // Open skyline is deliberately retained around the gallery and finish.
+    for(const [start,end,peak] of [[.015,.255,66],[.305,.505,82],[.775,.955,58]]) {
+      const count=Math.ceil((end-start)*course.length/55),sections=[];
+      for(let i=0;i<=count;i++) {
+        const u=i/count,p=at(course,course.length*(start+(end-start)*u)),
+          rise=Math.sin(Math.PI*u),h=12+peak*rise,
+          lanes=[[0,-10],[65,h*.72],[160,h],[260,-10]];
+        const points=lanes.map(([d,y])=>[p.x+p.ty*(front+d),y,p.y-p.tx*(front+d)]);
+        if(points.some(([x,y,z])=>distance(course,x,z)<front-1))throw new RangeError('Canyon shelf intersects driving clearance');
+        sections.push(Object.freeze(points.map(Object.freeze)));
+      }
+      shelves.push(Object.freeze(sections));
+    }
+    const result=Object.freeze(shelves);circuitShelfCache.set(course,result);return result;
   }
   const circuitConnectionCache = new WeakMap();
   function circuitConnections(course, at, distance) {
@@ -506,7 +528,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

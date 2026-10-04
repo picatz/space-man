@@ -46,7 +46,7 @@ counter exhaustion fails neutral until a new epoch.
 Header offsets 0..28 retain their previous meanings: version/type,
 revision/epoch/tick, raceTick, track/difficulty/laps, room status and race phase,
 countdown, first-human-finish tick, finish reason, actor/seat/event counts.
-Offset 29 is catalog revision 1; 30 is effect count 0..5; 31 is reserved zero.
+Offset 29 is catalog revision 2; 30 is effect count 0..5; 31 is reserved zero.
 The codec validates catalog revision independently of the schema revision.
 
 Actor offsets 0..63 retain the established identity, accepted input metadata,
@@ -56,9 +56,9 @@ rank fields. New fields are:
 | Offset | Type | Value |
 | --- | --- | --- |
 | 64 | u8 | item:0 empty,1 shield,2 pulse |
-| 65 | u16 | coin mask0..1023 |
-| 67,68 | u8,u8 | row mask0..3, ramp mask0..3 |
-| 69,70 | u8,u8 | airRamp0..2, elapsed airTicks0..29 |
+| 65 | u16 | coin mask: Starlight0..1023, Prism0..63 |
+| 67,68 | u8,u8 | row/ramp masks: Starlight0..3, Prism0..1 |
+| 69,70 | u8,u8 | airRamp: Starlight0..2, Prism0..1; airTicks0..29 |
 | 71 | float32 | height matching the authoritative fixed arc |
 | 75,76,77 | u8 | shield0..240, slow0..24, immunity0..90 |
 | 78 | u16 | owner's pulse serial0..65535 |
@@ -74,7 +74,7 @@ Each effect is 20 bytes: owner slot at 0, nonzero u16 serial at 1, phase 0 charg
 at 3, age at 4, zero reserved 5..7, float32 s/d/originS at 8/12/16. Owners are unique,
 serial matches the owner's pulseSerial, lane is[-44,+44], and distances are
 bounded by course/lap length. Charge ages are 0..53; wave ages 0..27 and
-s=originS+age×12 (within float32 precision). Only racing Starlight permits effects.
+s=originS+age×12 (within float32 precision). Only racing courses with item rows (Starlight/Prism) permit effects.
 Host-only observedAt/input latches/CPU plans are never serialized.
 
 The existing eight-byte event history adds bounded jump/land/coin/item/shield/
@@ -129,10 +129,10 @@ field is introduced.
 
 ## Atomic transport revision
 
-Standalone race exclusively advertises capability bit 11; expedition exclusively
-advertises bit 12. Bits 6/7/8(old race) and 9 (old journey) are never advertised.
+Standalone race exclusively advertises capability bit 13; expedition exclusively
+advertises bit 14. Bits 6/7/8/11 (old race) and 9/12 (old journey) are never advertised.
 Both HELLO and WELCOME, held approval and reconnect are checked for players and
-watchers. Journey schema also advances to 2 without changing its 34-byte shape.
+watchers. Journey schema remains 2 without changing its 34-byte shape.
 Runner/Arena, appearance bit 10, mode flags, encrypted frame IDs and app PROTO 6
 remain independent. Browser/UI and human-feel release gates are separate from
 codec/transport test success.

@@ -1563,6 +1563,11 @@
     }
     function road(g, c) {
       const palette=root.SpaceManArt.circuitPalette(c), starlight=c.id==='starlight'||c.id==='prism';
+      for(const shelf of root.SpaceManArt.circuitCanyonShelves(c,R.at,root.SpaceManRaceTrackMesh.distance)) {
+        for(let lane=2;lane>=0;lane--){g.beginPath();shelf.forEach((section,i)=>{const p=section[lane];i?g.lineTo(p[0],p[2]):g.moveTo(p[0],p[2]);});
+          for(let i=shelf.length-1;i>=0;i--){const p=shelf[i][lane+1];g.lineTo(p[0],p[2]);}
+          g.closePath();g.fillStyle=lane===1?palette.strata:palette.stone;g.fill();}
+      }
       if(starlight) for(const {a,b,width} of root.SpaceManArt.circuitConnections(c,R.at,root.SpaceManRaceTrackMesh.distance)) {
         g.strokeStyle=palette.curb;g.lineWidth=width;g.beginPath();g.moveTo(a.x,a.z);g.lineTo(b.x,b.z);g.stroke();
       }

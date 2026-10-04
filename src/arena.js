@@ -31,7 +31,7 @@
     GRAVITY_RISE: 0.52, GRAVITY_FALL: 0.78, MAX_FALL: 15,
     COYOTE_TICKS: 6, BUFFER_TICKS: 8, JUMP_CUT: 0.48,
     ATTACK_TICKS: 26, ATTACK_WINDUP: 4, ATTACK_ACTIVE: 7, ATTACK_DAMAGE: 12,
-    ATTACK_REACH: 35, ATTACK_W: 48, ATTACK_H: 42,
+    ATTACK_REACH: 35, ATTACK_W: 48, ATTACK_H: 42, ACTION_BUFFER_TICKS: 6,
     DASH_TICKS: 10, DASH_SPEED: 11.5, DASH_COOLDOWN: 55, DODGE_TICKS: 8,
     RESPAWN_TICKS: 60, RESPAWN_INVULNERABLE: 90,
   });
@@ -101,6 +101,48 @@
       attackPressed: c.attackPressed === true || c.attackPressed === 1,
       dashPressed: c.dashPressed === true || c.dashPressed === 1,
     };
+  }
+  // Presentation-owned intent, never extra authority state or wire fields.
+  // A fresh late tap may wait at most 100 ms of observed simulation time.
+  // Ordinary key-up preserves that tap; menus/ownership changes call reset.
+  function createActionBuffer() {
+    let pending = null, scope = null, lastTick = -1, lastNow = -1;
+    function reset() { pending = null; scope = null; lastTick = -1; lastNow = -1; }
+    function sample(input, actor, tick, enabled = true, generation = '', options = {}) {
+      const c = normalizeCommand(input);
+      // A guest snapshot can lag readiness. Never suppress or replay a guest's
+      // fresh edge based on that estimate; leave its existing wire path intact.
+      const now = options.nowMs === undefined ? tick * 1000 / constants.TICK_RATE : options.nowMs;
+      if (options.authoritative === false || !Number.isFinite(now)) { reset(); return c; }
+      const usable = enabled && actor && !actor.boss && actor.stocks > 0 && !actor.respawnTicks && Number.isInteger(tick);
+      const key = actor && [generation, actor.id, actor.peerP || 0, actor.controller, actor.stocks].join(':');
+      if (!usable) { reset(); c.attackPressed = c.dashPressed = false; return c; }
+      if (actor.stun) {
+        reset(); // Never replay a pre-hit intent after stun.
+        if (actor.stun > 1) c.attackPressed = c.dashPressed = false;
+        return c; // A new tap on the final stun tick retains original rules.
+      }
+      if (scope !== key || tick < lastTick || now < lastNow) pending = null;
+      scope = key; lastTick = tick; lastNow = now;
+      // moveActor decrements these locks before considering an action.
+      const lock = action => action === 'dash' && !(actor.onGround || actor.airDashAvailable) ? Infinity : Math.max(actor.attackTicks, actor.dashTicks, action === 'dash' ? actor.dashCooldown : 0);
+      const fresh = c.attackPressed || c.dashPressed;
+      if (fresh) {
+        pending = null; // Latest deliberate action replaces, never stacks.
+        if ((c.dashPressed && lock('dash') <= 1) || (c.attackPressed && lock('attack') <= 1)) return c;
+        const action = c.dashPressed && lock('dash') <= constants.ACTION_BUFFER_TICKS + 1 ? 'dash' : c.attackPressed && lock('attack') <= constants.ACTION_BUFFER_TICKS + 1 ? 'attack' : null;
+        if (action) pending = { action, expires: tick + constants.ACTION_BUFFER_TICKS, expiresAt: now + 100 };
+        c.attackPressed = c.dashPressed = false;
+      } else if (pending) {
+        if (tick > pending.expires || now > pending.expiresAt + .001 || lock(pending.action) > constants.ACTION_BUFFER_TICKS + 1) pending = null;
+        else if (lock(pending.action) <= 1) {
+          c[pending.action === 'dash' ? 'dashPressed' : 'attackPressed'] = true;
+          pending = null;
+        }
+      }
+      return c;
+    }
+    return Object.freeze({ sample, reset });
   }
   // All random draws have explicit, serializable ownership. Controller call order
   // cannot change another controller's random stream.
@@ -722,5 +764,5 @@
     return snapshot(saved);
   }
 
-  return freeze({ constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, step, cpuInput, attackBox, bossAttackBox, snapshot, restore });
+  return freeze({ constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, createActionBuffer, step, cpuInput, attackBox, bossAttackBox, snapshot, restore });
 });

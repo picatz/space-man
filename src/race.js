@@ -7,6 +7,7 @@
   else root.SpaceManRace = api;
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
+  const CATALOG_REVISION = 2;
   const TAU = Math.PI * 2,
     STEP = 1 / 60,
     KART_RADIUS = 28,
@@ -215,7 +216,7 @@
   function features(value = "starlight") {
     const c = course(typeof value === "string" ? value : value && (value.id || value.trackId));
     if (featureCache.has(c.id)) return featureCache.get(c.id);
-    const catalog = { revision: 1, trackId: c.id, ramps: [], coins: [], rows: [] };
+    const catalog = { revision: CATALOG_REVISION, trackId: c.id, ramps: [], coins: [], rows: [] };
     if (c.id === "starlight") {
       catalog.ramps = [.175, .595].map((f, index) => ({
         id: "ramp-" + (index ? "b" : "a"), index, s: c.length * f,
@@ -508,7 +509,7 @@
       actors,
       events: [],
       effects: [],
-      catalogRevision: 1,
+      catalogRevision: CATALOG_REVISION,
       results: null,
       // Local races keep their original first-human finish. Online authority
       // opts into a bounded finish window for all admitted human seats.
@@ -929,7 +930,7 @@
   return Object.freeze({
     constants: freeze({
       VERSION: 2,
-      CATALOG_REVISION: 1,
+      CATALOG_REVISION,
       AIR_TICKS: 30,
       WARNING_TICKS: 36,
       MAX_EFFECTS: 5,

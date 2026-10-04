@@ -8,7 +8,7 @@
   else root.SpaceManRaceOnline = api;
 })(typeof window !== 'undefined' ? window : globalThis, function (Race) {
   'use strict';
-  const VERSION = 2, CATALOG_VERSION = 2, INPUT = 1, SNAPSHOT = 2, MAX_BYTES = 990;
+  const VERSION = 2, CATALOG_VERSION = Race.constants.CATALOG_REVISION, INPUT = 1, SNAPSHOT = 2, MAX_BYTES = 990;
   const INPUT_BYTES = 33, HEADER_BYTES = 32, ACTOR_BYTES = 84, EFFECT_BYTES = 20, EVENT_BYTES = 8;
   const INPUT_TTL_MS = 200, REJOIN_MS = 10000, SNAPSHOT_MS = 50;
   const MAX_HUMANS = 4, PILOTS = 5, MAX_EVENTS = 12, NONE = 65535;

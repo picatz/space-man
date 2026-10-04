@@ -175,6 +175,13 @@
         b.box(x, 16, z, 8, 3, 8, edge, h);
       }
     }
+    for(const shelf of Art.circuitCanyonShelves(c,at,TrackMesh.distance)) {
+      for(let i=0;i<shelf.length-1;i++) for(let lane=0;lane<3;lane++) {
+        const a=shelf[i],n=shelf[i+1];
+        b.quad(a[lane],n[lane],n[lane+1],a[lane+1],
+          shade(rgb(lane===1?palette.strata:palette.stone),lane===2?.6:.78));
+      }
+    }
     if (styled) {
       // Cut-corner housings echo the craft's fitted panels without repeating pods.
       const housing = (x,y,z,w,h,d,color,heading) => {
@@ -293,8 +300,8 @@
           // Fitted roof panels follow the centerline with a bright inset center
           // skylight. A visible underside works from cockpit and chase alike.
           for(const [lo,hi,color] of [[-span,-35,palette.road],[-35,35,palette.strata],[35,span,palette.road]]) {
-            roofs.quad(point(s,lo,height+14),point(next,lo,height+14),point(next,hi,height+14),point(s,hi,height+14),rgb(color));
-            roofs.quad(point(s,hi,height+10),point(next,hi,height+10),point(next,lo,height+10),point(s,lo,height+10),shade(rgb(color),.72));
+            roofs.quad(point(s,hi,height+14),point(next,hi,height+14),point(next,lo,height+14),point(s,lo,height+14),rgb(color));
+            roofs.quad(point(s,lo,height+10),point(next,lo,height+10),point(next,hi,height+10),point(s,hi,height+10),shade(rgb(color),.72));
           }
         }
       }
