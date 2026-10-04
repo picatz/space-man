@@ -294,6 +294,15 @@
       canvas.hidden = false;
       base.hidden = true;
       cockpit.hidden = mode !== "cockpit";
+      if (mode === "cockpit") {
+        const style = root.SpaceManArt.characterStyle(a.appearance, a.color),
+          key = style.palette.suit + ':' + style.palette.legB + ':' + style.accent;
+        if (cockpit.dataset.paint !== key) {
+          cockpit.dataset.paint = key;
+          cockpit.style.borderTopColor = style.accent;
+          cockpit.style.backgroundImage = `linear-gradient(180deg,${style.palette.suit} 0%,${style.palette.suit} 4%,${style.palette.legB} 8%,#0a192a 14%,#07121f 100%)`;
+        }
+      }
       parent.dataset.renderer = "webgl";
       if (toggle.textContent !== names[mode] + " ▾")
         toggle.textContent = names[mode] + " ▾";

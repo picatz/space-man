@@ -258,40 +258,47 @@ const characterHats = {
 };
 
 
+  // Shared authored planform for both the canvas and WebGL craft.
+  function hoverHullOutline(angle) {
+    const c=Math.cos(angle), s=Math.sin(angle);
+    return [Math.max(-21,4+28*c),9.4+2.3*c+.8*s*s,13.5*s*(.96+.12*c)];
+  }
+  const hoverHullPath=Object.freeze(Array.from({length:64},(_,i)=>Object.freeze(hoverHullOutline(i*Math.PI/32))));
   function hoverpod(c, style, { tick = 20, id = 0, calm = false, boosting = false, hero = false, shadow = true } = {}) {
     const P = style.palette, accent = style.accent, ship = style.appearance.ship;
     c.save();
-    if (shadow) { c.fillStyle = '#0006'; c.beginPath(); c.ellipse(0, 5, 28, 19, 0, 0, TAU); c.fill(); }
-    if (boosting || hero) {
-      c.fillStyle = accent; c.globalAlpha *= .35; c.beginPath(); c.moveTo(-19, -8); c.lineTo(-44 - (calm ? 0 : tick % 6), 0); c.lineTo(-19, 8); c.fill(); c.globalAlpha /= .35;
-      c.fillStyle = '#DFFBFF'; c.beginPath(); c.moveTo(-22, -3); c.lineTo(-34, 0); c.lineTo(-22, 3); c.fill();
+    if (shadow) {
+      for(let ring=4;ring>0;ring--) {c.save();c.globalAlpha*=.035;c.fillStyle='#102337';c.beginPath();c.ellipse(0,3,23+ring*1.5,14+ring,0,0,TAU);c.fill();c.restore();}
     }
     if (ship === 'orbit') {
-      c.strokeStyle = '#415D78'; c.lineWidth = 5; c.beginPath(); c.ellipse(-8, 0, 17, 20, 0, 0, TAU); c.stroke();
-      c.strokeStyle = accent; c.lineWidth = 1.5; c.stroke();
+      c.strokeStyle = accent; c.lineWidth = 1.6; c.beginPath(); c.ellipse(-8,0,20,24,0,0,TAU);c.stroke();
     }
-    for (const side of [-1, 1]) {
-      c.fillStyle = '#243C57'; rrPath(c, -23, side * 16 - 4, 41, 9, 4); c.fill();
-      c.fillStyle = accent; rrPath(c, -22, side * 16 - 4, 38, 6, 3); c.fill();
-      if (ship !== 'orbit') {
-        c.beginPath(); c.moveTo(-21, side * 14); c.lineTo(ship === 'leaf' ? 8 : -8, side * 17);
-        c.lineTo(ship === 'leaf' ? -14 : -25, side * (ship === 'leaf' ? 26 : 23)); c.closePath(); c.fill();
+    for(const side of [-1,1]) {
+      c.fillStyle=accent;c.beginPath();c.moveTo(7,side*11);c.lineTo(-13,side*9);c.lineTo(-15,side*17);c.lineTo(5,side*17);c.closePath();c.fill();
+      if(ship==='leaf'){c.beginPath();c.moveTo(-21,side*17);for(let i=0;i<=16;i++){const t=i/16;c.lineTo(-21+17*t,side*(17+9*Math.sin(t*Math.PI)));}c.lineTo(-4,side*17);c.closePath();c.fill();}
+      const center=side*17;
+      if(boosting||hero) {
+        // Layered faint ovals approximate the same soft engine-energy falloff
+        // as WebGL without allocating gradients or painting a hard white spear.
+        for(let ring=3;ring>0;ring--) {c.save();c.globalAlpha*=(4-ring)*.04;c.fillStyle=ring===1?'#CBF7FF':accent;c.beginPath();c.ellipse(-26-ring*.6,center,3+ring*1.1,.6+ring*.5,0,0,TAU);c.fill();c.restore();}
       }
-      c.fillStyle = '#DFFBFF'; rrPath(c, -24, side * 16 - 2, 3, 4, 1); c.fill();
-      c.fillStyle = '#102D49'; c.fillRect(-13, side * 16 - 2, 7, 1);
+      // Same truncated rear / slim waist / rounded leading tip as the 3D pod.
+      c.fillStyle=accent;c.beginPath();c.moveTo(-23,center-3.3);c.bezierCurveTo(-18,center-4.5,5,center-4.2,15,center-2.3);c.quadraticCurveTo(21,center,15,center+2.3);c.bezierCurveTo(5,center+4.2,-17,center+4.5,-23,center+3.3);c.closePath();c.fill();
+      c.fillStyle='#DFFBFF';c.beginPath();c.moveTo(-13,center-.4);c.quadraticCurveTo(1,center-1,14,center);c.quadraticCurveTo(1,center+.7,-13,center+.4);c.fill();
+      c.fillStyle='#244557';rrPath(c,-21,center-3.6,1.4,7.2,.5);c.fill();
+      c.fillStyle='#193349';rrPath(c,-23.8,center-3.3,1.6,6.6,.6);c.fill();
+      c.fillStyle='#CBF7FF';c.beginPath();c.ellipse(-23.9,center, .65,2,0,0,TAU);c.fill();
     }
-    c.fillStyle = P.legB; c.beginPath(); c.moveTo(29, 1); c.quadraticCurveTo(18, -13, -14, -12); c.lineTo(-22, -5); c.lineTo(-22, 7); c.lineTo(-13, 14); c.quadraticCurveTo(18, 14, 29, 1); c.fill();
-    c.fillStyle = P.suit; c.beginPath(); c.moveTo(29, -1); c.quadraticCurveTo(18, -14, -13, -12); c.lineTo(-21, -5); c.lineTo(-21, 5); c.lineTo(-13, 11); c.quadraticCurveTo(18, 12, 29, -1); c.fill();
-    c.fillStyle = accent; rrPath(c, 12, -4, 13, 5, 2.5); c.fill();
-    c.strokeStyle = P.legB; c.lineWidth = .8; c.beginPath(); c.moveTo(15, 5); c.lineTo(23, 2); c.stroke();
-    c.fillStyle = '#243C57'; rrPath(c, -16, -8, 23, 17, 6); c.fill();
-    c.fillStyle = P.suit; rrPath(c, -11, -5, 13, 12, 4); c.fill();
-    c.save(); c.translate(-7, 2); c.scale(.72, .72); suitDetails(c, 0, 0, style); c.restore();
-    c.fillStyle = '#415D78'; rrPath(c, -18, -5, 5, 9, 2); c.fill(); c.fillStyle = accent; c.fillRect(-17, -3, 1.5, 4);
-    c.save(); c.translate(-5, -3); c.scale(.75, .75);
-    characterHelmet(c, 0, 0, style, { tick, id, calm, mood: boosting ? 1 : 0 }); c.restore();
-    if (style.appearance.detail === 'stripe') { c.strokeStyle = accent; c.lineWidth = 1.5; c.beginPath(); c.moveTo(-9, 9); c.lineTo(16, 7); c.stroke(); }
-    if (style.appearance.detail === 'stars') { c.fillStyle = accent; c.save(); c.translate(18, 5); c.rotate(Math.PI / 4); c.fillRect(-1.5, -1.5, 3, 3); c.restore(); }
+    const hull = offset => {c.beginPath();hoverHullPath.forEach((p,i)=>{if(i)c.lineTo(p[0],p[2]+offset);else c.moveTo(p[0],p[2]+offset);});c.closePath();};
+    c.fillStyle=P.legB;hull(1.7);c.fill();c.fillStyle=P.suit;hull(0);c.fill();
+    c.fillStyle=accent;c.beginPath();c.moveTo(9,-2.7);c.quadraticCurveTo(21,-2.2,29,0);c.quadraticCurveTo(21,2.2,9,2.7);c.closePath();c.fill();
+    c.fillStyle='#152D43';c.beginPath();c.ellipse(-5,0,10,7.8,0,0,TAU);c.fill();
+    c.fillStyle=P.suit;rrPath(c,-10,-3,11,8,3);c.fill();
+    c.save();c.translate(-7,1);c.scale(.62,.62);suitDetails(c,0,0,style);c.restore();
+    c.fillStyle=P.legB;rrPath(c,-16,-3,3.5,6,1.4);c.fill();c.fillStyle=accent;rrPath(c,-16.3,-1.5,1,3,.5);c.fill();
+    c.save();c.translate(-5,-2);c.scale(.75,.75);characterHelmet(c,0,0,style,{tick,id,calm,mood:boosting?1:0});c.restore();
+    if(style.appearance.detail==='stripe'){c.strokeStyle=accent;c.lineWidth=1.2;c.beginPath();c.moveTo(-8,10);c.lineTo(14,8);c.stroke();}
+    if(style.appearance.detail==='stars'){c.fillStyle=accent;c.save();c.translate(18,5);c.rotate(Math.PI/4);c.fillRect(-1.5,-1.5,3,3);c.restore();}
     c.restore();
   }
   // Full appearance preview with no dependency on a running game or player.
@@ -418,7 +425,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

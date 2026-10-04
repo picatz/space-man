@@ -184,6 +184,8 @@
       displayedWarnings = Array(5).fill(0),
       noticeText = "", noticeUntil = 0, noticeTick = -1, noticeSerial = 0, warningSoundKey = "";
     const warningReceipt = createWarningReceipt();
+    const flatPresentation = root.SpaceManRacePresentation?.createSampler();
+    const flatCamera = root.SpaceManRaceCamera?.createTopdown();
     const audioControls = [], audioOverrides = {};
     let localSession = null, sharedSession = null, inputSuspended = false;
     let selected = { trackId: "starlight", difficulty: "normal" },
@@ -412,6 +414,8 @@
         cosmeticRound++;
         previousPose = null;
         perspective?.reset();
+        flatPresentation?.reset();
+        flatCamera?.reset();
         resetInput();
         view = "play";
         paused = roomPaused = localRoomMenu = false;
@@ -1398,6 +1402,8 @@
       if (root.SpaceManCosmetics && typeof opts.appearance === "function") { const human = state.actors.find(a => a.controller === "human"); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       previousPose = null;
       perspective?.reset();
+      flatPresentation?.reset();
+      flatCamera?.reset();
       view = "play";
       paused = false;
       last = 0;
@@ -1798,7 +1804,7 @@
       ctx.stroke();
       if (actors) {
         // Draw the focused pilot last, with a shape/contrast cue independent of suit color.
-        const focused = followActor();
+        const focused = actors.find(actor => actor.id === followActor()?.id);
         for (const a of [...actors.filter(a => a.id !== focused?.id), ...(focused ? [focused] : [])]) {
           const selected = a.id === focused?.id;
           ctx.fillStyle = selected ? "#FFF3CE" : a.color;
@@ -1818,10 +1824,19 @@
       }
       ctx.restore();
     }
-    function paint() {
+    // Resize/viewport paints reframe immediately without spending the last
+    // animation frame's elapsed time a second time on camera easing.
+    function paint(frameDt = 0) {
       if (!active || !g) return;
       const c = R.course(state?.trackId || selected.trackId);
       const a = state ? followActor() : null;
+      const shown = state && (flatPresentation?.sample(state, {
+        actorId: a.id, previous: previousPose, epoch: networkEpoch,
+        network: onlineActive(), now: root.performance.now(),
+        paused: onlineActive() ? roomPaused : paused,
+        alpha: acc * 60,
+      }) || state);
+      const shownActor = shown?.actors.find(actor => actor.id === a.id) || a;
       const rendered3d =
         a &&
         perspective?.render(R.snapshot(state), {
@@ -1832,7 +1847,7 @@
           network: onlineActive(),
           paused: onlineActive() ? roomPaused : paused,
           alpha: paused || state.phase === "finished" ? 1 : acc * 60,
-          dt: renderDt,
+          dt: frameDt,
           reduceMotion: calm(),
         });
       // The hidden fallback canvas does not need a second full-screen sky pass.
@@ -1902,21 +1917,11 @@
       const zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
       // Keep the fallback camera warm while WebGL is active, so switching view
       // or losing the graphics context never flies back from an old position.
-      const viewHeading = root.SpaceManRaceCamera?.travelHeading(a) ?? a.heading;
-      const desiredX = a.x + Math.cos(viewHeading) * 105,
-        desiredY = a.y + Math.sin(viewHeading) * 105;
-      camera.x += (desiredX - camera.x) * 0.12;
-      camera.y += (desiredY - camera.y) * 0.12;
-      // Portrait gets a forward-facing chase view: the useful road extends
-      // into the tall screen instead of spending most of its area on empty sky.
-      // Reduced-motion players keep the fixed-heading overview.
-      const followHeading = height > width && !calm();
-      const targetRotation = followHeading ? -viewHeading - Math.PI / 2 : 0;
-      camera.rotation +=
-        Math.atan2(
-          Math.sin(targetRotation - camera.rotation),
-          Math.cos(targetRotation - camera.rotation),
-        ) * 0.1;
+      camera = flatCamera?.update(shownActor, {
+        trackId: state.trackId, epoch: networkEpoch, dt: frameDt,
+        portrait: height > width, reduceMotion: calm(),
+        paused: onlineActive() ? roomPaused : paused,
+      }) || camera;
       if (!rendered3d) {
         g.save();
         g.translate(width / 2, height * 0.48);
@@ -1924,7 +1929,7 @@
         g.rotate(camera.rotation);
         g.translate(-camera.x, -camera.y);
         road(g, c);
-        drawTrackFeatures(g, c, a, catalog);
+        drawTrackFeatures(g, c, shownActor, catalog);
         if (a.finishTick === null) {
           const gate = c.gates[a.nextGate];
           g.save();
@@ -1940,7 +1945,7 @@
           g.setLineDash([]);
           g.restore();
         }
-        for (const actor of state.actors) {
+        for (const actor of shown.actors) {
           if (!calm() && actor.recoveryTicks && state.tick % 12 < 5) continue;
           kart(g, actor);
         }
@@ -1963,8 +1968,8 @@
           return { x: width / 2 + (dx * cos - dy * sin) * zoom,
             y: height * 0.48 + (dx * sin + dy * cos - actorElevation(actor)*.8) * zoom };
         };
-        const focus = project(a), own = a.id === ownActor()?.id;
-        const bodies = state.actors.map(actor => {
+        const focus = project(shownActor), own = a.id === ownActor()?.id;
+        const bodies = shown.actors.map(actor => {
           const p = project(actor), r = 36 * zoom * (1+actorElevation(actor)/200);
           return {id:actor.id,x:p.x-r,y:p.y-r,w:r*2,h:r*2};
         });
@@ -1977,7 +1982,7 @@
         rootEl.dataset.identityCue = JSON.stringify({cue,bodies});
         g.font = "700 10px system-ui";
         g.textAlign = "center";
-        for (const actor of state.actors) {
+        for (const actor of shown.actors) {
           if (actor.id === a.id) continue;
           const p = project(actor), x = p.x, y = p.y - 30;
           const name = actor.name, w = g.measureText(name).width + 10;
@@ -1994,7 +1999,7 @@
         if (cue) root.SpaceManArt.identityCue(g, cue.x+cue.w/2, cue.y+cue.h/2, own ? 'you' : 'watching', cue.targetX, cue.targetY, cue.link);
       }
       updateIdentity(a);
-      drawMap(mg, c, 340, 240, state.actors);
+      drawMap(mg, c, 340, 240, shown.actors);
       position.replaceChildren(
         document.createTextNode(
           String(
@@ -2158,7 +2163,7 @@
         }
       }
       if (state && !paused) audio?.update(state, followActor());
-      paint();
+      paint(renderDt);
       ensureFrame();
     }
     function ensureFrame() {
@@ -2265,6 +2270,8 @@
         t.removeEventListener(type, fn, settings);
       rootEl.hidden = true;
       perspective?.close();
+      flatPresentation?.reset();
+      flatCamera?.reset();
       state = null;
       paused = false;
       view = "lobby";
