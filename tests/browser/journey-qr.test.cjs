@@ -37,9 +37,22 @@ async function decodeScreenshot(page, png) {
  },png.toString('base64'));
  return{...raster,link:decodePixels(raster.width,raster.height,Buffer.from(raster.data,'base64'))};
 }
+async function settleQr(page) {
+ await page.evaluate(()=>new Promise((resolve,reject)=>{
+  let previous='',quietSince=performance.now();const deadline=quietSince+5000;
+  function sample(){
+   const r=document.getElementById('journeyInviteQr').getBoundingClientRect();
+   const key=[r.x,r.y,r.width,r.height,document.getElementById('journeyFriends').scrollTop].map(n=>Math.round(n*2)/2).join(':');
+   const now=performance.now();if(key!==previous){previous=key;quietSince=now;}
+   if(now-quietSince>=250)return resolve();
+   if(now>deadline)return reject(new Error('QR geometry did not settle: '+key));
+   requestAnimationFrame(sample);
+  }sample();
+ }));
+}
 async function qrGeometry(page) {return page.locator('#journeyInviteQr').evaluate(e=>{
  const r=e.getBoundingClientRect(),v=visualViewport;
- return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height,innerHeight,clientHeight:document.documentElement.clientHeight,visualHeight:v?.height,visualWidth:v?.width,visualTop:v?.offsetTop||0,visualLeft:v?.offsetLeft||0,scrollTop:document.getElementById('journeyFriends').scrollTop};
+ return{x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width,height:r.height,innerHeight,clientHeight:document.documentElement.clientHeight,visualHeight:v?.height,visualWidth:v?.width,visualTop:v?.offsetTop||0,visualLeft:v?.offsetLeft||0,hint:document.getElementById('journeyHint')?.textContent||'',scrollTop:document.getElementById('journeyFriends').scrollTop};
 });}
 
 test('legacy Journey host QR is visible, decodes and joins the exact isolated expedition',{timeout:90000},async t=>{
@@ -66,15 +79,15 @@ test('legacy Journey host QR is visible, decodes and joins the exact isolated ex
   // This host context is desktop WebKit/Chromium at each responsive size.
   await host.page.mouse.move(width/2,height/2);await host.page.mouse.wheel(0,first.y+first.height/2-height/2);
   await host.page.waitForFunction(({width,height})=>{const r=document.getElementById('journeyInviteQr').getBoundingClientRect();return r.left>=0&&r.right<=width&&r.top>=0&&r.bottom<=height;},{width,height});
-  await host.page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  await settleQr(host.page);
   const before=await qrGeometry(host.page),png=await host.page.screenshot(),after=await qrGeometry(host.page);
+  if(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS){await fs.mkdir(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS,{recursive:true});await fs.writeFile(path.join(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS,`journey-qr-${width}x${height}.png`),png);}
   console.log('QR screenshot geometry',JSON.stringify({width,height,before,after}));
   for(const g of [before,after]){const visibleHeight=Math.min(height,g.clientHeight,g.visualHeight||height),visibleWidth=Math.min(width,g.visualWidth||width);assert.ok(g.x>=g.visualLeft&&g.right<=g.visualLeft+visibleWidth&&g.y>=g.visualTop&&g.bottom<=g.visualTop+visibleHeight&&g.width>=240&&g.height>=240,'entire QR is inside the actual screenshot and visual viewport');}
   assert.ok(Math.abs(before.y-after.y)<1&&Math.abs(before.height-after.height)<1,'capture geometry is settled');
   const screen=await decodeScreenshot(host.page,png);
   assert.equal(screen.width,width);assert.equal(screen.height,height);assert.equal(screen.link,decoded,'on-screen QR pixels preserve the complete invite');
   assert.equal(await decodeCanvas(host.page),decoded,'resizing keeps backing pixels correct');
-  if(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS){await fs.mkdir(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS,{recursive:true});await fs.writeFile(path.join(process.env.SPACE_MAN_JOURNEY_SCREENSHOTS,`journey-qr-${width}x${height}.png`),png);}
   for(const id of ['journeyCopy','journeyStart','journeyLeave']){const b=host.page.locator('#'+id);await b.scrollIntoViewIfNeeded();assert.equal(await b.evaluate(e=>{const r=e.getBoundingClientRect();const h=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return r.top>=0&&r.bottom<=innerHeight&&(h===e||e.contains(h));}),true,id+' reachable after QR');}
  }
  await friend.page.locator('#journeyLeave').click();await friend.page.waitForFunction(()=>!journeyUI.room.active);
