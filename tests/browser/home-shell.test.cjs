@@ -94,7 +94,9 @@ async function sampleFrames(page, action, name, id = 'btnPlay') {
   return frames;
 }
 
-test('home normal-motion mode and Done hover, focus and press keep continuously painted surfaces', {timeout:60000}, async t => {
+// Twenty-four real hover/focus/press frame sequences plus screenshots took
+// 52 seconds in a passing WebKit run; leave bounded headroom for hosted load.
+test('home normal-motion mode and Done hover, focus and press keep continuously painted surfaces', {timeout:120000}, async t => {
   const {page} = await launch(t);
   // Hidden legacy control still keeps the regression fix in its stylesheet.
   assert.equal(await page.locator('#btnExpedition').isVisible(), false);

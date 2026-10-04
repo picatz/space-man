@@ -3,7 +3,7 @@
   'use strict';
   function create(options={}){
     const doc=root.document,el=doc.createElement('section');el.id='journeyFriends';el.hidden=true;el.className='journey-friends';el.setAttribute('role','dialog');el.setAttribute('aria-modal','true');el.setAttribute('aria-labelledby','journeyFriendsTitle');
-    const style=doc.createElement('style');style.textContent='.journey-friends{position:fixed;z-index:110;inset:0;overflow:auto;box-sizing:border-box;padding:max(22px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(22px,env(safe-area-inset-bottom));background:radial-gradient(ellipse at 50% 0,#233251,#081120 70%);color:#f5f6fa;font:16px/1.5 system-ui;display:grid;place-items:center}.journey-friends[hidden]{display:none}.journey-friends-card{width:min(100%,520px);display:grid;gap:14px}.journey-friends h1{font-size:clamp(28px,7vw,40px);margin:0}.journey-friends p{margin:0;color:#bdc9de}.journey-friends button,.journey-friends input{box-sizing:border-box;min-height:48px;border:1px solid #56728d;border-radius:14px;padding:12px 16px;background:#172a42;color:#f5f6fa;font:600 16px system-ui;touch-action:manipulation}.journey-friends input{width:100%;background:#080f1d;font-weight:400}.journey-friends .primary{background:#c7e4fb;color:#12273d;border-color:#e7f5ff}.journey-friends .actions{display:flex;flex-wrap:wrap;gap:10px}.journey-friends .actions>*{flex:1}.journey-friends [hidden]{display:none!important}.journey-friends ul{margin:0;padding-left:24px}.journey-friends button:disabled{opacity:.5}.journey-friends-code{font-weight:750;letter-spacing:.08em}.journey-friends-note{font-size:14px}.journey-friends-status{min-height:24px;color:#bce7ff!important}';doc.head.appendChild(style);
+    const style=doc.createElement('style');style.textContent='.journey-friends{position:fixed;z-index:110;inset:0;overflow:auto;box-sizing:border-box;padding:max(22px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(22px,env(safe-area-inset-bottom));background:radial-gradient(ellipse at 50% 0,#233251,#081120 70%);color:#f5f6fa;font:16px/1.5 system-ui;display:grid;place-items:center}.journey-friends[hidden]{display:none}.journey-friends-card{width:min(100%,520px);display:grid;gap:14px}.journey-friends h1{font-size:clamp(28px,7vw,40px);margin:0}.journey-friends p{margin:0;color:#bdc9de}.journey-friends button,.journey-friends input{box-sizing:border-box;min-height:48px;border:1px solid #56728d;border-radius:14px;padding:12px 16px;background:#172a42;color:#f5f6fa;font:600 16px system-ui;touch-action:manipulation}.journey-friends input{width:100%;background:#080f1d;font-weight:400}.journey-friends .primary{background:#c7e4fb;color:#12273d;border-color:#e7f5ff}.journey-friends .actions{display:flex;flex-wrap:wrap;gap:10px}.journey-friends .actions>*{flex:1}.journey-friends [hidden]{display:none!important}.journey-friends ul{margin:0;padding-left:24px}.journey-friends button:disabled{opacity:.5}.journey-friends-code{font-weight:750;letter-spacing:.08em}.journey-friends-note{font-size:14px}.journey-friends-status{min-height:24px;color:#bce7ff!important}.journey-invite-qr{margin:0;display:grid;justify-items:start;gap:8px;max-width:100%}.journey-invite-qr canvas{display:block;width:min(272px,100%);height:auto;aspect-ratio:1;background:#fff;image-rendering:pixelated}.journey-invite-qr figcaption{font-size:14px;color:#bdc9de}';doc.head.appendChild(style);
     const card=doc.createElement('div');card.className='journey-friends-card';el.appendChild(card);doc.body.appendChild(el);
     // Snapshot refreshes must keep unchanged text nodes attached while a real
     // pointer is down. Replacing them can cancel WebKit's eventual click.
@@ -19,6 +19,25 @@
     const actions=doc.createElement('div');actions.className='actions';entry.appendChild(actions);
     const joinButton=makeButton(actions,'Join expedition',()=>room.join(input.value,0));joinButton.id='journeyJoin';const watchButton=makeButton(actions,'Watch',()=>room.join(input.value,1));watchButton.id='journeyWatch';
     const connected=doc.createElement('div');connected.className='journey-friends-card';card.appendChild(connected);connected.hidden=true;
+    // Reuse the same invite capability verbatim; the QR is another way to open
+    // this room, never a reconstructed code, shortened URL or different build.
+    const qrFigure=doc.createElement('figure');qrFigure.className='journey-invite-qr';qrFigure.hidden=true;connected.appendChild(qrFigure);
+    const qr=doc.createElement('canvas');qr.id='journeyInviteQr';qr.width=qr.height=340;qr.setAttribute('role','img');qr.setAttribute('aria-label','Scan to join this expedition');qrFigure.appendChild(qr);
+    const qrCaption=doc.createElement('figcaption');qrFigure.appendChild(qrCaption);
+    let qrLink='';
+    function updateQr(link){
+      qrFigure.hidden=!link;
+      if(link===qrLink)return;
+      const ctx=qr.getContext('2d');if(ctx)ctx.clearRect(0,0,qr.width,qr.height);
+      qr.hidden=true;qrLink='';
+      if(!link)return;
+      // qr.js supports 412 UTF-8 bytes and otherwise silently truncates. Never
+      // offer a scannable-looking QR for a truncated invite capability.
+      if(new TextEncoder().encode(link).length>412){setText(qrCaption,'Invite too long for QR. Copy the full invite link below.');return;}
+      if(!ctx||!root.SpaceManQR){setText(qrCaption,'QR unavailable. Copy the invite link below.');return;}
+      try{root.SpaceManQR.draw(ctx,0,0,qr.width,link);qrLink=link;qr.hidden=false;setText(qrCaption,'Scan to join this expedition');}
+      catch(_){setText(qrCaption,'QR unavailable. Copy the invite link below.');}
+    }
     const invite=doc.createElement('input');invite.readOnly=true;invite.setAttribute('aria-label','Expedition invite link');connected.appendChild(invite);
     const code=doc.createElement('p');code.className='journey-friends-code';connected.appendChild(code);
     const copy=makeButton(connected,'Copy invite',async()=>{try{await root.navigator.clipboard.writeText(invite.value);hint.textContent='Invite copied';}catch(_){invite.focus();invite.select();hint.textContent='Select and copy the invite link';}});copy.id='journeyCopy';
@@ -31,7 +50,7 @@
     function update(s){
       entry.hidden=s.active;connected.hidden=!s.active;for(const b of[hostButton,joinButton,watchButton])b.disabled=s.busy;
       setText(hint,s.error||s.closedReason||s.connection||(s.stale?'Waiting for the host · controls released':s.busy?'Connecting… You can cancel below.':s.active?s.journey?.phase==='barrier'?'Crew regrouping · the next encounter starts automatically':s.journey?.phase==='lobby'?'Invite your crew, then start together.':s.pendingRole!==null?'Seat change requested for the next encounter.':'Your crew stays together between encounters.':''));
-      const link=s.host?s.info.link||'':'';invite.value=link;invite.hidden=!link;copy.hidden=!link;setText(code,s.info.joinCode|| (link?'Invite link · same game build':'Shared expedition'));
+      const link=s.active&&s.host?s.info.link||'':'';updateQr(link);invite.value=link;invite.hidden=!link;copy.hidden=!link;setText(code,s.info.joinCode|| (link?'Invite link · same game build':'Shared expedition'));
       start.hidden=!s.host||s.journey?.phase!=='lobby';resume.hidden=!s.journey||s.journey.phase==='lobby';setText(role,s.pendingRole===0?'Player seat requested':s.pendingRole===1?'Will watch next encounter':s.info.role===1?'Join next encounter':'Watch next encounter');role.disabled=s.pendingRole!==null;
       setText(leave,s.busy?'Cancel connecting':s.active?s.host?'Close expedition':'Leave expedition':'Back');
       const next=JSON.stringify(s.roster.map(r=>[r.p,r.role,r.callsign]));if(next!==signature){signature=next;members.replaceChildren();for(const r of s.roster){const row=doc.createElement('li');row.textContent=(r.callsign||'PLAYER '+r.p)+(r.you?' · YOU':'')+(r.host?' · HOST':'')+(r.role===1?' · WATCHING':'');members.appendChild(row);}}
