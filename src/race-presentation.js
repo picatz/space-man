@@ -154,5 +154,27 @@
     }
     return { sample, reset };
   }
-  return Object.freeze({ capture, between, createTimeline });
+  // A view-independent sampler for the canvas path, including 20Hz network
+  // authority. Keep it warm while WebGL is visible so a camera/context switch
+  // cannot return to an old pose. It never writes to the simulation snapshot.
+  function createSampler() {
+    const timeline = createTimeline();
+    let context = null;
+    function reset() { context = null; timeline.reset(); }
+    function sample(snapshot, options = {}) {
+      if (!snapshot) { reset(); return null; }
+      const actorId = snapshot.actors.find(a => a.id === options.actorId)?.id || snapshot.actors[0]?.id;
+      const key = [snapshot.trackId, options.epoch ?? snapshot.epoch ?? null, actorId, !!options.network];
+      const changed = !context || key.some((value, i) => value !== context[i]);
+      if (changed) timeline.reset();
+      context = key;
+      if (options.network) return timeline.sample(
+        { ...snapshot, epoch: options.epoch ?? snapshot.epoch }, options.now,
+        { paused: options.paused, actorId });
+      return between(changed ? null : options.previous, snapshot,
+        options.paused || snapshot.phase === "finished" ? 1 : options.alpha);
+    }
+    return { sample, reset };
+  }
+  return Object.freeze({ capture, between, createTimeline, createSampler });
 });
