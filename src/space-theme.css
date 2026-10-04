@@ -390,7 +390,7 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 .settings-group .net-radio-opt.sel { color: var(--sm-ink); }
 .settings-group .net-sub { font: 700 15px/1.4 var(--sm-font-body); color: #dbe8f4; }
 .settings-group .net-val { overflow-wrap: anywhere; text-align: right; }
-.settings-group .hint { color: #9eb5ca; font: 400 12px/1.5 var(--sm-font-body); padding-left: 26px; }
+.settings-group .hint { opacity: 1; color: #9eb5ca; font: 400 12px/1.5 var(--sm-font-body); padding-left: 26px; }
 #ovSettings #btnWardrobe2, #ovSettings #btnReset { display: inline-flex; align-items: center; justify-content: center; width: auto; padding: 11px 18px; margin: 24px 12px 0 0; }
 #ovTogether .sub { margin-bottom: 24px; }
 #ovTogether .together-or { font: 600 13px/1.5 var(--sm-font-body); letter-spacing: 0; text-transform: none; margin: 26px 0 12px; color: var(--sm-copy); }
@@ -448,3 +448,9 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 #ovRoom .switch::after { top:11px; }
 
 .secondary-panel .haptic-test .mini-chip { min-height:46px; }
+
+#ovRoom .room-qr { max-width:100%; height:auto; aspect-ratio:1; }
+.secondary-panel textarea:focus-visible,
+.secondary-panel [role="button"]:focus-visible,
+body.gamepad-active .secondary-panel textarea:focus,
+body.gamepad-active .secondary-panel [role="button"]:focus { outline:3px solid var(--sm-focus); outline-offset:-3px; }

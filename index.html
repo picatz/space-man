@@ -2246,7 +2246,13 @@ function buzz(kind) {
       return;
     }
   } catch (e) {}
-  try { const l = document.getElementById('hapLbl'); if (l) l.click(); } catch (e) {}   // iOS 17.4+: a switch input's tick is the only web haptic
+  try {
+    const l = document.getElementById('hapLbl'), focused = document.activeElement;
+    if (l) l.click();   // iOS 17.4+: a switch input's tick is the only web haptic
+    // A programmatic label click can focus its hidden switch in WebKit. Tactile
+    // feedback must not steal the keyboard/controller cursor from a real control.
+    if (focused && focused.isConnected !== false && typeof focused.focus === 'function' && l && typeof l.contains === 'function' && l.contains(document.activeElement)) focused.focus({ preventScroll: true });
+  } catch (e) {}
 }
 
 /* ---------------------------------------------------------------------------
@@ -2276,7 +2282,7 @@ function topOverlayId() {
   return null;
 }
 const visibleEl = (el) => !el.disabled && el.getClientRects().length > 0;
-function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input, textarea, summary')).filter(el => visibleEl(el) && el.tabIndex !== -1) : []; }
+function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input, textarea, summary, [role="button"][tabindex]')).filter(el => visibleEl(el) && el.tabIndex !== -1) : []; }
 function menuFocusFirst(id) { const it = menuItems(id); const featured = id === 'ovAttract' && it.find(el => el.id === 'btnPlay'); if (it.length) (featured || it[0]).focus(); return it.length > 0; }
 // Spatial move: nearest control whose centre lies in the pressed direction
 // (cross-axis distance weighted 2x); vertical presses wrap in DOM order.
@@ -2433,6 +2439,17 @@ function isTextField(t) {
 function onKey(e, down) {
   if (modeOverlayActive()) return;
   const k = (e.key || '').toLowerCase();
+  // A modal's Tab order stays inside its real, visible controls. This also
+  // runs for textareas before their ordinary text-key ownership shortcut.
+  if (down && k === 'tab') {
+    const overlayId = topOverlayId(), overlay = overlayId && document.getElementById(overlayId);
+    if (overlay && overlay.querySelector('.secondary-panel')) {
+      const items = menuItems(overlayId), active = document.activeElement;
+      if (items.length && ((e.shiftKey ? active === items[0] : active === items[items.length - 1]) || !items.includes(active))) {
+        e.preventDefault(); (e.shiftKey ? items[items.length - 1] : items[0]).focus(); return;
+      }
+    }
+  }
   if (isTextField(e.target)) { if (down && k === 'escape' && menuBack()) e.preventDefault(); return; }
   // Both halves of native activation belong to the focused control. Cancelling
   // Space keyup suppresses a button's click; arrow keys also belong to ranges.
@@ -6302,7 +6319,10 @@ function showOverlay(id) {
   if (input.pad.connected && !SHOT) menuFocusFirst(topOverlayId());   // controller players land on the first control
   // Double-rAF (E9.1): the 0-state must paint one frame before .in flips the
   // transition, or the browser collapses show+in into a single no-op frame.
-  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.classList.add('in');
+    if (!SHOT && el.classList.contains('show') && el.querySelector('.secondary-panel') && !el.contains(document.activeElement)) menuFocusFirst(id);
+  }));
 }
 
 function medalGlyphs() {
@@ -7047,7 +7067,9 @@ function commitCallsign() {
   G.cosmetics.callsign = [callsignSel[0], callsignSel[1]];
   persistAll();                                        // existing cosmetics path (LS.cosmetics)
   applyCallsignToNet();
-  const cb = callsignDone; callsignDone = null;
+  const cb = callsignDone; callsignDone = null; callsignReturn = null;
+  // Dismiss the committed picker before a potentially asynchronous join starts.
+  hideAllOverlays();
   if (cb) cb(); else showAttract();
 }
 

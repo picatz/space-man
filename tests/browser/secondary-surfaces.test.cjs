@@ -68,7 +68,7 @@ async function launch(t, viewport = { width: 1440, height: 900 }, options = {}) 
     const { simulatedRelay } = require('./arena-network-helper.cjs');
     relayClient = { sockets: 0, sent: 0, received: 0, encryptedSent: 0, encryptedReceived: 0,
       unexpectedSockets: 0, deliveryErrors: 0, sentTypes: {}, receivedTypes: {}, offline: false };
-    await simulatedRelay(context, relayClient, require('../harness.cjs').relay());
+    await simulatedRelay(context, relayClient, options.hub || require('../harness.cjs').relay());
   }
   // A new context owns an empty, isolated localStorage. Seed once so reload
   // assertions inspect what UI handlers really persisted, never a re-seeded copy.
@@ -114,7 +114,18 @@ async function home(page) {
 }
 async function panel(page, id) {
   await page.locator(`#${id}.in`).waitFor();
-  return page.locator(`#${id} .panel`);
+  const content = page.locator(`#${id} .panel`);
+  if (await content.evaluate(n => n.classList.contains('secondary-panel'))) {
+    assert.equal(await content.getAttribute('aria-modal'), 'true');
+    const focus = await content.evaluate(n => {
+      const active = document.activeElement, r = active?.getBoundingClientRect();
+      return { inside: n.contains(active), hidden: !!active?.closest('[aria-hidden="true"]'),
+        visible: !!r && r.width > 0 && r.height > 0 && r.top >= -1 && r.bottom <= innerHeight + 1,
+        active: active?.id || active?.tagName };
+    });
+    assert.ok(focus.inside && !focus.hidden && focus.visible, `${id}: opening puts focus on a visible dialog control ${JSON.stringify(focus)}`);
+  }
+  return content;
 }
 async function activate(page, selector) {
   const node = page.locator(selector);
@@ -144,6 +155,20 @@ async function targets(page, id) {
     .flatMap(n => { const r = n.getBoundingClientRect(); return r.width < 43.5 || r.height < 43.5
       ? [{ id: n.id, label: n.getAttribute('aria-label') || n.textContent.trim(), type: n.type, width: r.width, height: r.height }] : []; }));
   assert.deepEqual(problems, [], `${id}: every visible interactive target is at least 44px`);
+  await modalWrap(page, id);
+}
+async function modalWrap(page, id) {
+  const controls = page.locator(`#${id} .secondary-panel`).locator(':is(button, input, textarea, summary, [role="button"][tabindex]):visible:not([disabled]):not([tabindex="-1"])');
+  assert.ok(await controls.count(), `${id}: modal has usable keyboard controls`);
+  const first = controls.first(), last = controls.last();
+  const previous = await page.evaluateHandle(() => document.activeElement);
+  const scroll = await page.locator(`#${id} .panel`).evaluate(n => n.scrollTop);
+  await last.focus(); await page.keyboard.press('Tab');
+  assert.equal(await first.evaluate(n => document.activeElement === n && n.matches(':focus-visible')), true, `${id}: forward Tab wraps to the first real control`);
+  await first.focus(); await page.keyboard.press('Shift+Tab');
+  assert.equal(await last.evaluate(n => document.activeElement === n && n.matches(':focus-visible')), true, `${id}: backward Tab wraps to the last real control`);
+  await previous.evaluate(n => n.focus()); await previous.dispose();
+  await page.locator(`#${id} .panel`).evaluate((n, top) => { n.scrollTop = top; }, scroll);
 }
 async function reachable(page, selector) {
   const node = page.locator(selector);
@@ -324,7 +349,7 @@ test('secondary Settings: switches, native range keys, rebinding and native conn
   assert.equal(await bind.innerText(), 'J', 'Escape cancels only rebinding');
   assert.equal(await page.locator('#ovSettings.in').isVisible(), true);
   await bind.click(); await page.keyboard.press('m');
-  assert.equal(await bind.innerText(), 'Press a key', 'reserved key is rejected');
+  assert.match(await bind.innerText(), /^press a key$/i, 'reserved key is rejected');
   await page.keyboard.press('Escape');
   for (const mode of ['custom', 'list', 'default', 'custom']) {
     const control = settingsPanel.locator(`.net-radio-opt[data-mode="${mode}"]`);
@@ -460,4 +485,51 @@ test('secondary initials: real qualifying run, labeled letter controls and immed
   assert.equal(await page.locator('#deadScores tr.me td:nth-child(2)').innerText(), initials);
   await page.waitForFunction(() => G.time - G.deadShownAt >= 0.5);
   await activate(page, '#btnAgain'); await page.waitForFunction(() => G.mode === 'play' && !G.player.dead);
+});
+
+
+test('secondary first invite: cancel before choosing; commit dismisses picker; Cancel interrupts slow admission without erasing identity', { timeout: 65000 }, async t => {
+  const hub = require('../harness.cjs').relay();
+  const host = await launch(t, { width: 1440, height: 900 }, { relay: true, hub });
+  await activate(host.page, '#btnTogether'); await panel(host.page, 'ovTogether');
+  await activate(host.page, '#btnCreateRoom'); await panel(host.page, 'ovRoom');
+  const invite = await host.page.evaluate(() => SpaceManNet.info().link);
+  const { page, relayClient } = await launch(t, { width: 390, height: 844 }, { relay: true, hub, callsign: false });
+  await activate(page, '#btnTogether'); await panel(page, 'ovTogether');
+  await page.locator('#joinInput').fill(invite); await page.locator('#joinInput').press('Enter');
+  await panel(page, 'ovJoin'); await targets(page, 'ovJoin');
+  await activate(page, '#btnJoinPlay'); await panel(page, 'ovCallsign');
+  await page.getByRole('button', { name: 'Next noun', exact: true }).click();
+  await activate(page, '#btnCallsignCancel'); await panel(page, 'ovJoin');
+  assert.equal(await page.evaluate(() => hasCallsign()), false, 'pre-commit Cancel saves no suggested identity');
+  assert.equal(relayClient.sockets, 0, 'pre-commit Cancel never starts admission');
+  assert.equal(await page.locator('#btnJoinPlay').isVisible(), true, 'the original invite remains actionable');
+
+  // Withhold only opaque encrypted relay frames. The guest still performs its
+  // genuine handshake, identity commit and UI continuation; no game state,
+  // timers, callsign handler or admission result is replaced.
+  hub.admissionPaused = true;
+  await activate(page, '#btnJoinPlay'); await panel(page, 'ovCallsign');
+  const chosen = await page.locator('#callsignPreview').innerText();
+  await activate(page, '#btnCallsignDone'); await panel(page, 'ovJoin');
+  await page.waitForFunction(() => joining && /waiting for the host/i.test(document.getElementById('joinState').textContent));
+  assert.equal(await page.locator('#ovCallsign').isVisible(), false, 'committed picker is fully dismissed during the pending join');
+  assert.equal(await page.locator('.overlay.show').count(), 1, 'only the pending Join dialog owns input');
+  assert.equal(await page.locator('#btnJoinNotNow').innerText(), 'Cancel');
+  await require('../harness.cjs').until(() => relayClient.encryptedSent > 0, 'guest sends its genuine encrypted admission request');
+  assert.ok(relayClient.sockets > 0 && relayClient.encryptedSent > 0, 'pending state follows a real simulated-relay connection attempt');
+  const saved = (await stored(page, 'cosmetics')).callsign;
+  assert.equal(await page.evaluate(() => hasCallsign()), true, 'Use callsign commits before asynchronous admission');
+  await fit(page, 'ovJoin'); await targets(page, 'ovJoin'); await capture(page, 'join-pending-after-callsign');
+  await activate(page, '#btnJoinNotNow'); await home(page);
+  await page.waitForFunction(() => !joining && !SpaceManNet.active && !SpaceManNet._n1.session());
+  hub.admissionPaused = false;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await page.locator('#ovJoin').isVisible(), false, 'late cancellation settlement cannot reopen the invite');
+  assert.equal(await page.locator('#ovCallsign').isVisible(), false);
+  assert.deepEqual((await stored(page, 'cosmetics')).callsign, saved, 'admission Cancel cannot undo the already committed callsign');
+  assert.equal(await page.locator('#homeCallsign').innerText(), chosen);
+  await page.reload(); await home(page);
+  assert.equal(await page.locator('#homeCallsign').innerText(), chosen, 'committed identity survives cancellation and reload');
+  await activate(host.page, '#btnRoomLeave'); await home(host.page);
 });

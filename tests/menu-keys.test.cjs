@@ -27,3 +27,27 @@ test('unfocused gameplay Space still jumps and releases', t => {
   assert.equal(c.run('input.jumpHeld'), false);
   assert.equal(prevented.length, 2);
 });
+
+test('haptic fallback restores a real control when its hidden switch steals focus', t => {
+  const c = client(relay()); t.after(() => c.close());
+  const doc = c.context.document, hiddenSwitch = {}, label = doc.getElementById('hapLbl');
+  let restored = 0;
+  const control = { isConnected: true, focus(options) { assert.equal(options.preventScroll, true); restored++; doc.activeElement = control; } };
+  doc.activeElement = control;
+  label.click = () => { doc.activeElement = hiddenSwitch; };
+  label.contains = node => node === hiddenSwitch;
+  c.run("settings.haptics = true; settings.hapticsSaver = false; buzz('tap')");
+  assert.equal(doc.activeElement, control);
+  assert.equal(restored, 1);
+});
+test('haptic fallback does not replace a legitimate focus change', t => {
+  const c = client(relay()); t.after(() => c.close());
+  const doc = c.context.document, nextControl = {}, label = doc.getElementById('hapLbl');
+  let restored = 0;
+  doc.activeElement = { isConnected: true, focus() { restored++; } };
+  label.click = () => { doc.activeElement = nextControl; };
+  label.contains = () => false;
+  c.run("settings.haptics = true; settings.hapticsSaver = false; buzz('tap')");
+  assert.equal(doc.activeElement, nextControl);
+  assert.equal(restored, 0);
+});
