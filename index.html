@@ -2488,6 +2488,13 @@ function onKey(e, down) {
     }
   }
 }
+// Preserve a visible keyboard cursor when WebKit's native focus-visible
+// heuristic loses modality after a programmatic haptic-label click. Pointer
+// input clears this fallback; ordinary native focus-visible still works.
+document.addEventListener('keydown', (e) => {
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && ['Tab', 'Enter', ' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) document.body.classList.add('keyboard-active');
+}, true);
+document.addEventListener('pointerdown', () => document.body.classList.remove('keyboard-active'), true);
 window.addEventListener('keydown', (e) => onKey(e, true));
 window.addEventListener('keyup', (e) => onKey(e, false));
 

@@ -115,10 +115,14 @@ test('home normal-motion mode and Done hover, focus and press keep continuously 
       await page.keyboard.press(id === 'btnWardrobeDone' ? 'Tab' : 'Shift+Tab');
       await page.keyboard.press(id === 'btnWardrobeDone' ? 'Shift+Tab' : 'Tab');
     }, id+'-keyboard-focus', id);
-    const focus = await button.evaluate(e => ({ visible: e === document.activeElement && e.matches(':focus-visible'), active: document.activeElement?.id || document.activeElement?.tagName, documentFocused: document.hasFocus() }));
+    const focus = await button.evaluate(e => {
+      const css = getComputedStyle(e), keyboard = document.body.classList.contains('keyboard-active');
+      return { visible: e === document.activeElement && keyboard && css.outlineStyle === 'solid' && parseFloat(css.outlineWidth) >= 2 && css.outlineColor === 'rgb(255, 229, 154)', active: document.activeElement?.id || document.activeElement?.tagName, nativeFocusVisible: e.matches(':focus-visible'), keyboard, outline: css.outline, documentFocused: document.hasFocus() };
+    });
     assert.equal(focus.visible, true, 'actual keyboard focus remains visible: '+JSON.stringify({ id, ...focus }));
     const frames = await sampleFrames(page, () => page.mouse.down(), id+'-held-press', id);
     assert.ok(frames.some(f => f.active), 'captured actual pressed frames');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('keyboard-active')), false, 'real pointerdown clears the keyboard-only focus fallback');
     await page.mouse.move(5,5); await page.mouse.up();
     await sampleFrames(page, () => button.hover(), id+'-release-reenter', id);
   }

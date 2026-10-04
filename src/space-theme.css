@@ -472,3 +472,10 @@ body.gamepad-active .secondary-panel [role="button"]:focus { outline:3px solid v
 #ovRoom .secondary-panel, #ovSettings .secondary-panel {
  max-height:calc(100dvh - 2 * var(--oy) - var(--game-ui-top, env(safe-area-inset-top, 0px)) - var(--game-ui-bottom, env(safe-area-inset-bottom, 0px)));
 }
+
+/* Real keyboard input owns a persistent cursor, including browsers that lose
+   :focus-visible after native-switch haptic feedback. Pointerdown clears it. */
+body.keyboard-active .overlay :is(button, summary, input, textarea, [role="button"]):focus,
+body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, textarea):focus {
+ outline:3px solid var(--sm-focus) !important; outline-offset:-3px !important;
+}

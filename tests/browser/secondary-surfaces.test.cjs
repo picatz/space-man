@@ -164,9 +164,17 @@ async function modalWrap(page, id) {
   const previous = await page.evaluateHandle(() => document.activeElement);
   const scroll = await page.locator(`#${id} .panel`).evaluate(n => n.scrollTop);
   await last.focus(); await page.keyboard.press('Tab');
-  assert.equal(await first.evaluate(n => document.activeElement === n && n.matches(':focus-visible')), true, `${id}: forward Tab wraps to the first real control`);
+  assert.equal(await first.evaluate(n => {
+    const style = getComputedStyle(n);
+    return document.activeElement === n && (n.matches(':focus-visible') || document.body.classList.contains('keyboard-active'))
+      && style.outlineStyle === 'solid' && parseFloat(style.outlineWidth) >= 2;
+  }), true, `${id}: forward Tab wraps to the first real control`);
   await first.focus(); await page.keyboard.press('Shift+Tab');
-  assert.equal(await last.evaluate(n => document.activeElement === n && n.matches(':focus-visible')), true, `${id}: backward Tab wraps to the last real control`);
+  assert.equal(await last.evaluate(n => {
+    const style = getComputedStyle(n);
+    return document.activeElement === n && (n.matches(':focus-visible') || document.body.classList.contains('keyboard-active'))
+      && style.outlineStyle === 'solid' && parseFloat(style.outlineWidth) >= 2;
+  }), true, `${id}: backward Tab wraps to the last real control`);
   await previous.evaluate(n => n.focus()); await previous.dispose();
   await page.locator(`#${id} .panel`).evaluate((n, top) => { n.scrollTop = top; }, scroll);
 }
@@ -208,9 +216,9 @@ async function footerByKeyboard(page, id, footer) {
   assert.equal(await page.evaluate(() => document.activeElement.id), footer, `${id}: Tab reaches its footer`);
   const state = await page.locator('#' + footer).evaluate(n => {
     const r = n.getBoundingClientRect(), style = getComputedStyle(n), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-    return { visible: r.top >= -1 && r.bottom <= innerHeight + 1 && (hit === n || n.contains(hit)), focus: n.matches(':focus-visible'), outline: style.outlineStyle, outlineWidth: parseFloat(style.outlineWidth) };
+    return { visible: r.top >= -1 && r.bottom <= innerHeight + 1 && (hit === n || n.contains(hit)), focus: n === document.activeElement && (n.matches(':focus-visible') || document.body.classList.contains('keyboard-active')), outline: style.outlineStyle, outlineWidth: parseFloat(style.outlineWidth) };
   });
-  assert.ok(state.visible && state.focus && state.outline !== 'none' && state.outlineWidth >= 2, `${id}: focused footer is visible ${JSON.stringify(state)}`);
+  assert.ok(state.visible && state.focus && state.outline === 'solid' && state.outlineWidth >= 2, `${id}: focused footer is visible ${JSON.stringify(state)}`);
   assert.equal(await page.evaluate(() => scrollY), 0, 'body stays locked; the panel owns scrolling');
 }
 async function keyboardClose(page, id, footer) {
