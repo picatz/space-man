@@ -19,6 +19,15 @@
       presented={...c.engine,epoch:c.epoch*1024+c.engine.epoch,state:s,receivedAt:now(),isHost:!!host};
       options.onSnapshot?.(presented);for(const l of listeners)l.onSnapshot?.(presented);
     }
+    // The local authority advances at 60 Hz. Its presentation must not wait
+    // for the 50 ms network publication cadence: arena interpolation expects
+    // adjacent simulation poses, not a final one-tick pose every 3–4 ticks.
+    // Keep epoch changes and barriers on the canonical adopt/prepare path.
+    function presentHostTick(){
+      const c=client.current,e=host&&host.engine;
+      if(!c||!e||host.phase!=='running'||c.epoch!==host.epoch)return;
+      present({...c,engine:{state:e.state,seats:e.seats,status:e.status,epoch:e.epoch,revision:e.revision}});
+    }
     function adopt(bytes){
       const c=client.accept(bytes,1);if(!c)return;lastReceived=now();
       if(c.epoch!==encounterEpoch&&c.phase!=='lobby'){
@@ -28,14 +37,17 @@
         const generation=serial;let result;try{result=options.onEncounter?.(c.config,{...c,info:info()});}catch(e){result=Promise.reject(e);}
         Promise.resolve(result).then(()=>{if(generation===serial&&client.current?.epoch===c.epoch){readyEpoch=c.epoch;sendReady();}}).catch(()=>{error='Could not prepare this encounter. You will watch until the next one.';changed();});
       }
-      present(c);changed();
+      // A running host already presents full-precision adjacent simulation
+      // ticks locally. Do not overwrite them with the quantized wire snapshot.
+      if(!host||!c.engine||c.phase!=='running'||!presented||presented.epoch!==c.epoch*1024+c.engine.epoch)present(c);
+      changed();
     }
     function sendReady(){const c=client.current;if(!active||!c||c.phase!=='barrier'||readyEpoch!==c.epoch||net.info().role===1)return;const b=client.ready();if(b){lastReady=now();if(host)host.receive(1,'host',b,now());else net.sendJourney(b).catch(()=>{});}}
     function publish(force=false){if(!active||!host||(!force&&now()-lastPublish<50))return;lastPublish=now();const b=host.packet();if(b){adopt(b);net.sendJourney(b).catch(()=>{});}}
     function sync(){if(host){host.syncRoster(roster(),now());publish(true);}changed();}
     function beat(){
       if(!active)return;const t=now();
-      if(host&&!connection){acc+=Math.min(100,Math.max(0,t-lastBeat));let steps=0;while(acc>=1000/60&&steps++<6){acc-=1000/60;const before=host.epoch,wasBarrier=host.phase==='barrier';host.step(t);if(wasBarrier&&host.phase==='running'&&pauseAfterBarrier){host.pause(true);pauseAfterBarrier=false;}if(host.epoch!==before){net.setJourneyRoleLock(false);acc=0;break;}}net.setJourneyRoleLock(host.phase!=='lobby'&&host.phase!=='barrier');publish();}
+      if(host&&!connection){acc+=Math.min(100,Math.max(0,t-lastBeat));let steps=0;while(acc>=1000/60&&steps++<6){acc-=1000/60;const before=host.epoch,wasBarrier=host.phase==='barrier';host.step(t);if(wasBarrier&&host.phase==='running'&&pauseAfterBarrier){host.pause(true);pauseAfterBarrier=false;}if(host.epoch!==before){net.setJourneyRoleLock(false);acc=0;break;}presentHostTick();}net.setJourneyRoleLock(host.phase!=='lobby'&&host.phase!=='barrier');publish();}
       lastBeat=t;if(localRunnerDone&&client.current?.mode==='runner'&&lastRunnerSample&&t-lastInput>100)submit({...lastRunnerSample,state:(lastRunnerSample.state||8)|32});if(client.current?.phase==='barrier'&&t-lastReady>250)sendReady();
       if(pendingRole!==null&&client.current?.phase==='barrier'&&t-lastRoleAttempt>=1500){lastRoleAttempt=t;const value=pendingRole;pendingRole=null;net.setRole(value).then(ok=>{if(!ok){pendingRole=value;changed();}});}
       if(!host&&t-lastReceived>1500)changed();
