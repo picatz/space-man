@@ -801,29 +801,12 @@
   .roster-actions-head { font-size: 12px; letter-spacing: 1px; color: var(--ui); margin-bottom: 10px; text-transform: uppercase; }
   .roster-actions-head .glyph { color: var(--cyan-lt); margin-right: 4px; }
 
-  .wardrobe-panel { width:min(480px,100%); max-height:100%; overflow-y:auto; touch-action:pan-y; }
-  .ward-copy { margin:6px auto 8px; color:#91ACC5; font:400 11px/1.5 system-ui,sans-serif; letter-spacing:0; }
-  #wardPreview { display:block; width:240px; max-width:100%; height:116px; margin:0 auto 8px; }
-  .ward-tabs { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; margin:8px 0 12px; }
-  .ward-tab { min-width:0; min-height:44px; border:1px solid #29465D; border-radius:9px; padding:6px 3px; color:#B5CEE3; background:#0A1B2A; font:600 11px/1.3 system-ui,sans-serif; cursor:pointer; }
-  .ward-tab[aria-selected=true] { color:#FFE5B2; border-color:#FFB454; background:#332B29; }
-  @media (max-width:430px) { .ward-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-  .ward-choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
-  .ward-choice { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-width:0; min-height:64px; padding:8px 5px; border:1px solid #29465D; border-radius:10px; color:#D8E8F4; background:#112438; font:600 10px/1.3 system-ui,sans-serif; cursor:pointer; }
-  .ward-choice.sel { border-color:#38E1FF; background:#163849; box-shadow:inset 0 0 0 1px #38E1FF; }
-  .ward-choice small { font-size:8px; letter-spacing:.08em; color:#A2BAD0; }
-  .ward-choice.sel small { color:#9FF1FF; } .ward-choice.locked { border-style:dashed; background:#0B1928; }
-  .ward-swatch { display:block; width:22px; height:22px; border-radius:50%; border:1px solid #D7EDFF55; }
-  .ward-choice canvas { width:30px!important; height:30px!important; }
-  .wardrobe-panel .ward-hint { min-height:30px; height:auto; white-space:normal; font:400 11px/1.4 system-ui,sans-serif; }
-  .ward-callsign { width:100%; min-height:44px; background:transparent; border:0; color:inherit; cursor:pointer; }
-  .wardrobe-panel .dock { position:sticky; bottom:-1px; padding:10px 0 0; background:linear-gradient(transparent,#091426 12px); z-index:2; }
-  @media (max-height:500px) and (min-width:550px) { #wardPreview { height:72px; width:149px; margin-bottom:0; } .ward-choices { grid-template-columns:repeat(5,minmax(0,1fr)); } .wardrobe-panel { width:min(640px,100%); } }
 
 </style>
 <link rel="stylesheet" href="src/space-theme.css" />
 <link rel="stylesheet" href="src/expedition.css" />
 <link rel="stylesheet" href="src/home.css" />
+<link rel="stylesheet" href="src/wardrobe.css" />
 </head>
 <body>
 
@@ -953,18 +936,22 @@
   </div>
 </div>
 
-<!-- Wardrobe — one compact category at a time; every equipped choice travels. -->
+<!-- Suit studio: one shared character, cosmetic-only choices in every mode. -->
 <div class="overlay attract-anchor" id="ovWardrobe">
   <div class="panel wardrobe-panel" role="dialog" aria-modal="true" aria-labelledby="wardTitle">
-    <div class="title-lg t-md" id="wardTitle">Your Spacefarer</div>
-    <p class="ward-copy">One look for every adventure. Just for fun, never extra power.</p>
-    <canvas id="wardPreview" width="240" height="116" role="img" aria-label="Your equipped Spacefarer"></canvas>
-    <div class="ward-tabs" id="wardTabs" role="tablist" aria-label="Customize your Spacefarer"></div>
-    <div class="ward-choices" id="wardChoices" role="tabpanel"></div>
-    <div class="ward-name" id="wardName"></div>
-    <div class="ward-hint" id="wardHint" role="status" aria-live="polite"></div>
-    <div class="ward-copy" id="wardCount"></div>
-    <div class="dock"><button class="btn" id="btnWardrobeDone">Done</button></div>
+    <header class="ward-header"><div><div class="ward-kicker">SPACE MAN / SUIT STUDIO</div><h1 id="wardTitle">Your Spacefarer</h1></div><div class="dock"><button class="btn" id="btnWardrobeDone">Done</button></div></header>
+    <section class="ward-portrait" aria-label="Outfit preview">
+      <canvas id="wardPreview" width="480" height="360" role="img" aria-label="Your equipped Spacefarer"></canvas>
+      <div class="ward-name" id="wardName"></div>
+      <p class="ward-copy">A little suit. A character all your own.</p>
+      <div id="wardIdentity"></div>
+    </section>
+    <section class="ward-workbench" aria-label="Choose your look">
+      <div class="ward-tabs" id="wardTabs" role="tablist" aria-label="Customize your Spacefarer"></div>
+      <div class="ward-choices" id="wardChoices" role="tabpanel"></div>
+      <div class="ward-hint" id="wardHint" role="status" aria-live="polite"></div>
+      <footer class="ward-footer"><span id="wardCount"></span><span>Just for fun. Never extra power.</span></footer>
+    </section>
   </div>
 </div>
 
@@ -4506,6 +4493,7 @@ function frame(now) {
   // interpolating there oscillates against a prev that never advances.
   const stepping = (G.mode === 'play' || G.mode === 'attract');
   render(stepping ? clamp(acc / STEP, 0, 1) : 1);
+  if (G.wardrobeOpen && !lessMotion()) wardrobePreview();
   tickAudio();
 }
 /* ---------------------------------------------------------------------------
@@ -6648,13 +6636,28 @@ function hatThumb(id) {   // painted by drawHat itself — a thumbnail can never
 }
 let wardrobeSlot = 'suit';
 const WARDROBE_LABELS = { suit: 'Color', hat: 'Hat', eyes: 'Eyes', helmet: 'Helmet', detail: 'Suit', ship: 'Ship' };
+let wardrobeInspect = null, wardrobeReactionAt = -10;
 function wardrobePreview() {
   const canvas = $('wardPreview'), dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = 240 * dpr; canvas.height = 116 * dpr;
-  const c = canvas.getContext('2d'); c.scale(dpr, dpr); c.clearRect(0, 0, 240, 116);
-  if (ART.drawAvatar) ART.drawAvatar(c, 120, 57, 96, equippedAppearance(), { time: 0, reduceMotion: true, ship: wardrobeSlot === 'ship' });
-  else { c.fillStyle = PALETTES[G.cosmetics.suit].suit; c.beginPath(); c.arc(120, 48, 22, 0, TAU); c.fill(); c.fillRect(105, 71, 30, 28); }
-  canvas.setAttribute('aria-label', 'Your equipped Spacefarer: ' + COSMETICS.SLOTS.map(slot => cosmeticName(G.cosmetics[slot])).join(', '));
+  if (canvas.width !== 480 * dpr || canvas.height !== 360 * dpr) { canvas.width = 480 * dpr; canvas.height = 360 * dpr; }
+  const c = canvas.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, 480, 360);
+  const appearance = wardrobeInspect || equippedAppearance(), quiet = lessMotion() || !!SHOT;
+  const reaction = quiet ? 0 : Math.max(0, 1 - (G.time - wardrobeReactionAt) / .85);
+  // A quiet pressure-suit work light and landing pad, using the home materials.
+  c.fillStyle = '#081423'; c.beginPath(); c.ellipse(240, 312, 130, 20, 0, 0, TAU); c.fill();
+  c.fillStyle = '#254B59'; c.beginPath(); c.ellipse(240, 302, 115, 18, 0, 0, TAU); c.fill();
+  c.fillStyle = '#477783'; c.beginPath(); c.ellipse(240, 296, 115, 17, 0, 0, TAU); c.fill();
+  c.strokeStyle = '#8BC9CD'; c.lineWidth = 2; c.beginPath(); c.ellipse(240, 295, 94, 12, 0, 0, TAU); c.stroke();
+  if (ART.drawAvatar) ART.drawAvatar(c, 240, 177, 238, appearance, { time: quiet ? 0 : G.time, reduceMotion: quiet, ship: wardrobeSlot === 'ship', greeting: reaction });
+}
+function wardThumb(slot, id) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), canvas = makeCanvas(72 * dpr, 52 * dpr), c = canvas.getContext('2d');
+  canvas.className = 'ward-thumb'; canvas.setAttribute('aria-hidden', 'true'); c.scale(dpr, dpr);
+  const appearance = { ...equippedAppearance(), [slot]: id }, style = ART.characterStyle(appearance);
+  if (slot === 'eyes' || slot === 'helmet' || slot === 'hat') {
+    c.save(); c.translate(36, 31); c.scale(1.55, 1.55); ART.characterHelmet(c, 0, 0, style, { tick: 20, calm: true }); c.restore();
+  } else ART.drawAvatar(c, 36, 24, 47, appearance, { reduceMotion: true, ship: slot === 'ship' });
+  return canvas;
 }
 function wardItem(slot, item) {
   const id = item.id, selected = G.cosmetics[slot] === id, locked = !G.cosmetics.unlocked.includes(id);
@@ -6662,14 +6665,13 @@ function wardItem(slot, item) {
   b.dataset.cosmetic = id; b.dataset.slot = slot;
   b.setAttribute('aria-pressed', String(selected));
   b.setAttribute('aria-label', item.name + (selected ? ', equipped' : locked ? ', locked. ' + item.hint : ', ready to wear'));
-  if (slot === 'suit') { const swatch = document.createElement('span'); swatch.className = 'ward-swatch'; swatch.style.background = PALETTES[id].suit; b.appendChild(swatch); }
-  if (slot === 'hat') b.appendChild(hatThumb(id));
+  b.appendChild(wardThumb(slot, id));
   const label = document.createElement('span'); label.textContent = item.name; b.appendChild(label);
   const state = document.createElement('small'); state.textContent = selected ? 'EQUIPPED' : locked ? 'TO FIND' : 'READY'; b.appendChild(state);
   b.onclick = () => {
-    if (locked) { $('wardHint').textContent = item.name + ': ' + item.hint + '. No win required.'; Audio.sfx.ui(1); return; }
+    if (locked) { wardrobeInspect = { ...equippedAppearance(), [slot]: id }; wardrobePreview(); $('wardName').textContent = item.name + ' · Preview'; $('wardPreview').setAttribute('aria-label', 'Previewing ' + item.name + '. Your equipped look is unchanged.'); $('wardHint').textContent = item.name + ': ' + item.hint + '. No win required. Preview only.'; Audio.sfx.ui(1); return; }
     const result = COSMETICS.equip(G.cosmetics, slot, id); if (!result.equipped) return;
-    G.cosmetics = result.profile; refreshFaviconSkin();
+    G.cosmetics = result.profile; wardrobeInspect = null; wardrobeReactionAt = G.time; refreshFaviconSkin();
     if (NET && typeof NET.setAppearance === 'function') NET.setAppearance(equippedAppearance());
     Audio.sfx.ui(3); saveJSON(LS.cosmetics, G.cosmetics); buildWardrobe();
     $('wardHint').textContent = item.name + ' equipped in every mode';
@@ -6678,6 +6680,7 @@ function wardItem(slot, item) {
   return b;
 }
 function buildWardrobe() {
+  wardrobeInspect = null;
   const tabs = $('wardTabs'), choices = $('wardChoices'); tabs.innerHTML = ''; choices.innerHTML = '';
   COSMETICS.SLOTS.forEach((slot, index) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'ward-tab'; b.textContent = WARDROBE_LABELS[slot]; b.id = 'wardTab-' + slot;
@@ -6690,10 +6693,12 @@ function buildWardrobe() {
   for (const item of COSMETICS.CATALOG[wardrobeSlot]) choices.appendChild(wardItem(wardrobeSlot, item));
   $('wardName').textContent = cosmeticName(G.cosmetics[wardrobeSlot]);
   $('wardCount').textContent = G.cosmetics.unlocked.length + ' of ' + COSMETICS.SLOTS.reduce((n, slot) => n + COSMETICS.CATALOG[slot].length, 0) + ' keepsakes collected';
+  $('wardPreview').setAttribute('aria-label', 'Your equipped Spacefarer: ' + COSMETICS.SLOTS.map(slot => cosmeticName(G.cosmetics[slot])).join(', '));
   wardrobePreview();
 }
 function showWardrobe() {   // G.mode stays 'attract': the live idle scene IS the preview
   G.newCosmetics.length = 0;
+  wardrobeReactionAt = G.time;
   updateWardrobeBadge();
   $('wardHint').textContent = '';
   buildWardrobe();
@@ -6713,7 +6718,7 @@ function ensureWardrobeCallsign() {
     row.innerHTML = '<span>Callsign</span>';
     const v = document.createElement('span'); v.className = 'net-val'; v.id = 'wardCallsignVal'; row.appendChild(v);
     row.onclick = () => showCallsign(() => showWardrobe());
-    panel.insertBefore(row, $('btnWardrobeDone').parentNode);
+    $('wardIdentity').appendChild(row);
   }
   const cs = getCallsign();
   $('wardCallsignVal').textContent = cs ? (NET.callsignText(cs[0], cs[1]) || 'Pick one') : 'Pick one';

@@ -78,3 +78,19 @@ test('old/corrupt profiles and real mode handoffs preserve a literal equipped ou
   await page.evaluate(()=>localStorage.setItem(BUILD.storageKey('sm2.cosmetics'),'{broken'));await page.reload();
   assert.deepEqual(await page.evaluate(()=>equippedAppearance()),{v:1,suit:'classic',hat:'none',eyes:'bright',helmet:'round',detail:'plain',ship:'comet'});
 });
+
+for (const [width,height] of [[320,568],[390,844],[667,375],[834,1194],[1280,800]]) test(`studio ${width}x${height}: preview is readable and locked inspection never changes a save`,{timeout:60000},async t=>{
+  const page=await launch(t,{viewport:{width,height}});
+  await page.locator('#btnWardrobe').click();await page.locator('#ovWardrobe.in').waitFor();
+  const preview=await page.locator('#wardPreview').boundingBox();assert.ok(preview.width>=180&&preview.height>=130,'the pilot has a deliberate visible stage');
+  await equip(page,'suit','mint');const saved=await page.evaluate(()=>localStorage.getItem(BUILD.storageKey('sm2.cosmetics')));
+  await page.locator('[data-cosmetic=gold]').click();assert.match(await page.locator('#wardName').innerText(),/Preview/);
+  assert.equal(await page.evaluate(()=>localStorage.getItem(BUILD.storageKey('sm2.cosmetics'))),saved);
+  await page.locator('#wardTab-eyes').click();assert.doesNotMatch(await page.locator('#wardName').innerText(),/Preview/);
+  for(const id of ['bright','calm','happy'])await page.locator(`[data-cosmetic=${id}] canvas`).waitFor();
+  await page.locator('#wardTab-suit').click();await shot(page,`studio-${width}x${height}-pilot`);
+  await page.locator('#btnWardrobeDone').click();await page.locator('#btnWardrobe').click();
+  assert.equal(await page.evaluate(()=>G.cosmetics.suit),'mint');assert.match(await page.locator('#wardPreview').getAttribute('aria-label'),/equipped/);
+  await page.locator('#wardCallsignRow').click();await page.locator('#ovCallsign.show').waitFor();
+  await page.keyboard.press('Escape');await page.locator('#ovWardrobe.show').waitFor();await fit(page);
+});

@@ -1,0 +1,39 @@
+/* Suit studio: the same calm materials as home, with one scroll owner. */
+#ovWardrobe, #ovWardrobe.in { --oy: 16px; background: radial-gradient(ellipse at 24% 42%,#18364f 0,#0b172c 42%,#070d1d 82%); }
+#ovWardrobe .wardrobe-panel { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); grid-template-areas:'header header' 'portrait choices'; align-items:center; gap:24px 48px; width:100%; max-width:1080px; max-height:100%; overflow-y:auto; overflow-x:hidden; touch-action:pan-y; padding:18px 24px 24px; border:0; border-radius:0; background:none; box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; scrollbar-gutter:stable; scroll-padding:18px; text-align:left; }
+.ward-header { grid-area:header; display:flex; justify-content:space-between; align-items:center; gap:20px; }
+.ward-kicker { color:#9ebecd; font:650 10px/1.5 var(--sm-font-body); letter-spacing:.15em; }
+#wardTitle { margin:7px 0 0; font:800 clamp(25px,3vw,36px)/1.2 var(--sm-font-display); letter-spacing:-.045em; color:#f0f9ff; }
+#ovWardrobe .dock { position:static; flex-shrink:0; width:auto; margin:0; padding:0 0 4px; border:0; background:none; }
+#ovWardrobe #btnWardrobeDone { width:auto; min-width:88px; min-height:46px; margin:0; padding:11px 22px; font:750 14px/1.4 var(--sm-font-body); }
+.ward-portrait { grid-area:portrait; min-width:0; text-align:center; }
+#wardPreview { display:block; width:100%; height:auto; aspect-ratio:4/3; max-width:480px; margin:0 auto; }
+#ovWardrobe .ward-name { margin:3px 0 7px; height:auto; font:700 15px/1.4 var(--sm-font-body); letter-spacing:.02em; color:#e3f4fb; }
+.ward-copy { margin:0 0 15px; font:450 12px/1.5 var(--sm-font-body); letter-spacing:0; color:#9dbacc; }
+.ward-callsign { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; max-width:280px; margin:0 auto; min-height:48px; padding:10px 14px!important; border:1px solid #7299b536; border-radius:12px; background:#18324866; color:#c9e0ee; cursor:pointer; font:600 12px/1.5 var(--sm-font-body); }
+.ward-callsign .net-val { color:#b3eee8; }
+.ward-workbench { grid-area:choices; min-width:0; padding:22px; border:1px solid #93bad527; border-radius:20px; background:linear-gradient(145deg,#14273b,#0d1b2e); }
+.ward-tabs { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:3px; margin:0 0 18px; border-bottom:1px solid #7693ac33; }
+.ward-tab { min-width:0; min-height:48px; padding:8px 2px; border:0; border-bottom:2px solid transparent; border-radius:6px 6px 0 0; background:transparent; color:#9eb9cc; font:650 11px/1.4 var(--sm-font-body); cursor:pointer; }
+.ward-tab[aria-selected=true] { color:#ffda98; border-bottom-color:#ffca75; background:#ffc66b0a; }
+.ward-choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.ward-choice { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; min-width:0; min-height:105px; padding:8px 4px; border:1px solid #7693ac36; border-radius:12px; background:#0a1b2b; color:#daedf6; font:600 11px/1.35 var(--sm-font-body); cursor:pointer; }
+.ward-choice.sel { border-color:#8ddace; background:#1b3a46; box-shadow:inset 0 0 0 1px #8ddace; }
+.ward-choice small { font:700 8px/1.4 var(--sm-font-body); letter-spacing:.08em; color:#9ab5c7; }
+.ward-choice.sel small { color:#b9f3e9; }.ward-choice.locked { border-style:dashed; background:#0c1a2b; }.ward-choice.locked small { color:#e0c394; }
+.ward-thumb { display:block; width:72px; max-width:100%; height:52px; object-fit:contain; }
+#ovWardrobe .ward-hint { min-height:44px; height:auto; padding:12px 0 5px; margin:0; white-space:normal; font:450 12px/1.5 var(--sm-font-body); letter-spacing:0; color:#cfdfeb; }
+.ward-footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px 12px; padding-top:11px; border-top:1px solid #7693ac24; color:#8eacbf; font:450 10px/1.5 var(--sm-font-body); }
+@media(hover:hover) { .ward-choice:hover { border-color:#a6d6e7; background:#203b4b; }.ward-tab:hover { color:#e1f5ff; background:#21374a; } }
+@media(max-width:759px) and (min-height:561px) {
+ #ovWardrobe { --oy:10px; padding-inline:calc(var(--sm-safe-left) + 14px) calc(var(--sm-safe-right) + 14px); }
+ #ovWardrobe .wardrobe-panel { grid-template-columns:minmax(0,1fr); grid-template-areas:'header' 'portrait' 'choices'; gap:14px; max-width:500px; padding:4px 6px 16px; }
+ .ward-kicker { font-size:8px; }#wardTitle { font-size:25px; }.ward-header { gap:10px; }#ovWardrobe #btnWardrobeDone { min-width:65px; padding:10px 14px; }
+ #wardPreview { width:248px; height:186px; }.ward-copy { font-size:11px; margin-bottom:9px; }#ovWardrobe .ward-name { margin:-2px 0 4px; font-size:13px; }
+ .ward-callsign { max-width:280px; min-height:44px; }.ward-workbench { padding:12px; border-radius:16px; }.ward-tabs { margin-bottom:11px; }.ward-tab { font-size:10px; }.ward-choice { min-height:94px; font-size:10px; padding:6px 3px; }.ward-thumb { height:44px; width:61px; }
+}
+@media(max-height:560px) {
+ #ovWardrobe .wardrobe-panel { gap:12px 20px; grid-template-columns:minmax(0,.75fr) minmax(0,1.25fr); padding:4px 12px 18px; align-items:start; }
+ #wardTitle { font-size:24px; }.ward-kicker { font-size:8px; }#wardPreview { max-width:250px; }.ward-workbench { padding:12px; }.ward-tabs { margin-bottom:10px; }.ward-choice { min-height:78px; font-size:10px; padding:4px; gap:3px; }.ward-thumb { width:54px; height:39px; }.ward-copy { font-size:10px; }.ward-callsign { font-size:11px; }.ward-footer { font-size:9px; }
+}
+@media(max-width:359px) and (min-height:561px) { #wardTitle { font-size:21px; }#wardPreview { width:208px; height:156px; }.ward-workbench { padding:8px; }.ward-choices { gap:6px; }.ward-tab { font-size:9px; } }

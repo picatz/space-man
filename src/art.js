@@ -296,9 +296,10 @@ const characterHats = {
   }
   // Full appearance preview with no dependency on a running game or player.
   // x/y is the slot center; size is the total headwear-to-boot height in pixels.
-  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false } = {}) {
+  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0 } = {}) {
     const style = characterStyle(appearance), P = style.palette;
     const bob = reduceMotion ? 0 : Math.sin(time * 2) * .65;
+    const hello = reduceMotion ? 0 : clamp(greeting, 0, 1);
     c.save(); c.translate(x, y + size * .13); c.scale(size / 54, size / 54);
     if (ship) { c.scale(.78, .78); c.rotate(-.18); hoverpod(c, style, { tick: time * 60 + 20, calm: reduceMotion, hero: true }); c.restore(); return; }
     c.fillStyle = '#0005'; c.beginPath(); c.ellipse(0, 18, 12, 2.8, 0, 0, TAU); c.fill();
@@ -307,9 +308,9 @@ const characterHats = {
     c.fillStyle = '#415D78'; rrPath(c, -14, -5 + bob, 7, 15, 3); c.fill(); c.fillStyle = style.accent; c.fillRect(-13, -2 + bob, 2, 6);
     c.strokeStyle = P.legB; c.lineWidth = 4.5; c.beginPath(); c.moveTo(-5, bob); c.lineTo(-10, 7 + bob); c.stroke();
     c.fillStyle = P.suit; rrPath(c, -8, -5 + bob, 16, 17, 6); c.fill(); suitDetails(c, 0, bob, style);
-    characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion });
-    c.strokeStyle = P.arm; c.beginPath(); c.moveTo(6, bob); c.lineTo(11, 6 + bob); c.stroke();
-    c.fillStyle = style.accent; rrPath(c, 8, 4 + bob, 5, 5, 2); c.fill();
+    characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: hello > .15 ? 1 : 0 });
+    c.strokeStyle = P.arm; c.beginPath(); c.moveTo(6, bob); c.lineTo(11 + hello * 2, 6 + bob - hello * 13); c.stroke();
+    c.fillStyle = style.accent; rrPath(c, 8 + hello * 2, 4 + bob - hello * 13, 5, 5, 2); c.fill();
     c.restore();
   }
 
