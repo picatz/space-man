@@ -1072,8 +1072,8 @@ test(
             error: runError?.message ?? null,
             notes: [
               "Actual first-lap standard-gamepad traversal; no state injection, teleport, warm-up or timing claims.",
-              "Portrait covers start, ramp approach, sky-coin lane, Shield/Pulse decision and return to finish.",
-              "Landscape covers ramp approach, Shield/Pulse decision and return to finish; every view still completes a lap.",
+              EVIDENCE_TRACK === "prism" ? "Every view covers boost, ramp, continuous-road landing, gallery entrance/interior and finish." : "Portrait covers start, ramp approach, sky-coin lane, Shield/Pulse decision and return to finish.",
+              EVIDENCE_TRACK === "prism" ? "Portrait, landscape, compact-phone Cockpit and tablet Chase all complete a first lap." : "Landscape covers ramp approach, Shield/Pulse decision and return to finish; every view still completes a lap.",
               "Checkpoint names describe course regions. Events are observed on completed simulation ticks, not inferred from images.",
               "Before/after samples bracket capture, not the exact rendered frame. A jump may be observed without being caught in a screenshot.",
               "The unchanged CPU driver chooses items normally; seeing the two-choice row does not establish both item activations.",

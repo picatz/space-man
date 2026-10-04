@@ -66,3 +66,19 @@ test('Prism shared architecture has safe footprint, a high open-sided gallery an
   assert.ok(ceiling>0&&roofTop>0);
   assert.ok(roof.vertices.every(Number.isFinite));assert.ok(roof.vertices.length/9<700);
 });
+
+test('Prism gallery roof stays above the forward road sightline through camera resets and hops',()=>{
+  const Camera=require('../src/race-camera'),roof=Scene.course(c,R.at).roofMeshes[0],g=c.architecture.gallery;
+  const camera=Camera.create();
+  for(const aspect of [320/568,390/844,568/320,844/390,820/1180,1280/720])
+    for(const mode of ['chase','cockpit'])for(const reduceMotion of [false,true])
+      for(const s of [g.start*c.length-250,g.start*c.length,(g.start+g.end)*c.length/2,g.end*c.length+250])
+        for(const z of [0,29.24]){
+          const p=R.at(c,s),actor={...R.create({trackId:'prism',count:1}).actors[0],x:p.x,y:p.y,
+            heading:Math.atan2(p.ty,p.tx),vx:p.tx*9,vy:p.ty*9,speed:9,z,airRamp:z?1:0};
+          camera.reset();const view=camera.update(actor,c,R.at,{aspect,mode,reduceMotion});
+          assert.ok(view.eye[1]<=151&&view.target[1]<=25);
+          assert.ok(Math.max(view.eye[1],view.target[1])+50<roof.bounds.min[1],
+            'eye-to-forward-road segment remains below the roof, including after view reset');
+        }
+});
