@@ -25,9 +25,11 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.engine }}
       - name: Verify wardrobe controls, migrations and mode consistency
-        run: node --test cosmetics.test.cjs
+        run: node --test cosmetics.test.cjs runner-pause.test.cjs
         env:
           SPACE_MAN_COSMETICS_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_PAUSE_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_PAUSE_SCREENSHOTS: ${{ runner.temp }}/cosmetics-screenshots
           SPACE_MAN_COSMETICS_SCREENSHOTS: ${{ runner.temp }}/cosmetics-screenshots
       - uses: actions/upload-artifact@v4
         if: always()

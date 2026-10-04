@@ -74,3 +74,10 @@ test('every visor triangle stays outside the helmet shell at its centroid', () =
     assert.ok(n>=120,'curved visor is vertically subdivided');
   }
 });
+test('all helmet and hat combinations keep equip poses finite, immutable and reduced-motion stable',()=>{
+ for(const helmet of Cosmetics.ORDERS.helmet)for(const hat of Cosmetics.ORDERS.hat){
+  const appearance=frozen({...Cosmetics.DEFAULTS,helmet,hat}),before=JSON.stringify(appearance);
+  for(const greeting of [0,.25,.5,.75,1]){const d=drawing();Art.drawAvatar(d.ctx,120,140,238,appearance,{time:.37,greeting});assert.equal(d.stack.length,0);assert.equal(JSON.stringify(appearance),before);}
+  const a=drawing(),b=drawing();Art.drawAvatar(a.ctx,0,0,238,appearance,{reduceMotion:true,greeting:0});Art.drawAvatar(b.ctx,0,0,238,appearance,{reduceMotion:true,greeting:1});assert.deepEqual(a.calls,b.calls);
+ }
+});

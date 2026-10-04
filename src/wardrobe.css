@@ -1,6 +1,6 @@
 /* Suit studio: the same calm materials as home, with one scroll owner. */
-#ovWardrobe, #ovWardrobe.in { --oy: 16px; background: radial-gradient(ellipse at 24% 42%,#18364f 0,#0b172c 42%,#070d1d 82%); }
-#ovWardrobe .wardrobe-panel { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); grid-template-areas:'header header' 'portrait choices'; align-items:center; gap:24px 48px; width:100%; max-width:1080px; max-height:100%; overflow-y:auto; overflow-x:hidden; touch-action:pan-y; padding:18px 24px 24px; border:0; border-radius:0; background:none; box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; scrollbar-gutter:stable; scroll-padding:18px; text-align:left; }
+#ovWardrobe, #ovWardrobe.in { --oy: 16px; justify-content:center; background: radial-gradient(ellipse at 24% 42%,#18364f 0,#0b172c 42%,#070d1d 82%); }
+#ovWardrobe .wardrobe-panel { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); grid-template-areas:'header header' 'portrait choices'; grid-auto-rows:max-content; align-items:center; gap:24px 48px; width:100%; max-width:1080px; max-height:100%; overflow-y:auto; overflow-x:hidden; touch-action:pan-y; padding:18px 24px 24px; border:0; border-radius:0; background:none; box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; scrollbar-gutter:stable; scroll-padding:18px; text-align:left; }
 .ward-header { grid-area:header; display:flex; justify-content:space-between; align-items:center; gap:20px; }
 .ward-kicker { color:#9ebecd; font:650 10px/1.5 var(--sm-font-body); letter-spacing:.15em; }
 #wardTitle { margin:7px 0 0; font:800 clamp(25px,3vw,36px)/1.2 var(--sm-font-display); letter-spacing:-.045em; color:#f0f9ff; }

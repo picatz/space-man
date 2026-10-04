@@ -308,9 +308,15 @@ const characterHats = {
     c.fillStyle = '#415D78'; rrPath(c, -14, -5 + bob, 7, 15, 3); c.fill(); c.fillStyle = style.accent; c.fillRect(-13, -2 + bob, 2, 6);
     c.strokeStyle = P.legB; c.lineWidth = 4.5; c.beginPath(); c.moveTo(-5, bob); c.lineTo(-10, 7 + bob); c.stroke();
     c.fillStyle = P.suit; rrPath(c, -8, -5 + bob, 16, 17, 6); c.fill(); suitDetails(c, 0, bob, style);
+    // The shoulder starts beneath the neck seal. Helmet paints last, so no
+    // limb can pop over the face during idle or the brief equip greeting.
+    const handX = 11 + hello * 3, handY = 6 + bob - hello * 13;
+    c.strokeStyle = P.arm; c.lineWidth = 4.5; c.beginPath(); c.moveTo(5, 2 + bob); c.quadraticCurveTo(10, 4 + bob, handX, handY); c.stroke();
+    c.fillStyle = P.legB; rrPath(c, handX - 2.4, handY - 1.5, 4.8, 3, 1); c.fill();
+    c.fillStyle = P.suit; c.beginPath(); c.ellipse(handX, handY + 1.1, 2.7, 3.1, -.2, 0, TAU); c.fill();
+    c.beginPath(); c.ellipse(handX - 2, handY + .6, 1.2, 1.6, -.45, 0, TAU); c.fill();
+    c.strokeStyle = style.accent; c.lineWidth = .8; c.beginPath(); c.moveTo(handX - 1.3, handY + 2.2); c.lineTo(handX + 1, handY + 2.2); c.stroke();
     characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: hello > .15 ? 1 : 0 });
-    c.strokeStyle = P.arm; c.beginPath(); c.moveTo(6, bob); c.lineTo(11 + hello * 2, 6 + bob - hello * 13); c.stroke();
-    c.fillStyle = style.accent; rrPath(c, 8 + hello * 2, 4 + bob - hello * 13, 5, 5, 2); c.fill();
     c.restore();
   }
 

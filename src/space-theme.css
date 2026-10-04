@@ -322,3 +322,21 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
   .race-root .race-result-panel .race-result-row { padding: 6px 9px; }
   .race-root .race-result-panel .race-menu-actions { gap: 7px; }
 }
+
+/* Lobby headlines support the controls rather than dominate wide displays. */
+@media(min-width:851px) {
+ .arena-root .arena-title, .race-root .race-title { font-size:36px; line-height:1.14; margin:12px 0; }
+}
+/* Pause is an intermission, not a dashboard. Keep one clear resume action. */
+#ovPause .panel { width:min(580px,100%); padding:28px; }
+#ovPause .title-lg { font-size:clamp(27px,3vw,34px); margin-bottom:16px; }
+#ovPause .dock.top { position:static; margin:0 0 18px; padding:0; border:0; background:none; }
+#ovPause .btn { font-family:var(--sm-font-body); letter-spacing:0; font-size:14px; }
+#ovPause .control-guide { gap:8px; margin:8px 0 20px; }
+#ovPause .control-guide > div { border:0; background:transparent; padding:9px 5px; }
+#ovPause .control-guide b { font:700 13px/1.4 var(--sm-font-body); letter-spacing:0; }
+#ovPause .control-guide span { font:450 10px/1.4 var(--sm-font-body); letter-spacing:.04em; }
+#ovPause .pause-settings > summary { padding:12px; font:600 13px/1.4 var(--sm-font-body); letter-spacing:0; text-transform:none; background:transparent; }
+#ovPause #btnQuit { background:transparent; border-color:transparent; color:#a9c2d4; box-shadow:none; margin-top:12px; }
+@media(max-height:560px) { #ovPause .panel { padding:18px 24px; }#ovPause .title-lg { margin-bottom:10px; font-size:27px; }#ovPause .control-guide { margin:0 0 8px; }#ovPause .dock.top { margin-bottom:10px; } }
+#ovPause .pause-session-note { margin:-7px 0 16px; color:#aac2d3; font:450 12px/1.5 var(--sm-font-body); }

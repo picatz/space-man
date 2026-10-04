@@ -828,20 +828,20 @@
     </div>
     <main class="home-launch">
       <section class="home-adventure" aria-labelledby="homeAdventureTitle">
-        <div class="home-kicker"><span aria-hidden="true">✦</span> STAR EXPEDITION</div>
-        <h2 id="homeAdventureTitle">Adventure awaits.</h2>
-        <p>Run, battle &amp; race through one endless journey.</p>
-        <div class="home-play-actions">
+        <div class="home-kicker"><span aria-hidden="true">✦</span> THREE WAYS TO PLAY</div>
+        <h2 id="homeAdventureTitle">Pick your game.</h2>
+        <p>Run, battle or race. One game at a time.</p>
+        <div class="home-play-actions" hidden>
           <button class="btn" id="btnExpedition" aria-label="Play solo. Start a continuous Star Expedition."><span class="home-play-icon" aria-hidden="true">▶</span> Play solo <span class="home-play-arrow" aria-hidden="true">↗</span></button>
           <button class="btn ghost" id="btnExpeditionFriends" aria-label="Star Expedition with friends. Create, join or watch a shared adventure."><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></svg>With friends</button>
         </div>
       </section>
       <section class="home-arcade" aria-labelledby="homeArcadeTitle">
-        <div class="home-section-heading"><h2 id="homeArcadeTitle">Pick a quick game</h2><span>YOUR ARCADE</span></div>
+        <div class="home-section-heading"><h2 id="homeArcadeTitle">Find your next favorite</h2><span>SOLO + FRIENDS</span></div>
         <div class="launch-modes" role="group" aria-label="Game modes">
-          <div class="home-mode home-run"><canvas id="homeRunArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn mode-link" id="btnPlay" aria-label="Endless Run. Outrun the flare, solo or with friends.">Endless Run</button><span aria-hidden="true">Outrun the flare</span></div>
-          <div class="home-mode home-arena"><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn ghost mode-link" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends.">Orbital Arena</button><span aria-hidden="true">Tiny suits. Big KOs.</span></div>
-          <div class="home-mode home-race"><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn ghost mode-link" id="btnRace" aria-label="Star Circuit. Arcade hover racing.">Star Circuit</button><span aria-hidden="true">Catch a boost</span></div>
+          <button class="home-mode home-run" id="btnPlay" aria-label="Endless Run. Outrun the flare, solo or with friends."><canvas id="homeRunArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Endless Run</span><span class="home-mode-caption" aria-hidden="true">Outrun the flare</span></button>
+          <button class="home-mode home-arena" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends."><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Orbital Arena</span><span class="home-mode-caption" aria-hidden="true">Tiny suits. Big KOs.</span></button>
+          <button class="home-mode home-race" id="btnRace" aria-label="Star Circuit. Arcade hover racing."><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Star Circuit</span><span class="home-mode-caption" aria-hidden="true">Catch a boost</span></button>
         </div>
         <button class="home-run-together" id="btnTogether">Run Together <span>Shared-course runner</span><b aria-hidden="true">↗</b></button>
       </section>
@@ -870,7 +870,8 @@
 <!-- Pause -->
 <div class="overlay" id="ovPause">
   <div class="panel">
-    <div class="title-lg">Paused</div>
+    <div class="title-lg" id="pauseTitle">Paused</div>
+    <p id="pauseSessionNote" class="pause-session-note" hidden></p>
     <div class="dock top"><button class="btn" id="btnResume">Resume</button></div>
     <div class="control-guide desktop-guide">
       <div><b>A D / ← →</b><span>MOVE</span></div><div><b>SPACE</b><span>JUMP</span></div><div><b>F / CLICK</b><span>FIRE</span></div>
@@ -2275,7 +2276,7 @@ function topOverlayId() {
 }
 const visibleEl = (el) => !el.disabled && el.getClientRects().length > 0;
 function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input[type="range"], summary')).filter(visibleEl) : []; }
-function menuFocusFirst(id) { const it = menuItems(id); const featured = id === 'ovAttract' && it.find(el => el.id === 'btnExpedition'); if (it.length) (featured || it[0]).focus(); return it.length > 0; }
+function menuFocusFirst(id) { const it = menuItems(id); const featured = id === 'ovAttract' && it.find(el => el.id === 'btnPlay'); if (it.length) (featured || it[0]).focus(); return it.length > 0; }
 // Spatial move: nearest control whose centre lies in the pressed direction
 // (cross-axis distance weighted 2x); vertical presses wrap in DOM order.
 function menuMove(dx, dy) {
@@ -2496,6 +2497,14 @@ function onTapDown(e) {
   if (onCanvas) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
   input.downIds.add(e.pointerId);
   if (netInRun() && netPointerDown(e)) return;   // Run Together: spectator chrome / LEAVE / emote-wheel arm (solo: no-op)
+  const p = pointerPos(e);
+  input.usingTouch = e.pointerType !== 'mouse';
+  if (input.usingTouch) input.usingKeys = false;
+  // Pause is a shared pointer action, before either mouse fire or touch steering.
+  if ((G.mode === 'play' || G.mode === 'resume') && G._pauseHit && p.x >= G._pauseHit.x0 && p.x <= G._pauseHit.x1 && p.y >= G._pauseHit.y0 && p.y <= G._pauseHit.y1) {
+    if (G.mode === 'resume') G.mode = 'play';
+    togglePause(); return;
+  }
   // A mouse is a direct fire input; don't switch the HUD into touch mode or
   // spawn a joystick beneath the cursor.
   if (e.pointerType === 'mouse') {
@@ -2508,15 +2517,12 @@ function onTapDown(e) {
   }
   input.usingTouch = true; input.usingKeys = false;
   Audio.ensure(); Audio.resume();
-  const p = pointerPos(e);
   if (G.mode === 'attract') { startRun(); return; }
   if (G.mode === 'dead') { tryRestart(); return; }
   // Countdown touches arm the stick/jump/fire zones so the player is already
   // moving at GO — the state sits armed until the first simulated tick.
   if (G.mode !== 'play' && G.mode !== 'resume') return;
   layoutTouch();
-  // pause icon zone (top-right)
-  if (G._pauseHit && p.x >= G._pauseHit.x0 && p.x <= G._pauseHit.x1 && p.y >= G._pauseHit.y0 && p.y <= G._pauseHit.y1) { togglePause(); return; }
   // mute icon: gesture resolves on release (tap) or in frame() (long-press) — never stick/jump
   if (inMuteHit(p)) { input.muteHold = { id: e.pointerId, t: performance.now(), fired: false }; return; }
   if (inShoot(p)) { input.shootBtn.pressed = true; input.shootBtn.id = e.pointerId; input.shoot = true; flags.taughtShoot = true; return; }
@@ -3869,7 +3875,7 @@ function updateFlare() {
   const B = bandParams(G.band, G.dist);
   G.flare.prevX = G.flare.x;
   let target = B.flare;
-  if (G.mercyLvl > 0 && (G.time - G.runStart) < 30) target *= (0.94 - 0.02 * G.mercyLvl);
+  if (G.mercyLvl > 0 && G.frameCount * STEP < 30) target *= (0.94 - 0.02 * G.mercyLvl);
   if (G.flareMul !== 1) target = Math.min(target * G.flareMul, CFG.maxRun - 0.6);   // AFTERBURNER Daily
   G.flare.speed += (target - G.flare.speed) * 0.01;
   // Rubber-band: the flare is the game's forward pressure. A player at max run
@@ -4180,7 +4186,7 @@ function finalizeDeath(completed = false) {
   if (G.dist >= 600) stats.deepRuns = (stats.deepRuns || 0) + 1;                       // lilac-suit counter
   flags.bestStreak = fs > G.prevBest && fs > 0 ? (flags.bestStreak || 0) + 1 : 0;      // halo-hat streak
   // Quick death = short OR shallow: a 19s death at 250m is a decent run; a slow 90m death isn't.
-  if (!completed && ((G.time - G.runStart) < 20 || G.dist < 150)) stats.deadStreak++; else stats.deadStreak = 0;
+  if (!completed && (G.frameCount * STEP < 20 || G.dist < 150)) stats.deadStreak++; else stats.deadStreak = 0;
   stats.mercy = stats.deadStreak >= 3;
   let medal = null;
   for (const md of MEDALS) if (fs >= md.v) { medal = md; break; }
@@ -5534,6 +5540,8 @@ function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
 // A screen-space ownership marker survives matching outfits and busy scenery.
 // It is drawn once by the scene, never by drawPlayer's borrowed ghost/wardrobe rig.
 function drawRunnerIdentity(alpha) {
+  // A solo pilot needs no ownership arrow. Keep it for shared runs and viewers.
+  if (!netInRun() && !netSpectating()) return;
   if (!['play', 'pause', 'resume'].includes(G.mode) || !G.player || (!netSpectating() && G.player.dead) || !ART.identityCue) return;
   const watching = netSpectating(), target = watching ? ghosts.find(g => g.active && g.p === spec.watchP && g.alpha > .1) : null;
   if (watching && !target) return;
@@ -6280,6 +6288,12 @@ function drawTouchControls() {
 const $ = (id) => document.getElementById(id);
 function hideAllOverlays() { OVERLAY_IDS.forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; cancelRebind(); }
 function showOverlay(id) {
+  if (id === 'ovPause') {
+    const localMenu = netInRun() && !(sharedRunnerActive() && journeyUI.room.isHost);
+    $('pauseTitle').textContent = localMenu ? 'Menu' : 'Paused';
+    $('pauseSessionNote').hidden = !localMenu;
+    $('pauseSessionNote').textContent = localMenu ? 'The session continues while this menu is open.' : '';
+  }
   const el = $(id);
   el.classList.add('show');
   if (input.pad.connected && !SHOT) menuFocusFirst(topOverlayId());   // controller players land on the first control
@@ -8686,7 +8700,7 @@ function exitExpedition() {
   cancelDeathAnim(); Audio.killSting(); Audio.resume(); releaseExpeditionInputs(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
   expeditionKeyGate.clear();
   $('btnQuit').textContent = 'Quit to Title';
-  showAttract(); $('btnExpedition').focus();
+  showAttract(); $('btnPlay').focus();
   if (completed) queueToast('Expedition complete · ' + completed + ' routes explored', 'sys');
 }
 $('btnExpedition').onclick = openExpedition;
@@ -8728,7 +8742,7 @@ function getJourneyUI() {
       if (status.connection || status.stale || status.journey?.phase === 'paused') clearInput();
     },
     onExit(reason) { endSharedJourney(reason); },
-    onClose() { showAttract(); $('btnExpeditionFriends').focus(); },
+    onClose() { showAttract(); $('btnTogether').focus(); },
   });
   return journeyUI;
 }
@@ -8748,7 +8762,7 @@ function endSharedJourney(reason) {
   arenaUI?.closeSharedSession(); raceUI?.closeSharedSession(); sharedEncounter = null; sharedRunnerBanked = false; sharedRunnerParticipated = false; NET = TRANSPORT; $('btnJourneyCrew').hidden = true;
   clearTimeout(expeditionCueTimer); $('expeditionCue').hidden = true; document.body.appendChild($('expeditionCue'));
   cancelDeathAnim(); Audio.killSting(); Audio.resume(); releaseExpeditionInputs(); expeditionKeyGate.clear(); acc = 0; lastT = 0;
-  $('btnQuit').textContent = 'Quit to Title'; showAttract(); $('btnExpeditionFriends').focus(); sharedEnding = false;
+  $('btnQuit').textContent = 'Quit to Title'; showAttract(); $('btnTogether').focus(); sharedEnding = false;
   if (reason) announce(reason);
 }
 $('btnExpeditionFriends').onclick = openSharedJourney;
