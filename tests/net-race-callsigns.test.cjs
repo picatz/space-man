@@ -46,7 +46,8 @@ test('roster callsign indices survive roles and reconnects; reused seats have th
   hub.advance(15001); await hs._snapTick();
   const newcomer = make();
   await newcomer.net.acceptJoin(invite, { mode: 'race', adjIdx: 4, nounIdx: 5 });
-  await until(() => watcher.net.roster().some(r => r.p === gp && r.adjIdx === 4), 'reused identity propagated');
+  // WELCOME resolves admission before asynchronous ROSTER fan-out completes.
+  await until(() => [host, watcher, newcomer].every(c => c.net.roster().some(r => r.p === gp && r.adjIdx === 4)), 'reused identity propagated to every participant');
   assert.equal(newcomer.net.info().myP, gp, 'retired P number is reused');
   for (const c of [host, watcher, newcomer]) identity(c.net, gp, 4, 5, 'COSMIC QUASAR');
   assert.equal(frozenSeat.adjIdx, 2); assert.equal(frozenSeat.nounIdx, 0);
