@@ -181,6 +181,19 @@
         b.quad(a[lane],n[lane],n[lane+1],a[lane+1],
           shade(rgb(lane===1?palette.strata:palette.stone),lane===2?.6:.78));
       }
+      // Close the whole rock volume. Thin open end planes read like folded
+      // sheets; downward skirts keep this a solid floating cliff shelf.
+      const bottom=p=>[p[0],-80,p[2]], dark=shade(rgb(palette.stone),.48);
+      for(let i=0;i<shelf.length-1;i++) {
+        const a=shelf[i],n=shelf[i+1];
+        b.quad(a[0],bottom(a[0]),bottom(n[0]),n[0],dark);
+        b.quad(n[3],bottom(n[3]),bottom(a[3]),a[3],dark);
+      }
+      for(const [section,reverse] of [[shelf[0],false],[shelf[shelf.length-1],true]])
+        for(let lane=0;lane<3;lane++) {
+          const a=section[lane],n=section[lane+1],points=[a,n,bottom(n),bottom(a)];
+          if(reverse)points.reverse();b.quad(...points,dark);
+        }
     }
     if (styled) {
       // Cut-corner housings echo the craft's fitted panels without repeating pods.

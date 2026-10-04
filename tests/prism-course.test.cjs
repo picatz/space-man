@@ -55,6 +55,7 @@ test('Prism shared architecture has safe footprint, a high open-sided gallery an
     assert.ok(Mesh.distance(c,x,z)>=c.width/2+c.runoff+40,'visible rock geometry clears road');
   assert.equal(forms.length,10);assert.ok(forms.every(f=>f.kind==='mesa'));
   for(const f of forms)assert.ok(Mesh.distance(c,f.x,f.z)>=c.width/2+f.radius+c.runoff+40);
+  assert.ok(s.meshes.some(m=>m.vertices.some((v,i)=>i%9===1&&v===-80)), "shelf boundary skirts close the visible rock volume");
   assert.equal(s.roofMeshes.length,1);const roof=s.roofMeshes[0];assert.ok(roof.bounds.min[1]>=210);
   assert.ok(!s.meshes.includes(roof));assert.equal(s.clearances.filter(f=>f.type==='gallery').length,12);
   for(const f of s.clearances)assert.ok(Mesh.distance(c,f.x,f.z)>=c.width/2+c.runoff+28+f.radius-1,JSON.stringify(f));
