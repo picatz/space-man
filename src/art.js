@@ -24,11 +24,11 @@
   // Render-only Circuit design tokens. Physics retains its authored course data.
   const STARLIGHT_MATERIALS = Object.freeze({ road: '#294052', edge: '#86cdbf',
     curb: '#9aadaf', apron: '#172935', outerEdge: '#42646d', accent: '#bdeca2',
-    housing: '#c6d6d3', ink: '#152a38', joint: '#355161' });
+    housing: '#c6d6d3', ink: '#152a38', joint: '#355161', ramp: '#36586a' });
   function circuitPalette(course) {
     if (course.id === 'starlight') return STARLIGHT_MATERIALS;
     return { road: course.road, edge: course.edge, accent: course.accent,
-      curb: '#bdced0', apron: '#13202b', outerEdge: course.edge, housing: '#c6d6d3', ink: '#152a38', joint: '#355161' };
+      curb: '#bdced0', apron: '#13202b', outerEdge: course.edge, housing: '#c6d6d3', ink: '#152a38', joint: '#355161', ramp: '#36586a' };
   }
   // Coordinates are [side, up]. Both canvas and mesh render these exact glyphs.
   const circuitGlyphs = Object.freeze({
@@ -58,6 +58,21 @@
       }
     }
     const result=Object.freeze(structures);circuitStructureCache.set(course,result);return result;
+  }
+
+  const circuitConnectionCache = new WeakMap();
+  function circuitConnections(course, at, distance) {
+    if(circuitConnectionCache.has(course)) return circuitConnectionCache.get(course);
+    const structures=circuitStructures(course,at,distance), connections=[];
+    for(let i=1;i<structures.length;i++) {
+      const a=structures[i-1],b=structures[i];if(a.kind!==b.kind)continue;
+      const length=Math.hypot(b.x-a.x,b.z-a.z),steps=Math.ceil(length/8),
+        required=course.width/2+(course.runoff||0)+40+7+4;
+      let clear=true;
+      for(let n=0;n<=steps;n++) if(distance(course,a.x+(b.x-a.x)*n/steps,a.z+(b.z-a.z)*n/steps)<required){clear=false;break;}
+      if(clear)connections.push(Object.freeze({a,b,width:14}));
+    }
+    const result=Object.freeze(connections);circuitConnectionCache.set(course,result);return result;
   }
 
   // Biome colors for a sector hue (degrees). Pure: same hue → same strings.
@@ -464,7 +479,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

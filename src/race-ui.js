@@ -1563,6 +1563,9 @@
     }
     function road(g, c) {
       const palette=root.SpaceManArt.circuitPalette(c), starlight=c.id==='starlight';
+      if(starlight) for(const {a,b,width} of root.SpaceManArt.circuitConnections(c,R.at,root.SpaceManRaceTrackMesh.distance)) {
+        g.strokeStyle=palette.curb;g.lineWidth=width;g.beginPath();g.moveTo(a.x,a.z);g.lineTo(b.x,b.z);g.stroke();
+      }
       if(starlight) for(const structure of root.SpaceManArt.circuitStructures(c,R.at,root.SpaceManRaceTrackMesh.distance)) {
         const {x,z,width:w,depth:d,heading}=structure;
         g.save();g.translate(x,z);g.rotate(heading);
@@ -1570,7 +1573,7 @@
           g.beginPath();g.moveTo(-w/2+cut,-d/2);g.lineTo(w/2-cut,-d/2);g.lineTo(w/2,-d/2+cut);
           g.lineTo(w/2,d/2-cut);g.lineTo(w/2-cut,d/2);g.lineTo(-w/2+cut,d/2);
           g.lineTo(-w/2,d/2-cut);g.lineTo(-w/2,-d/2+cut);g.closePath();g.fillStyle=color;g.fill();};
-        panel(w+6,d+6,palette.ink);panel(w,d,palette.housing);panel(w*.66,d*.58,palette.road);
+        panel(w+6,d+6,palette.curb);panel(w,d,palette.housing);panel(w*.62,d*.52,palette.ink);
         g.fillStyle=palette.edge;g.fillRect(-w*.3,d*.36,w*.6,2);g.restore();
       }
       const path = () => {
@@ -1707,9 +1710,10 @@
         const p = point(ramp);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);
         const palette=root.SpaceManArt.circuitPalette(c);
         ctx.fillStyle=palette.ink;ctx.fillRect(-60,-ramp.width/2,84,ramp.width);
-        ctx.fillStyle=palette.road;ctx.fillRect(-60,-ramp.width/2+3,84,ramp.width-6);
+        ctx.fillStyle=palette.ramp;ctx.fillRect(-60,-ramp.width/2+3,84,ramp.width-6);
         ctx.strokeStyle=palette.housing;ctx.lineWidth=2.5;
         for(const side of[-1,1]) {ctx.beginPath();ctx.moveTo(-60,side*(ramp.width/2-2));ctx.lineTo(24,side*(ramp.width/2-2));ctx.stroke();}
+        ctx.beginPath();ctx.moveTo(0,-ramp.width/2+3);ctx.lineTo(0,ramp.width/2-3);ctx.stroke();
         ctx.strokeStyle='#8beaf2';
         for(const forward of[-40,-19]){ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(forward-7,-54);ctx.lineTo(forward+7,0);ctx.lineTo(forward-7,54);ctx.stroke();}
         ctx.restore();

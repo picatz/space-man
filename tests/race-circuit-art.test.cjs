@@ -75,3 +75,14 @@ test('shared glyph winding gives outward badge faces and upward approach signs',
     }
   }
 });
+test('station connections stay beyond runoff and the gantry clears every chase eye',()=>{
+  const c=R.course('starlight'), links=Art.circuitConnections(c,R.at,Track.distance);
+  assert.equal(links,Art.circuitConnections(c,R.at,Track.distance));assert.equal(links.length,6);
+  for(const {a,b,width} of links) for(let n=0;n<=100;n++) {
+    const x=a.x+(b.x-a.x)*n/100,z=a.z+(b.z-a.z)*n/100;
+    assert.ok(Track.distance(c,x,z)>c.width/2+(c.runoff||0)+40+width/2);
+  }
+  const scene=Scene.course(c,R.at);
+  for(const arch of scene.clearances.filter(x=>x.type==='arch'))assert.ok(arch.height-4>151+20);
+  assert.ok(scene.meshes[0].vertices.length/9<=5376,'smooth planets retain the original sky tessellation');
+});

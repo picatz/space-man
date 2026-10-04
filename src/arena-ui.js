@@ -538,9 +538,19 @@
       const back = rootEl.querySelector('#arenaLobby'); if (back) { back.hidden = !!(localSession || sharedSession); back.textContent = (localSession || sharedSession) ? 'Finish expedition' : online ? (host ? 'Back to room lobby' : 'Leave arena room') : 'Choose a match'; }
       const resume = rootEl.querySelector('#arenaResume'); if (resume) { resume.disabled = (roomPaused && !host) || !!(roomStatus && roomStatus.connection); resume.textContent = roomStatus && roomStatus.connection ? 'Reconnecting…' : roomPaused && !host ? 'Waiting for host…' : 'Resume match'; }
     }
+    // Cycling and automatic following share one eligible roster. A respawning
+    // fighter must not bounce Next back to the first fighter on the next frame.
+    function watchCandidates() {
+      const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
+      const living = state.actors.filter(a => a.stocks > 0 && a.respawnTicks <= 0);
+      const allies = state.format === 'teams' && (!onlineActive() || localActor()) ? living.filter(a => a.team === human.team) : [];
+      return allies.length ? allies : living;
+    }
     function cycleWatch(direction) {
-      if (!state) return; const candidates = state.actors.filter(a => a.stocks > 0); if (!candidates.length) return;
-      const index = candidates.findIndex(a => a.id === spectatorId); spectatorId = candidates[(index + direction + candidates.length) % candidates.length].id; camera.initialized = false;
+      if (!state) return; const candidates = watchCandidates(); if (!candidates.length) return;
+      const index = candidates.findIndex(a => a.id === spectatorId);
+      const next = index < 0 ? (direction > 0 ? 0 : candidates.length - 1) : (index + direction + candidates.length) % candidates.length;
+      spectatorId = candidates[next].id; camera.initialized = false;
       if (watchName) watchName.textContent = 'WATCHING ' + candidates.find(a => a.id === spectatorId).name;
     }
     function resetRoomPresentation() {
@@ -824,9 +834,7 @@
     function watchedActor() {
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
       if ((!onlineActive() || localActor()) && human.stocks > 0) { spectatorId = null; return human; }
-      const living = state.actors.filter(a => a.stocks > 0 && a.respawnTicks <= 0);
-      const allies = state.format === 'teams' && (!onlineActive() || localActor()) ? living.filter(a => a.team === human.team) : [];
-      const candidates = allies.length ? allies : living;
+      const candidates = watchCandidates();
       const target = candidates.find(a => a.id === spectatorId) || candidates[0] || state.actors.find(a => a.stocks > 0) || human;
       spectatorId = target.id;
       return target;

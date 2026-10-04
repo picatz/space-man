@@ -1017,7 +1017,7 @@ test(
               // that the player is airborne when the screenshot is taken.
               { name: "airborne-pickup-lane", progress: progress(features.ramps[0].s + 54) },
               { name: "shield-pulse-decision", progress: progress(features.rows[0].s - 140) },
-              { name: "return-to-finish", progress: progress(course.length - 120) },
+              { name: "return-to-finish", progress: progress(course.length - 300) },
             ];
           });
           const captures = [];
