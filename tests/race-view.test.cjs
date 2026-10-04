@@ -470,3 +470,13 @@ test('Cockpit uses its exact rendered eye to suppress only nearby rival exhaust 
   assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===rival.id).vertices,full.vertices,'distant Cockpit exhaust remains intact');
   h.view.destroy();
 });
+
+test('Cockpit shell uses the equipped paint of the current local or watched pilot',()=>{
+ const h=harness(),Art=require('../src/art.js'),state={...h.snapshot,actors:h.snapshot.actors.map((a,i)=>({...a,appearance:{...a.appearance,suit:i?'mint':'rose'}}))};
+ h.view.setMode('cockpit');
+ for(const a of state.actors.slice(0,2)){
+  h.view.render(state,{...h.config,actorId:a.id,localActorId:a.id===state.actors[0].id?a.id:null});
+  const cockpit=h.nodes.find(n=>n.className==='race-cockpit'),style=Art.characterStyle(a.appearance,a.color);
+  assert.equal(cockpit.style.borderTopColor,style.accent);assert.ok(cockpit.style.backgroundImage.includes(style.palette.suit));assert.equal(cockpit.hidden,false);
+ }
+});

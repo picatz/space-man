@@ -15,7 +15,7 @@
   const shade = (c, s) => c.map((v) => Math.min(1, v * s));
   function builder() {
     const v = [];
-    function triangle(a, b, c, color) {
+    function triangle(a, b, c, color, normals) {
       const u = b.map((n, i) => n - a[i]),
         w = c.map((n, i) => n - a[i]);
       let n = [
@@ -25,11 +25,11 @@
         ],
         d = Math.hypot(...n) || 1;
       n = n.map((x) => x / d);
-      for (const p of [a, b, c]) v.push(...p, ...n, ...color);
+      for (const [i, p] of [a, b, c].entries()) v.push(...p, ...(normals ? normals[i] : n), ...color);
     }
-    function quad(a, b, c, d, color) {
-      triangle(a, b, c, color);
-      triangle(a, c, d, color);
+    function quad(a, b, c, d, color, normals) {
+      triangle(a, b, c, color, normals && [normals[0], normals[1], normals[2]]);
+      triangle(a, c, d, color, normals && [normals[0], normals[2], normals[3]]);
     }
     function box(x, y, z, w, h, d, color, heading = 0) {
       const co = Math.cos(heading),
@@ -105,13 +105,22 @@
           z + si * f + co * side,
         ];
       };
+      // Analytical normals remove the blocky lighting of the old flat-shaded
+      // shell without subdivision or a shader/material pass. Scenery stays faceted.
+      const normal = (a, b) => {
+        const f = Math.cos(b) * Math.cos(a) / rx,
+          up = Math.sin(b) / ry, side = Math.cos(b) * Math.sin(a) / rz,
+          length = Math.hypot(f, up, side) || 1;
+        return [(co * f - si * side) / length, up / length, (si * f + co * side) / length];
+      };
       for (let i = 0; i < segments; i++)
         for (let j = 0; j < rings; j++) {
           const a = (i * Math.PI * 2) / segments,
             b = ((i + 1) * Math.PI * 2) / segments,
             c = -Math.PI / 2 + (j * Math.PI) / rings,
             d = c + Math.PI / rings;
-          quad(at(a, d), at(b, d), at(b, c), at(a, c), color);
+          quad(at(a, d), at(b, d), at(b, c), at(a, c), color,
+            [normal(a, d), normal(b, d), normal(b, c), normal(a, c)]);
         }
     }
     return {
@@ -309,35 +318,32 @@
         u + height,
         a.y + si * f + co * side,
       ];
-      const pod = (f, u, side, rx, ry, rz, col) =>
-        b.ellipsoid(...p(f, u, side), rx, ry, rz, col, h);
-      // An open, rounded hoverpod with twin nacelles and swept fins. The small
-      // suited pilot and wraparound visor retain Space-man's astronaut identity.
-      pod(1, 8, 0, 28, 5, 15, [0.1, 0.21, 0.28]);
-      pod(3, 11, 0, 27, 6, 14, white);
-      pod(17, 15, 0, 12, 1.3, 5, color);
+      const pod = (f, u, side, rx, ry, rz, col, segments = 10, rings = 4) =>
+        b.ellipsoid(...p(f, u, side), rx, ry, rz, col, h, segments, rings);
+      // A pearl-shell hover roadster: rounded bow, open dark cockpit and
+      // compact twin pods. Match Art.hoverpod's silhouette/material hierarchy.
+      pod(1, 8, 0, 28, 4.5, 15, rgb(P.legB), 16, 5);
+      pod(3, 11, 0, 27, 6, 14, white, 16, 6);
+      pod(17, 15.5, 0, 10, 1.25, 4.4, color);
+      // Raised coaming makes the pilot sit inside the craft rather than atop
+      // stacked white discs. It is opaque and deliberately below the shoulders.
+      pod(-6, 15, 0, 12.5, 2.5, 9.4, rgb(P.legB));
+      pod(-6, 16, 0, 10.5, 1.3, 7.6, rgb('#102D49'));
       if (appearance.ship === 'orbit') {
-        // The ring is a geometric part, not a glowing texture or altered hitbox.
         ring(b, p, -8, 9, 0, 20, 24, 2.5, color);
       }
       for (const side of [-18, 18]) {
-        pod(-3, 8, side, 23, 4, 5.5, color);
-        pod(-1, 6, side, 18, 1.1, 5.8, [0.43, 0.9, 1]);
-        // Small swept stabilizers replace a rectangular full-width spoiler.
+        // Short, round stabilizers retain distinct leaf/twin-pod silhouettes
+        // without the long triangular blades that overwhelmed the chase view.
         if (appearance.ship !== 'orbit') {
-        b.triangle(
-          p(-22, 10, side),
-          p(appearance.ship === "leaf" ? 7 : -9, 14, side),
-          p(appearance.ship === "leaf" ? -12 : -23, 16, side * (appearance.ship === "leaf" ? 1.65 : 1.42)),
-          color,
-        );
-        b.triangle(
-          p(-22, 10, side),
-          p(appearance.ship === "leaf" ? -12 : -23, 16, side * (appearance.ship === "leaf" ? 1.65 : 1.42)),
-          p(-25, 8, side * 1.18),
-          shade(color, 0.75),
-        );
+          const leaf = appearance.ship === 'leaf';
+          pod(leaf ? -8 : -15, 9, side * (leaf ? 1.22 : 1.15),
+            leaf ? 16 : 10, 1.8, leaf ? 7 : 5, shade(color, .85));
         }
+        pod(-3, 8, side, 23, 4, 5.5, rgb(P.legB));
+        pod(-1, 9.5, side, 21, 3.6, 5.2, color);
+        pod(2, 12.7, side, 13, .55, 1.25, rgb('#DFFBFF'));
+        pod(-1, 6, side, 18, 1.1, 5.8, shade(color, .8));
         // Bright rear engine discs remain readable even without boosting.
         for (let i = 0; i < 10; i++) {
           const a0 = (i * Math.PI) / 5,
@@ -360,7 +366,7 @@
       b.box(...p(1, 19, 0), .4, 1.1, 3, color, h);
       const helmetRadius = appearance.helmet === 'round' ? 8.5 : 9.2;
       if (appearance.helmet === 'retro') pod(-5, 24, 0, 8.2, 8, 9.1, white);
-      else b.sphere(...p(-5, 24, 0), helmetRadius, white, 12, 7);
+      else b.ellipsoid(...p(-5, 24, 0), helmetRadius, helmetRadius, helmetRadius, white, h, 16, 8);
       // A tessellated outer glass shell. One tall chord used to intersect the
       // helmet's different triangle grid, showing white teeth through the glass.
       // Short 2px strips plus radial clearance keep every triangle outside it.
@@ -394,8 +400,8 @@
         b.quad(p(12, 16.8, -2), p(14, 16.8, 0), p(12, 16.8, 2), p(10, 16.8, 0), color);
       }
       // Colored life-support panel at the rear of the suit/helmet.
-      b.box(...p(-13, 18, 0), 3, 7, 7, [0.27, 0.43, 0.5], h);
-      b.box(...p(-14.7, 20, 0), 0.5, 2, 5, color, h);
+      pod(-13, 21, 0, 2.1, 3.7, 3.8, rgb(P.legB));
+      pod(-14.9, 21.2, 0, .4, .8, 2.7, color);
       // Soft-edged geometric contact shadow: no downloaded texture.
       const ground = (f, y, side) => [a.x + co * f - si * side, y, a.y + si * f + co * side];
       for (let i = 0; shadows && i < 16; i++) {

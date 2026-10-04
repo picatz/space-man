@@ -263,22 +263,28 @@ const characterHats = {
     c.save();
     if (shadow) { c.fillStyle = '#0006'; c.beginPath(); c.ellipse(0, 5, 28, 19, 0, 0, TAU); c.fill(); }
     if (boosting || hero) {
-      c.fillStyle = accent; c.globalAlpha *= .35; c.beginPath(); c.moveTo(-19, -8); c.lineTo(-44 - (calm ? 0 : tick % 6), 0); c.lineTo(-19, 8); c.fill(); c.globalAlpha /= .35;
-      c.fillStyle = '#DFFBFF'; c.beginPath(); c.moveTo(-22, -3); c.lineTo(-34, 0); c.lineTo(-22, 3); c.fill();
+      // Both views have two rear thrusters, never a central rocket flame.
+      for (const side of [-16, 16]) {
+        c.fillStyle = accent; c.globalAlpha *= .35; c.beginPath();
+        c.moveTo(-22, side - 3); c.quadraticCurveTo(-33, side - 5, -43 - (calm ? 0 : tick % 6), side);
+        c.quadraticCurveTo(-33, side + 5, -22, side + 3); c.fill(); c.globalAlpha /= .35;
+        c.fillStyle = '#DFFBFF'; c.beginPath(); c.moveTo(-23, side - 1.5); c.lineTo(-34, side); c.lineTo(-23, side + 1.5); c.fill();
+      }
     }
     if (ship === 'orbit') {
       c.strokeStyle = '#415D78'; c.lineWidth = 5; c.beginPath(); c.ellipse(-8, 0, 17, 20, 0, 0, TAU); c.stroke();
       c.strokeStyle = accent; c.lineWidth = 1.5; c.stroke();
     }
     for (const side of [-1, 1]) {
-      c.fillStyle = '#243C57'; rrPath(c, -23, side * 16 - 4, 41, 9, 4); c.fill();
-      c.fillStyle = accent; rrPath(c, -22, side * 16 - 4, 38, 6, 3); c.fill();
       if (ship !== 'orbit') {
-        c.beginPath(); c.moveTo(-21, side * 14); c.lineTo(ship === 'leaf' ? 8 : -8, side * 17);
-        c.lineTo(ship === 'leaf' ? -14 : -25, side * (ship === 'leaf' ? 26 : 23)); c.closePath(); c.fill();
+        const leaf = ship === 'leaf';
+        c.fillStyle = accent; c.beginPath();
+        c.ellipse(leaf ? -8 : -15, side * (leaf ? 20 : 18.5), leaf ? 16 : 10, leaf ? 7 : 5, 0, 0, TAU); c.fill();
       }
-      c.fillStyle = '#DFFBFF'; rrPath(c, -24, side * 16 - 2, 3, 4, 1); c.fill();
-      c.fillStyle = '#102D49'; c.fillRect(-13, side * 16 - 2, 7, 1);
+      c.fillStyle = P.legB; c.beginPath(); c.ellipse(-3, side * 16 + 1, 23, 5.5, 0, 0, TAU); c.fill();
+      c.fillStyle = accent; c.beginPath(); c.ellipse(-1, side * 16 - 1, 21, 4.6, 0, 0, TAU); c.fill();
+      c.fillStyle = '#DFFBFF'; c.beginPath(); c.ellipse(2, side * 16 - 2, 13, 1, 0, 0, TAU); c.fill();
+      c.fillStyle = '#DFFBFF'; rrPath(c, -25, side * 16 - 2, 3, 4, 1.5); c.fill();
     }
     c.fillStyle = P.legB; c.beginPath(); c.moveTo(29, 1); c.quadraticCurveTo(18, -13, -14, -12); c.lineTo(-22, -5); c.lineTo(-22, 7); c.lineTo(-13, 14); c.quadraticCurveTo(18, 14, 29, 1); c.fill();
     c.fillStyle = P.suit; c.beginPath(); c.moveTo(29, -1); c.quadraticCurveTo(18, -14, -13, -12); c.lineTo(-21, -5); c.lineTo(-21, 5); c.lineTo(-13, 11); c.quadraticCurveTo(18, 12, 29, -1); c.fill();
@@ -287,7 +293,7 @@ const characterHats = {
     c.fillStyle = '#243C57'; rrPath(c, -16, -8, 23, 17, 6); c.fill();
     c.fillStyle = P.suit; rrPath(c, -11, -5, 13, 12, 4); c.fill();
     c.save(); c.translate(-7, 2); c.scale(.72, .72); suitDetails(c, 0, 0, style); c.restore();
-    c.fillStyle = '#415D78'; rrPath(c, -18, -5, 5, 9, 2); c.fill(); c.fillStyle = accent; c.fillRect(-17, -3, 1.5, 4);
+    c.fillStyle = P.legB; c.beginPath(); c.ellipse(-16, 0, 3, 4.5, 0, 0, TAU); c.fill(); c.fillStyle = accent; rrPath(c, -18, -2, 1.5, 4, .75); c.fill();
     c.save(); c.translate(-5, -3); c.scale(.75, .75);
     characterHelmet(c, 0, 0, style, { tick, id, calm, mood: boosting ? 1 : 0 }); c.restore();
     if (style.appearance.detail === 'stripe') { c.strokeStyle = accent; c.lineWidth = 1.5; c.beginPath(); c.moveTo(-9, 9); c.lineTo(16, 7); c.stroke(); }
