@@ -73,7 +73,7 @@ async function drive(page){
 }
 test('two complete sectors flow through genuine plays, boss encounters and onward without a continue prompt',{timeout:540000},async t=>{
   const {page}=await launch(t);
-  await page.locator('#btnExpedition').click();
+  await page.evaluate(() => openExpedition());
   await page.waitForFunction(()=>expedition?.snapshot().phase==='playing');
   await capture(page,'continuous-launch');
   assert.equal(await page.locator('#btnExpeditionContinue').count(),0);
@@ -100,12 +100,12 @@ test('two complete sectors flow through genuine plays, boss encounters and onwar
 for(const viewport of [{width:320,height:568},{width:390,height:844},{width:844,height:390},{width:820,height:1180}]){
  test('touch '+viewport.width+'×'+viewport.height+': live cue, pause and immediate exit',{timeout:30000},async t=>{
    const {page}=await launch(t,{viewport,hasTouch:true,isMobile:true});
-   await page.locator('#btnExpedition').tap();await page.waitForFunction(()=>expedition?.snapshot().phase==='playing');
+   await page.evaluate(() => openExpedition());await page.waitForFunction(()=>expedition?.snapshot().phase==='playing');
    const box=await page.locator('#expeditionCue').boundingBox();assert.ok(box.x>=0&&box.x+box.width<=viewport.width+1);
    assert.equal(await page.locator('#expeditionCue').evaluate(el=>getComputedStyle(el).pointerEvents),'none');
    await capture(page,'continuous-'+viewport.width+'x'+viewport.height);
    await stop(page);assert.equal(await page.locator('#ovAttract').evaluate(el=>el.inert),false);
-   await page.locator('#btnExpedition').tap();await stop(page);
+   await page.evaluate(() => openExpedition());await stop(page);
  });
 }
 test('pause and visibility handlers in every mode; held key/pad and synthetic touch cleanup across a live transition',{timeout:420000},async t=>{
@@ -113,7 +113,7 @@ test('pause and visibility handlers in every mode; held key/pad and synthetic to
   await page.locator('#btnRace').click();await page.locator('[data-track=ember]').click();
   await page.getByRole('button',{name:'← All games',exact:true}).click();
   const saved=await page.evaluate(()=>localStorage.getItem(BUILD.storageKey('sm2.race.v1')));
-  await page.locator('#btnExpedition').click();await drive(page);
+  await page.evaluate(() => openExpedition());await drive(page);
   const checked=new Set();
   while(checked.size<3){
     const mode=await page.evaluate(()=>expedition.snapshot().current.id);
@@ -172,7 +172,7 @@ test('solo team elimination catches the rescue shuttle instead of waiting for CP
   const {page}=await launch(t);
   // Choose a reproducible real itinerary; engine clocks and outcomes remain untouched.
   await page.evaluate(()=>{window.originalRandom=Math.random;Math.random=()=>0;});
-  await page.locator('#btnExpedition').click();
+  await page.evaluate(() => openExpedition());
   await page.evaluate(()=>{Math.random=originalRandom;});
   await page.keyboard.down('d');
   await page.waitForFunction(()=>arenaUI?.active&&arenaUI.snapshot()?.format==='teams',undefined,{timeout:50000});

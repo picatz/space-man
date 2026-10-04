@@ -850,3 +850,66 @@ test(
       });
   },
 );
+
+// Control measurement: leave simulation, sampler and view APIs untouched. The
+// only per-frame probe brackets the existing race tick callback. This excludes
+// per-step event scanning, pose assertions and renderer/quality instrumentation.
+test('perspective timing control: topdown with only a lightweight callback timer',
+  { timeout: 105000 }, async (t) => {
+    const { page } = await launch(t, {}, () => {
+      window.testPad = { connected: true, mapping: 'standard', index: 0,
+        axes: [0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+      Object.defineProperty(navigator, 'getGamepads', { value: () => [testPad], configurable: true });
+      const trace = window.raceTimingControl = { recording: false, done: false, frames: [] },
+        raf = window.requestAnimationFrame;
+      window.requestAnimationFrame = function (callback) {
+        return raf.call(this, function (now) {
+          // race-ui schedules its named tick; the parked runner uses frame.
+          if (!trace.recording || callback.name !== 'tick') return callback.call(this, now);
+          const started = performance.now();
+          try { return callback.call(this, now); }
+          finally { trace.frames.push({ now, ms: performance.now() - started }); }
+        });
+      };
+    });
+    await page.locator('.race-launch').click();
+    await page.getByRole('button', { name: 'Camera view', exact: true }).click();
+    await page.locator('.race-view-menu [data-camera="topdown"]').click();
+    await playing(page);
+    await page.evaluate(() => {
+      window.timingDriver = setInterval(() => {
+        const s = raceUI.snapshot();
+        if (!s || s.phase !== 'racing') return;
+        const a = s.actors[0], command = SpaceManRace.cpuInput(s, a);
+        testPad.axes[0] = command.steer;
+        testPad.buttons[0].pressed = command.boost;
+        testPad.buttons[1].pressed = command.brake;
+        testPad.buttons[5].pressed = command.item;
+        raceTimingControl.recording = a.lap === 2;
+        if (a.lap >= 3) raceTimingControl.done = true;
+      }, 16);
+    });
+    try { await page.waitForFunction(() => raceTimingControl.done, null, { polling: 250, timeout: 95000 }); }
+    finally {
+      await page.evaluate(() => {
+        clearInterval(timingDriver); testPad.axes[0] = 0;
+        testPad.buttons.forEach(button => { button.pressed = false; });
+      });
+    }
+    const frames = await page.evaluate(() => raceTimingControl.frames), summary = {
+      browser: process.env.SPACE_MAN_RACE_BROWSER || 'chromium',
+      camera: 'topdown', probe: 'RAF callback timer only',
+      intervals: timingStats(frames.slice(1).map((f, i) => f.now - frames[i].now)),
+      callback: timingStats(frames.map(f => f.ms)),
+      note: 'Software-browser control, not uninstrumented device FPS; two timer reads per recorded callback and the ordinary test driver remain.',
+    };
+    console.log('Lightweight topdown timing control:', JSON.stringify(summary));
+    if (process.env.SPACE_MAN_RACE_TRACES) {
+      await fs.mkdir(process.env.SPACE_MAN_RACE_TRACES, { recursive: true });
+      await fs.writeFile(path.join(process.env.SPACE_MAN_RACE_TRACES,
+        `starlight-${summary.browser}-topdown-control.json`), JSON.stringify({ summary, frames }, null, 2) + '\n');
+    }
+    assert.ok(frames.length > 1, 'the unchanged race tick callback was timed');
+    assert.ok(frames.every(f => Number.isFinite(f.ms) && f.ms >= 0));
+    assert.equal(await page.locator('.race-root').getAttribute('data-renderer'), '2d');
+  });

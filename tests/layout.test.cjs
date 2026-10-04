@@ -75,7 +75,7 @@ test('home is an open responsive launch scene with every legacy entry point', ()
   const home = fs.readFileSync(path.join(__dirname, '../src/home.css'), 'utf8');
   assert.match(home, /grid-template-areas: 'header header' 'world launch' 'footer footer'/);
   assert.match(home, /grid-template-areas: 'header' 'world' 'launch' 'footer'/);
-  assert.match(home, /max-height: 100%; overflow: auto/);
+  assert.match(home, /max-height: 100%; overflow-x: hidden; overflow-y: auto/);
   assert.match(html, /class="panel home-shell"/);
   for (const id of ['btnExpedition', 'btnExpeditionFriends', 'btnPlay', 'btnArena', 'btnRace', 'btnTogether', 'btnDaily', 'btnWardrobe', 'btnTrophy', 'btnSettings']) {
     assert.equal((html.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1, id + ' remains unique');
