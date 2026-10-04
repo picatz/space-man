@@ -160,17 +160,11 @@ test("rear thrusters point opposite travel and cockpit stays above vehicle geome
     a = s.actors[0],
     models = Scene.actorMeshes(s);
   const vertices = models[0].vertices;
-  const engines = [];
+  const engine = models.find(m=>m.engineActorId===a.id), engines=[];
+  assert.ok(engine && engine.emissive,'engine light is a separate emissive material');
   let maxY = 0;
-  for (let i = 0; i < vertices.length; i += 9) {
-    maxY = Math.max(maxY, vertices[i + 1]);
-    if (
-      Math.abs(vertices[i + 6] - 0.8) < 0.00001 &&
-      vertices[i + 7] === 1 &&
-      vertices[i + 8] === 1
-    )
-      engines.push(vertices[i]);
-  }
+  for(let i=0;i<vertices.length;i+=9)maxY=Math.max(maxY,vertices[i+1]);
+  for(let i=0;i<engine.vertices.length;i+=9)engines.push(engine.vertices[i]);
   assert.ok(
     engines.length > 20 && engines.every((x) => x < -20),
     "bright engine discs are at the rear",

@@ -431,6 +431,17 @@ for (const device of [
   t.diagnostic(`${device.name}: ${probe.contacts} contact ticks, longest near-stall ${probe.longestSlow} ticks, minimum contact motion ${probe.minContactMotion.toFixed(3)}`);
 });
 
+async function assertExitBoostFeedback(page) {
+  const feedback=page.locator('.race-drive-feedback');
+  assert.equal(await feedback.getAttribute('data-kind'),'boost');
+  assert.equal(await feedback.isVisible(),true);
+  const text=await feedback.innerText();
+  // A genuine star pickup has one-second message priority over the ordinary
+  // exit-boost label. Keep the authoritative padTicks assertion at each call.
+  assert.ok(text==='BOOST!'||text==='+6 BOOST','boost or earned star pickup is announced');
+  if(text==='+6 BOOST')assert.ok(await page.evaluate(()=>raceUI.snapshot().actors[0].coinMask)>0,'pickup notice requires a real collected star');
+}
+
 // Human-scale authored inputs, not a CPU following the course or injected poses.
 // Screenshots and pass results establish mechanics/layout, not subjective fun.
 for (const device of [
@@ -450,7 +461,7 @@ for (const device of [
   assert.equal(await page.locator('.race-drive-feedback').innerText(),'DRIFT');
   await page.keyboard.up('ArrowDown');await page.keyboard.up('ArrowRight');
   await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0);
-  assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!');
+  await assertExitBoostFeedback(page);
   if(process.env.SPACE_MAN_RACE_SCREENSHOTS){
     await fs.mkdir(process.env.SPACE_MAN_RACE_SCREENSHOTS,{recursive:true});
     await page.screenshot({path:path.join(process.env.SPACE_MAN_RACE_SCREENSHOTS,`arcade-${name}-exit.png`)});
@@ -490,7 +501,7 @@ for (const device of [
       if(releaseKind==='brake-only')await page.waitForFunction(()=>raceDriveProbe.command?.steer===1&&!raceDriveProbe.command?.brake,null,{timeout:2000});
       try {await page.waitForFunction(()=>raceUI.snapshot().actors[0].padTicks>0,null,{timeout:2000});}
       catch(error){t.diagnostic(JSON.stringify({releaseKind,...await page.evaluate(()=>{const a=raceUI.snapshot().actors[0];return{events:arcadeTouchEvents,command:raceDriveProbe.command,actor:{drifting:a.drifting,driftTicks:a.driftTicks,padTicks:a.padTicks,speed:a.speed,offroad:a.offroad}};})}));throw error;}
-      assert.equal(await page.locator('.race-drive-feedback').innerText(),'BOOST!',releaseKind+' earns an actual authoritative exit boost');
+      await assertExitBoostFeedback(page);
       if(releaseKind==='brake-only')await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
       assert.equal(await page.locator('.race-pressed').count(),0);
     }
