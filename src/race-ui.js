@@ -1562,6 +1562,20 @@
       paint();
     }
     function road(g, c) {
+      const palette=root.SpaceManArt.circuitPalette(c), starlight=c.id==='starlight';
+      if(starlight) for(const {a,b,width} of root.SpaceManArt.circuitConnections(c,R.at,root.SpaceManRaceTrackMesh.distance)) {
+        g.strokeStyle=palette.curb;g.lineWidth=width;g.beginPath();g.moveTo(a.x,a.z);g.lineTo(b.x,b.z);g.stroke();
+      }
+      if(starlight) for(const structure of root.SpaceManArt.circuitStructures(c,R.at,root.SpaceManRaceTrackMesh.distance)) {
+        const {x,z,width:w,depth:d,heading}=structure;
+        g.save();g.translate(x,z);g.rotate(heading);
+        const panel=(w,d,color)=>{const cut=Math.min(w,d)*.16;
+          g.beginPath();g.moveTo(-w/2+cut,-d/2);g.lineTo(w/2-cut,-d/2);g.lineTo(w/2,-d/2+cut);
+          g.lineTo(w/2,d/2-cut);g.lineTo(w/2-cut,d/2);g.lineTo(-w/2+cut,d/2);
+          g.lineTo(-w/2,d/2-cut);g.lineTo(-w/2,-d/2+cut);g.closePath();g.fillStyle=color;g.fill();};
+        panel(w+6,d+6,palette.curb);panel(w,d,palette.housing);panel(w*.62,d*.52,palette.ink);
+        g.fillStyle=palette.edge;g.fillRect(-w*.3,d*.36,w*.6,2);g.restore();
+      }
       const path = () => {
         g.beginPath();
         c.segments.forEach((s, i) =>
@@ -1574,11 +1588,11 @@
       path();
       // Match the 3D apron: brief excursions have visible ground, not a void
       // beyond the painted asphalt edge. The outer line marks the safety edge.
-      g.strokeStyle = c.edge + "55";
+      g.strokeStyle = starlight ? palette.outerEdge : c.edge + "55";
       g.lineWidth = c.width + 190;
       g.stroke();
       path();
-      g.strokeStyle = "#13202b";
+      g.strokeStyle = palette.apron;
       g.lineWidth = c.width + 176;
       g.stroke();
       path();
@@ -1586,34 +1600,38 @@
       g.lineWidth = c.width + 32;
       g.stroke();
       path();
-      g.strokeStyle = c.edge;
-      g.lineWidth = c.width + 13;
+      g.strokeStyle = starlight ? palette.curb : c.edge;
+      g.lineWidth = c.width + (starlight ? 23 : 13);
       g.stroke();
       path();
-      g.strokeStyle = "#111e32";
+      g.strokeStyle = starlight ? palette.edge : "#111e32";
       g.lineWidth = c.width + 6;
       g.stroke();
       path();
-      g.strokeStyle = c.road;
+      g.strokeStyle = palette.road;
       g.lineWidth = c.width;
       g.stroke();
-      path();
+      if (!starlight) { path();
       g.strokeStyle = "#c9eeff21";
       g.lineWidth = 2;
       g.setLineDash([19, 26]);
       g.stroke();
-      g.setLineDash([]);
-      for (let d = 0; d < c.length; d += 75) {
+      g.setLineDash([]); }
+      for (let d = starlight ? 45 : 0; d < c.length; d += starlight ? 180 : 75) {
         const p = R.at(c, d);
-        g.fillStyle = c.edge;
+        if(starlight) {
+          g.save();g.translate(p.x,p.y);g.rotate(Math.atan2(p.ty,p.tx));
+          g.fillStyle=palette.joint;g.fillRect(-.5,-c.width*.4,1,c.width*.8);g.restore();
+        }
+        g.fillStyle = palette.edge;
         for (const side of [-1, 1]) {
           g.save();
           g.translate(
-            p.x - p.ty * c.width * 0.49 * side,
-            p.y + p.tx * c.width * 0.49 * side,
+            p.x - p.ty * (starlight ? c.width/2-5 : c.width*.49) * side,
+            p.y + p.tx * (starlight ? c.width/2-5 : c.width*.49) * side,
           );
           g.rotate(Math.atan2(p.ty, p.tx));
-          g.fillRect(-14, -3, 28, 6);
+          g.fillRect(starlight?-11:-14,starlight?-1.25:-3,starlight?22:28,starlight?2.5:6);
           g.restore();
         }
       }
@@ -1622,10 +1640,10 @@
         g.save();
         g.translate(p.x, p.y);
         g.rotate(Math.atan2(p.ty, p.tx));
-        g.fillStyle = c.accent + "22";
+        g.fillStyle = palette.accent + "22";
         round(g, -30, -c.width * 0.34, 60, c.width * 0.68, 7);
         g.fill();
-        g.strokeStyle = c.accent;
+        g.strokeStyle = palette.accent;
         g.lineWidth = 5;
         for (let i = -1; i <= 1; i++) {
           g.beginPath();
@@ -1680,31 +1698,31 @@
       function symbol(kind, x, y, size = 1) {
         ctx.save(); ctx.translate(x,y); ctx.rotate(-camera.rotation); ctx.scale(size,size);
         ctx.lineWidth = 2; ctx.strokeStyle = "#081a2b";
-        if (kind === "coin") {
-          ctx.fillStyle = "#ffd976"; ctx.beginPath();
-          for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?5:12; if(i)ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);else ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r);}
-          ctx.closePath();ctx.fill();ctx.stroke();
-        } else if (kind === "shield") {
-          ctx.fillStyle="#8de7ff";ctx.beginPath();ctx.moveTo(0,-15);ctx.lineTo(13,-10);ctx.lineTo(10,5);ctx.lineTo(0,16);ctx.lineTo(-10,5);ctx.lineTo(-13,-10);ctx.closePath();ctx.fill();ctx.stroke();
-          ctx.strokeStyle="#e8fdff";ctx.beginPath();ctx.moveTo(-5,-5);ctx.lineTo(0,7);ctx.lineTo(5,-5);ctx.stroke();
-        } else {
-          ctx.fillStyle="#ffc18a";ctx.beginPath();ctx.moveTo(-10,-13);ctx.lineTo(14,0);ctx.lineTo(-10,13);ctx.lineTo(-4,0);ctx.closePath();ctx.fill();ctx.stroke();
-        }
+        const shape=root.SpaceManArt.circuitGlyphs[kind];
+        ctx.fillStyle=kind==='coin'?'#ffda72':kind==='shield'?'#8beaf2':'#ffc08e';
+        ctx.beginPath();shape.forEach(([side,up],i)=>i?ctx.lineTo(side,-up):ctx.moveTo(side,-up));ctx.closePath();
+        ctx.fill();ctx.stroke();
+        if(kind==='coin') {ctx.strokeStyle='#fff0b6';ctx.lineWidth=.8;ctx.stroke();}
+        if(kind==='shield') {ctx.strokeStyle='#d9faff';ctx.beginPath();ctx.moveTo(-5,-5);ctx.lineTo(0,7);ctx.lineTo(5,-5);ctx.stroke();}
         ctx.restore();
       }
       for(const ramp of catalog.ramps) {
         const p = point(ramp);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);
-        const gradient=ctx.createLinearGradient(-60,0,0,0);gradient.addColorStop(0,"#264852");gradient.addColorStop(1,"#6398a6");
-        ctx.fillStyle=gradient;ctx.fillRect(-60,-ramp.width/2,60,ramp.width);
-        ctx.strokeStyle="#9cf5ff";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(0,-ramp.width/2);ctx.lineTo(0,ramp.width/2);ctx.stroke();
-        for(const side of[-55,0,55]){ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-40,side-13);ctx.lineTo(-23,side);ctx.lineTo(-40,side+13);ctx.stroke();}
+        const palette=root.SpaceManArt.circuitPalette(c);
+        ctx.fillStyle=palette.ink;ctx.fillRect(-60,-ramp.width/2,84,ramp.width);
+        ctx.fillStyle=palette.ramp;ctx.fillRect(-60,-ramp.width/2+3,84,ramp.width-6);
+        ctx.strokeStyle=palette.housing;ctx.lineWidth=2.5;
+        for(const side of[-1,1]) {ctx.beginPath();ctx.moveTo(-60,side*(ramp.width/2-2));ctx.lineTo(24,side*(ramp.width/2-2));ctx.stroke();}
+        ctx.beginPath();ctx.moveTo(0,-ramp.width/2+3);ctx.lineTo(0,ramp.width/2-3);ctx.stroke();
+        ctx.strokeStyle='#8beaf2';
+        for(const forward of[-40,-19]){ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(forward-7,-54);ctx.lineTo(forward+7,0);ctx.lineTo(forward-7,54);ctx.stroke();}
         ctx.restore();
       }
       for(const coin of catalog.coins) {
         if ((actor.coinMask || 0) & (1<<coin.index)) continue;
-        const p=point(coin);ctx.fillStyle="#08121a55";ctx.beginPath();ctx.ellipse(p.x,p.y,11,7,p.heading,0,TAU);ctx.fill();
+        const p=point(coin);ctx.fillStyle="#08121a55";ctx.beginPath();ctx.ellipse(p.x,p.y,8,5,p.heading,0,TAU);ctx.fill();
         ctx.save();ctx.translate(p.x,p.y);ctx.rotate(-camera.rotation);
-        if(coin.airborne){ctx.strokeStyle="#ffe5a84d";ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,13,0,TAU);ctx.stroke();ctx.translate(0,-14);}
+        if(coin.airborne){ctx.strokeStyle="#ffe5a84d";ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,8,0,TAU);ctx.stroke();ctx.translate(0,-14);}
         ctx.rotate(camera.rotation);symbol("coin",0,0);ctx.restore();
       }
       for(const row of catalog.rows) {
@@ -1733,7 +1751,7 @@
       const style = root.SpaceManArt.characterStyle(appearance, a.color);
       const rise = hero ? 0 : actorElevation(a), lift = rise * .8, bodyScale = scale * (1 + rise / 200);
       ctx.save();ctx.translate(a.x,a.y);ctx.rotate(a.heading);ctx.scale(scale,scale);
-      ctx.fillStyle="#0006";ctx.beginPath();ctx.ellipse(0,5,28,19,0,0,TAU);ctx.fill();ctx.restore();
+      for(let i=0;i<4;i++) {ctx.fillStyle='rgba(5,14,23,'+(0.035+i*.015)+')';ctx.beginPath();ctx.ellipse(0,3,30-i*4,23-i*3,0,0,TAU);ctx.fill();}ctx.restore();
       ctx.save(); ctx.translate(a.x - Math.sin(camera.rotation)*lift, a.y - Math.cos(camera.rotation)*lift); ctx.rotate(a.heading); ctx.scale(bodyScale, bodyScale);
       const slip = a.speed > 3 ? Math.atan2(Math.sin(a.heading - Math.atan2(a.vy, a.vx)), Math.cos(a.heading - Math.atan2(a.vy, a.vx))) : 0;
       if (!a.offroad && Math.abs(slip) > .18 && !a.recoveryTicks) {

@@ -2434,11 +2434,13 @@ function onKey(e, down) {
   if (modeOverlayActive()) return;
   const k = (e.key || '').toLowerCase();
   if (isTextField(e.target)) { if (down && k === 'escape' && menuBack()) e.preventDefault(); return; }
-  if (down && (k === 'enter' || k === ' ') && G.mode !== 'play' && focusInOverlay()) return;   // native button activation — never a second startRun/restart
+  // Both halves of native activation belong to the focused control. Cancelling
+  // Space keyup suppresses a button's click; arrow keys also belong to ranges.
+  if (G.mode !== 'play' && focusInOverlay() && ['enter', ' ', 'tab', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'home', 'end', 'pageup', 'pagedown'].includes(k)) return;
   if (down && k === 'escape' && menuBack()) { e.preventDefault(); return; }   // Escape closes a sub-menu before it pauses
   const act = keyAction(k);
   // Crew standings: hold Tab to peek (the scoreboard convention), or tap C to pin it open. In a room only.
-  if (k === 'tab' && netInRun()) { e.preventDefault(); if (down) { if (!e.repeat) { crew.peek = !crew.open; toggleCrew(true); } } else if (crew.peek) { crew.peek = false; toggleCrew(false); } return; }
+  if (k === 'tab' && netInRun() && G.mode === 'play') { e.preventDefault(); if (down) { if (!e.repeat) { crew.peek = !crew.open; toggleCrew(true); } } else if (crew.peek) { crew.peek = false; toggleCrew(false); } return; }
   if (down && k === 'c' && !act && !e.repeat && netInRun() && !e.metaKey && !e.ctrlKey) { crew.peek = false; toggleCrew(); return; }
   if (act === 'left' || act === 'right' || act === 'down') input[act] = down;
   if (act === 'jump') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }

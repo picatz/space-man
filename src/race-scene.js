@@ -106,7 +106,7 @@
         ];
       };
       // Analytical normals remove the blocky lighting of the old flat-shaded
-      // shell without subdivision or a shader/material pass. Scenery stays faceted.
+      // shell without subdivision or a shader/material pass.
       const normal = (a, b) => {
         const f = Math.cos(b) * Math.cos(a) / rx,
           up = Math.sin(b) / ry, side = Math.cos(b) * Math.sin(a) / rz,
@@ -153,15 +153,16 @@
   }
   function course(c, at) {
     const b = builder(),
-      edge = rgb(c.edge),
-      accent = rgb(c.accent),
-      road = rgb(c.road);
+      palette = Art.circuitPalette(c),
+      edge = rgb(palette.edge),
+      accent = rgb(palette.accent),
+      road = rgb(palette.road);
     const half = c.width / 2,
       clearance = (c.runoff || 0) + 28 + 12,
       clearances = [];
     const trackMesh = TrackMesh.build(c);
     // Repeated luminous pylons create strong speed/depth cues without collision walls.
-    for (let d = 0; d < c.length; d += 105) {
+    for (let d = 0; d < c.length; d += c.id === 'starlight' ? 180 : 105) {
       const p = at(c, d),
         h = Math.atan2(p.ty, p.tx);
       for (const side of [-1, 1]) {
@@ -173,8 +174,55 @@
         b.box(x, 16, z, 8, 3, 8, edge, h);
       }
     }
-    // Track-specific skyline silhouettes are generated locally, not fetched assets.
-    for (let i = 0; i < 32; i++) {
+    if (c.id === 'starlight') {
+      // Cut-corner housings echo the craft's fitted panels without repeating pods.
+      const housing = (x,y,z,w,h,d,color,heading) => {
+        const cut=Math.min(w,d)*.16, co=Math.cos(heading),si=Math.sin(heading),
+          outline=[[-w/2+cut,-d/2],[w/2-cut,-d/2],[w/2,-d/2+cut],[w/2,d/2-cut],
+            [w/2-cut,d/2],[-w/2+cut,d/2],[-w/2,d/2-cut],[-w/2,-d/2+cut]],
+          point=(p,yy,inset=0)=>[x+p[0]*(1-inset)*co-p[1]*(1-inset)*si,yy,z+p[0]*(1-inset)*si+p[1]*(1-inset)*co];
+        for(let i=0;i<8;i++) {
+          const a=outline[i],n=outline[(i+1)%8];
+          b.quad(point(a,y),point(a,y+h-3),point(n,y+h-3),point(n,y),shade(color,.72));
+          b.quad(point(a,y+h-3),point(a,y+h,.08),point(n,y+h,.08),point(n,y+h-3),color);
+          b.triangle([x,y+h,z],point(n,y+h,.08),point(a,y+h,.08),color);
+        }
+      };
+      for(const {a,b:next,width} of Art.circuitConnections(c,at,TrackMesh.distance)) {
+        const length=Math.hypot(next.x-a.x,next.z-a.z),nx=-(next.z-a.z)/length*width/2,nz=(next.x-a.x)/length*width/2,
+          A=[a.x+nx,-1,a.z+nz],B=[next.x+nx,-1,next.z+nz],C=[next.x-nx,-1,next.z-nz],D=[a.x-nx,-1,a.z-nz];
+        b.quad(A,B,C,D,rgb(palette.curb));
+        b.quad(A,[A[0],-5,A[2]],[B[0],-5,B[2]],B,rgb(palette.ink));
+        b.quad(C,[C[0],-5,C[2]],[D[0],-5,D[2]],D,rgb(palette.ink));
+      }
+      for (const structure of Art.circuitStructures(c,at,TrackMesh.distance)) {
+        const {x,z,width:w,depth:d,height:h,heading}=structure;
+        clearances.push({...structure,type:'landmark'});
+        housing(x,-3,z,w+6,8,d+6,rgb(palette.curb),heading);
+        housing(x,5,z,w,h,d,rgb(palette.road),heading);
+        b.box(x,10,z,w+1,2,d+1,shade(edge,.65),heading);
+        housing(x,5+h,z,w,4,d,rgb(palette.housing),heading);
+        const roof=(f,side)=>[x+Math.cos(heading)*f-Math.sin(heading)*side,9.1+h,z+Math.sin(heading)*f+Math.cos(heading)*side];
+        b.quad(roof(-w*.31,-d*.26),roof(-w*.31,d*.26),roof(w*.31,d*.26),roof(w*.31,-d*.26),rgb(palette.ink));
+        if(structure.kind==='relay') {
+          b.box(x,9+h,z,5,22,5,rgb(palette.ink),heading);
+          b.box(x,28+h,z,24,5,12,edge,heading);
+        }
+      }
+      // Sparse, inset panel joints carry scale without competing with pads/items.
+      for(let d=45;d<c.length;d+=180) {
+        const p=at(c,d),h=Math.atan2(p.ty,p.tx);
+        const panel=(forward,width,side,color)=>{
+          const point=(f,d)=>[p.x+p.tx*f-p.ty*d,.15,p.y+p.ty*f+p.tx*d];
+          b.quad(point(-forward/2,side-width/2),point(-forward/2,side+width/2),
+            point(forward/2,side+width/2),point(forward/2,side-width/2),color);
+        };
+        panel(1,c.width*.8,0,rgb(palette.joint));
+        for(const side of [-1,1]) panel(22,2.5,side*(half-5),edge);
+      }
+    }
+    // Other courses retain their existing biome silhouettes.
+    for (let i = 0; c.id !== 'starlight' && i < 32; i++) {
       const p = at(c, (i * c.length) / 32),
         side = i % 2 ? -1 : 1,
         dist = half + 180 + (i % 4) * 55,
@@ -255,21 +303,23 @@
         const x = p.x - p.ty * offset * side,
           z = p.y + p.tx * offset * side;
         if (TrackMesh.distance(c, x, z) < required) continue;
-        support = { x, z, radius, type: "arch", offset };
+        support = { x, z, radius, type: "arch", offset, height: c.id==='starlight'?176:210 };
         break;
       }
       if (!support) throw new RangeError("No clear finish-arch support position");
       clearances.push(support);
-      b.box(support.x, 0, support.z, 13, 210, 13, shade(edge, 0.6), h);
+      b.box(support.x, 0, support.z, 13, support.height, 13, c.id==='starlight'?rgb(palette.curb):shade(edge, 0.6), h);
       return support;
     });
     const archX = (supports[0].x + supports[1].x) / 2,
       archZ = (supports[0].z + supports[1].z) / 2,
       archSpan = supports[0].offset + supports[1].offset;
-    b.box(archX, 207, archZ, 17, 14, archSpan + 15, [0.17, 0.28, 0.37], h);
+    // Above the highest portrait chase eye (151), so it cannot sweep over the road view.
+    const archHeight=c.id==='starlight'?172:207;
+    b.box(archX, archHeight, archZ, 17, 14, archSpan + 15, [0.17, 0.28, 0.37], h);
     b.box(
       archX + Math.cos(h) * 10,
-      212,
+      archHeight+5,
       archZ + Math.sin(h) * 10,
       3,
       5,
@@ -280,8 +330,14 @@
     const mesh = b.mesh();
     mesh.static = true;
     const sky = builder();
-    sky.sphere(2000, 900, 2000, 500, rgb(c.planet));
-    sky.sphere(-1000, 520, 1200, 240, shade(accent, 0.6));
+    if(c.id==='starlight') {
+      // Shared soft material language at the same tessellation budget.
+      sky.ellipsoid(2000,900,2000,500,500,500,rgb(c.planet),0,24,12);
+      sky.ellipsoid(-1000,520,1200,240,240,240,shade(accent,.6),0,24,12);
+    } else {
+      sky.sphere(2000, 900, 2000, 500, rgb(c.planet));
+      sky.sphere(-1000, 520, 1200, 240, shade(accent, 0.6));
+    }
     // Star diamonds at a stable world distance; they move only with the view.
     for (let i = 0; i < 160; i++) {
       const a = i * 2.39996,
@@ -660,14 +716,16 @@
       b.quad(...points,color);
     }
   }
-  const SHIELD_SHAPE = [[-12,13],[12,13],[12,-2],[8,-10],[0,-17],[-8,-10],[-12,-2]];
-  const PULSE_SHAPE = [[0,17],[13,1],[5,1],[5,-15],[-5,-15],[-5,1],[-13,1]];
-  function symbol(b, shape, point, color) {
-    for (let i = 0; i < shape.length; i++)
-      b.triangle(point(0,shape===PULSE_SHAPE?3:0), point(...shape[i]), point(...shape[(i + 1) % shape.length]), color);
+  const SHIELD_SHAPE = Art.circuitGlyphs.shield;
+  const PULSE_SHAPE = Art.circuitGlyphs.pulse;
+  function symbol(b, shape, point, color, reverse = false) {
+    for (let i = 0; i < shape.length; i++) {
+      const a=point(...shape[i]),n=point(...shape[(i+1)%shape.length]);
+      b.triangle(point(0,shape===PULSE_SHAPE?3:0), reverse?n:a, reverse?a:n, color);
+    }
   }
   function badge(b, shape, y, color) {
-    for (const face of [-1, 1]) symbol(b, shape, (side, up) => [face*2,y+up,side], color);
+    for (const face of [-1, 1]) symbol(b, shape, (side, up) => [face*2,y+up,side], color, face>0);
     for (let i = 0; i < shape.length; i++) {
       const [s,u] = shape[i], [ss,uu] = shape[(i+1)%shape.length];
       b.quad([-2,y+u,s],[2,y+u,s],[2,y+uu,ss],[-2,y+uu,ss],shade(color,.65));
@@ -676,15 +734,13 @@
   function pickupModel(kind, airborne = false) {
     return featureModel(kind === 'coin' ? 'coin-' + airborne : kind, () => {
       const b = builder(), identity = (f,y,d) => [f,y,d];
-      ring(b,identity,0,.65,0,11,11,2,kind === 'coin' ? GOLD : CYAN);
+      const color=kind==='coin'?GOLD:kind==='shield'?CYAN:PULSE;
+      ring(b,identity,0,.65,0,kind==='coin'?8:11,kind==='coin'?8:11,1,shade(color,.38));
       if (kind === 'coin') {
-        const star = Array.from({length:10}, (_,i) => {
-          const angle = Math.PI / 2 + i * Math.PI / 5, radius = i % 2 ? 5.5 : 12;
-          return [Math.cos(angle)*radius,Math.sin(angle)*radius];
-        });
-        badge(b,star,airborne ? 43 : 28,GOLD);
-        // A road bead anchors even the air-line stars to their optional lane.
-        b.crystal(0,1.2,0,4,3,GOLD,4);
+        const star=Art.circuitGlyphs.coin, y=airborne?43:25;
+        // A small inset face leaves an ivory-gold bevel, with a darker solid edge.
+        badge(b,star,y,[1,.88,.6]);
+        for(const face of [-1,1]) symbol(b,star,(side,up)=>[face*2.08,y+up*.77,side*.77],GOLD,face>0);
       } else {
         badge(b,kind === 'shield' ? SHIELD_SHAPE : PULSE_SHAPE,30,kind === 'shield' ? CYAN : PULSE);
         if (kind === 'shield') symbol(b,SHIELD_SHAPE,(side,up)=>[-2.2,30+up*.55,side*.55],[.12,.31,.4]);
@@ -713,15 +769,16 @@
     const ramps = [], coins = [], rows = [];
     for (const ramp of catalog.ramps.slice(0, 2)) {
       const b = builder(), top = (s) => .35 + rampProfile(s, ramp);
-      ribbon(b,c,at,ramp.startS,ramp.s+24,ramp.d,ramp.width,top,[.15,.3,.38],6);
+      ribbon(b,c,at,ramp.startS,ramp.s+24,ramp.d,ramp.width,top,rgb(Art.circuitPalette(c).ramp),6);
       for (const side of [-1,1]) {
         ribbon(b,c,at,ramp.startS,ramp.s+24,ramp.d+side*(ramp.width/2-2),2.5,
-          (s)=>top(s)+.12,CYAN,6);
+          (s)=>top(s)+.12,rgb(Art.circuitPalette(c).housing),6);
         for (let s = ramp.startS; s < ramp.s+24; s+=6) {
           const n = Math.min(ramp.s+24,s+6), p=at(c,s),q=at(c,n),d=ramp.d+side*ramp.width/2;
           b.quad(roadPoint(p,d,.15),roadPoint(q,d,.15),roadPoint(q,d,top(n)),roadPoint(p,d,top(s)),[.1,.2,.28]);
         }
       }
+      ribbon(b,c,at,ramp.s-1,ramp.s+1,ramp.d,ramp.width-6,(s)=>top(s)+.24,rgb(Art.circuitPalette(c).housing));
       for (const s of [ramp.s-40,ramp.s-19]) chevron(b,c,at,s,ramp.d,108,(s)=>top(s)+.18,CYAN);
       ramps.push(boundedMesh(b,{featureKind:'ramp',featureId:ramp.id}));
       const landing = builder();

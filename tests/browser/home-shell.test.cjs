@@ -108,8 +108,15 @@ test('home normal-motion mode and Done hover, focus and press keep continuously 
     await sampleFrames(page, () => button.hover(), id+'-hover-enter', id);
     await sampleFrames(page, () => page.mouse.move(5,5), id+'-hover-leave', id);
     await sampleFrames(page, () => button.hover(), id+'-hover-reenter', id);
-    await sampleFrames(page, async () => { await button.focus(); await page.keyboard.press('Shift+Tab'); await page.keyboard.press('Tab'); }, id+'-keyboard-focus', id);
-    assert.equal(await button.evaluate(e => e === document.activeElement && e.matches(':focus-visible')), true, 'actual keyboard focus remains visible');
+    await sampleFrames(page, async () => {
+      await button.focus();
+      // Done is the first Studio control. Step inward before returning so the
+      // test does not transfer focus through browser chrome on WebKit.
+      await page.keyboard.press(id === 'btnWardrobeDone' ? 'Tab' : 'Shift+Tab');
+      await page.keyboard.press(id === 'btnWardrobeDone' ? 'Shift+Tab' : 'Tab');
+    }, id+'-keyboard-focus', id);
+    const focus = await button.evaluate(e => ({ visible: e === document.activeElement && e.matches(':focus-visible'), active: document.activeElement?.id || document.activeElement?.tagName, documentFocused: document.hasFocus() }));
+    assert.equal(focus.visible, true, 'actual keyboard focus remains visible: '+JSON.stringify({ id, ...focus }));
     const frames = await sampleFrames(page, () => page.mouse.down(), id+'-held-press', id);
     assert.ok(frames.some(f => f.active), 'captured actual pressed frames');
     await page.mouse.move(5,5); await page.mouse.up();

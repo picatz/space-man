@@ -446,3 +446,5 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 #ovRoom .switch::before { inset:8px 0; border-radius:14px; background:#354357; }
 #ovRoom .switch.on::before { background:#61d4e7; }
 #ovRoom .switch::after { top:11px; }
+
+.secondary-panel .haptic-test .mini-chip { min-height:46px; }

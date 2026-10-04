@@ -58,7 +58,7 @@ async function launch(t, viewport = { width: 1440, height: 900 }, options = {}) 
   if (options.course) target.hash = 'seed=77&beat=500&v=2';
   browser = await engine.launch(engine === chromium && process.env.SPACE_MAN_CHROMIUM_PATH ? { executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : {});
   const touch = options.touch ?? viewport.width < 1000;
-  const context = await browser.newContext({ viewport, hasTouch: touch, isMobile: touch, serviceWorkers: 'block', reducedMotion: 'reduce' });
+  const context = await browser.newContext({ viewport, hasTouch: touch, isMobile: touch, serviceWorkers: 'block', reducedMotion: 'reduce', locale: 'en-US' });
   await context.routeWebSocket('**/*', ws => { sockets.push(ws.url()); ws.close(); });
   await context.route('**/*', route => {
     if (new URL(route.request().url()).origin === target.origin) return route.continue();
@@ -157,6 +157,22 @@ async function reachable(page, selector) {
   assert.ok(state.top >= -1 && state.bottom <= state.h + 1 && state.left >= -1 && state.right <= state.w + 1 && state.hit && state.enabled,
     `${selector}: fully visible and uncovered after scrolling ${JSON.stringify(state)}`);
 }
+async function scrollToRead(page, id) {
+  const content = page.locator(`#${id} .panel`);
+  await content.evaluate(n => { n.scrollTop = 0; });
+  if (!await content.evaluate(n => n.scrollHeight > n.clientHeight + 1)) return;
+  const bounds = await content.boundingBox();
+  if (engineName === 'webkit' && await page.evaluate(() => matchMedia('(pointer: coarse)').matches)) {
+    // Playwright has no mobile WebKit wheel/swipe input. Inspect the real scroll
+    // container here; the next helper verifies actual native Tab scrolling.
+    await content.evaluate(n => n.scrollBy(0, 500));
+  } else {
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + Math.min(80, bounds.height / 3));
+    await page.mouse.wheel(0, 500);
+  }
+  await page.waitForFunction(id => document.querySelector(`#${id} .panel`).scrollTop > 0, id);
+  assert.equal(await page.evaluate(() => scrollY), 0, 'reading scrolls the panel, never the page behind it');
+}
 async function footerByKeyboard(page, id, footer) {
   const root = page.locator('#' + id), list = root.locator('button:visible:not([disabled]), input:visible:not([disabled]), textarea:visible:not([disabled]), summary:visible');
   const count = await list.count();
@@ -206,6 +222,7 @@ for (const [width, height] of SIZES) test(`secondary ${width}x${height}: records
   assert.equal(await page.locator('#logbook').evaluate(n => getComputedStyle(n).overflowY), 'visible', 'logbook shares the full-panel scroll');
   await fit(page, 'ovTrophy'); await targets(page, 'ovTrophy');
   await capture(page, `records-populated-${size}-top`);
+  await scrollToRead(page, 'ovTrophy');
   await reachable(page, '#logCount');
   await capture(page, `records-populated-${size}-logbook`);
   await keyboardClose(page, 'ovTrophy', 'btnCloseTrophy');
@@ -214,6 +231,7 @@ for (const [width, height] of SIZES) test(`secondary ${width}x${height}: records
   assert.deepEqual(await page.locator('#ovSettings .settings-group').evaluateAll(nodes => nodes.map(n => n.getAttribute('aria-label'))), GROUPS);
   await fit(page, 'ovSettings'); await targets(page, 'ovSettings');
   await capture(page, `settings-${size}-top`);
+  await scrollToRead(page, 'ovSettings');
   for (const selector of ['[data-setting="muted"]', '[data-setting="musicVol"]', '[data-setting="reduceMotion"]', '[data-setting="batterySaver"]', '[data-setting="netGhosts"]', '.net-radio-opt[data-mode="default"]', '#btnReset']) await reachable(page, `#ovSettings ${selector}`);
   await capture(page, `settings-${size}-connection`);
   await keyboardClose(page, 'ovSettings', 'btnCloseSettings');
@@ -400,7 +418,7 @@ for (const [width, height] of SIZES) test(`secondary room ${width}x${height}: re
   assert.equal(state.info.isHost, true); assert.equal(state.info.players, 1);
   assert.ok(relayClient.sockets > 0 && relayClient.sent > 0 && relayClient.received > 0, 'production room completes the relay handshake');
   assert.equal(await page.locator('#roomRoster .roster-row').count(), 1);
-  assert.match(await page.locator('#roomRoster').innerText(), /you, host/);
+  assert.match(await page.locator('#roomRoster').innerText(), /you, host/i);
   assert.ok((await page.locator('#roomLink').innerText()).length > 10);
   await fit(page, 'ovRoom'); await targets(page, 'ovRoom');
   await capture(page, `room-${width}x${height}-top`);
@@ -429,6 +447,7 @@ test('secondary initials: real qualifying run, labeled letter controls and immed
   await activate(page, '#btnPlay'); await page.waitForFunction(() => G.mode === 'play');
   await page.keyboard.down('ArrowRight');
   try { await page.waitForFunction(() => G.dist >= 12); } finally { await page.keyboard.up('ArrowRight'); }
+  await page.waitForFunction(() => G.mode === 'dead' && G.showPicker, undefined, { timeout: 25000 });
   await panel(page, 'ovInitials');
   assert.equal(await page.evaluate(() => G.showPicker), true);
   for (const direction of ['Next', 'Previous']) for (let i = 1; i <= 3; i++) assert.equal(await page.getByRole('button', { name: `${direction} letter ${i}`, exact: true }).count(), 1);
