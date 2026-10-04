@@ -680,7 +680,10 @@
     if (support && targetPlatform && targetPlatform.y > support.y + 45 && centerX(actor) > targetPlatform.x + 25 && centerX(actor) < targetPlatform.x + targetPlatform.w - 25 && state.tick >= ai.nextJumpTick) {
       c.moveY = 1; c.jumpPressed = true; ai.nextJumpTick = state.tick + 20;
     }
-    if (target) {
+    // Guardian specials have their own aim/phase logic below. Fighter pulse and
+    // dodge steering would overwrite the safe destination, then persist after
+    // the unsupported action is discarded (including a run straight offstage).
+    if (target && !actor.boss) {
       const dx = centerX(target) - centerX(actor), dy = centerY(target) - centerY(actor);
       if (!offstage && Math.abs(dx) < 68 && Math.abs(dy) < 60 && !target.invulnerable && state.tick >= ai.nextAttackTick && !actor.stun && !actor.attackTicks && !actor.dashTicks) {
         c.attackPressed = true;
