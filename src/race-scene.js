@@ -153,15 +153,16 @@
   }
   function course(c, at) {
     const b = builder(),
-      edge = rgb(c.edge),
-      accent = rgb(c.accent),
-      road = rgb(c.road);
+      palette = Art.circuitPalette(c),
+      edge = rgb(palette.edge),
+      accent = rgb(palette.accent),
+      road = rgb(palette.road);
     const half = c.width / 2,
       clearance = (c.runoff || 0) + 28 + 12,
       clearances = [];
     const trackMesh = TrackMesh.build(c);
     // Repeated luminous pylons create strong speed/depth cues without collision walls.
-    for (let d = 0; d < c.length; d += 105) {
+    for (let d = 0; d < c.length; d += c.id === 'starlight' ? 180 : 105) {
       const p = at(c, d),
         h = Math.atan2(p.ty, p.tx);
       for (const side of [-1, 1]) {
@@ -173,8 +174,46 @@
         b.box(x, 16, z, 8, 3, 8, edge, h);
       }
     }
-    // Track-specific skyline silhouettes are generated locally, not fetched assets.
-    for (let i = 0; i < 32; i++) {
+    if (c.id === 'starlight') {
+      // Cut-corner housings echo the craft's fitted panels without repeating pods.
+      const housing = (x,y,z,w,h,d,color,heading) => {
+        const cut=Math.min(w,d)*.16, co=Math.cos(heading),si=Math.sin(heading),
+          outline=[[-w/2+cut,-d/2],[w/2-cut,-d/2],[w/2,-d/2+cut],[w/2,d/2-cut],
+            [w/2-cut,d/2],[-w/2+cut,d/2],[-w/2,d/2-cut],[-w/2,-d/2+cut]],
+          point=(p,yy,inset=0)=>[x+p[0]*(1-inset)*co-p[1]*(1-inset)*si,yy,z+p[0]*(1-inset)*si+p[1]*(1-inset)*co];
+        for(let i=0;i<8;i++) {
+          const a=outline[i],n=outline[(i+1)%8];
+          b.quad(point(a,y),point(a,y+h-3),point(n,y+h-3),point(n,y),shade(color,.72));
+          b.quad(point(a,y+h-3),point(a,y+h,.08),point(n,y+h,.08),point(n,y+h-3),color);
+          b.triangle([x,y+h,z],point(n,y+h,.08),point(a,y+h,.08),color);
+        }
+      };
+      for (const structure of Art.circuitStructures(c,at,TrackMesh.distance)) {
+        const {x,z,width:w,depth:d,height:h,heading}=structure;
+        clearances.push({...structure,type:'landmark'});
+        housing(x,-3,z,w+6,8,d+6,rgb(palette.ink),heading);
+        housing(x,5,z,w,h,d,rgb(palette.housing),heading);
+        b.box(x,10,z,w+1,2,d+1,shade(edge,.65),heading);
+        housing(x,5+h,z,w*.66,4,d*.58,rgb(palette.road),heading);
+        if(structure.kind==='relay') {
+          b.box(x,9+h,z,5,22,5,rgb(palette.ink),heading);
+          b.box(x,28+h,z,24,5,12,edge,heading);
+        }
+      }
+      // Sparse, inset panel joints carry scale without competing with pads/items.
+      for(let d=45;d<c.length;d+=180) {
+        const p=at(c,d),h=Math.atan2(p.ty,p.tx);
+        const panel=(forward,width,side,color)=>{
+          const point=(f,d)=>[p.x+p.tx*f-p.ty*d,.15,p.y+p.ty*f+p.tx*d];
+          b.quad(point(-forward/2,side-width/2),point(-forward/2,side+width/2),
+            point(forward/2,side+width/2),point(forward/2,side-width/2),color);
+        };
+        panel(1,c.width*.8,0,rgb(palette.joint));
+        for(const side of [-1,1]) panel(22,2.5,side*(half-5),edge);
+      }
+    }
+    // Other courses retain their existing biome silhouettes.
+    for (let i = 0; c.id !== 'starlight' && i < 32; i++) {
       const p = at(c, (i * c.length) / 32),
         side = i % 2 ? -1 : 1,
         dist = half + 180 + (i % 4) * 55,
@@ -660,14 +699,16 @@
       b.quad(...points,color);
     }
   }
-  const SHIELD_SHAPE = [[-12,13],[12,13],[12,-2],[8,-10],[0,-17],[-8,-10],[-12,-2]];
-  const PULSE_SHAPE = [[0,17],[13,1],[5,1],[5,-15],[-5,-15],[-5,1],[-13,1]];
-  function symbol(b, shape, point, color) {
-    for (let i = 0; i < shape.length; i++)
-      b.triangle(point(0,shape===PULSE_SHAPE?3:0), point(...shape[i]), point(...shape[(i + 1) % shape.length]), color);
+  const SHIELD_SHAPE = Art.circuitGlyphs.shield;
+  const PULSE_SHAPE = Art.circuitGlyphs.pulse;
+  function symbol(b, shape, point, color, reverse = false) {
+    for (let i = 0; i < shape.length; i++) {
+      const a=point(...shape[i]),n=point(...shape[(i+1)%shape.length]);
+      b.triangle(point(0,shape===PULSE_SHAPE?3:0), reverse?n:a, reverse?a:n, color);
+    }
   }
   function badge(b, shape, y, color) {
-    for (const face of [-1, 1]) symbol(b, shape, (side, up) => [face*2,y+up,side], color);
+    for (const face of [-1, 1]) symbol(b, shape, (side, up) => [face*2,y+up,side], color, face>0);
     for (let i = 0; i < shape.length; i++) {
       const [s,u] = shape[i], [ss,uu] = shape[(i+1)%shape.length];
       b.quad([-2,y+u,s],[2,y+u,s],[2,y+uu,ss],[-2,y+uu,ss],shade(color,.65));
@@ -676,15 +717,13 @@
   function pickupModel(kind, airborne = false) {
     return featureModel(kind === 'coin' ? 'coin-' + airborne : kind, () => {
       const b = builder(), identity = (f,y,d) => [f,y,d];
-      ring(b,identity,0,.65,0,11,11,2,kind === 'coin' ? GOLD : CYAN);
+      const color=kind==='coin'?GOLD:kind==='shield'?CYAN:PULSE;
+      ring(b,identity,0,.65,0,kind==='coin'?8:11,kind==='coin'?8:11,1,shade(color,.38));
       if (kind === 'coin') {
-        const star = Array.from({length:10}, (_,i) => {
-          const angle = Math.PI / 2 + i * Math.PI / 5, radius = i % 2 ? 5.5 : 12;
-          return [Math.cos(angle)*radius,Math.sin(angle)*radius];
-        });
-        badge(b,star,airborne ? 43 : 28,GOLD);
-        // A road bead anchors even the air-line stars to their optional lane.
-        b.crystal(0,1.2,0,4,3,GOLD,4);
+        const star=Art.circuitGlyphs.coin, y=airborne?43:25;
+        // A small inset face leaves an ivory-gold bevel, with a darker solid edge.
+        badge(b,star,y,[1,.88,.6]);
+        for(const face of [-1,1]) symbol(b,star,(side,up)=>[face*2.08,y+up*.77,side*.77],GOLD,face>0);
       } else {
         badge(b,kind === 'shield' ? SHIELD_SHAPE : PULSE_SHAPE,30,kind === 'shield' ? CYAN : PULSE);
         if (kind === 'shield') symbol(b,SHIELD_SHAPE,(side,up)=>[-2.2,30+up*.55,side*.55],[.12,.31,.4]);
@@ -713,10 +752,10 @@
     const ramps = [], coins = [], rows = [];
     for (const ramp of catalog.ramps.slice(0, 2)) {
       const b = builder(), top = (s) => .35 + rampProfile(s, ramp);
-      ribbon(b,c,at,ramp.startS,ramp.s+24,ramp.d,ramp.width,top,[.15,.3,.38],6);
+      ribbon(b,c,at,ramp.startS,ramp.s+24,ramp.d,ramp.width,top,rgb(Art.circuitPalette(c).road),6);
       for (const side of [-1,1]) {
         ribbon(b,c,at,ramp.startS,ramp.s+24,ramp.d+side*(ramp.width/2-2),2.5,
-          (s)=>top(s)+.12,CYAN,6);
+          (s)=>top(s)+.12,rgb(Art.circuitPalette(c).housing),6);
         for (let s = ramp.startS; s < ramp.s+24; s+=6) {
           const n = Math.min(ramp.s+24,s+6), p=at(c,s),q=at(c,n),d=ramp.d+side*ramp.width/2;
           b.quad(roadPoint(p,d,.15),roadPoint(q,d,.15),roadPoint(q,d,top(n)),roadPoint(p,d,top(s)),[.1,.2,.28]);

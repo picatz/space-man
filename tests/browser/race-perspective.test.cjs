@@ -913,3 +913,176 @@ test('perspective timing control: topdown with only a lightweight callback timer
     assert.ok(frames.every(f => Number.isFinite(f.ms) && f.ms >= 0));
     assert.equal(await page.locator('.race-root').getAttribute('data-renderer'), '2d');
   });
+
+// Visual evidence runs separately from both timing tests above. Only standard
+// gamepad input drives the racer; the step wrapper observes completed ticks and
+// never edits the simulation, its clock, events, camera poses or actor state.
+function installLapVisualEvidence() {
+  window.testPad = {
+    connected: true, mapping: "standard", index: 0, axes: [0, 0],
+    buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
+  };
+  Object.defineProperty(navigator, "getGamepads", {
+    value: () => [testPad], configurable: true,
+  });
+  const evidence = window.raceLapVisualEvidence = {
+    recording: false, done: false, start: null, end: null,
+    playerEvents: [], heldItems: [], maxPlayerHeight: 0, driverSamples: 0,
+  };
+  let api, driver;
+  function checkpoint(state) {
+    const a = state.actors[0], c = api.course(state.trackId);
+    return {
+      tick: state.tick, raceTick: state.raceTick, phase: state.phase,
+      lap: a.lap, passed: a.passed, progress: a.progress,
+      courseS: api.nearest(c, a.x, a.y).s, recoveries: a.recoveries,
+      airRamp: a.airRamp, airTicks: a.airTicks, z: a.z,
+      item: a.item, shieldTicks: a.shieldTicks,
+      playerPulsePhases: state.effects.filter(e => e.ownerId === a.id).map(e => e.phase),
+    };
+  }
+  Object.defineProperty(window, "SpaceManRace", {
+    configurable: true,
+    get: () => api,
+    set(value) {
+      api = Object.freeze({
+        ...value,
+        step(...args) {
+          const result = value.step.apply(this, args), state = args[0], a = state.actors[0];
+          if (!evidence.recording || state.phase !== "racing") return result;
+          evidence.maxPlayerHeight = Math.max(evidence.maxPlayerHeight, a.z);
+          if (a.item && !evidence.heldItems.includes(a.item)) evidence.heldItems.push(a.item);
+          for (const event of state.events)
+            if (event.id === a.id) evidence.playerEvents.push({ tick: state.tick, ...event });
+          if (a.passed >= api.constants.GATES) {
+            evidence.end = checkpoint(state);
+            evidence.recording = false;
+            evidence.done = true;
+          }
+          return result;
+        },
+      });
+    },
+  });
+  evidence.sample = () => checkpoint(raceUI.snapshot());
+  evidence.startDriver = () => {
+    evidence.start = evidence.sample();
+    evidence.recording = true;
+    driver = setInterval(() => {
+      const state = raceUI.snapshot();
+      if (!evidence.recording || state?.phase !== "racing") return;
+      const command = api.cpuInput(state, state.actors[0]);
+      testPad.axes[0] = command.steer;
+      for (const [index, pressed] of [[0, command.boost], [1, command.brake], [5, command.item]]) {
+        testPad.buttons[index].pressed = pressed;
+        testPad.buttons[index].value = pressed ? 1 : 0;
+      }
+      evidence.driverSamples++;
+    }, 16);
+  };
+  evidence.stopDriver = () => {
+    clearInterval(driver);
+    testPad.axes[0] = 0;
+    testPad.buttons.forEach(button => { button.pressed = false; button.value = 0; });
+  };
+}
+
+test(
+  "perspective art evidence: complete first Starlight laps in three phone cameras",
+  { timeout: 295000 },
+  async (t) => {
+    // Six first laps, no warm-up lap, and at most 24 screenshots. Keep this
+    // bounded for the 15-minute browser workflow; these are not FPS samples.
+    for (const orientation of ["portrait", "landscape"])
+      for (const camera of ["topdown", "chase", "cockpit"])
+        await t.test(`${orientation} ${camera}`, { timeout: 48000 }, async (t) => {
+          const deadline = Date.now() + 45000,
+            viewport = orientation === "portrait"
+              ? { width: 390, height: 844 } : { width: 844, height: 390 },
+            { page } = await launch(t, {
+              viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 2,
+            }, installLapVisualEvidence);
+          await page.locator('[data-track="starlight"]').click();
+          await page.locator(".race-launch").click();
+          await page.getByRole("button", { name: "Camera view", exact: true }).click();
+          await page.locator(`.race-view-menu [data-camera="${camera}"]`).click();
+          await playing(page);
+          const checkpoints = await page.evaluate(() => {
+            const course = SpaceManRace.course("starlight"), features = SpaceManRace.features(course),
+              progress = s => s / course.length * SpaceManRace.constants.GATES;
+            return [
+              { name: "start", progress: 0 },
+              { name: "ramp-approach", progress: progress(features.ramps[0].startS - 125) },
+              // This names the authored sky-coin location, not an assertion
+              // that the player is airborne when the screenshot is taken.
+              { name: "airborne-pickup-lane", progress: progress(features.ramps[0].s + 54) },
+              { name: "shield-pulse-decision", progress: progress(features.rows[0].s - 140) },
+              { name: "return-to-finish", progress: progress(course.length - 120) },
+            ];
+          });
+          const captures = [];
+          let runError;
+          await page.evaluate(() => raceLapVisualEvidence.startDriver());
+          try {
+            for (const checkpoint of checkpoints) {
+              if (orientation === "landscape" &&
+                  ["start", "airborne-pickup-lane"].includes(checkpoint.name)) continue;
+              await page.waitForFunction(target =>
+                raceLapVisualEvidence.sample().progress >= target,
+              checkpoint.progress, { polling: "raf", timeout: Math.max(1, deadline - Date.now()) });
+              const before = await page.evaluate(() => raceLapVisualEvidence.sample()),
+                name = `starlight-lap-${orientation}-${camera}-${checkpoint.name}`;
+              await capture(page, name);
+              const after = await page.evaluate(() => raceLapVisualEvidence.sample());
+              captures.push({
+                checkpoint: checkpoint.name, requestedProgress: checkpoint.progress,
+                screenshot: process.env.SPACE_MAN_RACE_SCREENSHOTS ? name + ".png" : null,
+                before, after,
+                playerAirborneAtBothSamples: !!before.airRamp && before.airRamp === after.airRamp,
+              });
+            }
+            await page.waitForFunction(() => raceLapVisualEvidence.done, null, {
+              polling: 100, timeout: Math.max(1, deadline - Date.now()),
+            });
+          } catch (error) {
+            runError = error;
+          } finally {
+            await page.evaluate(() => raceLapVisualEvidence.stopDriver());
+          }
+          const observed = await page.evaluate(() => {
+            const { start, end, playerEvents, heldItems, maxPlayerHeight, driverSamples } = raceLapVisualEvidence;
+            return { start, end, playerEvents, heldItems, maxPlayerHeight, driverSamples };
+          });
+          const report = {
+            browser: process.env.SPACE_MAN_RACE_BROWSER || "chromium", orientation, viewport, camera,
+            renderer: await page.locator(".race-root").getAttribute("data-renderer"),
+            completedLap: !!observed.end, captures, ...observed,
+            error: runError?.message ?? null,
+            notes: [
+              "Actual first-lap standard-gamepad traversal; no state injection, teleport, warm-up or timing claims.",
+              "Portrait covers start, ramp approach, sky-coin lane, Shield/Pulse decision and return to finish.",
+              "Landscape covers ramp approach, Shield/Pulse decision and return to finish; every view still completes a lap.",
+              "Checkpoint names describe course regions. Events are observed on completed simulation ticks, not inferred from images.",
+              "Before/after samples bracket capture, not the exact rendered frame. A jump may be observed without being caught in a screenshot.",
+              "The unchanged CPU driver chooses items normally; seeing the two-choice row does not establish both item activations.",
+            ],
+          };
+          t.diagnostic(JSON.stringify(report));
+          const directory = process.env.SPACE_MAN_RACE_SCREENSHOTS || process.env.SPACE_MAN_RACE_TRACES;
+          if (directory) {
+            await fs.mkdir(directory, { recursive: true });
+            await fs.writeFile(path.join(directory,
+              `starlight-lap-${report.browser}-${orientation}-${camera}.json`), JSON.stringify(report, null, 2) + "\n");
+          }
+          assert.ifError(runError);
+          assert.equal(report.renderer, camera === "topdown" ? "2d" : "webgl");
+          assert.equal(observed.start.passed, 0);
+          assert.equal(observed.end.passed, 20, "the driver completed all ordered gates of the first lap");
+          assert.equal(observed.end.recoveries, observed.start.recoveries);
+          assert.ok(observed.driverSamples > 0);
+          assert.equal(captures.length, orientation === "portrait" ? 5 : 3);
+          assert.ok(captures.every(c => c.before.lap === 1), "all checkpoint captures begin on the first lap");
+          assert.ok(captures.slice(1).every((c, i) => c.before.tick > captures[i].before.tick));
+        });
+  },
+);

@@ -21,6 +21,45 @@
   // Semantic roles for gameplay reads — keep hazards warm, friends cool, rewards gold.
   const ROLE = Object.freeze({ hazard: C.coral, friend: C.cyan, reward: C.gold, enemy: C.green, text: C.ui, power: '#B87BFF' });
 
+  // Render-only Circuit design tokens. Physics retains its authored course data.
+  const STARLIGHT_MATERIALS = Object.freeze({ road: '#294052', edge: '#86cdbf',
+    curb: '#9aadaf', apron: '#172935', outerEdge: '#42646d', accent: '#bdeca2',
+    housing: '#c6d6d3', ink: '#152a38', joint: '#355161' });
+  function circuitPalette(course) {
+    if (course.id === 'starlight') return STARLIGHT_MATERIALS;
+    return { road: course.road, edge: course.edge, accent: course.accent,
+      curb: '#bdced0', apron: '#13202b', outerEdge: course.edge, housing: '#c6d6d3', ink: '#152a38', joint: '#355161' };
+  }
+  // Coordinates are [side, up]. Both canvas and mesh render these exact glyphs.
+  const circuitGlyphs = Object.freeze({
+    coin: Object.freeze(Array.from({length:10}, (_,i) => {
+      const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 4 : 8.5;
+      return Object.freeze([Math.cos(a)*r, Math.sin(a)*r]);
+    })),
+    shield: Object.freeze([[-12,13],[12,13],[12,-2],[8,-10],[0,-17],[-8,-10],[-12,-2]].reverse().map(Object.freeze)),
+    pulse: Object.freeze([[0,17],[13,1],[5,1],[5,-15],[-5,-15],[-5,1],[-13,1]].reverse().map(Object.freeze)),
+  });
+  const circuitStructureCache = new WeakMap();
+  function circuitStructures(course, at, distance) {
+    if (course.id !== 'starlight') return [];
+    if (circuitStructureCache.has(course)) return circuitStructureCache.get(course);
+    const structures = [], half = course.width / 2, clearance = (course.runoff || 0) + 40;
+    // Three legible working clusters, with open skyline between them.
+    for (const [fraction, side, kind] of [[.025,-1,'bay'],[.29,1,'relay'],[.69,-1,'dock']]) {
+      for (let i=0; i<3; i++) {
+        const p=at(course,fraction*course.length+(i-1)*100), radius=kind==='dock'?58:48;
+        for(let offset=half+250;offset<half+750;offset+=32) {
+          const x=p.x-p.ty*offset*side,z=p.y+p.tx*offset*side;
+          if(distance(course,x,z)<half+radius+clearance || structures.some(other=>Math.hypot(other.x-x,other.z-z)<other.radius+radius+24)) continue;
+          structures.push(Object.freeze({x,z,heading:Math.atan2(p.ty,p.tx),radius,
+            kind, width:kind==='dock'?88:72, depth:48, height:kind==='relay'?42+i*12:26+i*5}));
+          break;
+        }
+      }
+    }
+    const result=Object.freeze(structures);circuitStructureCache.set(course,result);return result;
+  }
+
   // Biome colors for a sector hue (degrees). Pure: same hue → same strings.
   // sky* are the gradient stops, ridge* the two skyline silhouettes (far/near),
   // rim the light catching the ridge tops, mote the ambient dust tint.
@@ -425,7 +464,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

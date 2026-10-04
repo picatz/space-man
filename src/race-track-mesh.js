@@ -2,10 +2,11 @@
  * A single, globally sampled distance field replaces self-crossing offset ribbons.
  * Every grid triangle is partitioned into disjoint scalar bands exactly once. */
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === "object" && module.exports
+    ? require("./art.js") : root.SpaceManArt);
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.SpaceManRaceTrackMesh = api;
-})(typeof window !== "undefined" ? window : globalThis, function () {
+})(typeof window !== "undefined" ? window : globalThis, function (Art) {
   "use strict";
   const segmentCache = new WeakMap(), meshCache = new WeakMap();
   const rgb = (hex, fallback) => /^#[0-9a-f]{6}$/i.test(hex || "")
@@ -132,23 +133,28 @@
     if (!Number.isFinite(course && course.width) || course.width <= 0)
       throw new TypeError("Course width must be positive and finite");
     const { lines, bounds } = geometry(course), half = course.width / 2,
+      palette = Art.circuitPalette(course), starlight = course.id === "starlight",
       cellSize = Math.min(12, course.width / 12),
       // Distance to a segment is convex with curvature <= 1 / distance. This
       // conservative interpolation allowance is < 0.7 units on shipped tracks;
       // it prevents a tessellated chord from shaving the physical lane edge.
       coverageGuard = cellSize * cellSize / (4 * (half - Math.SQRT2 * cellSize)),
       roadRadius = half + coverageGuard,
-      edge = rgb(course.edge, [0.4, 0.9, 0.9]),
-      road = rgb(course.road, [0.14, 0.21, 0.31]),
+      edge = rgb(starlight ? palette.edge : course.edge, [0.4, 0.9, 0.9]),
+      road = rgb(starlight ? palette.road : course.road, [0.14, 0.21, 0.31]),
       accent = rgb(course.accent, [0.7, 0.95, 0.45]),
-      apron = [0.075, 0.12, 0.17],
+      // Keep other circuits' original numeric colors byte-for-byte, including
+      // the computed ceramic and outer edge (no quantizing them through hex).
+      curb = starlight ? rgb(palette.curb) :
+        [0.69 + accent[0] * 0.12, 0.73 + accent[1] * 0.12, 0.75 + accent[2] * 0.12],
+      apron = starlight ? rgb(palette.apron) : [0.075, 0.12, 0.17],
+      outerEdge = starlight ? rgb(palette.outerEdge) : shade(edge, 0.38),
       bands = [
         { name: "road", radius: roadRadius, height: 0, color: road },
-        { name: "edge", radius: roadRadius + 3.5, height: 0.8, color: edge },
-        { name: "curb", radius: roadRadius + 11.5, height: 0.3,
-          color: [0.69 + accent[0] * 0.12, 0.73 + accent[1] * 0.12, 0.75 + accent[2] * 0.12] },
+        { name: "edge", radius: roadRadius + 3.5, height: starlight ? 0.35 : 0.8, color: edge },
+        { name: "curb", radius: roadRadius + 11.5, height: starlight ? 0.2 : 0.3, color: curb },
         { name: "apron", radius: half + 88, height: -3, color: apron },
-        { name: "outerEdge", radius: half + 92, height: -2, color: shade(edge, 0.38) },
+        { name: "outerEdge", radius: half + 92, height: starlight ? -3 : -2, color: outerEdge },
         { name: "outerApron", radius: half + 95, height: -3, color: apron },
       ];
     const outer = bands[bands.length - 1].radius,
@@ -159,6 +165,22 @@
       grid = new Array((columns + 1) * (rows + 1)), vertices = [];
     const counts = bands.map(() => 0), areas = bands.map(() => 0);
     let minTriangleArea = Infinity;
+
+    function heightAt(distance) {
+      // One continuous profile for every band: the navigation strip is seated
+      // in its ceramic curb, then a shallow bevel falls to the service deck.
+      // Shared distance-field endpoints get the same Float32 Y from either
+      // side. Road XZ tessellation, band radii and vertex count stay untouched.
+      if (distance <= roadRadius) return 0;
+      for (let i = 1; i < bands.length; i++) {
+        const before = bands[i - 1], after = bands[i];
+        if (distance <= after.radius) {
+          const t = (distance - before.radius) / (after.radius - before.radius);
+          return Math.fround(before.height + (after.height - before.height) * t);
+        }
+      }
+      return bands[bands.length - 1].height;
+    }
     for (let row = 0; row <= rows; row++) {
       const z = Math.fround(minZ + row * cellSize);
       for (let column = 0; column <= columns; column++) {
@@ -179,8 +201,20 @@
         minTriangleArea = Math.min(minTriangleArea, area);
         counts[bandIndex]++;
         areas[bandIndex] += area;
-        for (const p of [a, b, c])
-          vertices.push(p.x, band.height, p.z, 0, 1, 0, ...band.color);
+        if (starlight) {
+          const ay = heightAt(a.d), by = heightAt(b.d), cy = heightAt(c.d),
+            ux = b.x - a.x, uy = by - ay, uz = b.z - a.z,
+            vx = c.x - a.x, vy = cy - ay, vz = c.z - a.z,
+            nx = uy * vz - uz * vy, ny = twiceArea, nz = ux * vy - uy * vx,
+            length = Math.hypot(nx, ny, nz), normal = [nx / length, ny / length, nz / length];
+          // Geometric normals use the actual stored Float32 endpoints, so
+          // even rounded clipped slivers remain finite and upward-facing.
+          for (const [p, y] of [[a, ay], [b, by], [c, cy]])
+            vertices.push(p.x, y, p.z, ...normal, ...band.color);
+        } else {
+          for (const p of [a, b, c])
+            vertices.push(p.x, band.height, p.z, 0, 1, 0, ...band.color);
+        }
       }
     }
 
@@ -220,6 +254,8 @@
         bands: bands.map((band, index) => ({ name: band.name,
           innerRadius: index ? bands[index - 1].radius : 0,
           outerRadius: band.radius, height: band.height,
+          ...(starlight ? { innerHeight: index ? bands[index - 1].height : 0,
+            outerHeight: band.height } : {}),
           triangleCount: counts[index], area: areas[index] })),
       } };
     meshCache.set(course, result);
