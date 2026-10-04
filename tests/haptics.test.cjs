@@ -67,6 +67,9 @@ test('turning haptics on lets you feel it, and switching off is silent', (t) => 
   assert.deepEqual(buzzes.slice(1), [0], 'switching off makes no buzz and cuts any pulse still running');
 });
 
+// Traverse semantic setting groups as well as their real controls.
+function descendants(node) { return (node.children || []).flatMap(child => [child, ...descendants(child)]); }
+
 // Build the real settings rows into a host and report which haptic rows are on show.
 function rows(c) {
   const host = c.context.document.createElement('div');
@@ -74,7 +77,7 @@ function rows(c) {
   c.context.__host = host;
   c.run('buildSettings(__host)');
   const byKey = {};
-  for (const r of host.children) byKey[r.dataset.settingRow] = r;
+  for (const r of descendants(host)) byKey[r.dataset.settingRow] = r;
   return { byKey, shown: (k) => byKey[k].style.display !== 'none' };
 }
 
@@ -157,7 +160,7 @@ test('letting go of the strength slider feels the new strength, once, at that st
   const host = c.context.document.createElement('div');
   c.context.__host = host;
   c.run('hapticRows.length = 0; buildSettings(__host)');
-  const row = host.children.find((r) => r.dataset.settingRow === 'hapticsStrength');
+  const row = descendants(host).find((r) => r.dataset.settingRow === 'hapticsStrength');
   const range = row.children.find((x) => x.type === 'range');
   assert.equal(range.min, 30);
   assert.equal(range.max, 100);
@@ -175,7 +178,7 @@ test('swapping or unplugging controllers keeps the strength row honest, without 
   const host = c.context.document.createElement('div');
   c.context.__host = host;
   c.run('hapticRows.length = 0; buildSettings(__host)');
-  const row = host.children.find((r) => r.dataset.settingRow === 'hapticsStrength');
+  const row = descendants(host).find((r) => r.dataset.settingRow === 'hapticsStrength');
   const shown = () => row.style.display !== 'none';
   const rumble = { vibrationActuator: { playEffect: () => Promise.resolve() } };
   const plain = {};
@@ -234,10 +237,10 @@ test('the iPhone settings get a test tick that does not exist on other devices',
   try {
     const host = c.context.document.createElement('div'); c.context.__host = host;
     c.run('iosTapHaptics = false; buildSettings(__host)');
-    assert.equal(host.children.some((r) => /haptic-test/.test(r.className)), false);
+    assert.equal(descendants(host).some((r) => /haptic-test/.test(r.className)), false);
     const host2 = c.context.document.createElement('div'); c.context.__host2 = host2;
     c.run('iosTapHaptics = true; buildSettings(__host2)');
-    assert.equal(host2.children.some((r) => /haptic-test/.test(r.className)), true);
+    assert.equal(descendants(host2).some((r) => /haptic-test/.test(r.className)), true);
   } finally { c.close(); }
 });
 

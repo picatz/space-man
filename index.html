@@ -892,7 +892,7 @@
 
 <!-- Game over -->
 <div class="overlay dead-anchor" id="ovDead">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Run results">
     <div class="dead-cols">
     <div class="dead-main">
     <div class="eyebrow">Run Over</div>
@@ -928,7 +928,7 @@
 
 <!-- Settings -->
 <div class="overlay" id="ovSettings">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Settings">
     <div class="title-lg t-md">Settings</div>
     <div class="settings-list" data-settings-host></div>
     <button class="btn ghost" id="btnWardrobe2" style="margin-top:12px;">Suit Up</button>
@@ -958,7 +958,7 @@
 
 <!-- Records: top 5 → stats → discovery logbook -->
 <div class="overlay" id="ovTrophy">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Records">
     <div class="title-lg t-md">Records</div>
     <div class="section-head">Top Runs</div>
     <table class="scores" id="trophyScores"></table>
@@ -972,7 +972,7 @@
 
 <!-- Initials entry -->
 <div class="overlay" id="ovInitials">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="High score initials">
     <div class="title-lg t-md">New High Score!</div>
     <div class="sub">Enter your initials</div>
     <div class="initials" id="initialsPicker"></div>
@@ -982,7 +982,7 @@
 
 <!-- Run Together: the front door — create a room, or join one with a code or a link -->
 <div class="overlay" id="ovTogether">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Run Together">
     <div class="title-lg t-md">Run Together</div>
     <div class="sub">Race the same course with friends, on any device.</div>
     <button class="btn pulse" id="btnCreateRoom">Create a Room</button>
@@ -992,14 +992,14 @@
       autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NYC-COMET-42"
       aria-describedby="joinHint" />
     <div class="join-hint" id="joinHint" role="status" aria-live="polite">Type the code your friend sees, or paste their invite link.</div>
-    <button class="btn" id="btnJoinGo">Join</button>
+    <button class="btn ghost" id="btnJoinGo">Join</button>
     <button class="btn ghost" id="btnTogetherBack">Back</button>
   </div>
 </div>
 
 <!-- Run Together: room card — attract-anchored so the idle scene stays behind it -->
 <div class="overlay attract-anchor" id="ovRoom">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Room">
     <div class="title-lg t-md" id="roomTitle">Room</div>
     <div class="net-sub" id="roomCounts"></div>
     <div class="room-codebar invite-block" id="roomCodeBar">
@@ -1046,7 +1046,7 @@
 
 <!-- Run Together: join invite prompt -->
 <div class="overlay" id="ovJoin">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Join invitation">
     <div class="title-lg t-md" id="joinTitle">Join This Run Together?</div>
     <div id="joinState"></div>
     <div id="joinCustomDir">This room uses a custom relay directory.</div>
@@ -1060,7 +1060,7 @@
 
 <!-- Run Together: blocked-host warning -->
 <div class="overlay" id="ovBlockedHost">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Blocked host">
     <div class="title-lg t-md">Blocked Host</div>
     <div class="sub">This room is hosted by someone you've blocked.</div>
     <button class="btn" id="btnBlockedNotNow">Not Now</button>
@@ -1070,18 +1070,19 @@
 
 <!-- Run Together: callsign picker (two-column spinner) -->
 <div class="overlay" id="ovCallsign">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Your callsign">
     <div class="title-lg t-md">Your Callsign</div>
     <div class="callsign-cols" id="callsignCols"></div>
     <div id="callsignPreview"></div>
     <button class="btn ghost" id="btnCallsignReroll">Re-roll</button>
-    <button class="btn" id="btnCallsignDone">Done</button>
+    <div class="surface-actions"><button class="btn" id="btnCallsignDone">Use callsign</button>
+    <button class="btn ghost" id="btnCallsignCancel">Cancel</button></div>
   </div>
 </div>
 
 <!-- Run Together: roster long-press sheet (hide / block / kick) -->
 <div class="overlay dead-anchor" id="ovRosterActions">
-  <div class="panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Player actions">
     <div class="roster-actions-head" id="rosterActionsHead"></div>
     <button class="btn ghost" id="btnRosterHide">Hide</button>
     <button class="btn ghost" id="btnRosterBlock">Block</button>
@@ -2245,7 +2246,13 @@ function buzz(kind) {
       return;
     }
   } catch (e) {}
-  try { const l = document.getElementById('hapLbl'); if (l) l.click(); } catch (e) {}   // iOS 17.4+: a switch input's tick is the only web haptic
+  try {
+    const l = document.getElementById('hapLbl'), focused = document.activeElement;
+    if (l) l.click();   // iOS 17.4+: a switch input's tick is the only web haptic
+    // A programmatic label click can focus its hidden switch in WebKit. Tactile
+    // feedback must not steal the keyboard/controller cursor from a real control.
+    if (focused && focused.isConnected !== false && typeof focused.focus === 'function' && l && typeof l.contains === 'function' && l.contains(document.activeElement)) focused.focus({ preventScroll: true });
+  } catch (e) {}
 }
 
 /* ---------------------------------------------------------------------------
@@ -2269,13 +2276,13 @@ function inMuteHit(p) { const h = G._muteHit; return !!h && p.x >= h.x0 && p.x <
 // Stacking order: later ids sit on top when two overlays are ever shown at once.
 const OVERLAY_IDS = ['ovAttract', 'ovPause', 'ovDead', 'ovSettings', 'ovTrophy', 'ovInitials', 'ovWardrobe', 'ovTogether', 'ovRoom', 'ovJoin', 'ovBlockedHost', 'ovCallsign', 'ovRosterActions'];
 const PRIMARY_OVERLAY = { attract: 'ovAttract', pause: 'ovPause', dead: 'ovDead' };
-const MENU_BACK = { ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignDone', ovRosterActions: 'btnRosterCancel' };
+const MENU_BACK = { ovSettings: 'btnCloseSettings', ovTrophy: 'btnCloseTrophy', ovWardrobe: 'btnWardrobeDone', ovTogether: 'btnTogetherBack', ovRoom: 'btnRoomBack', ovJoin: 'btnJoinNotNow', ovBlockedHost: 'btnBlockedNotNow', ovCallsign: 'btnCallsignCancel', ovRosterActions: 'btnRosterCancel' };
 function topOverlayId() {
   for (let i = OVERLAY_IDS.length - 1; i >= 0; i--) if (document.getElementById(OVERLAY_IDS[i]).classList.contains('show')) return OVERLAY_IDS[i];
   return null;
 }
 const visibleEl = (el) => !el.disabled && el.getClientRects().length > 0;
-function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input[type="range"], summary')).filter(visibleEl) : []; }
+function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input, textarea, summary, [role="button"][tabindex]')).filter(el => visibleEl(el) && el.tabIndex !== -1) : []; }
 function menuFocusFirst(id) { const it = menuItems(id); const featured = id === 'ovAttract' && it.find(el => el.id === 'btnPlay'); if (it.length) (featured || it[0]).focus(); return it.length > 0; }
 // Spatial move: nearest control whose centre lies in the pressed direction
 // (cross-axis distance weighted 2x); vertical presses wrap in DOM order.
@@ -2432,12 +2439,25 @@ function isTextField(t) {
 function onKey(e, down) {
   if (modeOverlayActive()) return;
   const k = (e.key || '').toLowerCase();
+  // A modal's Tab order stays inside its real, visible controls. This also
+  // runs for textareas before their ordinary text-key ownership shortcut.
+  if (down && k === 'tab') {
+    const overlayId = topOverlayId(), overlay = overlayId && document.getElementById(overlayId);
+    if (overlay && overlay.querySelector('.secondary-panel')) {
+      const items = menuItems(overlayId), active = document.activeElement;
+      if (items.length && ((e.shiftKey ? active === items[0] : active === items[items.length - 1]) || !items.includes(active))) {
+        e.preventDefault(); (e.shiftKey ? items[items.length - 1] : items[0]).focus(); return;
+      }
+    }
+  }
   if (isTextField(e.target)) { if (down && k === 'escape' && menuBack()) e.preventDefault(); return; }
-  if (down && (k === 'enter' || k === ' ') && G.mode !== 'play' && focusInOverlay()) return;   // native button activation — never a second startRun/restart
+  // Both halves of native activation belong to the focused control. Cancelling
+  // Space keyup suppresses a button's click; arrow keys also belong to ranges.
+  if (G.mode !== 'play' && focusInOverlay() && ['enter', ' ', 'tab', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'home', 'end', 'pageup', 'pagedown'].includes(k)) return;
   if (down && k === 'escape' && menuBack()) { e.preventDefault(); return; }   // Escape closes a sub-menu before it pauses
   const act = keyAction(k);
   // Crew standings: hold Tab to peek (the scoreboard convention), or tap C to pin it open. In a room only.
-  if (k === 'tab' && netInRun()) { e.preventDefault(); if (down) { if (!e.repeat) { crew.peek = !crew.open; toggleCrew(true); } } else if (crew.peek) { crew.peek = false; toggleCrew(false); } return; }
+  if (k === 'tab' && netInRun() && G.mode === 'play') { e.preventDefault(); if (down) { if (!e.repeat) { crew.peek = !crew.open; toggleCrew(true); } } else if (crew.peek) { crew.peek = false; toggleCrew(false); } return; }
   if (down && k === 'c' && !act && !e.repeat && netInRun() && !e.metaKey && !e.ctrlKey) { crew.peek = false; toggleCrew(); return; }
   if (act === 'left' || act === 'right' || act === 'down') input[act] = down;
   if (act === 'jump') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
@@ -2468,6 +2488,13 @@ function onKey(e, down) {
     }
   }
 }
+// Preserve a visible keyboard cursor when WebKit's native focus-visible
+// heuristic loses modality after a programmatic haptic-label click. Pointer
+// input clears this fallback; ordinary native focus-visible still works.
+document.addEventListener('keydown', (e) => {
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && ['Tab', 'Enter', ' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) document.body.classList.add('keyboard-active');
+}, true);
+document.addEventListener('pointerdown', () => document.body.classList.remove('keyboard-active'), true);
 window.addEventListener('keydown', (e) => onKey(e, true));
 window.addEventListener('keyup', (e) => onKey(e, false));
 
@@ -6299,7 +6326,10 @@ function showOverlay(id) {
   if (input.pad.connected && !SHOT) menuFocusFirst(topOverlayId());   // controller players land on the first control
   // Double-rAF (E9.1): the 0-state must paint one frame before .in flips the
   // transition, or the browser collapses show+in into a single no-op frame.
-  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    el.classList.add('in');
+    if (!SHOT && el.classList.contains('show') && el.querySelector('.secondary-panel') && !el.contains(document.activeElement)) menuFocusFirst(id);
+  }));
 }
 
 function medalGlyphs() {
@@ -6536,7 +6566,7 @@ function shareRun() {
 function renderScoreTable(id, highlight) {
   // First-run dignity (E9.4): only filled rows render; an empty board never
   // shows five rows of dashes.
-  if (!top5.length) { $(id).innerHTML = '<tr><td colspan="3" class="empty">FIRST FLIGHT — YOU SET THE BOARD</td></tr>'; return; }
+  if (!top5.length) { $(id).innerHTML = '<tr><td colspan="3" class="empty">Your first run starts the story.</td></tr>'; return; }
   let html = '';
   for (let i = 0; i < top5.length; i++) {
     const e = top5[i], me = highlight && e === justAdded;
@@ -6554,9 +6584,9 @@ function showInitials() {
   const pick = $('initialsPicker'); pick.innerHTML = '';
   for (let i = 0; i < 3; i++) {
     const col = document.createElement('div'); col.className = 'initial-col';
-    const up = document.createElement('button'); up.className = 'arrow-btn'; up.textContent = '▲';
+    const up = document.createElement('button'); up.className = 'arrow-btn'; up.textContent = '▲'; up.setAttribute('aria-label', 'Next letter ' + (i + 1));
     const ch = document.createElement('div'); ch.className = 'initial-char'; ch.textContent = initialsChars[i];
-    const dn = document.createElement('button'); dn.className = 'arrow-btn'; dn.textContent = '▼';
+    const dn = document.createElement('button'); dn.className = 'arrow-btn'; dn.textContent = '▼'; dn.setAttribute('aria-label', 'Previous letter ' + (i + 1));
     up.onclick = () => { initialsChars[i] = nextChar(initialsChars[i], 1); ch.textContent = initialsChars[i]; Audio.sfx.ui(3); };
     dn.onclick = () => { initialsChars[i] = nextChar(initialsChars[i], -1); ch.textContent = initialsChars[i]; Audio.sfx.ui(1); };
     col.appendChild(up); col.appendChild(ch); col.appendChild(dn); pick.appendChild(col);
@@ -6742,22 +6772,22 @@ function ensureWardrobeCallsign() {
 /* ---- settings ---- */
 // One definition, two hosts (ovPause + ovSettings): rows can never drift apart.
 const SETTINGS_DEF = [
-  { key: 'muted', type: 'switch', label: 'Mute all audio' },
+  { key: 'muted', section: 'Sound', type: 'switch', label: 'Mute all audio' },
   { key: 'music', type: 'switch', label: 'Music' },
   { key: 'musicVol', type: 'slider', label: 'Music volume', dependsOn: 'music' },
   { key: 'sfx', type: 'switch', label: 'Sound FX' },
   { key: 'sfxVol', type: 'slider', label: 'SFX volume', dependsOn: 'sfx' },
-  { key: 'haptics', type: 'switch', label: 'Haptics' },
+  { key: 'haptics', section: 'Feel', type: 'switch', label: 'Haptics' },
   { key: 'hapticsStrength', type: 'slider', label: 'Haptic strength', dependsOn: 'haptics', min: 0.3, max: 1, noShot: true },
   { key: 'hapticsSaver', type: 'switch', label: 'Off on low battery', dependsOn: 'haptics', noShot: true },
-  { key: 'shake', type: 'switch', label: 'Screen shake' },
+  { key: 'shake', section: 'Motion & controls', type: 'switch', label: 'Screen shake' },
   // noShot rows (like net rows) never appear under #shot, so goldens hold.
   { key: 'reduceMotion', type: 'switch', label: 'Reduce motion', noShot: true },
   { key: 'lefty', type: 'switch', label: 'Left-handed' },
   { key: 'autorun', type: 'switch', label: 'Auto-run (touch)' },
   // Device-dependent (adaptive resolution never runs under #shot): noShot keeps
   // the row out of the pause/settings goldens like the net rows below.
-  { key: 'sharp', type: 'switch', label: 'Sharp rendering', noShot: true },
+  { key: 'sharp', section: 'Performance', type: 'switch', label: 'Sharp rendering', noShot: true },
   // Battery saver: 30fps, 1× resolution, lighter effects. Device-dependent like Sharp, so noShot.
   { key: 'smooth', type: 'switch', label: 'Smooth motion (120 fps)', noShot: true },
   { key: 'batterySaver', type: 'switch', label: 'Battery saver', noShot: true },
@@ -6788,13 +6818,21 @@ function hapticTestRow() {
   return row;
 }
 function buildSettings(host) {
+  let group = host;
   for (const def of SETTINGS_DEF) {
     if ((def.net || def.noShot) && SHOT) continue;   // net/a11y rows never bloat a #shot golden
     const keyRow = def.type === 'key' || def.type === 'keyreset';
-    if (def.section) {   // a lightweight header before the first row of a group
-      const h = document.createElement('div');
+    if (def.section) {
+      group = host;
+      if (!SHOT) {
+        group = document.createElement('section');
+        group.className = 'settings-group' + (keyRow ? ' key-row' : '');
+        group.setAttribute('aria-label', def.section);
+        host.appendChild(group);
+      }
+      const h = document.createElement('h2');
       h.className = 'section-head' + (keyRow ? ' key-row' : ''); h.textContent = def.section;
-      host.appendChild(h);
+      group.appendChild(h);
     }
     const row = document.createElement('div');
     row.className = 'toggle-row'; row.dataset.settingRow = def.key;
@@ -6826,10 +6864,14 @@ function buildSettings(host) {
       r.onchange = () => { persistAll(); if (def.key === 'hapticsStrength') buzz('success'); };   // let go of the slider and feel the new strength
       row.appendChild(r); row.appendChild(pct);
     }
-    host.appendChild(row);
-    if (def.key === 'haptics' && iosTapHaptics && !SHOT) host.appendChild(hapticTestRow());
+    group.appendChild(row);
+    if (def.key === 'haptics' && iosTapHaptics && !SHOT) group.appendChild(hapticTestRow());
   }
-  if (!SHOT) buildNetworkSettings(host);   // bespoke net rows off under #shot (golden identity)
+  if (!SHOT) {
+    const network = document.createElement('section'); network.className = 'settings-group settings-network';
+    network.setAttribute('aria-label', 'Connection'); host.appendChild(network);
+    buildNetworkSettings(network);
+  }   // bespoke net rows off under #shot (golden identity)
   syncHapticRows();
 }
 const AUDIO_ROWS = new Set(['music', 'musicVol', 'sfx', 'sfxVol']);
@@ -6994,9 +7036,9 @@ function renderCallsign() {
     cols.innerHTML = '';
     for (let c = 0; c < 2; c++) {
       const col = document.createElement('div'); col.className = 'callsign-col';
-      const up = document.createElement('button'); up.className = 'arrow-btn'; up.textContent = '▲';
+      const up = document.createElement('button'); up.className = 'arrow-btn'; up.textContent = '▲'; up.setAttribute('aria-label', 'Next ' + (c === 0 ? 'adjective' : 'noun'));
       const w = document.createElement('div'); w.className = 'callsign-word'; w.dataset.col = c;
-      const dn = document.createElement('button'); dn.className = 'arrow-btn'; dn.textContent = '▼';
+      const dn = document.createElement('button'); dn.className = 'arrow-btn'; dn.textContent = '▼'; dn.setAttribute('aria-label', 'Previous ' + (c === 0 ? 'adjective' : 'noun'));
       up.onclick = () => { stepCallsignCol(c, 1); renderCallsign(); Audio.sfx.ui(3); };
       dn.onclick = () => { stepCallsignCol(c, -1); renderCallsign(); Audio.sfx.ui(1); };
       col.appendChild(up); col.appendChild(w); col.appendChild(dn); cols.appendChild(col);
@@ -7009,20 +7051,32 @@ function renderCallsign() {
   const txt = NET ? NET.callsignText(callsignSel[0], callsignSel[1]) : null;
   $('callsignPreview').textContent = txt || ((d.adj[callsignSel[0]] || '') + ' ' + (d.noun[callsignSel[1]] || ''));
 }
-let callsignDone = null;
+let callsignDone = null, callsignReturn = null;
 function showCallsign(onDone) {
+  callsignReturn = topOverlayId();
   callsignDone = onDone || null;
   const cur = getCallsign();
   if (cur) callsignSel = cur; else rerollCallsign();   // opening pre-rolls a valid pair (§13.4: Done alone = "just pick one")
   renderCallsign();
   hideAllOverlays(); showOverlay('ovCallsign');
 }
+function cancelCallsign() {
+  callsignDone = null;
+  const previous = callsignReturn; callsignReturn = null;
+  hideAllOverlays();
+  if (previous === 'ovWardrobe') showWardrobe();
+  else if (previous && previous !== 'ovCallsign') showOverlay(previous);
+  else showAttract();
+}
+
 function commitCallsign() {
   if (!G.cosmetics) return;
   G.cosmetics.callsign = [callsignSel[0], callsignSel[1]];
   persistAll();                                        // existing cosmetics path (LS.cosmetics)
   applyCallsignToNet();
-  const cb = callsignDone; callsignDone = null;
+  const cb = callsignDone; callsignDone = null; callsignReturn = null;
+  // Dismiss the committed picker before a potentially asynchronous join starts.
+  hideAllOverlays();
   if (cb) cb(); else showAttract();
 }
 
@@ -7514,7 +7568,7 @@ function buildNetworkSettings(host) {
   host.appendChild(h);
 
   // Custom relay (single host) — tap → prompt() (net-spec §4.8).
-  const cr = document.createElement('div'); cr.className = 'toggle-row';
+  const cr = document.createElement('button'); cr.type = 'button'; cr.className = 'toggle-row settings-action';
   cr.innerHTML = '<span>Custom Relay</span>';
   const crVal = document.createElement('span'); crVal.className = 'net-val net-customrelay-val';
   cr.appendChild(crVal);
@@ -7539,19 +7593,19 @@ function buildNetworkSettings(host) {
     { m: 'list', label: 'Server List', hint: 'A list of servers for your server' },
   ];
   for (const mo of modes) {
-    const opt = document.createElement('div'); opt.className = 'net-radio-opt'; opt.dataset.mode = mo.m;
+    const opt = document.createElement('button'); opt.type = 'button'; opt.className = 'net-radio-opt'; opt.dataset.mode = mo.m;
     opt.innerHTML = '<span class="dot"></span><span>' + mo.label + '</span>';
     opt.onclick = () => { settings.netRelayMode = mo.m; persistAll(); syncSettingsUI(); };
     rd.appendChild(opt);
     if (mo.hint) { const hn = document.createElement('div'); hn.className = 'hint'; hn.textContent = mo.hint; rd.appendChild(hn); }
     if (mo.m === 'custom') {
-      const inp = document.createElement('input'); inp.className = 'net-relayurl'; inp.placeholder = 'https://…/relay-map'; inp.style.display = 'none';
+      const inp = document.createElement('input'); inp.className = 'net-relayurl'; inp.setAttribute('aria-label', 'Custom relay directory URL'); inp.placeholder = 'https://…/relay-map'; inp.style.display = 'none';
       inp.value = settings.netRelayUrl;
       inp.onchange = () => { settings.netRelayUrl = String(inp.value).trim(); persistAll(); };
       rd.appendChild(inp);
     }
     if (mo.m === 'list') {
-      const ta = document.createElement('textarea'); ta.className = 'net-relaylist'; ta.rows = 3; ta.placeholder = 'one host per line'; ta.style.display = 'none';
+      const ta = document.createElement('textarea'); ta.className = 'net-relaylist'; ta.setAttribute('aria-label', 'Relay server list'); ta.rows = 3; ta.placeholder = 'one host per line'; ta.style.display = 'none';
       ta.value = settings.netRelayList;
       ta.onchange = () => { settings.netRelayList = String(ta.value); persistAll(); };
       rd.appendChild(ta);
@@ -7564,11 +7618,11 @@ function buildNetworkSettings(host) {
   host.appendChild(st);
 
   // Blocked list (Addendum G) — count chip → expandable list with Unblock chips.
-  const bl = document.createElement('div'); bl.className = 'toggle-row';
+  const bl = document.createElement('button'); bl.type = 'button'; bl.className = 'toggle-row settings-action'; bl.setAttribute('aria-expanded', 'false');
   bl.innerHTML = '<span>Blocked</span>';
   const blVal = document.createElement('span'); blVal.className = 'net-val net-blocked-count'; bl.appendChild(blVal);
   const blList = document.createElement('div'); blList.id = ''; blList.className = 'net-blocked-list'; blList.style.display = 'none'; blList.style.textAlign = 'left';
-  bl.onclick = () => { blList.style.display = blList.style.display === 'none' ? '' : 'none'; renderBlockedList(blList); };
+  bl.onclick = () => { blList.style.display = blList.style.display === 'none' ? '' : 'none'; bl.setAttribute('aria-expanded', String(blList.style.display !== 'none')); renderBlockedList(blList); };
   host.appendChild(bl); host.appendChild(blList);
 
   // Leave room — only while in a room (mirrors the room card; pause reachability
@@ -7598,7 +7652,7 @@ function syncNetworkSettings() {
   document.querySelectorAll('.net-customrelay-val').forEach((e) => { e.textContent = settings.netRelay || 'Off'; });
   const modeLabel = { default: 'Default', custom: 'Custom URL', list: 'Server List' }[settings.netRelayMode] || 'Default';
   document.querySelectorAll('.net-relaymode-val').forEach((e) => { e.textContent = modeLabel; });
-  document.querySelectorAll('.net-radio-opt').forEach((e) => { e.classList.toggle('sel', e.dataset.mode === settings.netRelayMode); });
+  document.querySelectorAll('.net-radio-opt').forEach((e) => { e.classList.toggle('sel', e.dataset.mode === settings.netRelayMode); e.setAttribute('aria-pressed', String(e.dataset.mode === settings.netRelayMode)); });
   document.querySelectorAll('.net-relayurl').forEach((e) => { e.style.display = settings.netRelayMode === 'custom' ? '' : 'none'; });
   document.querySelectorAll('.net-relaylist').forEach((e) => { e.style.display = settings.netRelayMode === 'list' ? '' : 'none'; });
   document.querySelectorAll('.net-status-row').forEach((e) => {
@@ -8821,6 +8875,7 @@ $('btnBlockedNotNow').onclick = () => showAttract();
 $('btnJoinAnyway').onclick = () => { joinOverride = true; resetJoinPrompt(); hideAllOverlays(); showOverlay('ovJoin'); };   // deliberate one-time override past the block (§6)
 $('btnCallsignReroll').onclick = () => { rerollCallsign(); Audio.sfx.ui(3); };
 $('btnCallsignDone').onclick = () => commitCallsign();
+$('btnCallsignCancel').onclick = () => cancelCallsign();
 // Screen-reader announcements at the moment each net event fires (§14.1).
 if (NET) NET.onEvent((e, d) => {
   if (modeOverlayActive() || ['arena','race','journey'].includes(TRANSPORT.info().mode)) return;
@@ -8878,7 +8933,7 @@ function netEmoteToast(d) {
   queueToast(who + ' ' + (EMOTE_GLYPH[d.id] || ''), 'net');
 }
 $('btnReset').onclick = () => {
-  if (!confirm('Erase all scores, stats, and settings?')) return;
+  if (!confirm('Erase all local scores, stats, settings, outfits, callsign, discoveries and daily progress? This cannot be undone.')) return;
   try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, LS.daily, 'highScores'].forEach((k) => localStorage.removeItem(BUILD.storageKey(k))); } catch (e) {}
   location.reload();
 };

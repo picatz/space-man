@@ -22,16 +22,22 @@ async function launch(t,device){
  await page.locator('#btnArena').click();await page.locator('#arenaStart').click();await page.waitForFunction(()=>arenaUI.snapshot()?.phase==='playing');
  return page;
 }
-async function tap(page,device,action){
+async function tap(page,device,action,touchPoint){
  if(device==='keyboard')await page.keyboard.press(action==='attack'?'f':'k');
- else if(device==='touch')await page.locator('.arena-touch-'+action).tap();
+ else if(device==='touch')await page.touchscreen.tap(touchPoint.x,touchPoint.y);
  else {const n=action==='attack'?2:1;await page.evaluate(n=>{testPad.buttons[n]={pressed:true,value:1};},n);await page.waitForFunction(({action})=>bufferSamples.some(s=>s.input[action==='attack'?'attackPressed':'dashPressed']),{action});await page.evaluate(n=>{testPad.buttons[n]={pressed:false,value:0};},n);}
 }
 for(const device of ['keyboard','touch','gamepad'])test(`${device} real Pulse tap near recovery executes once at readiness`,{timeout:45000},async t=>{
  const page=await launch(t,device);
- await tap(page,device,'attack');await page.waitForFunction(()=>arenaUI.snapshot().actors[0].attackSerial===1);
+ // Resolve geometry before the timed input window; locator.tap() would repeat
+ // actionability/stability waits after observing a window of at most 100ms.
+ const touchBox=device==='touch'?await page.locator('.arena-touch-attack').boundingBox():null;
+ if(device==='touch')assert.ok(touchBox,'actual touch button is visible');
+ const touchPoint=touchBox?{x:touchBox.x+touchBox.width/2,y:touchBox.y+touchBox.height/2}:null;
+ await tap(page,device,'attack',touchPoint);await page.waitForFunction(()=>arenaUI.snapshot().actors[0].attackSerial===1);
+ await page.evaluate(()=>bufferSamples.length=0);
  await page.waitForFunction(()=>{const a=arenaUI.snapshot().actors[0];return a.attackTicks<=6&&a.attackTicks>1;},undefined,{polling:'raf'});
- await page.evaluate(()=>bufferSamples.length=0);await tap(page,device,'attack');
+ await tap(page,device,'attack',touchPoint);
  await page.waitForFunction(()=>arenaUI.snapshot().actors[0].attackSerial===2);
  const samples=await page.evaluate(()=>bufferSamples),late=samples.find(s=>s.input.attackPressed);
  assert.ok(late&&late.attackTicks>1&&late.attackTicks<=7,'the second actual device press landed within the late window');
