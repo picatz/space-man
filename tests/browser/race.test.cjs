@@ -98,7 +98,7 @@ test(
   { timeout: 70000 },
   async (t) => {
     const { page } = await launch(t);
-    assert.equal(await page.locator(".race-track").count(), 3);
+    assert.equal(await page.locator(".race-track").count(), 4);
     assert.equal(await page.locator(".race-segment").count(), 3);
     await capture(page, "race-lobby-desktop");
     await page.locator(".race-launch").click();
@@ -170,7 +170,7 @@ test(
     );
     await page.keyboard.press("Escape");
     await menu(page, "Choose a circuit");
-    for (const id of ["ember", "bloom"]) {
+    for (const id of ["ember", "bloom", "prism"]) {
       await page.locator(`[data-track="${id}"]`).click();
       await page.locator(".race-launch").click();
       await playing(page);

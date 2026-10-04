@@ -1,0 +1,47 @@
+name: Prism Canyon course acceptance
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  prism:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - name: Drive complete Prism laps, gallery and landing in every camera
+        run: node --test --test-name-pattern='art evidence|frame pacing|perspective gameplay' race-perspective.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_RACE_COURSE: prism
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/prism
+          SPACE_MAN_RACE_TRACES: ${{ runner.temp }}/prism
+      - name: Race friends and spectators through the actual Prism course
+        run: node --test race-online.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_RACE_COURSE: prism
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/prism
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prism-${{ matrix.engine }}-evidence
+          path: |
+            ${{ runner.temp }}/prism/*.png
+            ${{ runner.temp }}/prism/*.json
+          retention-days: 5

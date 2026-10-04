@@ -37,7 +37,7 @@ function wave({observed=0,shield=false,air=false,d=0,victimS=195}={}) {
   return s;
 }
 test('single frozen authored catalog has exact anchors, lanes, identities and empty unchanged tracks',()=>{
-  assert.equal(F,Race.features('starlight'));assert.equal(F.revision,1);
+  assert.equal(F,Race.features('starlight'));assert.equal(F.revision,2);
   assert.equal(F.ramps.length,2);assert.equal(F.coins.length,10);assert.equal(F.rows.length,2);
   assert.equal(new Set([...F.ramps,...F.coins,...F.rows].map(o=>o.id)).size,14);
   assert.deepEqual(F.ramps.map(r=>r.s),[.175*C.length,.595*C.length]);
@@ -48,7 +48,7 @@ test('single frozen authored catalog has exact anchors, lanes, identities and em
   assert.deepEqual(F.rows.map(r=>r.s),[.275*C.length,.705*C.length]);
   assert.deepEqual(F.rows.map(r=>r.gate),[5,14]);
   assert.ok(Object.isFrozen(F.rows[0].choices[0]));
-  for(const id of ['ember','bloom'])assert.deepEqual(Race.features(id),{revision:1,trackId:id,ramps:[],coins:[],rows:[]});
+  for(const id of ['ember','bloom'])assert.deepEqual(Race.features(id),{revision:2,trackId:id,ramps:[],coins:[],rows:[]});
 });
 for(const ramp of F.ramps)for(const lane of [-44,0,44])for(const speed of [3.6,6.4,9])
   test(`${ramp.id} d=${lane} speed=${speed}: one 30-tick finite hop retains real planar motion`,()=>{

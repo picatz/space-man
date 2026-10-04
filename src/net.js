@@ -70,14 +70,14 @@
   // Runner HELLO/WELCOME bytes stay unchanged; each arcade mode requires its
   // own invite bit, HELLO/WELCOME marker and negotiated capability.
   const CAP_ARENA = 1 << 5, INV_ARENA = 0x10, MODE_ARENA = 1, A_ARENA = 0x40;
-  // Starlight items/airtime are an atomic race and journey revision. Legacy
-  // race bits 6/7/8 and journey bit 9 are never advertised by these builds.
+  // Prism catalog is an atomic race and journey revision. Legacy race bits
+  // 6/7/8/11 and journey bits 9/12 are never advertised by these builds.
   // Appearance bit 10 remains independent; runner/Arena and PROTO stay stable.
-  const CAP_RACE = 1 << 11, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
-  // Journey revision 2 also requires the Starlight race ruleset before admission. Standalone
+  const CAP_RACE = 1 << 13, INV_RACE = 0x20, MODE_RACE = 2, A_RACE = 0x41;
+  // Journey revision 3 also requires the Prism race catalog before admission. Standalone
   // modes cannot opt in accidentally, even with an advertised capability.
   const A_APPEARANCE = 0x43;
-  const CAP_JOURNEY = 1 << 12, INV_JOURNEY = 0x40, MODE_JOURNEY = 3, A_JOURNEY = 0x42;
+  const CAP_JOURNEY = 1 << 14, INV_JOURNEY = 0x40, MODE_JOURNEY = 3, A_JOURNEY = 0x42;
   const ARENA_MAX = 1024, ARENA_HEAD = 8, ARENA_CHUNK = WIRE_MAX - 27 - ARENA_HEAD;
   const ARENA_TTL = 1000, ARENA_ABSENT_GRACE = 15000, SEAL_QUEUE_MAX = 32;
   const modeName = (o) => o && (o.mode === 'arena' || o.mode === 'race' || o.mode === 'journey') ? o.mode : 'runner';

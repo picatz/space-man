@@ -1562,7 +1562,12 @@
       paint();
     }
     function road(g, c) {
-      const palette=root.SpaceManArt.circuitPalette(c), starlight=c.id==='starlight';
+      const palette=root.SpaceManArt.circuitPalette(c), starlight=c.id==='starlight'||c.id==='prism';
+      for(const shelf of root.SpaceManArt.circuitCanyonShelves(c,R.at,root.SpaceManRaceTrackMesh.distance)) {
+        for(let lane=2;lane>=0;lane--){g.beginPath();shelf.forEach((section,i)=>{const p=section[lane];i?g.lineTo(p[0],p[2]):g.moveTo(p[0],p[2]);});
+          for(let i=shelf.length-1;i>=0;i--){const p=shelf[i][lane+1];g.lineTo(p[0],p[2]);}
+          g.closePath();g.fillStyle=lane===1?palette.strata:palette.stone;g.fill();}
+      }
       if(starlight) for(const {a,b,width} of root.SpaceManArt.circuitConnections(c,R.at,root.SpaceManRaceTrackMesh.distance)) {
         g.strokeStyle=palette.curb;g.lineWidth=width;g.beginPath();g.moveTo(a.x,a.z);g.lineTo(b.x,b.z);g.stroke();
       }
@@ -1573,6 +1578,14 @@
           g.beginPath();g.moveTo(-w/2+cut,-d/2);g.lineTo(w/2-cut,-d/2);g.lineTo(w/2,-d/2+cut);
           g.lineTo(w/2,d/2-cut);g.lineTo(w/2-cut,d/2);g.lineTo(-w/2+cut,d/2);
           g.lineTo(-w/2,d/2-cut);g.lineTo(-w/2,-d/2+cut);g.closePath();g.fillStyle=color;g.fill();};
+        if(structure.kind==='mesa') {
+          g.restore();
+          for(const [i,ring] of root.SpaceManArt.circuitMesaRings(structure).entries()) {
+            g.beginPath();ring.forEach(([x,y,z],j)=>j?g.lineTo(x,z):g.moveTo(x,z));g.closePath();
+            g.fillStyle=i===0||i===3?palette.stone:palette.strata;g.fill();
+          }
+          g.fillStyle=palette.crystal;g.beginPath();g.moveTo(x,z-12);g.lineTo(x+10,z+2);g.lineTo(x,z+12);g.lineTo(x-10,z+2);g.closePath();g.fill();continue;
+        }
         panel(w+6,d+6,palette.curb);panel(w,d,palette.housing);panel(w*.62,d*.52,palette.ink);
         g.fillStyle=palette.edge;g.fillRect(-w*.3,d*.36,w*.6,2);g.restore();
       }
@@ -1653,6 +1666,21 @@
           g.stroke();
         }
         g.restore();
+      }
+      if(c.architecture?.gallery) {
+        const gallery=c.architecture.gallery,begin=gallery.start*c.length,end=gallery.end*c.length,
+          count=Math.ceil((end-begin)/105);
+        // Roof is cut away in Canvas/Top-down. Paired piers and edge runners
+        // keep the same gallery footprint readable without hiding the racers.
+        for(const side of [-1,1]) {
+          g.beginPath();for(let i=0;i<=count;i++) {const p=R.at(c,begin+(end-begin)*i/count),
+            d=side*(c.width/2+25),x=p.x-p.ty*d,y=p.y+p.tx*d;
+            i?g.lineTo(x,y):g.moveTo(x,y);}
+          g.strokeStyle=palette.edge;g.lineWidth=3;g.stroke();
+          for(let i=0;i<=count;i++) {const p=R.at(c,begin+(end-begin)*i/count),d=side*gallery.span/2;
+            g.save();g.translate(p.x-p.ty*d,p.y+p.tx*d);g.rotate(Math.atan2(p.ty,p.tx));
+            g.fillStyle=palette.housing;g.fillRect(-9,-9,18,18);g.fillStyle=palette.ink;g.fillRect(-4,-4,8,8);g.restore();}
+        }
       }
       const finish = R.at(c, 0);
       g.save();

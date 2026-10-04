@@ -118,7 +118,13 @@ selected with `SPACE_MAN_CHROMIUM_PATH`.
 Choose **Star Circuit** from the title for an original perspective
 hoverkart race against four CPU pilots, or open **Play with friends** to create,
 join or watch an encrypted race room. Race three laps on **Starlight Speedway**,
-**Ember Switchback**, or **Bloom Lagoon**, with Chill, Sport and Expert CPU pace.
+**Ember Switchback**, **Bloom Lagoon**, or **Prism Canyon**, with Chill, Sport and Expert CPU pace.
+Prism Canyon is a medium, wider 4,296-unit circuit: a generous opening sweep,
+boost approach and shallow ramp, clear continuous-road landing, open-sided prism
+gallery and spacious finish. The gallery roof cuts away in Top-down/2D. It uses
+the same handling as the existing courses. Older race/journey clients must refresh
+before joining this catalog revision.
+
 Carve corners, catch boost strips, manage rechargeable boost and recover from a
 missed bend. Ordered checkpoints, race position, timing and results are part of
 the actual simulation. Race again, switch circuits or return to the runner.

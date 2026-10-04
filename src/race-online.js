@@ -8,7 +8,7 @@
   else root.SpaceManRaceOnline = api;
 })(typeof window !== 'undefined' ? window : globalThis, function (Race) {
   'use strict';
-  const VERSION = 2, CATALOG_VERSION = 1, INPUT = 1, SNAPSHOT = 2, MAX_BYTES = 990;
+  const VERSION = 2, CATALOG_VERSION = Race.constants.CATALOG_REVISION, INPUT = 1, SNAPSHOT = 2, MAX_BYTES = 990;
   const INPUT_BYTES = 33, HEADER_BYTES = 32, ACTOR_BYTES = 84, EFFECT_BYTES = 20, EVENT_BYTES = 8;
   const INPUT_TTL_MS = 200, REJOIN_MS = 10000, SNAPSHOT_MS = 50;
   const MAX_HUMANS = 4, PILOTS = 5, MAX_EVENTS = 12, NONE = 65535;
@@ -207,15 +207,18 @@
       a.airTicks = b[o + 70]; a.z = v.getFloat32(o + 71, true);
       a.shieldTicks = b[o + 75]; a.slowTicks = b[o + 76]; a.immunityTicks = b[o + 77];
       a.pulseSerial = v.getUint16(o + 78, true);
+      const catalog = Race.features(state.trackId),
+        coinMask = (1 << catalog.coins.length) - 1, rowMask = (1 << catalog.rows.length) - 1,
+        rampMask = (1 << catalog.ramps.length) - 1;
       const u = a.airTicks / 30, height = a.airRamp ? 10 * (1 - u) + 96 * u * (1 - u) : 0;
-      if (b[o + 64] > 2 || a.coinMask > 1023 || a.rowMask > 3 || a.rampMask > 3 ||
-          a.airRamp > 2 || a.airTicks > 29 || (!a.airRamp && a.airTicks) ||
+      if (b[o + 64] > 2 || a.coinMask > coinMask || a.rowMask > rowMask || a.rampMask > rampMask ||
+          a.airRamp > catalog.ramps.length || a.airTicks > 29 || (!a.airRamp && a.airTicks) ||
           !Number.isFinite(a.z) || Math.abs(a.z - height) > 0.0001 ||
           a.shieldTicks > 240 || a.slowTicks > 24 || a.immunityTicks > 90 ||
           (a.airRamp && !(a.rampMask & (1 << (a.airRamp - 1)))) ||
           ((a.dnf || a.finishTick !== null || state.phase === 'finished') &&
             (a.item || a.airRamp || a.shieldTicks || a.slowTicks || a.immunityTicks)) ||
-          (state.trackId !== 'starlight' && (a.item || a.coinMask || a.rowMask || a.rampMask ||
+          (!Race.features(state.trackId).rows.length && (a.item || a.coinMask || a.rowMask || a.rampMask ||
             a.airRamp || a.shieldTicks || a.slowTicks || a.immunityTicks || a.pulseSerial))) return null;
       o += ACTOR_BYTES;
     }
@@ -229,7 +232,7 @@
           ![s, d, originS].every(Number.isFinite) || Math.abs(d) > 44 ||
           Math.abs(s) > length * (state.laps + 2) || Math.abs(originS) > length * (state.laps + 2) ||
           (phase && Math.abs(s - (originS + age * 12)) > 0.01) ||
-          state.trackId !== 'starlight' || state.phase !== 'racing' || a.dnf || a.finishTick !== null) return null;
+          !Race.features(state.trackId).rows.length || state.phase !== 'racing' || a.dnf || a.finishTick !== null) return null;
       owners.add(owner); state.effects.push({ ownerId: a.id, serial, phase: phase ? 'wave' : 'charge', age, s, d, originS });
       o += EFFECT_BYTES;
     }

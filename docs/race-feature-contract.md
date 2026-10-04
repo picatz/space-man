@@ -4,7 +4,7 @@ This documents the public simulation API implemented for the first Starlight sli
 
 ## Ownership and versions
 
-`SpaceManRace` / `require('./race.js')` remains a standalone, DOM-free, deterministic UMD module. `Race.constants.VERSION` and created `state.version` are **2**. `Race.constants.CATALOG_REVISION`, `state.catalogRevision`, and feature catalog `revision` are **1**. Simulation is 60 Hz; visual frame rate does not advance mechanics. The host is the only writer of authoritative simulation fields. Local mode uses the same engine.
+`SpaceManRace` / `require('./race.js')` remains a standalone, DOM-free, deterministic UMD module. `Race.constants.VERSION` and created `state.version` are **2**. `Race.constants.CATALOG_REVISION`, `state.catalogRevision`, and feature catalog `revision` are **2**. Simulation is 60 Hz; visual frame rate does not advance mechanics. The host is the only writer of authoritative simulation fields. Local mode uses the same engine.
 
 No new script dependency is needed. Ember and Bloom have empty feature catalogs and obtain no feature inventory from the track. All existing planar driving, kart contacts, ordered gate checks, rescue placement, timeout and result ordering rules remain in the original engine. Airborne karts retain planar contacts.
 
@@ -19,7 +19,7 @@ No new script dependency is needed. Ember and Bloom have empty feature catalogs 
 
 Coordinates use `p = Race.at(course, s)` and `x = p.x - p.ty*d`, `y = p.y + p.tx*d`. Catalog `s` is track-local distance. Positive `d` is the right/inside side in forward travel. `Race.nearest(course, actor.x, actor.y).s` provides track-local actor distance for read-only art; there is no additional actor `s` field.
 
-Starlight catalog:
+Starlight catalog (unchanged geometry in catalog revision 2):
 
 - `ramp-a`: index 0, lip `.175L`, start `.175L-60`, gate interval 3
 - `ramp-b`: index 1, lip `.595L`, start `.595L-60`, gate interval 11
@@ -30,6 +30,8 @@ Starlight catalog:
 - `item-row-a`: index 0, `.275L`, gate interval 5
 - `item-row-b`: index 1, `.705L`, gate interval 14
 - Each row choices: `item-a-shield` / `item-a-pulse` or `item-b-shield` / `item-b-pulse`, d −44 / +44
+
+Prism Canyon appends track index 3: one full-width ramp at .195, six coins (three entry, three airborne), and one Shield/Pulse row at .745. Its .58–.68 gallery is render-only architecture above continuous physical road. See [prism-canyon.md](prism-canyon.md).
 
 The same catalog feeds physics, CPU routing, render geometry and decoder validation. Coin/row/ramp bit positions are their catalog indices. A view uses the followed actor's masks, never another actor's pickups.
 

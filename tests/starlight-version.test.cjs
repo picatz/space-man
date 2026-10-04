@@ -1,7 +1,7 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs');
 const { client, relay, until } = require('./harness.cjs');
 const source = fs.readFileSync(require.resolve('../src/net.js'), 'utf8');
-const revisions = { race: { name: 'RACE', old: 8, current: 11, mode: 2, detail: 32 }, journey: { name: 'JOURNEY', old: 9, current: 12, mode: 3, detail: 64 } };
+const revisions = { race: { name: 'RACE', old: 11, current: 13, mode: 2, detail: 32 }, journey: { name: 'JOURNEY', old: 12, current: 14, mode: 3, detail: 64 } };
 function peer(hub, mode, old = false) {
   const c = client(hub, { game: false });
   if (old) { const r = revisions[mode], from = `const CAP_${r.name} = 1 << ${r.current},`;
@@ -55,8 +55,8 @@ test('race and journey advertise only their own atomic capability; runner/Arena 
   for (const mode of ['runner', 'arena', 'race', 'journey']) {
     const hub = relay(), c = peer(hub); t.after(() => c.close());
     await c.net.openRoom({ relayHost: 'relay.test', code: false, mode });
-    const caps = c.net.info().caps, modeCap = mode === 'race' ? 1 << 11 : mode === 'journey' ? 1 << 12 : mode === 'arena' ? 1 << 5 : 0;
+    const caps = c.net.info().caps, modeCap = mode === 'race' ? 1 << 13 : mode === 'journey' ? 1 << 14 : mode === 'arena' ? 1 << 5 : 0;
     assert.equal(caps, 0x1f | (1 << 10) | modeCap); assert.equal(c.net._n1.PROTO, 6);
-    assert.equal(caps & ((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9)), 0);
+    assert.equal(caps & ((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 11) | (1 << 12)), 0);
   }
 });

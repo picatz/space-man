@@ -376,11 +376,11 @@ test('snapshots reject invalid containers, every truncation, extra bytes and ove
 test('snapshot validators reject nonfinite floats, illegal ranges, bad seats, checkpoints and result metadata', () => {
   const { host } = playing(4), b = host.packet();
   const edits = [
-    x => { x[0] = 9; }, x => { x[1] = 1; }, x => { x[16] = 3; }, x => { x[17] = 3; },
+    x => { x[0] = 9; }, x => { x[1] = 1; }, x => { x[16] = 4; }, x => { x[17] = 3; },
     x => { x[18] = 0; }, x => { x[18] = 6; }, x => { x[19] = 3; }, x => { x[20] = 3; },
     x => { view(x).setUint16(21, 181, true); }, x => { view(x).setUint16(14, 18001, true); },
     x => { x[25] = 5; }, x => { x[25] = 1; }, x => { x[26] = 4; }, x => { x[27] = 5; },
-    x => { x[28] = 13; }, x => { x[29] = 2; }, x => { x[H] = 1; }, x => { x[H + 1] = 49; },
+    x => { x[28] = 13; }, x => { x[29] = 1; }, x => { x[H] = 1; }, x => { x[H + 1] = 49; },
     x => { x[H + A + 1] = x[H + 1]; }, x => { x[H + 2] = 3; },
     x => { view(x).setUint32(H + 7, host.state.tick + 1, true); },
     x => { view(x).setUint16(H + 11, 1, true); }, x => { view(x).setUint16(H + 58, 10001, true); },
