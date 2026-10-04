@@ -118,5 +118,35 @@
       },
     };
   }
-  return Object.freeze({ MODES, create, wrap, travelHeading });
+  function createTopdown() {
+    let current = null, context = null;
+    function reset() { current = context = null; }
+    function update(actor, options = {}) {
+      if (!actor) { reset(); return null; }
+      const heading = travelHeading(actor),
+        portrait = !!options.portrait && !options.reduceMotion,
+        desired = { x: actor.x + Math.cos(heading) * 105,
+          y: actor.y + Math.sin(heading) * 105,
+          rotation: portrait ? -heading - Math.PI / 2 : 0 },
+        key = [actor.id, actor.recoveries, options.trackId, options.epoch, portrait],
+        changed = !context || key.some((value, i) => value !== context[i]);
+      // Preserve the old 60Hz tuning, but integrate elapsed display time. At
+      // 120Hz two half-sized updates now equal one 60Hz update for a fixed goal.
+      // Pausing does not let the road continue sliding underneath parked ships.
+      const dt = options.paused ? 0 : Math.max(0, Math.min(.1,
+        Number.isFinite(options.dt) ? options.dt : 1 / 60));
+      if (changed) current = { ...desired };
+      else {
+        const position = 1 - Math.pow(1 - .12, dt * 60),
+          rotation = 1 - Math.pow(1 - .1, dt * 60);
+        current.x = mix(current.x, desired.x, position);
+        current.y = mix(current.y, desired.y, position);
+        current.rotation += wrap(desired.rotation - current.rotation) * rotation;
+      }
+      context = key;
+      return { ...current };
+    }
+    return { update, reset };
+  }
+  return Object.freeze({ MODES, create, createTopdown, wrap, travelHeading });
 });

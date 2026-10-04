@@ -524,75 +524,392 @@ test(
   },
 );
 
-test(
-  "perspective frame pacing: measure warmed renderer while driving through normal inputs",
-  { timeout: 45000 },
-  async (t) => {
-    const { page } = await launch(t, {}, () => {
-      window.testPad = {
-        connected: true,
-        mapping: "standard",
-        index: 0,
-        axes: [0, 0],
-        buttons: Array.from({ length: 17 }, () => ({
-          pressed: false,
-          value: 0,
-        })),
+// Test-only instrumentation. The shipped simulation, commands and renderer are
+// called unchanged; no poses, clocks, events or authority state are injected.
+function installLapTrace() {
+  window.testPad = {
+    connected: true, mapping: "standard", index: 0, axes: [0, 0],
+    buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })),
+  };
+  Object.defineProperty(navigator, "getGamepads", {
+    value: () => [testPad], configurable: true,
+  });
+  const trace = window.raceLapTrace = {
+    recording: false, done: false, start: null, end: null,
+    frames: [], steps: [], events: [], driver: [],
+    sampler: { calls: 0, checked: 0, mismatches: 0, movedFromAuthority: 0, sameTickPairs: 0, sameTickMotion: 0 },
+  };
+  let frame = null, driver;
+  const raf = window.requestAnimationFrame;
+  window.requestAnimationFrame = function (callback) {
+    return raf.call(this, function (now) {
+      const outer = frame;
+      frame = {
+        now, race: false, stepMs: 0, stepCalls: 0, cpuInputMs: 0,
+        snapshotMs: 0, perspectiveRenderMs: 0, probeMs: 0,
+        buckets: new Set(), include: trace.recording,
       };
-      Object.defineProperty(navigator, "getGamepads", {
-        value: () => [testPad],
-        configurable: true,
-      });
+      const began = performance.now();
+      try {
+        return callback.call(this, now);
+      } finally {
+        const elapsed = performance.now() - began;
+        if (frame.race && frame.include) {
+          const { race, include, buckets, ...costs } = frame;
+          trace.frames.push({ ...costs, callbackMs: elapsed, buckets: [...buckets] });
+        }
+        frame = outer;
+      }
     });
-    await page.locator(".race-launch").click();
-    await playing(page);
-    await page.evaluate(() => {
-      window.driver = setInterval(() => {
-        const s = raceUI.snapshot();
-        if (!s || s.phase !== "racing") return;
-        const c = SpaceManRace.cpuInput(s, s.actors[0]);
-        testPad.axes[0] = c.steer;
-        testPad.buttons[0].pressed = c.boost;
-        testPad.buttons[1].pressed = c.brake;
-        testPad.buttons[5].pressed = c.item;
-      }, 16);
+  };
+  // Modules publish frozen APIs. Replace only their global export at load time,
+  // before the UI captures it, retaining every original method and return value.
+  function intercept(name, decorate) {
+    let value;
+    Object.defineProperty(window, name, {
+      configurable: true,
+      get: () => value,
+      set: (api) => { value = decorate(api); },
     });
-    const samples = await page.evaluate(
-      () =>
-        new Promise((resolve) => {
-          const times = [];
-          let last = 0;
-          function sample(now) {
-            if (last) times.push(now - last);
-            last = now;
-            if (times.length === 180) resolve(times);
-            else requestAnimationFrame(sample);
+  }
+  function timed(fn, field) {
+    return function (...args) {
+      const began = performance.now();
+      try { return fn.apply(this, args); }
+      finally { if (frame) frame[field] += performance.now() - began; }
+    };
+  }
+  function checkpoint(state) {
+    const a = state.actors[0];
+    return { tick: state.tick, raceTick: state.raceTick, lap: a.lap,
+      passed: a.passed, recoveries: a.recoveries };
+  }
+  intercept("SpaceManRace", (api) => Object.freeze({
+    ...api,
+    cpuInput: timed(api.cpuInput, "cpuInputMs"),
+    snapshot: timed(api.snapshot, "snapshotMs"),
+    step(...args) {
+      const began = performance.now(), result = api.step.apply(this, args),
+        ms = performance.now() - began, state = args[0], a = state.actors[0],
+        observing = performance.now();
+      if (frame) { frame.stepMs += ms; frame.stepCalls++; }
+      try {
+        if (trace.done || state.phase !== "racing") return result;
+        if (!trace.recording) {
+          if (a.lap !== 2) return result;
+          trace.start = checkpoint(state);
+          trace.recording = true;
+          if (frame) frame.include = true;
+          return result;
+        }
+        // Read every completed tick: a render can consume several simulation
+        // steps, so sampling only snapshots would lose jump/land/pickup events.
+        const buckets = new Set();
+        for (const e of state.events) {
+          trace.events.push({ tick: state.tick, ...e });
+          if (e.type === "jump") buckets.add("ramp");
+          if (e.type === "land") buckets.add("landing");
+          if (e.type === "coin" || e.type === "item") buckets.add("pickup");
+          if (["shield", "pulse", "land-pulse", "hit", "block"].includes(e.type))
+            buckets.add("item");
+        }
+        if (state.actors.some((actor) => actor.airRamp)) buckets.add("airborne");
+        if (state.effects.length || state.actors.some((actor) => actor.shieldTicks))
+          buckets.add("item");
+        // There is no collision event/counter. A near-touching pair after the
+        // solver is a proxy, not proof of contact or its exact solver cost.
+        const active = state.actors.filter((actor) =>
+          !actor.dnf && actor.finishTick === null && !actor.recoveryTicks);
+        const diameter = api.constants.KART_RADIUS * 2;
+        for (let i = 0; i < active.length; i++)
+          for (let j = i + 1; j < active.length; j++)
+            if ((active[i].controller === "cpu" || active[j].controller === "cpu") &&
+                Math.hypot(active[i].x - active[j].x, active[i].y - active[j].y) <= diameter + 0.01)
+              buckets.add("cpuContactProxy");
+        if (!buckets.size) buckets.add("ordinary");
+        trace.steps.push({ tick: state.tick, ms, buckets: [...buckets] });
+        if (frame) for (const bucket of buckets) frame.buckets.add(bucket);
+        if (a.lap >= 3) {
+          trace.end = checkpoint(state);
+          trace.recording = false;
+          trace.done = true;
+        }
+        return result;
+      } finally {
+        if (frame) frame.probeMs += performance.now() - observing;
+      }
+    },
+  }));
+  intercept("SpaceManRaceView", (api) => Object.freeze({
+    ...api,
+    create(...args) {
+      const view = api.create.apply(this, args), render = timed(view.render, "perspectiveRenderMs"),
+        parent = args[0].root;
+      view.render = function (...renderArgs) {
+        if (frame) frame.race = true;
+        try { return render.apply(this, renderArgs); }
+        finally {
+          const began = performance.now();
+          if (frame) {
+            frame.renderer = parent.dataset.renderer;
+            frame.quality = frame.renderer === "webgl" ? parent.dataset.quality ?? null : null;
+            frame.probeMs += performance.now() - began;
           }
-          requestAnimationFrame(sample);
-        }),
-    );
-    await page.evaluate(() => {
-      clearInterval(driver);
-      testPad.axes[0] = 0;
-      testPad.buttons.forEach((b) => (b.pressed = false));
-    });
-    const sorted = samples.slice().sort((a, b) => a - b),
-      q = (p) =>
-        Math.round(sorted[Math.floor((sorted.length - 1) * p)] * 100) / 100;
-    console.log(
-      "Warmed software-browser frame intervals (not physical-device FPS):",
-      JSON.stringify({
-        browser: process.env.SPACE_MAN_RACE_BROWSER || "chromium",
-        medianMs: q(0.5),
-        p95Ms: q(0.95),
-        p99Ms: q(0.99),
-        maxMs: q(1),
-      }),
-    );
-    assert.ok(samples.every((n) => Number.isFinite(n) && n > 0));
-    assert.ok(
-      q(0.95) < 80,
-      "the warmed single-race test must avoid sustained severe stalls",
-    );
+        }
+      };
+      return view;
+    },
+  }));
+  intercept("SpaceManRacePresentation", (api) => Object.freeze({
+    ...api,
+    createSampler(...args) {
+      const sampler = api.createSampler.apply(this, args), sample = sampler.sample;
+      let previousSample = null;
+      sampler.sample = function (state, options = {}) {
+        const shown = sample.call(this, state, options), began = performance.now();
+        try {
+          if (!trace.recording || !state || !shown) return shown;
+          const a = state.actors.find((actor) => actor.id === options.actorId),
+            p = options.previous?.actors.find((actor) => actor.id === a?.id),
+            display = shown.actors.find((actor) => actor.id === a?.id),
+            alpha = Math.max(0, Math.min(1, options.alpha));
+          trace.sampler.calls++;
+          // Check the actual UI sampler's output, without manufacturing a frame
+          // or changing the authoritative clock. Natural no-step frames are
+          // diagnostic only: software CI can run below the physics frequency.
+          if (a && p && display && previousSample && !options.network && !options.paused &&
+              p.recoveries === a.recoveries && !a.recoveryTicks &&
+              Math.hypot(a.x - p.x, a.y - p.y) < 120 && Number.isFinite(alpha)) {
+            trace.sampler.checked++;
+            const error = Math.hypot(display.x - (p.x + (a.x - p.x) * alpha),
+              display.y - (p.y + (a.y - p.y) * alpha));
+            if (error > 1e-6) trace.sampler.mismatches++;
+            if (Math.hypot(display.x - a.x, display.y - a.y) > 1e-6)
+              trace.sampler.movedFromAuthority++;
+            if (previousSample.tick === state.tick) {
+              trace.sampler.sameTickPairs++;
+              if (Math.hypot(display.x - previousSample.x, display.y - previousSample.y) > 1e-6)
+                trace.sampler.sameTickMotion++;
+            }
+          }
+          if (display) previousSample = { tick: state.tick, x: display.x, y: display.y };
+          return shown;
+        } finally {
+          if (frame) frame.probeMs += performance.now() - began;
+        }
+      };
+      return sampler;
+    },
+  }));
+  trace.startDriver = () => {
+    driver = setInterval(() => {
+      const began = performance.now(), s = raceUI.snapshot(),
+        snapshotMs = performance.now() - began;
+      if (!s || s.phase !== "racing") return;
+      const c = SpaceManRace.cpuInput(s, s.actors[0]);
+      testPad.axes[0] = c.steer;
+      testPad.buttons[0].pressed = c.boost;
+      testPad.buttons[1].pressed = c.brake;
+      testPad.buttons[5].pressed = c.item;
+      if (trace.recording) trace.driver.push({ snapshotMs, totalMs: performance.now() - began });
+    }, 16);
+  };
+  trace.stopDriver = () => {
+    clearInterval(driver);
+    testPad.axes[0] = 0;
+    testPad.buttons.forEach((b) => (b.pressed = false));
+  };
+}
+
+function timingStats(samples) {
+  if (!samples.length) return { count: 0 };
+  const sorted = samples.slice().sort((a, b) => a - b),
+    q = (p) => Math.round(sorted[Math.floor((sorted.length - 1) * p)] * 100) / 100;
+  return {
+    count: samples.length, p50Ms: q(0.5), p95Ms: q(0.95), p99Ms: q(0.99), maxMs: q(1),
+    over33Ms: samples.filter((n) => n > 33).length,
+    over50Ms: samples.filter((n) => n > 50).length,
+  };
+}
+function summarizeLapTrace(trace) {
+  // Attribute an interval to the previous callback's activity: its work precedes
+  // the next callback. This is correlation, not a GPU timer or causal attribution.
+  const frames = trace.frames.slice(0, -1).map((f, i) => ({
+    ...f, intervalMs: trace.frames[i + 1].now - f.now,
+  }));
+  const buckets = {};
+  for (const bucket of ["ordinary", "ramp", "airborne", "landing", "pickup", "item", "cpuContactProxy"])
+    buckets[bucket] = {
+      intervals: timingStats(frames.filter((f) => f.buckets.includes(bucket)).map((f) => f.intervalMs)),
+      simulationSteps: timingStats(trace.steps.filter((s) => s.buckets.includes(bucket)).map((s) => s.ms)),
+    };
+  const eventCounts = {};
+  for (const e of trace.events) {
+    const scope = e.id === "pilot-0" ? "player" : "other";
+    const key = `${scope}:${e.type}`;
+    eventCounts[key] = (eventCounts[key] || 0) + 1;
+  }
+  return {
+    start: trace.start, end: trace.end,
+    quality: {
+      start: trace.frames[0]?.quality ?? null, end: trace.frames.at(-1)?.quality ?? null,
+      changes: trace.frames.slice(1).filter((f, i) => f.quality !== trace.frames[i].quality).length,
+      values: [...new Set(trace.frames.map((f) => f.quality))],
+    },
+    intervals: timingStats(frames.map((f) => f.intervalMs)),
+    simulationSteps: timingStats(trace.steps.map((s) => s.ms)),
+    raceCallback: timingStats(trace.frames.map((f) => f.callbackMs)),
+    stepsPerCallback: {
+      count: trace.frames.length,
+      zero: trace.frames.filter((f) => f.stepCalls === 0).length,
+      one: trace.frames.filter((f) => f.stepCalls === 1).length,
+      multiple: trace.frames.filter((f) => f.stepCalls > 1).length,
+      max: Math.max(...trace.frames.map((f) => f.stepCalls)),
+    },
+    cpuInputPerCallback: timingStats(trace.frames.map((f) => f.cpuInputMs)),
+    productionSnapshotPerCallback: timingStats(trace.frames.map((f) => f.snapshotMs)),
+    perspectiveRenderPerCallback: timingStats(trace.frames.map((f) => f.perspectiveRenderMs)),
+    probePerCallback: timingStats(trace.frames.map((f) => f.probeMs)),
+    driverCallback: timingStats(trace.driver.map((s) => s.totalMs)),
+    driverSnapshot: timingStats(trace.driver.map((s) => s.snapshotMs)),
+    eventCounts, buckets, sampler: trace.sampler,
+  };
+}
+
+test(
+  "perspective frame pacing: complete warmed Starlight laps in topdown, chase and cockpit",
+  { timeout: 330000 },
+  async (t) => {
+    for (const camera of ["topdown", "chase", "cockpit"])
+      await t.test(camera, { timeout: 105000 }, async (t) => {
+        const { page } = await launch(t, {}, installLapTrace);
+        await page.locator('[data-track="starlight"]').click();
+        await page.locator(".race-launch").click();
+        await page.getByRole("button", { name: "Camera view", exact: true }).click();
+        await page.locator(`.race-view-menu [data-camera="${camera}"]`).click();
+        await playing(page);
+        await page.evaluate(() => raceLapTrace.startDriver());
+        // Warm a whole first lap, then trace exactly gates 20 -> 40. All cameras
+        // see the same course/lap; no screenshot or polling snapshot runs inside
+        // the measured lap, and the driver uses the existing standard-pad path.
+        let waitError;
+        try {
+          await page.waitForFunction(() => raceLapTrace.done, null, {
+            polling: 250, timeout: 95000,
+          });
+        } catch (error) {
+          waitError = error;
+        } finally {
+          await page.evaluate(() => raceLapTrace.stopDriver());
+        }
+        const trace = await page.evaluate(() => {
+          const { frames, steps, events, driver, sampler, start, end } = raceLapTrace;
+          return { frames, steps, events, driver, sampler, start, end };
+        });
+        const summary = {
+          browser: process.env.SPACE_MAN_RACE_BROWSER || "chromium", camera,
+          renderer: await page.locator(".race-root").getAttribute("data-renderer"),
+          ...summarizeLapTrace(trace),
+          notes: [
+            "Instrumented software browser; not physical-device FPS or GPU timings.",
+            "Intervals include application, driver, probe, browser and scheduler work.",
+            "Step timing excludes snapshot/driver/probe work; callback timings include test wrappers.",
+            "Perspective render excludes HUD and 2D canvas; topdown returns early. Full paint is not isolated.",
+            "Boundary callbacks are included; step samples cover the exact second lap.",
+            "Buckets can overlap and include all racers; cpuContactProxy is post-step proximity, not a contact counter.",
+          ],
+        };
+        console.log("Complete-lap software-browser diagnostics (not physical-device FPS):", JSON.stringify(summary));
+        // Raw JSON is archived by the perspective workflow alongside screenshots.
+        // Local runs can opt in with SPACE_MAN_RACE_TRACES.
+        if (process.env.SPACE_MAN_RACE_TRACES) {
+          await fs.mkdir(process.env.SPACE_MAN_RACE_TRACES, { recursive: true });
+          await fs.writeFile(path.join(process.env.SPACE_MAN_RACE_TRACES,
+            `starlight-${summary.browser}-${camera}.json`), JSON.stringify({
+              summary, trace,
+            }, null, 2) + "\n");
+        }
+        assert.ifError(waitError);
+        assert.equal(summary.renderer, camera === "topdown" ? "2d" : "webgl");
+        assert.ok(trace.frames.every((f) => f.renderer === summary.renderer), "renderer remains stable throughout the lap");
+        if (camera === "topdown") {
+          assert.ok(trace.sampler.checked > 0, "topdown calls the display-pose sampler");
+          assert.equal(trace.sampler.mismatches, 0, "display poses match render-only interpolation");
+          assert.ok(trace.sampler.movedFromAuthority > 0, "topdown uses intermediate display poses");
+        }
+        assert.equal(trace.start.passed, 20);
+        assert.equal(trace.end.passed, 40);
+        assert.equal(trace.end.recoveries, trace.start.recoveries);
+        assert.equal(trace.steps.length, trace.end.tick - trace.start.tick);
+        assert.ok(trace.frames.length > 1 && trace.driver.length > 0);
+        assert.ok(trace.frames.slice(1).every((f, i) => Number.isFinite(f.now) && f.now > trace.frames[i].now));
+        assert.ok(trace.steps.every((s) => Number.isFinite(s.ms) && s.ms >= 0));
+        // Retain the old coarse CI stall guard; this is not a 60-FPS target.
+        assert.ok(summary.intervals.p95Ms < 80,
+          "the complete-lap software-browser trace must avoid sustained severe stalls");
+      });
   },
 );
+
+// Control measurement: leave simulation, sampler and view APIs untouched. The
+// only per-frame probe brackets the existing race tick callback. This excludes
+// per-step event scanning, pose assertions and renderer/quality instrumentation.
+test('perspective timing control: topdown with only a lightweight callback timer',
+  { timeout: 105000 }, async (t) => {
+    const { page } = await launch(t, {}, () => {
+      window.testPad = { connected: true, mapping: 'standard', index: 0,
+        axes: [0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+      Object.defineProperty(navigator, 'getGamepads', { value: () => [testPad], configurable: true });
+      const trace = window.raceTimingControl = { recording: false, done: false, frames: [] },
+        raf = window.requestAnimationFrame;
+      window.requestAnimationFrame = function (callback) {
+        return raf.call(this, function (now) {
+          // race-ui schedules its named tick; the parked runner uses frame.
+          if (!trace.recording || callback.name !== 'tick') return callback.call(this, now);
+          const started = performance.now();
+          try { return callback.call(this, now); }
+          finally { trace.frames.push({ now, ms: performance.now() - started }); }
+        });
+      };
+    });
+    await page.locator('.race-launch').click();
+    await page.getByRole('button', { name: 'Camera view', exact: true }).click();
+    await page.locator('.race-view-menu [data-camera="topdown"]').click();
+    await playing(page);
+    await page.evaluate(() => {
+      window.timingDriver = setInterval(() => {
+        const s = raceUI.snapshot();
+        if (!s || s.phase !== 'racing') return;
+        const a = s.actors[0], command = SpaceManRace.cpuInput(s, a);
+        testPad.axes[0] = command.steer;
+        testPad.buttons[0].pressed = command.boost;
+        testPad.buttons[1].pressed = command.brake;
+        testPad.buttons[5].pressed = command.item;
+        raceTimingControl.recording = a.lap === 2;
+        if (a.lap >= 3) raceTimingControl.done = true;
+      }, 16);
+    });
+    try { await page.waitForFunction(() => raceTimingControl.done, null, { polling: 250, timeout: 95000 }); }
+    finally {
+      await page.evaluate(() => {
+        clearInterval(timingDriver); testPad.axes[0] = 0;
+        testPad.buttons.forEach(button => { button.pressed = false; });
+      });
+    }
+    const frames = await page.evaluate(() => raceTimingControl.frames), summary = {
+      browser: process.env.SPACE_MAN_RACE_BROWSER || 'chromium',
+      camera: 'topdown', probe: 'RAF callback timer only',
+      intervals: timingStats(frames.slice(1).map((f, i) => f.now - frames[i].now)),
+      callback: timingStats(frames.map(f => f.ms)),
+      note: 'Software-browser control, not uninstrumented device FPS; two timer reads per recorded callback and the ordinary test driver remain.',
+    };
+    console.log('Lightweight topdown timing control:', JSON.stringify(summary));
+    if (process.env.SPACE_MAN_RACE_TRACES) {
+      await fs.mkdir(process.env.SPACE_MAN_RACE_TRACES, { recursive: true });
+      await fs.writeFile(path.join(process.env.SPACE_MAN_RACE_TRACES,
+        `starlight-${summary.browser}-topdown-control.json`), JSON.stringify({ summary, frames }, null, 2) + '\n');
+    }
+    assert.ok(frames.length > 1, 'the unchanged race tick callback was timed');
+    assert.ok(frames.every(f => Number.isFinite(f.ms) && f.ms >= 0));
+    assert.equal(await page.locator('.race-root').getAttribute('data-renderer'), '2d');
+  });

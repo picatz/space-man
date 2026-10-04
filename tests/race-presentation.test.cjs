@@ -126,3 +126,62 @@ test('network loss cannot extend airtime and following another pilot resets the 
   const epoch={...next,epoch:2,actors:[{...next.actors[0],x:50,z:0,airRamp:0,airTicks:0}]};
   assert.equal(t.sample(epoch,3150,{actorId:'pilot-1'}).actors[0].z,0);
 });
+
+test('canvas sampler fills the 120Hz frames between 60Hz simulation poses', () => {
+  function run(hz) {
+    const sampler = P.createSampler(), samples = [];
+    let tick = 0, previous = null, current = state(0, 0);
+    for (let frame = 0; frame <= hz; frame++) {
+      const ticks = frame * 60 / hz;
+      while (tick < Math.floor(ticks + 1e-8)) {
+        previous = P.capture(current);
+        current = state(++tick, tick * 6);
+      }
+      const original = JSON.stringify(current);
+      const shown = sampler.sample(current, { previous, alpha: ticks - tick,
+        actorId: 'pilot-0', now: frame * 1000 / hz });
+      assert.equal(JSON.stringify(current), original, 'rendering never changes authority');
+      samples.push(shown.actors[0].x);
+    }
+    return samples;
+  }
+  const slow = run(60), fast = run(120);
+  for (let i = 2; i < slow.length; i++) assert.equal(fast[i * 2], slow[i]);
+  for (let i = 3; i < fast.length; i++) assert.equal(fast[i] - fast[i - 1], 3,
+    'a display-only frame still moves half a physics step');
+});
+
+test('canvas sampler resets identity/epoch/mode without blending old poses and freezes pause', () => {
+  const sampler = P.createSampler(), before = state(30, 30), current = state(31, 36);
+  sampler.sample(before, { actorId: 'pilot-0', epoch: 1 });
+  const options = { actorId: 'pilot-0', epoch: 1, previous: P.capture(before), alpha: .5 };
+  assert.equal(sampler.sample(current, options).actors[0].x, 33);
+  assert.equal(sampler.sample(current, { ...options, paused: true }).actors[0].x, 36);
+  assert.equal(sampler.sample(current, { ...options, epoch: 2 }).actors[0].x, 36);
+  const switched = { ...current, actors: [current.actors[0], { ...current.actors[0], id: 'pilot-1', x: 90 }] };
+  assert.equal(sampler.sample(switched, { ...options, actorId: 'pilot-1' }).actors[0].x, 36);
+  sampler.reset();
+  assert.equal(sampler.sample(current, options).actors[0].x, 36);
+  const recovered = { ...current, actors: [{ ...current.actors[0], x: 80, recoveries: 1 }] };
+  assert.equal(sampler.sample(recovered, options).actors[0].x, 80);
+});
+
+test('canvas network sampler smooths 20Hz arrivals and bounds loss at both display rates', () => {
+  for (const hz of [60, 120]) {
+    const sampler = P.createSampler(), samples = [];
+    let current;
+    for (let frame = 0; frame <= hz; frame++) {
+      if (frame % (hz / 20) === 0) current = state(frame * 60 / hz, frame * 180 / hz);
+      const shown = sampler.sample(current, { actorId: 'pilot-0', epoch: 1,
+        network: true, now: frame * 1000 / hz });
+      assert.ok(shown.actors[0].x <= current.actors[0].x);
+      samples.push(shown.actors[0].x);
+    }
+    const movement = samples.slice(12).map((x, i) => x - samples[i + 11]);
+    assert.ok(movement.every(x => x > 0 && x < 4), `${hz}Hz has no held-pose stairs after warming`);
+    assert.equal(sampler.sample(current, { network: true, actorId: 'pilot-0', epoch: 1,
+      now: 2000, paused: true }).actors[0].x, current.actors[0].x);
+    for (let now = 2100; now <= 3000; now += 100) assert.equal(sampler.sample(current,
+      { network: true, actorId: 'pilot-0', epoch: 1, now }).actors[0].x, current.actors[0].x);
+  }
+});

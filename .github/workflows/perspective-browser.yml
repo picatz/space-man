@@ -30,6 +30,7 @@ jobs:
         env:
           SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
           SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/perspective-screenshots
+          SPACE_MAN_RACE_TRACES: ${{ runner.temp }}/perspective-screenshots
       - name: Verify complete race and mobile lifecycle
         run: node --test race.test.cjs
         env:
@@ -39,7 +40,9 @@ jobs:
         if: always()
         with:
           name: perspective-${{ matrix.engine }}-screenshots
-          path: ${{ runner.temp }}/perspective-screenshots/*.png
+          path: |
+            ${{ runner.temp }}/perspective-screenshots/*.png
+            ${{ runner.temp }}/perspective-screenshots/*.json
           retention-days: 3
 
   deployed-preview:
@@ -92,6 +95,7 @@ jobs:
         env:
           SPACE_MAN_RACE_BROWSER: ${{ matrix.engine }}
           SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/deployed-screenshots
+          SPACE_MAN_RACE_TRACES: ${{ runner.temp }}/deployed-screenshots
       - name: Verify deployed road contacts and native race audio
         run: node --test race-handling-audio.test.cjs
         env:
@@ -101,5 +105,7 @@ jobs:
         if: always()
         with:
           name: perspective-deployed-${{ matrix.engine }}-screenshots
-          path: ${{ runner.temp }}/deployed-screenshots/*.png
+          path: |
+            ${{ runner.temp }}/deployed-screenshots/*.png
+            ${{ runner.temp }}/deployed-screenshots/*.json
           retention-days: 3
