@@ -25,9 +25,11 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps ${{ matrix.engine }}
       - name: Verify home layouts, real entry flows, saved identity and focus
-        run: node --test home.test.cjs home-shell.test.cjs
+        run: node --test home.test.cjs home-shell.test.cjs secondary-surfaces.test.cjs
         env:
           SPACE_MAN_HOME_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_SECONDARY_BROWSER: ${{ matrix.engine }}
+          SPACE_MAN_SECONDARY_SCREENSHOTS: ${{ runner.temp }}/home-screenshots
           SPACE_MAN_HOME_SCREENSHOTS: ${{ runner.temp }}/home-screenshots
       - uses: actions/upload-artifact@v4
         if: always()

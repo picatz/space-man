@@ -892,7 +892,7 @@
 
 <!-- Game over -->
 <div class="overlay dead-anchor" id="ovDead">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Run results">
     <div class="dead-cols">
     <div class="dead-main">
     <div class="eyebrow">Run Over</div>
@@ -928,7 +928,7 @@
 
 <!-- Settings -->
 <div class="overlay" id="ovSettings">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Settings">
     <div class="title-lg t-md">Settings</div>
     <div class="settings-list" data-settings-host></div>
     <button class="btn ghost" id="btnWardrobe2" style="margin-top:12px;">Suit Up</button>
@@ -958,7 +958,7 @@
 
 <!-- Records: top 5 → stats → discovery logbook -->
 <div class="overlay" id="ovTrophy">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Records">
     <div class="title-lg t-md">Records</div>
     <div class="section-head">Top Runs</div>
     <table class="scores" id="trophyScores"></table>
@@ -972,7 +972,7 @@
 
 <!-- Initials entry -->
 <div class="overlay" id="ovInitials">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="High score initials">
     <div class="title-lg t-md">New High Score!</div>
     <div class="sub">Enter your initials</div>
     <div class="initials" id="initialsPicker"></div>
@@ -982,7 +982,7 @@
 
 <!-- Run Together: the front door — create a room, or join one with a code or a link -->
 <div class="overlay" id="ovTogether">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Run Together">
     <div class="title-lg t-md">Run Together</div>
     <div class="sub">Race the same course with friends, on any device.</div>
     <button class="btn pulse" id="btnCreateRoom">Create a Room</button>
@@ -999,7 +999,7 @@
 
 <!-- Run Together: room card — attract-anchored so the idle scene stays behind it -->
 <div class="overlay attract-anchor" id="ovRoom">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Room">
     <div class="title-lg t-md" id="roomTitle">Room</div>
     <div class="net-sub" id="roomCounts"></div>
     <div class="room-codebar invite-block" id="roomCodeBar">
@@ -1046,7 +1046,7 @@
 
 <!-- Run Together: join invite prompt -->
 <div class="overlay" id="ovJoin">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Join invitation">
     <div class="title-lg t-md" id="joinTitle">Join This Run Together?</div>
     <div id="joinState"></div>
     <div id="joinCustomDir">This room uses a custom relay directory.</div>
@@ -1060,7 +1060,7 @@
 
 <!-- Run Together: blocked-host warning -->
 <div class="overlay" id="ovBlockedHost">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Blocked host">
     <div class="title-lg t-md">Blocked Host</div>
     <div class="sub">This room is hosted by someone you've blocked.</div>
     <button class="btn" id="btnBlockedNotNow">Not Now</button>
@@ -1070,19 +1070,19 @@
 
 <!-- Run Together: callsign picker (two-column spinner) -->
 <div class="overlay" id="ovCallsign">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Your callsign">
     <div class="title-lg t-md">Your Callsign</div>
     <div class="callsign-cols" id="callsignCols"></div>
     <div id="callsignPreview"></div>
     <button class="btn ghost" id="btnCallsignReroll">Re-roll</button>
-    <button class="btn" id="btnCallsignDone">Use callsign</button>
-    <button class="btn ghost" id="btnCallsignCancel">Cancel</button>
+    <div class="surface-actions"><button class="btn" id="btnCallsignDone">Use callsign</button>
+    <button class="btn ghost" id="btnCallsignCancel">Cancel</button></div>
   </div>
 </div>
 
 <!-- Run Together: roster long-press sheet (hide / block / kick) -->
 <div class="overlay dead-anchor" id="ovRosterActions">
-  <div class="panel secondary-panel">
+  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Player actions">
     <div class="roster-actions-head" id="rosterActionsHead"></div>
     <button class="btn ghost" id="btnRosterHide">Hide</button>
     <button class="btn ghost" id="btnRosterBlock">Block</button>
@@ -2276,7 +2276,7 @@ function topOverlayId() {
   return null;
 }
 const visibleEl = (el) => !el.disabled && el.getClientRects().length > 0;
-function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input, textarea, summary')).filter(visibleEl) : []; }
+function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input, textarea, summary')).filter(el => visibleEl(el) && el.tabIndex !== -1) : []; }
 function menuFocusFirst(id) { const it = menuItems(id); const featured = id === 'ovAttract' && it.find(el => el.id === 'btnPlay'); if (it.length) (featured || it[0]).focus(); return it.length > 0; }
 // Spatial move: nearest control whose centre lies in the pressed direction
 // (cross-axis distance weighted 2x); vertical presses wrap in DOM order.

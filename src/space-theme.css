@@ -423,3 +423,26 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 }
 
 .settings-group .switch::before { inset: 0; }
+/* The hit target is 44px; the switch track stays visually light. */
+.settings-group .switch, .settings-group .switch.on { background: transparent; }
+.settings-group .switch::before { inset: 8px 0; background: #354357; border-radius: 14px; }
+.settings-group .switch.on::before { background: #61d4e7; }
+.settings-group .switch::after { top: 11px; }
+.settings-group .slider-row { flex-wrap: nowrap; }
+.settings-group .slider-row > span:first-child { flex: 0 1 110px; }
+@media(min-width:800px) {
+ #ovTrophy #logbook { grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 28px; }
+ #ovTrophy .log-row { min-height: 62px; }
+}
+
+#ovCallsign .secondary-panel, #ovInitials .secondary-panel { width:min(520px,100%); max-width:520px; }
+#ovCallsign #btnCallsignReroll { width:auto; display:block; margin:16px auto 20px; padding:10px 24px; }
+.secondary-panel .surface-actions { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; }
+.secondary-panel .surface-actions .btn { margin:0; }
+.secondary-panel .mini-chip { min-height:44px; min-width:44px; font:600 13px/1.4 var(--sm-font-body); }
+.secondary-panel .net-relayurl, .secondary-panel .net-relaylist, .secondary-panel .join-input { min-height:46px; font:400 15px/1.5 var(--sm-font-body); }
+#ovRoom #roomCode { min-height:44px; display:flex; align-items:center; justify-content:center; }
+#ovRoom .switch { height:44px; background:transparent; }
+#ovRoom .switch::before { inset:8px 0; border-radius:14px; background:#354357; }
+#ovRoom .switch.on::before { background:#61d4e7; }
+#ovRoom .switch::after { top:11px; }
