@@ -1,6 +1,6 @@
 # Starlight Speedway: first track-experience slice
 
-Design only, 3 October 2026. No implementation, publication, or gameplay validation is claimed.
+Authored design, 3 October 2026. The first implementation is in draft PR #51; current runtime contracts are in [race-feature-contract.md](race-feature-contract.md) and [race-feature-wire.md](race-feature-wire.md). The foundation and proposed wire budget below record the original design inputs, not the current codec. Human gameplay and visual acceptance remain release gates.
 
 ## Decision
 

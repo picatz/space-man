@@ -427,6 +427,16 @@
       for (const e of next.state.events) eventSerial = Math.max(eventSerial, e.serial);
       current = next; return next;
     }
+    // Read-only gate for a queued native Item press. A neutral sample arms the
+    // local edge latch, and a host snapshot must acknowledge the interruption
+    // generation before a fresh press can share that generation safely.
+    function itemReady(p) {
+      if (!current || rebase || releasePending || itemHeld || current.status !== 'running' ||
+          current.state.phase !== 'racing') return false;
+      const s = current.seats.find(s => s.p === p && s.connected && !s.forfeited);
+      return !!(s && s.actorId === seatId && current.state.actors[actorIndex(s.actorId)].finishTick === null &&
+        s.releaseEdges >= releaseEdges);
+    }
     function input(command, p, released = false) {
       if (!current || rebase || current.status !== 'running' || current.state.phase === 'finished') return null;
       const s = current.seats.find(s => s.p === p && s.connected && !s.forfeited);
@@ -450,7 +460,7 @@
       return encodeInput({ epoch: current.epoch, seq: ++seq, tick: current.state.tick, recoverEdges, itemEdges, releaseEdges,
         warnings: observed, released, command: c });
     }
-    return { accept, input, observeWarnings, cancel, release(p) { cancel(); return input({}, p, true); }, get current() { return current; } };
+    return { accept, input, itemReady, observeWarnings, cancel, release(p) { cancel(); return input({}, p, true); }, get current() { return current; } };
   }
   return Object.freeze({ VERSION, CATALOG_VERSION, MAX_BYTES, INPUT_BYTES, HEADER_BYTES, ACTOR_BYTES, EFFECT_BYTES, EVENT_BYTES,
     INPUT_TTL_MS, REJOIN_MS, SNAPSHOT_MS, MAX_HUMANS, PILOTS, configuration,

@@ -112,7 +112,7 @@
     function message(type,payload){if(!current||seq===0xffffffff)return null;return encode({...current,type,revision:++seq},payload);}
     function ready(){return current&&current.phase==='barrier'?message(READY,new Uint8Array()):null;}
     function input(command,p){if(!current||current.phase!=='running'||!hasPlayer(current.players,p))return null;const payload=current.mode==='runner'?encodeRunner([{...command,p}]):engine.input(command,p);return payload?message(INPUT,payload):null;}
-    return{accept,ready,input,cancel(reconnect=false){engine?.cancel?.(reconnect);},observeWarnings(serials){return current?.mode==='race'&&engine?.observeWarnings(serials);},release(p){if(!current||current.phase!=='running'||!hasPlayer(current.players,p)||!engine)return null;const payload=current.mode==='race'?engine.release(p):engine.input({},p);return payload?message(INPUT,payload):null;},get current(){return current;}};
+    return{accept,ready,input,itemReady(p){return !!(current?.mode==='race'&&current.phase==='running'&&hasPlayer(current.players,p)&&engine?.itemReady(p));},cancel(reconnect=false){engine?.cancel?.(reconnect);},observeWarnings(serials){return current?.mode==='race'&&engine?.observeWarnings(serials);},release(p){if(!current||current.phase!=='running'||!hasPlayer(current.players,p)||!engine)return null;const payload=current.mode==='race'?engine.release(p):engine.input({},p);return payload?message(INPUT,payload):null;},get current(){return current;}};
   }
   return Object.freeze({VERSION,HEADER,MAX_BYTES,INPUT,SNAPSHOT,READY,MIN_BARRIER_MS,MAX_BARRIER_MS,encode,decode,encodeRunner,decodeRunner,hasPlayer,createHost,createClient});
 });

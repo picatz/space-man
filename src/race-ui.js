@@ -76,6 +76,22 @@
         (safe === null ? "No comfortably clear lane is visible." : "Clear lane: " + laneName(safe) + "."),
     };
   }
+  // Native taps can begin and end between physics steps. Establish one neutral
+  // Item sample, then emit one fresh press; never repeat it while the key stays
+  // down or let it survive a menu/epoch/ownership reset.
+  function createItemRequest() {
+    let phase = 0;
+    return Object.freeze({
+      request() { if (!phase) phase = 1; },
+      reset() { phase = 0; },
+      sample(held, ready = true) {
+        if (!phase) return !!held;
+        if (!ready) { phase = 1; return false; }
+        if (phase === 1) { phase = 2; return false; }
+        phase = 0; return true;
+      },
+    });
+  }
   function sourceBearingArrow(sx, sy) {
     return ["→","↘","↓","↙","←","↖","↑","↗"][(Math.round(Math.atan2(sy,sx)/(Math.PI/4))+8)%8];
   }
@@ -94,7 +110,7 @@
 .race-online-panel{margin-top:18px;padding:13px 18px;border:1px solid #38536b;border-radius:16px;background:#10263be8}.race-online-panel>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750;color:#d6efbf}.race-online-entry{display:grid;gap:10px}.race-online-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.race-room-input{width:100%;min-height:46px;border:1px solid #547183;border-radius:10px;background:#071c2e;color:#e1f5ff;font:inherit;padding:10px;user-select:text;touch-action:auto}.race-room-members{padding-left:20px;color:#c7e2ef;font-size:12px}.race-room-code{font-size:18px;letter-spacing:.08em}.race-watch-tools{position:absolute;bottom:calc(var(--race-bottom) + 18px);left:50%;transform:translateX(-50%);z-index:4;background:#10263be8;border:1px solid #38536b;border-radius:12px;display:flex;align-items:center;gap:8px;max-width:95%;font-size:10px}.race-watch-tools>.race-button{width:44px;min-width:44px;height:44px;padding:8px;flex:0 0 44px}.race-watch-tools>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-root button:disabled{opacity:.5;cursor:default}.race-root[data-online=true] .race-hint{display:none}
 .race-audio-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.race-audio-volume{display:flex;gap:8px;align-items:center;font-size:11px;color:#a9bed0}.race-audio-volume input{max-width:140px;min-height:44px;touch-action:pan-x}.race-compact .race-audio-controls{border-top:1px solid #294054;padding-top:12px}
 
-.race-threat-map{display:block;width:140px;height:30px;margin:4px auto 0;border-radius:5px}.race-item{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 151px);z-index:4;width:76px;height:62px;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:3px;background:#12283fec;border:2px solid #71879b;border-radius:16px;touch-action:none;box-shadow:0 3px 0 #071522}.race-item-icon{font-size:25px;line-height:1}.race-item-name{font-size:8px;letter-spacing:.06em;line-height:1.25}.race-item[data-item=shield]{border-color:#89eaff;color:#c5f6ff}.race-item[data-item=pulse]{border-color:#ffb17b;color:#ffe4cc}.race-item[aria-disabled=true]{color:#a7b8c5;border-color:#506779}.race-item[data-active=true]{box-shadow:0 0 0 3px #89eaff44}.race-item-key{font-size:8px;color:#abc0cc}.race-root[data-touch=true] .race-item-key{display:none}.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 18px);bottom:calc(var(--race-bottom) + 97px);width:65px;height:55px}.race-root[data-touch=true][data-handed=left] .race-item{right:auto;left:calc(var(--race-left) + 18px)}.race-root[data-touch=true][data-features=true] .race-minimap{bottom:calc(var(--race-bottom) + 166px)}.race-warning[data-kind=pulse]{background:#43291feb;border-color:#ffc48b;color:#fff0d8;font-size:11px;white-space:normal;text-align:center;max-width:min(340px,calc(100% - 32px));top:calc(var(--race-top) + 145px)}
+.race-warning-source{width:14px;height:14px;vertical-align:-3px;margin-right:5px}.race-threat-map{display:block;width:140px;height:30px;margin:4px auto 0;border-radius:5px}.race-item{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 151px);z-index:3;width:76px;height:62px;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:3px;background:#12283fec;border:2px solid #71879b;border-radius:16px;touch-action:none;box-shadow:0 3px 0 #071522}.race-item-icon{font-size:25px;line-height:1}.race-item-name{font-size:8px;letter-spacing:.06em;line-height:1.25}.race-item[data-item=shield]{border-color:#89eaff;color:#c5f6ff}.race-item[data-item=pulse]{border-color:#ffb17b;color:#ffe4cc}.race-item[aria-disabled=true]{color:#a7b8c5;border-color:#506779}.race-item[data-active=true]{box-shadow:0 0 0 3px #89eaff44}.race-item-key{font-size:8px;color:#abc0cc}.race-root[data-touch=true] .race-item-key{display:none}.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 18px);bottom:calc(var(--race-bottom) + 97px);width:65px;height:55px}.race-root[data-touch=true][data-handed=left] .race-item{right:auto;left:calc(var(--race-left) + 18px)}.race-root[data-touch=true][data-features=true] .race-minimap{bottom:calc(var(--race-bottom) + 166px)}.race-warning[data-kind=pulse]{background:#43291feb;border-color:#ffc48b;color:#fff0d8;font-size:11px;white-space:normal;text-align:center;max-width:min(340px,calc(100% - 32px));top:calc(var(--race-top) + 145px)}
 @media(max-width:760px){.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 13px);width:59px;bottom:calc(var(--race-bottom) + 96px)}.race-root[data-touch=true][data-handed=left] .race-item{left:calc(var(--race-left) + 13px)}}
 @media(max-height:520px) and (min-width:600px){.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 18px);width:57px;height:48px;bottom:calc(var(--race-bottom) + 87px)}.race-root[data-touch=true][data-handed=left] .race-item{left:calc(var(--race-left) + 18px)}.race-root[data-touch=true][data-features=true] .race-minimap{bottom:calc(var(--race-bottom) + 145px)}.race-warning[data-kind=pulse]{top:calc(var(--race-top) + 70px)}}
 @media(max-width:350px){.race-root[data-touch=true] .race-item{width:54px;bottom:calc(var(--race-bottom) + 93px)}}
@@ -142,7 +158,7 @@
       driveFeedback,
       itemSlot, itemIcon, itemName, itemKey,
       banner,
-      warning, warningCopy, threatMap, threatG,
+      warning, warningCopy, warningSource, sourceG, threatMap, threatG,
       resultRows,
       resultTitle,
       description,
@@ -162,7 +178,7 @@
       previousPose = null,
       renderDt = 1 / 60,
       renderFrame = 0,
-      itemRequest = false,
+      itemRequest = createItemRequest(),
       displayedWarnings = Array(5).fill(0),
       noticeText = "", noticeUntil = 0, noticeTick = -1, noticeSerial = 0, warningSoundKey = "";
     const warningReceipt = createWarningReceipt();
@@ -335,12 +351,13 @@
           roomRole,
           !status.current || status.current.status !== "lobby",
         );
-        if (status.connection || status.stale) {
-          keys.clear();
-          resetTouch();
-          pad = { steer: 0, boost: false, brake: false, recover: false };
-          padNeutral = true;
-        }
+        const interrupted = !!(status.connection || status.stale),
+          wasInterrupted = !!(previous?.connection || previous?.stale),
+          ownershipChanged = previous?.active &&
+            (previous.info?.role !== status.info?.role || previous.info?.myP !== status.info?.myP);
+        // Clear queued native presses as well as held controls. Only transitions
+        // release, so repeated stale-status refreshes cannot exhaust generations.
+        if (interrupted !== wasInterrupted || ownershipChanged) resetInput();
       } else if (previous?.active || status.closedReason) {
         state = null;
         view = "lobby";
@@ -380,8 +397,15 @@
         old.tick > next.tick ||
         old.trackId !== next.trackId ||
         (old.phase === "finished" && next.phase !== "finished");
+      const oldPilot = old?.actors.find(a => a.controller === "human"),
+        nextPilot = next.actors.find(a => a.controller === "human"),
+        inputChanged = networkEpoch !== snapshot.epoch ||
+          oldPilot?.id !== nextPilot?.id || oldPilot?.peerP !== nextPilot?.peerP;
       state = next;
       networkEpoch = snapshot.epoch;
+      // A lost paused snapshot can hide an entire pause/resume cycle. The epoch
+      // still invalidates the old native queue, even at the same simulation tick.
+      if (inputChanged && !newRound) resetInput();
       if (newRound) {
         cosmeticRound++;
         previousPose = null;
@@ -653,7 +677,7 @@
     }
     function cancelCorner() {
       lastControl = { steer: 0, brake: false };
-      itemRequest = false; displayedWarnings = Array(5).fill(0); warningReceipt.reset(); warningSoundKey = "";
+      itemRequest.reset(); displayedWarnings = Array(5).fill(0); warningReceipt.reset(); warningSoundKey = "";
       if (onlineActive()) room.release();
       else R.cancelControl(state);
     }
@@ -788,7 +812,7 @@
       }
       if (e.target === itemSlot && ["Enter", "Space"].includes(e.code)) {
         e.preventDefault();
-        if (!e.repeat && isRunning() && canControl() && ownActor()?.item) itemRequest = true;
+        if (!e.repeat && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
         return;
       }
       if (e.code === "KeyC" && !e.repeat && !actionFor(e)) {
@@ -800,6 +824,7 @@
       if (a) {
         e.preventDefault();
         if (e.repeat && !keys.has(e.code)) return;
+        if (a === "item" && !e.repeat && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
         keys.set(e.code, a);
       }
     }
@@ -860,7 +885,8 @@
         if (edge("boost") && modal.contains(document.activeElement))
           document.activeElement.click();
         if (edge("brake")) escape();
-      } else
+      } else {
+        if (edge("item") && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
         pad = {
           steer,
           boost: raw.boost,
@@ -868,6 +894,7 @@
           recover: raw.recover,
           item: raw.item,
         };
+      }
       padPrevious = raw;
     }
     function input() {
@@ -885,7 +912,7 @@
         boost: held("boost") || pad.boost,
         brake: held("brake") || pad.brake,
         recover: held("recover") || pad.recover,
-        item: held("item") || pad.item || itemRequest,
+        item: itemRequest.sample(held("item") || pad.item, !onlineActive() || room.itemReady?.() !== false),
         warnings: displayedWarnings.slice(),
       };
     }
@@ -1070,14 +1097,17 @@
       warning = el("div", "race-warning");
       warning.setAttribute("role", "status");
       warningCopy = el("span");
+      warningSource = el("canvas", "race-warning-source");
+      warningSource.width = warningSource.height = 28; warningSource.hidden = true;
+      warningSource.setAttribute("role", "img"); sourceG = warningSource.getContext("2d");
       threatMap = el("canvas", "race-threat-map");
       threatMap.width = 280; threatMap.height = 60;
       threatMap.setAttribute("role", "img"); threatMap.hidden = true;
       threatG = threatMap.getContext("2d");
-      warning.append(warningCopy, threatMap);
+      warning.append(warningSource, warningCopy, threatMap);
       rootEl.append(banner, warning);
       itemSlot = button("", "race-item", e => {
-        if (e.detail === 0 && isRunning() && canControl() && ownActor()?.item) itemRequest = true;
+        if (e.detail === 0 && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
       });
       itemSlot.dataset.action = "item";
       itemSlot.setAttribute("aria-label", "Use item");
@@ -1089,7 +1119,7 @@
       itemSlot.addEventListener("pointerdown", e => {
         if (!isRunning() || !canControl() || !ownActor()?.item) return;
         e.preventDefault();
-        itemRequest = true;
+        itemRequest.request();
         if (e.pointerType === "mouse") return;
         rootEl.dataset.touch = "true";
         touches.set(e.pointerId, { action: "item", el: itemSlot });
@@ -1680,9 +1710,10 @@
       }
       for(const effect of state.effects || []) {
         if(effect.phase === "charge") {
-          ctx.save();ctx.strokeStyle="#ffd1989c";ctx.lineWidth=20;ctx.setLineDash([12,10]);ctx.beginPath();
-          for(let n=0;n<=12;n++){const p=point({s:effect.s+56+n*28,d:effect.d});if(n)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}
-          ctx.stroke();ctx.restore();
+          ctx.save();ctx.strokeStyle="#ffc38b";ctx.lineWidth=2;ctx.lineCap="butt";ctx.lineJoin="round";
+          for(const side of[-1,1]){ctx.beginPath();for(let n=0;n<=12;n++){const p=point({s:effect.s+36+n*29.6667,d:effect.d+side*10});if(n)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}ctx.stroke();}
+          for(let distance=56;distance<=392;distance+=48){const p=point({s:effect.s+distance,d:effect.d});ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);ctx.beginPath();ctx.moveTo(-6,-9);ctx.lineTo(5,0);ctx.lineTo(-6,9);ctx.stroke();ctx.restore();}
+          ctx.restore();
         } else {
           const p=point(effect);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);ctx.fillStyle="#ffe4be";ctx.strokeStyle="#fb9f5b";ctx.lineWidth=4;
           ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-7,-10);ctx.lineTo(-13,-10);ctx.lineTo(8,0);ctx.lineTo(-13,10);ctx.lineTo(-7,10);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
@@ -1931,14 +1962,17 @@
             y: height * 0.48 + (dx * sin + dy * cos - actorElevation(actor)*.8) * zoom };
         };
         const focus = project(a), own = a.id === ownActor()?.id;
-        const label = own ? "YOU" : "WATCHING";
-        g.font = "900 12px system-ui";
-        const labelWidth = 20;
-        const focusX = clamp(focus.x, labelWidth / 2 + 6, width - labelWidth / 2 - 6);
-        const focusY = clamp(focus.y - 42 * zoom * (1+actorElevation(a)/200), topClip + 10, Math.max(topClip + 10, bottomClip - 8));
-        const focusBox = { left: focusX - labelWidth / 2, right: focusX + labelWidth / 2,
-          top: focusY - 8, bottom: focusY + 8 };
-        const labels = [focusBox];
+        const bodies = state.actors.map(actor => {
+          const p = project(actor), r = 36 * zoom * (1+actorElevation(actor)/200);
+          return {id:actor.id,x:p.x-r,y:p.y-r,w:r*2,h:r*2};
+        });
+        const cue = root.SpaceManArt.identityMarkerLayout(a.id, bodies,
+          {left:6,right:width-6,top:topClip,bottom:bottomClip});
+        const labels = cue ? [{left:cue.x,right:cue.x+cue.w,top:cue.y,bottom:cue.y+cue.h}] : [];
+        if(cue?.leader){const l=cue.leader;labels.push({left:l.x,right:l.x+l.w,top:l.y,bottom:l.y+l.h});}
+        // Browser QA observes the actual projection, not a parallel mock layout.
+        rootEl.dataset.identity = cue ? (own ? 'YOU:' : 'WATCHING:') + a.id : '';
+        rootEl.dataset.identityCue = JSON.stringify({cue,bodies});
         g.font = "700 10px system-ui";
         g.textAlign = "center";
         for (const actor of state.actors) {
@@ -1947,6 +1981,7 @@
           const name = actor.name, w = g.measureText(name).width + 10;
           const box = { left: x - w / 2, right: x + w / 2, top: y - 12, bottom: y + 5 };
           if (box.left < 5 || box.right > width - 5 || box.top < topClip || box.bottom > bottomClip ||
+            bodies.some(b => box.left < b.x+b.w+2 && box.right > b.x-2 && box.top < b.y+b.h+2 && box.bottom > b.y-2) ||
             labels.some(b => box.left < b.right + 6 && box.right > b.left - 6 && box.top < b.bottom + 5 && box.bottom > b.top - 5)) continue;
           labels.push(box);
           g.fillStyle = "#071626dd";
@@ -1954,8 +1989,7 @@
           g.fillStyle = "#cfdfeb";
           g.fillText(name, x, y + 1);
         }
-        root.SpaceManArt.identityCue(g, focusX, focusY, own ? 'you' : 'watching', focus.x, focus.y);
-        rootEl.dataset.identity = (own ? 'YOU:' : 'WATCHING:') + a.id;
+        if (cue) root.SpaceManArt.identityCue(g, cue.x+cue.w/2, cue.y+cue.h/2, own ? 'you' : 'watching', cue.targetX, cue.targetY, cue.link);
       }
       updateIdentity(a);
       drawMap(mg, c, 340, 240, state.actors);
@@ -1999,7 +2033,7 @@
         const sx = dx*Math.cos(angle)-dy*Math.sin(angle), sy = dx*Math.sin(angle)+dy*Math.cos(angle);
         sourceArrow = sourceBearingArrow(sx, sy);
       }
-      const pulseText = guide ? sourceArrow + " " + guide.label : "";
+      const pulseText = guide ? guide.label : "";
       warning.hidden =
         !threats.length && !a.offroad &&
         !a.recoveryTicks &&
@@ -2026,7 +2060,15 @@
                     : "";
       setText(warningCopy, warningText);
       const pulseVisible = !!threats.length && warningText === pulseText;
-      threatMap.hidden = !pulseVisible;
+      threatMap.hidden = !pulseVisible; warningSource.hidden = !pulseVisible;
+      if (pulseVisible) {
+        const bearing = ["→","↘","↓","↙","←","↖","↑","↗"].indexOf(sourceArrow);
+        const words = ["right","rear right","behind","rear left","left","front left","ahead","front right"];
+        warningSource.setAttribute("aria-label", "Pulse source: " + words[bearing]);
+        sourceG.clearRect(0,0,28,28); sourceG.save(); sourceG.translate(14,14); sourceG.rotate(bearing*Math.PI/4);
+        sourceG.strokeStyle="#ffe5bd";sourceG.lineWidth=3;sourceG.lineJoin="round";sourceG.lineCap="round";
+        sourceG.beginPath();sourceG.moveTo(-8,0);sourceG.lineTo(8,0);sourceG.moveTo(1,-7);sourceG.lineTo(8,0);sourceG.lineTo(1,7);sourceG.stroke();sourceG.restore();
+      }
       if (pulseVisible) {
         threatMap.setAttribute("aria-label", guide.description);
         threatG.setTransform(2,0,0,2,0,0); threatG.clearRect(0,0,140,30);
@@ -2076,7 +2118,6 @@
           rescueRequest = false;
           lastControl = command;
           room.step(command, now);
-          itemRequest = false;
           acc -= 1 / 60;
         }
       } else if (isRunning()) {
@@ -2094,7 +2135,6 @@
           lastControl = cmds[state.actors[0].id];
           previousPose = root.SpaceManRacePresentation?.capture(state);
           R.step(state, cmds);
-          itemRequest = false;
           updateFeatureNotice();
           audio?.update(state, followActor());
           acc -= 1 / 60;
@@ -2304,5 +2344,5 @@
       },
     });
   }
-  root.SpaceManRaceUI = Object.freeze({ create, createWarningReceipt, pulseGuide, sourceBearingArrow });
+  root.SpaceManRaceUI = Object.freeze({ create, createWarningReceipt, createItemRequest, pulseGuide, sourceBearingArrow });
 })(typeof window !== "undefined" ? window : globalThis);

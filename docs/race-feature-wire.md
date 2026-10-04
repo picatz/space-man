@@ -108,6 +108,25 @@ anti-cheat. Tests cover missing/late observations, exact 35/36-tick eligibility,
 lost release, unknown serials, other identities, packet loss/rejoin, saturation,
 full-size snapshots, malformed/truncated input and deterministic binary fuzz.
 
+## Queued native Item readiness
+
+`RaceOnline.createClient().itemReady(p)` is a read-only readiness check. It is
+true only for a connected, unfinished own pilot in a running race, after a
+neutral Item sample has armed the local latch, no release/reconnect reset is
+pending, and the latest authenticated snapshot acknowledges the locally sent
+release generation. `RaceRoom.itemReady()` and the journey race adapter's
+`itemReady()` bind that check to the local player; watchers, stale connections,
+pauses and non-race encounters return false. Hosts use the same looped-back
+snapshot acknowledgement path.
+
+A fresh queued keyboard/touch press waits while this is false, continuing to
+send Item=false with normal driving and displayed-warning observations. After
+readiness, the native queue emits its neutral baseline and one Item press.
+This prevents a lost release packet from consuming the new press alongside the
+old cancelled generation. Menus/blur/epoch/ownership reset clear the UI queue;
+held or pre-menu edges are never replayed. No UI-supplied counter or new wire
+field is introduced.
+
 ## Atomic transport revision
 
 Standalone race exclusively advertises capability bit 11; expedition exclusively

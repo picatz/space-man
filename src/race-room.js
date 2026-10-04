@@ -406,6 +406,8 @@
       step,
       release,
       observeWarnings: serials => client.observeWarnings(serials),
+      itemReady: () => !!(active && !connection && (host || now() - lastReceived <= 1500) &&
+        info().role === 0 && client.itemReady(info().myP)),
       close,
       status,
       get active() {

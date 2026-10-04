@@ -193,3 +193,34 @@ for (const trackId of ['ember', 'bloom']) test(`${trackId} rejects nonempty feat
     }
   }
 });
+
+test('queued fresh Item waits for acknowledged neutral after lost release and never replays the pre-menu edge', () => {
+  const fs = require('node:fs'), vm = require('node:vm'), context = { window: {} };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../src/race-ui.js'), 'utf8'), context);
+  const queue = context.window.SpaceManRaceUI.createItemRequest();
+  const { h, c } = setup(), a = h.state.actors[1]; a.item = 'shield';
+  c.accept(h.packet(), 1); assert.equal(c.itemReady(2), true);
+  const lostPress = c.input({ item: true }, 2); assert.equal(O.decodeInput(lostPress).itemEdges, 1);
+  c.cancel(); assert.equal(c.itemReady(2), false);
+  const lostRelease = c.release(2); assert.equal(O.decodeInput(lostRelease).releaseEdges, 1);
+  queue.request(); // A genuinely new native press immediately after closing the menu.
+  const beforeAck = h.packet();
+  const neutral = c.input({ steer: .5, throttle: 1, boost: true, item: queue.sample(false, c.itemReady(2)) }, 2);
+  const d = O.decodeInput(neutral); assert.equal(d.itemEdges, 1); assert.equal(d.releaseEdges, 1); assert.equal(d.command.throttle, 1); assert.equal(d.command.boost, true);
+  assert.ok(h.receive(2, 'peer-2', neutral, time(h))); h.step(time(h));
+  assert.equal(a.item, 'shield'); assert.equal(a.shieldTicks, 0, 'no old edge activates');
+  c.accept(beforeAck, 1); assert.equal(c.itemReady(2), false, 'a pre-acknowledgement full snapshot is insufficient');
+  assert.equal(queue.sample(false, c.itemReady(2)), false, 'the request remains queued');
+  c.accept(h.packet(), 1); assert.equal(c.itemReady(2), true);
+  assert.equal(queue.sample(false, c.itemReady(2)), false, 'queued native helper first emits its neutral baseline');
+  c.input({ throttle: 1, item: false }, 2);
+  const fresh = c.input({ throttle: 1, item: queue.sample(false, c.itemReady(2)) }, 2);
+  assert.equal(O.decodeInput(fresh).itemEdges, 2); assert.ok(h.receive(2, 'peer-2', fresh, time(h))); h.step(time(h));
+  assert.equal(a.item, null); assert.equal(a.shieldTicks, 240);
+  assert.equal(h.receive(2, 'peer-2', lostPress, time(h)), false); assert.equal(h.receive(2, 'peer-2', lostRelease, time(h)), false);
+  a.item = 'shield'; h.step(time(h)); assert.equal(a.item, 'shield', 'only the fresh queued edge was consumed');
+  c.cancel(true); assert.equal(c.itemReady(2), false); c.accept(h.packet(), 1); assert.equal(c.itemReady(2), false, 'reconnect still needs a neutral local sample');
+  c.input({}, 2); assert.equal(c.itemReady(2), true); assert.equal(c.itemReady(48), false);
+  h.pause(true); c.accept(h.packet(), 1); assert.equal(c.itemReady(2), false);
+  h.pause(false); c.accept(h.packet(), 1); assert.equal(c.itemReady(2), false); c.input({}, 2); assert.equal(c.itemReady(2), true);
+});

@@ -227,3 +227,15 @@ test('late watcher reusing a departed peer number keeps spectator ownership and 
   assert.equal(state(late).actors.find(a=>a.peerP===p).name,oldName,'old name remains frozen');
   assert.notEqual(oldName,late.net.roster().find(r=>r.you).callsign,'new watcher has different callsign');
 });
+
+test('Item readiness is exposed for host loopback and guests only after a neutral acknowledged release', async t => {
+  const { host, join, step } = await setup(t), guest = await join(), watcher = await join(1);
+  assert.equal(host.room.itemReady(), false); host.room.start();
+  await until(() => guest.room.current.status === 'running'); await step(185, guest);
+  assert.equal(host.room.itemReady(), true); assert.equal(guest.room.itemReady(), true); assert.equal(watcher.room.itemReady(), false);
+  host.room.release(); guest.room.release();
+  assert.equal(host.room.itemReady(), false); assert.equal(guest.room.itemReady(), false);
+  await step(6, guest); assert.equal(host.room.itemReady(), true); assert.equal(guest.room.itemReady(), true);
+  host.room.pause(true); assert.equal(host.room.itemReady(), false);
+  await until(() => guest.room.current.status === 'paused'); assert.equal(guest.room.itemReady(), false);
+});

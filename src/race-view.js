@@ -275,6 +275,7 @@
           }
           marker.dataset.actorId = a.id;
           marker.dataset.role = own ? "you" : "watching";
+          marker.dataset.anchor = JSON.stringify({x:(point.x+1)*w/2,y:(1-point.y)*h/2});
           const margin = 14;
           marker.style.left = Math.max(margin, Math.min(w - margin, (point.x + 1) * w / 2)) + "px";
           marker.style.top = Math.max(35, Math.min(h - 10, (1 - point.y) * h / 2 - 6)) + "px";

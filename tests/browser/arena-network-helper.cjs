@@ -237,7 +237,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       const s = arenaUI.snapshot(); if (!s) return false;
       const own = s.actors.find(a => a.controller === 'human');
       const cards = [...document.querySelectorAll('.arena-player-card[data-you="true"]')];
-      if (own) return cards.length === 1 && cards[0].dataset.actor === String(own.id) && cards[0].querySelector('.arena-you-badge')?.textContent === 'YOU';
+      if (own) return cards.length === 1 && cards[0].dataset.actor === String(own.id) && ['YOUR PILOT', 'YOU · ◇ BLUE', 'YOU · △ GOLD'].includes(cards[0].querySelector('.arena-player-tag')?.textContent) && cards[0].getAttribute('aria-label')?.includes(', you');
       return cards.length === 0 && !document.querySelector('.arena-you-badge') && document.querySelector('.arena-player-card[data-watching="true"]');
     });
   };
