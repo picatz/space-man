@@ -15,7 +15,7 @@ async function renderedCamera(page,mode) {
  await page.waitForFunction(mode=>{const r=document.querySelector('.race-root'),c=document.querySelector('.race-cockpit'),w=document.querySelector('.race-world');return r.dataset.camera===mode&&r.dataset.renderer===(mode==='topdown'?'2d':'webgl')&&w.hidden===(mode==='topdown')&&c.hidden===(mode!=='cockpit');},mode);
  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
 }
-for(const [width,height,touch] of [[390,844,true],[820,1180,true],[1280,800,false]])test(`in-game character pixels ${width}x${height}`,{timeout:45000},async t=>{
+for(const [width,height,touch] of [[390,844,true],[844,390,true],[820,1180,true],[1280,800,false]])test(`in-game character pixels ${width}x${height}`,{timeout:45000},async t=>{
  const{page}=await launch(t,{width,height},touch);
  await page.locator('#btnWardrobe').click();
  for(const [slot,id] of [['suit','mint'],['hat','antenna'],['eyes','happy'],['helmet','bubble'],['detail','stripe'],['ship','orbit']]) {
@@ -64,4 +64,27 @@ test('close WebGL headwear sheet keeps all nine accessories clear of expressive 
   }
   const frame=()=>{draws.forEach(draw=>draw());requestAnimationFrame(frame);};frame();return draws.length;
  });assert.equal(count,9);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await capture(page,'pilot-webgl-all-headwear');
+});
+
+test('ship materials and compact silhouettes agree in 2D, front and chase WebGL',{timeout:30000},async t=>{
+ const{page}=await launch(t,{width:1280,height:960});
+ const stats=await page.evaluate(()=>{
+  const sheet=document.createElement('div');sheet.style='position:fixed;inset:0;z-index:99999;background:#091c2c;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,320px)';document.body.append(sheet);
+  const draws=[],C=SpaceManCosmetics;let vertices=0;
+  C.ORDERS.ship.forEach((ship,row)=>{
+   const appearance={...C.DEFAULTS,ship,suit:C.ORDERS.suit[row],helmet:C.ORDERS.helmet[row]},state={tick:20,actors:[{id:1,x:0,y:0,heading:0,color:'#38E1FF',appearance}]};
+   for(const view of ['2D','FRONT','CHASE + BOOST']){
+    const box=document.createElement('div');box.style='position:relative';const canvas=document.createElement('canvas');canvas.width=426;canvas.height=292;canvas.style='width:100%;height:292px';box.append(canvas);const label=document.createElement('div');label.textContent=ship.toUpperCase()+' / '+view;label.style='position:absolute;bottom:8px;width:100%;color:#cfe3ff;text-align:center;font:12px system-ui;letter-spacing:.12em';box.append(label);sheet.append(box);
+    if(view==='2D'){
+     const g=canvas.getContext('2d');g.fillStyle='#091c2c';g.fillRect(0,0,426,292);g.translate(213,146);g.scale(4.2,4.2);SpaceManArt.hoverpod(g,SpaceManArt.characterStyle(appearance,'#38E1FF'),{calm:true});
+    }else{
+     const renderer=SpaceManRender3D.create(canvas,{powerSaving:true});if(!renderer)throw Error('Ship comparison requires real WebGL');renderer.resize(426,292,1);
+     const meshes=SpaceManRaceScene.actorMeshes(view==='CHASE + BOOST'?{...state,actors:state.actors.map(a=>({...a,boosting:true}))}:state,{calm:true});vertices=Math.max(vertices,meshes[0].vertices.length/9);
+     draws.push(()=>renderer.draw({background:[.035,.11,.173],camera:{eye:view==='FRONT'?[83,58,52]:[-82,58,28],target:[0,14,0],fov:.76,near:1,far:800},meshes,fog:{near:400,far:800}}));
+    }
+   }
+  });
+  const frame=()=>{draws.forEach(draw=>draw());requestAnimationFrame(frame);};frame();return{renderers:draws.length,vertices};
+ });
+ assert.equal(stats.renderers,6);assert.ok(stats.vertices<9500);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await capture(page,'ship-cross-view-materials');
 });
