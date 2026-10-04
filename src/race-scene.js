@@ -327,7 +327,7 @@
       pod(17, 15.5, 0, 10, 1.25, 4.4, color);
       // Raised coaming makes the pilot sit inside the craft rather than atop
       // stacked white discs. It is opaque and deliberately below the shoulders.
-      pod(-6, 15, 0, 12.5, 2.5, 9.4, rgb(P.legB));
+      pod(-6, 15, 0, 12.5, 2.5, 9.4, rgb('#243C57'));
       pod(-6, 16, 0, 10.5, 1.3, 7.6, rgb('#102D49'));
       if (appearance.ship === 'orbit') {
         ring(b, p, -8, 9, 0, 20, 24, 2.5, color);
@@ -340,18 +340,23 @@
           pod(leaf ? -8 : -15, 9, side * (leaf ? 1.22 : 1.15),
             leaf ? 16 : 10, 1.8, leaf ? 7 : 5, shade(color, .85));
         }
-        pod(-3, 8, side, 23, 4, 5.5, rgb(P.legB));
-        pod(-1, 9.5, side, 21, 3.6, 5.2, color);
-        pod(2, 12.7, side, 13, .55, 1.25, rgb('#DFFBFF'));
-        pod(-1, 6, side, 18, 1.1, 5.8, shade(color, .8));
+        // One continuous shell avoids intersecting ellipsoids producing jagged
+        // seams. The reflector follows its analytic surface with tiny clearance.
+        pod(-3, 8, side, 23, 4.5, 5.5, color, 16, 6);
+        const reflector = (f, z) => p(f,
+          8 + 4.5 * Math.sqrt(Math.max(0, 1 - ((f + 3) / 23) ** 2 - (z / 5.5) ** 2)) + .12, side + z);
+        for (let stripe = 0; stripe < 8; stripe++) {
+          const f = -15 + stripe * 3, next = f + 3;
+          b.quad(reflector(f, -.7), reflector(f, .7), reflector(next, .7), reflector(next, -.7), rgb('#DFFBFF'));
+        }
         // Bright rear engine discs remain readable even without boosting.
         for (let i = 0; i < 10; i++) {
           const a0 = (i * Math.PI) / 5,
             a1 = ((i + 1) * Math.PI) / 5;
           b.triangle(
             p(-25.5, 8, side),
-            p(-25.5, 8 + 3 * Math.cos(a1), side + 3 * Math.sin(a1)),
-            p(-25.5, 8 + 3 * Math.cos(a0), side + 3 * Math.sin(a0)),
+            p(-25.5, 8 + 2.2 * Math.cos(a1), side + 2.2 * Math.sin(a1)),
+            p(-25.5, 8 + 2.2 * Math.cos(a0), side + 2.2 * Math.sin(a0)),
             [0.8, 1, 1],
           );
         }
@@ -415,26 +420,12 @@
         );
       }
       if (a.boosting || a.padTicks > 0) {
-        const length = calm ? 35 : 35 + (snapshot.tick % 5) * 3;
-        for (const s of [-17, 17]) {
-          const p = (f, u, side) => [
-            a.x + co * f - si * side,
-            u + height,
-            a.y + si * f + co * side,
-          ];
-          b.triangle(
-            p(-23, 7, s - 4),
-            p(-23, 11, s + 4),
-            p(-length - 23, 8, s),
-            color,
-          );
-          b.triangle(
-            p(-23, 6, s + 4),
-            p(-23, 12, s - 4),
-            p(-length - 23, 8, s),
-            [0.8, 1, 1],
-          );
-        }
+        // Short rounded ion wakes read as engine energy, not opaque swept
+        // blades. Both views use two bright plumes and preserve calm rendering.
+        const length = calm ? 10 : 10 + (snapshot.tick % 5) * .35;
+        for (const side of [-18, 18])
+          pod(-25 - length, 8, side, length, 1.4, 1.7,
+            color.map(v => .7 + v * .3), 8, 3);
       }
     }
     return b.mesh();
@@ -500,7 +491,8 @@
     const c = Math.cos(actor.heading), s = Math.sin(actor.heading),
       dx = eye[0] - actor.x, dz = eye[2] - actor.y,
       forward = dx * c + dz * s, side = -dx * s + dz * c, up = eye[1] - height;
-    // Cached boost flames occupy [-58,-23] x [6,12] x [-21,21]. Use a
+    // A conservative envelope around the short rounded wakes is
+    // [-58,-23] x [6,12] x [-21,21]. Use a
     // conservative 36-unit eye clearance so their decorative triangles cannot
     // cross the Cockpit lens or fill it as a rival hops. This changes neither
     // the rival's hull/helmet nor its ground footprint or authoritative state.
@@ -516,8 +508,8 @@
       const boosted = !!(a.boosting || a.padTicks > 0),
         height = actorHeight(a, options.course, options.catalog, options.nearest),
         plume = boosted && !plumeNearEye(a, height, options.cockpitEye);
-      // Reuse the existing two cached hull variants. Only the four decorative
-      // flame triangles differ; face animation still reads the real boost cue.
+      // Reuse the existing two cached hull variants. Only the two decorative
+      // wake capsules differ; face animation still reads the real boost cue.
       const key = [style.accent, appearance.suit, appearance.helmet, appearance.hat, appearance.detail, appearance.ship, plume].join(':');
       const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, z: 0, airRamp: 0, heading: 0, boosting: plume, padTicks: 0 }] }, { calm: true, shadows: false }).vertices, 32);
       const c = Math.cos(a.heading), s = Math.sin(a.heading);

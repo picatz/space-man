@@ -103,7 +103,7 @@ test('Cockpit removes only close rival flame triangles, retaining the boosted pi
     bare=Scene.actorMeshes({...state,actors:[owner,{...rival,boosting:false}]},options);
   assert.equal(safe.filter(m=>m.actorId).length,1,'the nearby opponent is never hidden');
   const hull=list=>list.find(m=>m.actorId===rival.id),face=list=>list.find(m=>m.faceActorId===rival.id),shadow=list=>list.find(m=>m.shadowActorId===rival.id);
-  assert.equal(hull(regular).vertices.length-hull(safe).vertices.length,4*27,'exactly four decorative triangles removed');
+  assert.equal(hull(regular).vertices.length-hull(safe).vertices.length,2*8*3*6*9,'exactly two decorative wake capsules removed');
   assert.equal(hull(safe).vertices,hull(bare).vertices,'hull and helmet use the unchanged no-flame geometry');
   assert.equal(face(safe).vertices,face(regular).vertices,'real boost face cues survive plume suppression');
   assert.deepEqual(hull(safe).model,hull(regular).model);assert.equal(hull(safe).model[13],28);
@@ -120,7 +120,7 @@ test('Cockpit plume clearance uses the actual three-dimensional eye and rotates 
     const near=Scene.actorMeshes(state,{...options,cockpitEye:eye}).find(m=>m.actorId);
     // A ground plume is safely below an eye52 units up, so it remains visible.
     const shouldSuppress=z>0||eyeHeight<52;
-    assert.equal(near.vertices.length,full.vertices.length-(shouldSuppress?108:0));
+    assert.equal(near.vertices.length,full.vertices.length-(shouldSuppress?2*8*3*6*9:0));
     for(const farEye of [[eye[0],180,eye[2]],[100-120*si,eyeHeight,80+120*co],
       [100-150*co,eyeHeight,80-150*si]]) {
       assert.equal(Scene.actorMeshes(state,{...options,cockpitEye:farEye}).find(m=>m.actorId).vertices,full.vertices,

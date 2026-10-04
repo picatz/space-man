@@ -458,7 +458,7 @@ test('Cockpit uses its exact rendered eye to suppress only nearby rival exhaust 
   const cockpit=h.frames.at(-1),body=cockpit.meshes.find(m=>m.actorId===rival.id),face=cockpit.meshes.find(m=>m.faceActorId===rival.id);
   assert.ok(body&&face,'the near rival and helmet remain visible');
   assert.ok(!cockpit.meshes.some(m=>m.actorId===owner.id),'only the ordinary self-craft omission applies');
-  assert.equal(full.vertices.length-body.vertices.length,108);
+  assert.equal(full.vertices.length-body.vertices.length,2*8*3*6*9);
   assert.equal(face.vertices,Scene.actorMeshes(state).find(m=>m.faceActorId===rival.id).vertices);
   const expected=Scene.actorMeshes(state,{cockpitEye:cockpit.camera.eye}).find(m=>m.actorId===rival.id);
   assert.equal(body.vertices,expected.vertices,'suppression uses the same eye that draws this frame');
