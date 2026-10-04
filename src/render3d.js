@@ -114,7 +114,10 @@
     '  float fog = smoothstep(uFogRange.x, uFogRange.y, vDistance);',
     '  float alpha = uOpacity;',
     '  if (uSoftShadow > 0.5) alpha *= 1.0 - smoothstep(0.15, 1.0, length(vLocal.xz / vec2(30.0, 24.0)));',
-    '  if (uTailFade > 0.5) alpha *= smoothstep(-42.0, -25.0, vLocal.x);',
+    '  if (uTailFade > 0.5) {',
+    '    float radial = length(vec2(vLocal.y - 8.0, min(abs(vLocal.z - 17.0), abs(vLocal.z + 17.0))));',
+    '    alpha *= smoothstep(-35.0, -23.0, vLocal.x) * (1.0 - smoothstep(0.2, 2.5, radial));',
+    '  }',
     '  gl_FragColor = vec4(mix(vColor, uFogColor, fog), alpha);', '}'
   ].join('\n');
 

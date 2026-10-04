@@ -4,7 +4,7 @@ const actor=appearance=>({id:'pilot',x:0,y:0,heading:0,color:'#38E1FF',appearanc
 test('soft ship shells use unit smooth normals within a bounded cached geometry budget',()=>{
  for(const ship of C.ORDERS.ship)for(const helmet of C.ORDERS.helmet){
   const state={tick:20,actors:[actor({...C.DEFAULTS,ship,helmet})]},mesh=Scene.actorMeshes(state)[0],v=mesh.vertices;
-  assert.ok(v.length/9<9000,'base craft stays below 9000 cached vertices');
+  assert.ok(v.length/9<9500,'base craft stays below 9500 cached vertices');
   let smooth=0;
   for(let i=0;i<v.length;i+=27){
    for(let j=0;j<27;j+=9)assert.ok(Math.hypot(v[i+j+3],v[i+j+4],v[i+j+5])<.00001 || Math.abs(Math.hypot(v[i+j+3],v[i+j+4],v[i+j+5])-1)<.00001,'normals finite and normalized');
@@ -23,4 +23,23 @@ test('rounded stabilizers remain compact and do not change culling or physics st
   for(let i=0;i<v.length;i+=9)width=Math.max(width,Math.abs(v[i+2]));
   assert.ok(width<=29,'no long blade beyond the rounded twin pods');
  }
+});
+
+test('canvas and WebGL use the same rounded authored hull outline',()=>{
+ const Art=require('../src/art.js'),v=Scene.actors({tick:20,actors:[actor(C.DEFAULTS)]}).vertices;
+ for(let i=0;i<32;i++) {
+  const p=Art.hoverHullOutline(i*Math.PI/16);assert.ok(p.every(Number.isFinite));
+  let found=false;
+  for(let n=0;n<v.length;n+=9)if(p.every((x,k)=>Math.abs(x-v[n+k])<.00001)){found=true;break;}
+  assert.ok(found,'the shared planform is the real rendered perimeter');
+ }
+ const q=Art.hoverHullOutline(.3),r=Art.hoverHullOutline(-.3);assert.equal(q[0],r[0]);assert.equal(q[2],-r[2]);
+});
+test('mirrored structural shoulders face upward and engine energy stays separate from the hull',()=>{
+ const state={tick:20,actors:[actor(C.DEFAULTS)]},base=Scene.actorMeshes(state),boost=Scene.actorMeshes({...state,actors:[{...state.actors[0],boosting:true}]});
+ assert.equal(base[0].vertices,boost[0].vertices);assert.equal(base.find(m=>m.engineActorId).vertices,boost.find(m=>m.engineActorId).vertices);
+ const shadow=base.find(m=>m.shadowActorId),wake=boost.find(m=>m.plumeActorId);assert.equal(shadow.softShadow,true);assert.ok(shadow.opacity<.3);assert.ok(wake.emissive&&wake.tailFade&&wake.opacity<.4);
+ const v=base[0].vertices;let n=0;
+ for(let i=0;i<v.length;i+=9)if(Math.abs(v[i+6]-0x38/255*.9)<.00001&&Math.abs(v[i+7]-0xe1/255*.9)<.00001&&Math.abs(v[i+8]-.9)<.00001){assert.ok(v[i+4]>=-.00001);n++;}
+ assert.ok(n>100,'both mirrored bridges have tested top surfaces');
 });

@@ -86,5 +86,5 @@ test('ship materials and compact silhouettes agree in 2D, front and chase WebGL'
   });
   const frame=()=>{draws.forEach(draw=>draw());requestAnimationFrame(frame);};frame();return{renderers:draws.length,vertices};
  });
- assert.equal(stats.renderers,6);assert.ok(stats.vertices<9000);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await capture(page,'ship-cross-view-materials');
+ assert.equal(stats.renderers,6);assert.ok(stats.vertices<9500);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await capture(page,'ship-cross-view-materials');
 });

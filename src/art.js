@@ -258,6 +258,12 @@ const characterHats = {
 };
 
 
+  // Shared authored planform for both the canvas and WebGL craft.
+  function hoverHullOutline(angle) {
+    const c=Math.cos(angle), s=Math.sin(angle);
+    return [Math.max(-21,4+28*c),9.4+2.3*c+.8*s*s,13.5*s*(.96+.12*c)];
+  }
+  const hoverHullPath=Object.freeze(Array.from({length:64},(_,i)=>Object.freeze(hoverHullOutline(i*Math.PI/32))));
   function hoverpod(c, style, { tick = 20, id = 0, calm = false, boosting = false, hero = false, shadow = true } = {}) {
     const P = style.palette, accent = style.accent, ship = style.appearance.ship;
     c.save();
@@ -268,19 +274,21 @@ const characterHats = {
       c.strokeStyle = accent; c.lineWidth = 1.6; c.beginPath(); c.ellipse(-8,0,20,24,0,0,TAU);c.stroke();
     }
     for(const side of [-1,1]) {
-      c.fillStyle=accent;c.beginPath();c.moveTo(8,side*11);c.lineTo(-10,side*12);c.lineTo(-20,side*(ship==='leaf'?28:20));c.lineTo(2,side*18);c.closePath();c.fill();
+      c.fillStyle=accent;c.beginPath();c.moveTo(7,side*11);c.lineTo(-13,side*9);c.lineTo(-15,side*17);c.lineTo(5,side*17);c.closePath();c.fill();
+      if(ship==='leaf'){c.beginPath();c.moveTo(-21,side*17);for(let i=0;i<=16;i++){const t=i/16;c.lineTo(-21+17*t,side*(17+9*Math.sin(t*Math.PI)));}c.lineTo(-4,side*17);c.closePath();c.fill();}
       const center=side*17;
       if(boosting||hero) {
-        c.save();c.globalAlpha*=.22;c.fillStyle=accent;c.beginPath();c.moveTo(-25,center-2.4);c.quadraticCurveTo(-34,center-3,-43,center);c.quadraticCurveTo(-34,center+3,-25,center+2.4);c.fill();
-        c.globalAlpha*=2.7;c.fillStyle='#DFFBFF';c.beginPath();c.moveTo(-25,center-1.2);c.lineTo(-41,center);c.lineTo(-25,center+1.2);c.fill();c.restore();
+        c.save();c.globalAlpha*=.22;c.fillStyle=accent;c.beginPath();c.moveTo(-23,center-2.4);c.quadraticCurveTo(-30,center-3,-36,center);c.quadraticCurveTo(-30,center+3,-25,center+2.4);c.fill();
+        c.globalAlpha*=2.7;c.fillStyle='#DFFBFF';c.beginPath();c.moveTo(-23,center-1.2);c.lineTo(-35,center);c.lineTo(-23,center+1.2);c.fill();c.restore();
       }
       // Same truncated rear / slim waist / rounded leading tip as the 3D pod.
-      c.fillStyle=accent;c.beginPath();c.moveTo(-25,center-3.3);c.bezierCurveTo(-18,center-4.5,8,center-4.2,20,center-2.3);c.quadraticCurveTo(26,center,20,center+2.3);c.bezierCurveTo(8,center+4.2,-18,center+4.5,-25,center+3.3);c.closePath();c.fill();
+      c.fillStyle=accent;c.beginPath();c.moveTo(-23,center-3.3);c.bezierCurveTo(-18,center-4.5,5,center-4.2,15,center-2.3);c.quadraticCurveTo(21,center,15,center+2.3);c.bezierCurveTo(5,center+4.2,-17,center+4.5,-23,center+3.3);c.closePath();c.fill();
       c.fillStyle='#DFFBFF';c.beginPath();c.moveTo(-13,center-.4);c.quadraticCurveTo(1,center-1,14,center);c.quadraticCurveTo(1,center+.7,-13,center+.4);c.fill();
-      c.fillStyle='#193349';rrPath(c,-25.8,center-3.3,1.6,6.6,.6);c.fill();
-      c.fillStyle='#CBF7FF';c.beginPath();c.ellipse(-25.9,center, .65,2,0,0,TAU);c.fill();
+      c.fillStyle='#244557';rrPath(c,-21,center-3.6,1.4,7.2,.5);c.fill();
+      c.fillStyle='#193349';rrPath(c,-23.8,center-3.3,1.6,6.6,.6);c.fill();
+      c.fillStyle='#CBF7FF';c.beginPath();c.ellipse(-23.9,center, .65,2,0,0,TAU);c.fill();
     }
-    const hull = offset => {c.beginPath();c.moveTo(32,offset);c.bezierCurveTo(25,-10+offset,9,-14+offset,-3,-12.5+offset);c.quadraticCurveTo(-14,-11+offset,-21,-7+offset);c.lineTo(-21,7+offset);c.quadraticCurveTo(-14,11+offset,-3,12.5+offset);c.bezierCurveTo(9,14+offset,25,10+offset,32,offset);c.closePath();};
+    const hull = offset => {c.beginPath();hoverHullPath.forEach((p,i)=>{if(i)c.lineTo(p[0],p[2]+offset);else c.moveTo(p[0],p[2]+offset);});c.closePath();};
     c.fillStyle=P.legB;hull(1.7);c.fill();c.fillStyle=P.suit;hull(0);c.fill();
     c.fillStyle=accent;c.beginPath();c.moveTo(9,-2.7);c.quadraticCurveTo(21,-2.2,29,0);c.quadraticCurveTo(21,2.2,9,2.7);c.closePath();c.fill();
     c.fillStyle='#152D43';c.beginPath();c.ellipse(-5,0,10,7.8,0,0,TAU);c.fill();
@@ -409,7 +417,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

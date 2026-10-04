@@ -460,7 +460,9 @@ test('Cockpit uses its exact rendered eye to suppress only nearby rival exhaust 
   assert.ok(!cockpit.meshes.some(m=>m.actorId===owner.id),'only the ordinary self-craft omission applies');
   assert.equal(full.vertices,body.vertices,'the opaque hull does not change when exhaust is suppressed');
   const fullEngine=Scene.actorMeshes(state).find(m=>m.engineActorId===rival.id),safeEngine=cockpit.meshes.find(m=>m.engineActorId===rival.id);
-  assert.equal(fullEngine.vertices.length-safeEngine.vertices.length,8*27);
+  assert.equal(fullEngine.vertices,safeEngine.vertices,'emissive engine cores remain');
+  assert.ok(Scene.actorMeshes(state).some(m=>m.plumeActorId===rival.id));
+  assert.ok(!cockpit.meshes.some(m=>m.plumeActorId===rival.id),'only nearby translucent wakes are suppressed');
   assert.equal(face.vertices,Scene.actorMeshes(state).find(m=>m.faceActorId===rival.id).vertices);
   const expected=Scene.actorMeshes(state,{cockpitEye:cockpit.camera.eye}).find(m=>m.actorId===rival.id);
   assert.equal(body.vertices,expected.vertices,'suppression uses the same eye that draws this frame');
