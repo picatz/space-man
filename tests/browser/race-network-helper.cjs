@@ -395,7 +395,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
         // No checkpoints, actor positions, ticks, finishes or state are written.
         const cmd = SpaceManRace.cpuInput(s, actor);
         pad.axes[0] = cmd.steer;
-        for (const [i,held] of [[0,cmd.boost],[1,cmd.brake]]) { pad.buttons[i].pressed = !!held; pad.buttons[i].value = held ? 1 : 0; }
+        for (const [i,held] of [[0,cmd.boost],[1,cmd.brake],[5,cmd.item]]) { pad.buttons[i].pressed = !!held; pad.buttons[i].value = held ? 1 : 0; }
       }, 16);
     });
   }

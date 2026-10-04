@@ -1,0 +1,41 @@
+name: Starlight feature browsers
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  track-features:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Exercise authored jumps, coin lines, Item input and visible-warning receipts
+        run: node --test starlight-features.test.cjs
+        env:
+          SPACE_MAN_RACE_BROWSER: ${{ matrix.browser }}
+          SPACE_MAN_RACE_SCREENSHOTS: ${{ runner.temp }}/track-screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: starlight-${{ matrix.browser }}
+          path: ${{ runner.temp }}/track-screenshots/*.png
+          if-no-files-found: ignore
+          retention-days: 5

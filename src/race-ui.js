@@ -27,21 +27,96 @@
     g.beginPath();
     g.roundRect(x, y, w, h, r);
   }
+  // Acknowledgements certify two distinct visible paint opportunities, never
+  // merely receipt of a network snapshot or a hidden/modal update.
+  function createWarningReceipt() {
+    let context = "", lastFrame = -1, pending = Array(5).fill(0),
+      began = Array(5).fill(-1), acknowledged = Array(5).fill(0);
+    function reset() {
+      context = ""; lastFrame = -1;
+      pending.fill(0); began.fill(-1); acknowledged.fill(0);
+    }
+    return Object.freeze({ reset, observe(serials, options = {}) {
+      const key = String(options.epoch ?? "") + ":" + String(options.actorId || "");
+      if (key !== context || !Number.isInteger(options.frame) || options.frame < lastFrame) {
+        reset(); context = key;
+      }
+      lastFrame = options.frame;
+      for (let i = 0; i < 5; i++) {
+        const value = Array.isArray(serials) ? serials[i] : 0;
+        const serial = options.visible && Number.isInteger(options.frame) &&
+          Number.isInteger(value) && value > 0 && value <= 65535 ? value : 0;
+        if (!serial) { pending[i] = acknowledged[i] = 0; began[i] = -1; }
+        else if (acknowledged[i] !== serial) {
+          if (pending[i] !== serial) { pending[i] = serial; began[i] = options.frame; }
+          else if (options.frame > began[i]) acknowledged[i] = serial;
+        }
+      }
+      return acknowledged.slice();
+    }});
+  }
+  function pulseGuide(actor, course, effects, nearest) {
+    const road = nearest(course, actor.x, actor.y);
+    const d = clamp(-(actor.x-road.x)*road.ty + (actor.y-road.y)*road.tx, -90, 90);
+    const dangerous = effects.map(effect => clamp(effect.d || 0, -44, 44));
+    // Prefer a comfortably clear lane rather than a pixel-thin gap between two
+    // simultaneous waves. Unclear counterplay is never acknowledged as ready.
+    const lanes = [-62, 0, 62].filter(lane => dangerous.every(danger => Math.abs(lane-danger) >= 48));
+    lanes.sort((a,b) => Math.abs(a-d)-Math.abs(b-d));
+    const safe = lanes.length ? lanes[0] : null;
+    const direction = safe === null ? "shield" : Math.abs(safe-d) < 10 ? "hold" : safe < d ? "left" : "right";
+    const laneName = value => value < -15 ? "left" : value > 15 ? "right" : "middle";
+    const names = [...new Set(dangerous.map(laneName))];
+    return { d, dangerous, safe, direction,
+      // Cover the full 54-tick charge + 28-tick wave, plus two paint frames.
+      actionable: safe !== null || actor.item === "shield" || actor.shieldTicks > 84,
+      label: (effects.length > 1 ? effects.length + " PULSES" : names[0]?.toUpperCase() + " LANE PULSE") + " · " +
+        (direction === "left" ? "MOVE LEFT / SHIELD" : direction === "right" ? "MOVE RIGHT / SHIELD" : direction === "hold" ? "HOLD YOUR LANE" : "SHIELD IF READY"),
+      description: "Pulse danger in " + names.join(" and ") + " lane. " +
+        (safe === null ? "No comfortably clear lane is visible." : "Clear lane: " + laneName(safe) + "."),
+    };
+  }
+  // Native taps can begin and end between physics steps. Establish one neutral
+  // Item sample, then emit one fresh press; never repeat it while the key stays
+  // down or let it survive a menu/epoch/ownership reset.
+  function createItemRequest() {
+    let phase = 0;
+    return Object.freeze({
+      request() { if (!phase) phase = 1; },
+      reset() { phase = 0; },
+      sample(held, ready = true) {
+        if (!phase) return !!held;
+        if (!ready) { phase = 1; return false; }
+        if (phase === 1) { phase = 2; return false; }
+        phase = 0; return true;
+      },
+    });
+  }
+  function sourceBearingArrow(sx, sy) {
+    return ["→","↘","↓","↙","←","↖","↑","↗"][(Math.round(Math.atan2(sy,sx)/(Math.PI/4))+8)%8];
+  }
   const CSS = `
 .race-root{position:fixed;inset:0 auto auto 0;width:100%;height:100dvh;background:#080f24;color:#eef7fb;z-index:1000;isolation:isolate;overflow:hidden;font:14px/1.45 ui-rounded,system-ui,sans-serif;touch-action:none;user-select:none;color-scheme:dark;--race-top:max(0px,calc(var(--game-ui-top,env(safe-area-inset-top,0px)) - var(--race-vv-top,0px)));--race-bottom:max(0px,calc(var(--game-ui-bottom,env(safe-area-inset-bottom,0px)) - var(--race-vv-bottom,0px)));--race-left:max(0px,calc(var(--game-ui-left,env(safe-area-inset-left,0px)) - var(--race-vv-left,0px)));--race-right:max(0px,calc(var(--game-ui-right,env(safe-area-inset-right,0px)) - var(--race-vv-right,0px)))}
 .race-root,.race-root *{box-sizing:border-box}.race-root[hidden],.race-root [hidden]{display:none!important}.race-root :focus-visible{outline:3px solid #fff09d;outline-offset:-3px}.race-root button{-webkit-tap-highlight-color:transparent;appearance:none;cursor:pointer;font:inherit}.race-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.race-canvas:focus-visible{outline:2px solid #73ecff50!important;outline-offset:-2px!important}
 .race-button{min-height:46px;padding:10px 17px;color:#d9edf8;border:1px solid #38536b;border-radius:13px;background:#192f45;font-weight:700;font-size:12px;line-height:1.4;max-width:100%}.race-button:hover{background:#26445b}.race-button:active,.race-pressed{transform:translateY(2px);background:#38617b!important}.race-primary{background:#c7f47d;color:#152b30;border-color:#deffae;min-height:54px;box-shadow:0 4px 0 #53783d;font-size:14px}.race-primary:hover{background:#e0ffa9}.race-text{border-color:transparent;background:transparent;color:#9eb9cc}.race-small{padding:8px 12px;min-height:44px}.race-kicker{font-size:10px;font-weight:800;letter-spacing:.18em;color:#90acbf}.race-tag{color:#c7f47d;font-size:10px;font-weight:800;letter-spacing:.12em}.race-pill{padding:7px 11px;border:1px solid #628754;border-radius:20px;background:#172d2e;display:inline-block;color:#d3f9a6;font-size:10px;letter-spacing:.12em;font-weight:750}
 .race-modal{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:calc(var(--race-top) + 20px) calc(var(--race-right) + 24px) calc(var(--race-bottom) + 20px) calc(var(--race-left) + 24px);background:linear-gradient(110deg,#080f24ed,#080f2466);overflow:hidden}.race-dialog{width:min(1060px,100%);max-height:100%;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#38617b transparent;min-width:0}.race-lobby-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px}.race-grid{display:grid;grid-template-columns:1fr 1.12fr;align-items:center;gap:48px}.race-intro{min-width:0}.race-title{font-size:clamp(42px,5vw,68px);font-weight:950;letter-spacing:-.06em;line-height:.95;margin:20px 0}.race-title span{display:block;color:#c7f47d}.race-lede{max-width:310px;color:#a9bed0;font-size:14px;line-height:1.65}.race-hero{width:100%;height:auto;display:block;max-width:390px;margin:-8px 0}.race-facts{display:flex;gap:18px;color:#9eb8ca;font-size:11px;flex-wrap:wrap}.race-facts strong{color:#eef7fb;display:block;font-size:15px}
 .race-setup{padding:23px;border:1px solid #344e64;border-radius:22px;background:linear-gradient(130deg,#172b41ef,#0e1e33ef);min-width:0}.race-label{margin:0 0 10px;color:#a9bed0;font-size:10px;letter-spacing:.12em;font-weight:800}.race-track-list{display:grid;gap:8px}.race-track{width:100%;display:flex;align-items:center;gap:13px;text-align:left;min-height:78px;padding:9px 12px;background:#0d1e32;min-width:0}.race-track[aria-pressed=true]{border-color:#c7f47d;background:#203b3d}.race-track canvas{width:95px;height:57px;flex:0 0 95px}.race-track strong{display:block;font-size:12px;color:#eff9ff;letter-spacing:-.01em}.race-track small{font-size:8px;font-weight:800;letter-spacing:.15em;color:#8faaBE}.race-track-description{color:#91aabf;font-size:11px;min-height:30px;margin:10px 0 14px}.race-options{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 20px}.race-segments{display:flex;gap:3px;background:#0b1a2b;border:1px solid #2a4258;padding:3px;border-radius:10px}.race-segment{background:transparent;border-color:transparent;min-height:36px;padding:7px 12px;font-size:11px}.race-segment[aria-pressed=true]{background:#35516a;color:#fff}.race-launch{width:100%}.race-local-note{font-size:10px;color:#92aabf;text-align:center;margin:15px 0 0}.race-help{border-top:1px solid #293f56;padding-top:10px;margin-top:17px;color:#a4bdcf;font-size:11px}.race-help summary{min-height:35px;cursor:pointer;color:#c4d9e7;padding:7px 0}.race-help p{margin:5px 0 12px}
-.race-hud{position:absolute;left:calc(var(--race-left) + 20px);right:calc(var(--race-right) + 20px);top:calc(var(--race-top) + 16px);z-index:3;pointer-events:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.race-hud-box{display:flex;align-items:center;gap:18px;background:#091727df;border:1px solid #426174;border-radius:15px;padding:11px 15px;box-shadow:0 4px 24px #0004;min-width:0}.race-position{font-size:39px;font-weight:900;line-height:1;color:#c7f47d;letter-spacing:-.05em}.race-position small{font-size:14px;color:#8facbf}.race-metric{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}.race-metric strong{font-size:17px}.race-metric span{font-size:8px;color:#93adbf;font-weight:700;letter-spacing:.14em}.race-hud-left{display:grid;gap:6px;min-width:0;max-width:190px}.race-identity{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 4px;background:transparent;border:0;border-radius:0;color:#EAF7FF;text-shadow:0 1px 3px #071522}.race-identity canvas{width:30px;height:30px;flex:0 0 30px;background:transparent;border-radius:0}.race-identity-copy{display:flex;flex-direction:column;min-width:0;line-height:1.25}.race-identity-role{font-size:9px;letter-spacing:.08em;font-weight:700}.race-identity-name{font-size:11px;font-weight:650;color:#eef7fb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-hud-right{display:flex;gap:8px;align-items:center}.race-pause{pointer-events:auto;width:48px;height:48px;padding:10px;font-size:19px;background:#112a3ee8}.race-time{color:#e7f3fb;font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;background:#091727df;border:1px solid #344e64;border-radius:12px;padding:10px 13px}.race-speed{position:absolute;left:calc(var(--race-left) + 23px);bottom:calc(var(--race-bottom) + 22px);z-index:3;color:#e5f6ff;pointer-events:none;background:#091727d9;border:1px solid #34505d80;border-radius:10px;padding:8px 10px}.race-speed strong{font-size:29px;line-height:1;font-variant-numeric:tabular-nums}.race-speed span{font-size:9px;letter-spacing:.1em;color:#94b7ca}.race-drive-feedback{font-size:10px;font-weight:900;letter-spacing:.08em;color:#8ceaff;margin-top:6px}.race-drive-feedback[data-kind=boost]{color:#d6ff96}.race-boostbar{width:130px;height:5px;background:#2d4456;border-radius:9px;overflow:hidden;margin-top:7px}.race-boostfill{height:100%;background:#c7f47d;transform-origin:left}.race-hint{position:absolute;bottom:calc(var(--race-bottom) + 23px);left:50%;transform:translateX(-50%);padding:6px 10px;background:#091727d9;color:#a8c7d9;z-index:3;font-size:10px;white-space:nowrap;border-radius:8px;pointer-events:none}.race-minimap{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 20px);width:170px;height:120px;background:#091727a9;border:1px solid #426174;border-radius:14px;z-index:3;pointer-events:none}.race-banner{position:absolute;left:50%;top:35%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:4;color:#eefaff;font-size:72px;font-weight:950;text-shadow:0 5px 0 #122c42}.race-banner small{display:block;font-size:10px;letter-spacing:.18em;color:#c7f47d;background:#091727c9;border-radius:18px;padding:7px 12px;text-shadow:none}.race-warning{position:absolute;top:calc(var(--race-top) + 142px);left:50%;transform:translateX(-50%);background:#543421e0;border:1px solid #c18c5e;border-radius:20px;padding:6px 14px;font-size:10px;color:#ffe0b5;z-index:3;pointer-events:none;white-space:nowrap}
+.race-hud{position:absolute;left:calc(var(--race-left) + 20px);right:calc(var(--race-right) + 20px);top:calc(var(--race-top) + 16px);z-index:3;pointer-events:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.race-hud-box{display:flex;align-items:center;gap:18px;background:#091727df;border:1px solid #426174;border-radius:15px;padding:11px 15px;box-shadow:0 4px 24px #0004;min-width:0}.race-position{font-size:39px;font-weight:900;line-height:1;color:#c7f47d;letter-spacing:-.05em}.race-position small{font-size:14px;color:#8facbf}.race-metric{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}.race-metric strong{font-size:17px}.race-metric span{font-size:8px;color:#93adbf;font-weight:700;letter-spacing:.14em}.race-hud-left{display:grid;gap:6px;min-width:0;max-width:190px}.race-identity{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 4px;background:transparent;border:0;border-radius:0;color:#EAF7FF;text-shadow:0 1px 3px #071522}.race-identity canvas{width:30px;height:30px;flex:0 0 30px;background:transparent;border-radius:0}.race-identity-copy{display:flex;flex-direction:column;min-width:0;line-height:1.25}.race-identity-role{font-size:9px;letter-spacing:.08em;font-weight:700}.race-identity-name{font-size:11px;font-weight:650;color:#eef7fb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-hud-right{display:flex;gap:8px;align-items:center}.race-pause{pointer-events:auto;width:48px;height:48px;padding:10px;font-size:19px;background:#112a3ee8}.race-time{color:#e7f3fb;font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;background:#091727df;border:1px solid #344e64;border-radius:12px;padding:10px 13px}.race-speed{position:absolute;left:calc(var(--race-left) + 23px);bottom:calc(var(--race-bottom) + 22px);z-index:3;color:#e5f6ff;pointer-events:none;background:#091727d9;border:1px solid #34505d80;border-radius:10px;padding:8px 10px}.race-speed strong{font-size:29px;line-height:1;font-variant-numeric:tabular-nums}.race-speed span{font-size:9px;letter-spacing:.1em;color:#94b7ca}.race-drive-feedback{font-size:10px;font-weight:900;letter-spacing:.08em;color:#8ceaff;margin-top:6px}.race-drive-feedback[data-kind=boost]{color:#d6ff96}.race-boostbar{width:130px;height:5px;background:#2d4456;border-radius:9px;overflow:hidden;margin-top:7px}.race-boostfill{height:100%;background:#c7f47d;transform-origin:left}.race-hint{position:absolute;bottom:calc(var(--race-bottom) + 23px);left:50%;transform:translateX(-50%);padding:6px 10px;background:#091727d9;color:#a8c7d9;z-index:3;font-size:10px;white-space:nowrap;border-radius:8px;pointer-events:none}.race-minimap{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 20px);width:170px;height:120px;background:#091727a9;border:1px solid #426174;border-radius:14px;z-index:3;pointer-events:none}.race-banner{position:absolute;left:50%;top:26%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:4;color:#eefaff;font-size:72px;font-weight:950;text-shadow:0 5px 0 #122c42}.race-banner small{display:block;font-size:10px;letter-spacing:.18em;color:#c7f47d;background:#091727c9;border-radius:18px;padding:7px 12px;text-shadow:none}.race-warning{position:absolute;top:calc(var(--race-top) + 142px);left:50%;transform:translateX(-50%);background:#543421e0;border:1px solid #c18c5e;border-radius:20px;padding:6px 14px;font-size:10px;color:#ffe0b5;z-index:3;pointer-events:none;white-space:nowrap}
 .race-touch{display:none;position:absolute;inset:0;z-index:4;pointer-events:none}.race-root[data-touch=true] .race-touch{display:block}.race-root[data-touch=true] .race-hint,.race-root[data-screen=lobby] .race-hint{display:none}.race-touch-group{display:flex;align-items:end;gap:10px;position:absolute;bottom:calc(var(--race-bottom) + 22px);pointer-events:auto;touch-action:none}.race-steering{left:calc(var(--race-left) + 18px)}.race-actions{right:calc(var(--race-right) + 18px)}.race-touch-button{width:65px;height:65px;border-radius:20px;background:#102e42d9;border:1.5px solid #73a9bd;color:#e7faff;font-size:27px;padding:5px;box-shadow:0 4px 0 #071522;touch-action:none}.race-touch-button small{display:block;font-size:8px;letter-spacing:.08em;color:#b3d1e1}.race-touch-boost{background:#334735db;border-color:#c7f47d;color:#daffae}.race-touch-boost span{font-size:22px}.race-root[data-handed=left] .race-steering{left:auto;right:calc(var(--race-right) + 18px)}.race-root[data-handed=left] .race-actions{right:auto;left:calc(var(--race-left) + 18px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 104px)}.race-root[data-touch=true] .race-minimap{bottom:calc(var(--race-bottom) + 106px);width:132px;height:92px}.race-recover{position:absolute;left:50%;bottom:calc(var(--race-bottom) + 25px);transform:translateX(-50%);pointer-events:auto;background:#0b2235d9;font-size:9px;padding:7px 10px;min-height:44px}
 .race-compact{width:min(430px,100%);padding:25px;background:#0d2035f5;border:1px solid #456174;border-radius:23px;box-shadow:0 18px 100px #0006}.race-compact h2{font-size:34px;letter-spacing:-.05em;line-height:1.08;margin:16px 0 12px}.race-compact p{color:#aac3d3;font-size:13px}.race-compact>.race-button{width:100%;margin-top:10px}.race-results{margin:20px 0}.race-result-row{display:flex;align-items:center;gap:14px;padding:10px 4px;border-bottom:1px solid #294054;color:#d2e6f3;font-size:12px}.race-result-row strong{flex:1}.race-result-row span:first-child{font-size:19px;color:#c7f47d;font-weight:800}.race-result-row span:last-child{font-variant-numeric:tabular-nums;color:#93b2c6}.race-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 @media(max-width:760px){.race-grid{gap:22px;grid-template-columns:1fr}.race-intro{display:grid;grid-template-columns:1fr .8fr;column-gap:10px;align-items:center}.race-intro>.race-pill{grid-column:1;justify-self:start;font-size:8px;letter-spacing:.1em;padding:6px 9px}.race-title{font-size:34px;line-height:1;margin:13px 0;grid-column:1}.race-lede{font-size:12px;margin:0;grid-column:1/-1;max-width:none}.race-hero{grid-column:2;grid-row:1/4;width:100%;margin:0}.race-facts{display:none}.race-lobby-header{margin-bottom:8px}.race-setup{padding:17px}.race-track{min-height:68px}.race-track canvas{width:85px;height:50px;flex-basis:85px}.race-options{margin-bottom:15px}.race-modal{padding:calc(var(--race-top) + 12px) calc(var(--race-right) + 16px) calc(var(--race-bottom) + 14px) calc(var(--race-left) + 16px)}.race-hud{left:calc(var(--race-left) + 12px);right:calc(var(--race-right) + 12px);top:calc(var(--race-top) + 12px);gap:7px}.race-hud-box{gap:13px;padding:10px 12px}.race-position{font-size:32px}.race-metric strong{font-size:15px}.race-time{font-size:14px;padding:11px 10px}.race-pause{width:44px;height:44px;min-height:44px}.race-touch-group{gap:7px}.race-touch-button{width:59px;height:63px}.race-steering{left:calc(var(--race-left) + 13px)}.race-actions{right:calc(var(--race-right) + 13px)}.race-recover{font-size:8px;padding:7px;bottom:calc(var(--race-bottom) + 31px)}.race-hint{max-width:60%;white-space:normal;text-align:center}.race-warning{top:calc(var(--race-top) + 128px)}}
-@media(max-height:520px) and (min-width:600px){.race-hud-left{grid-template-columns:auto minmax(0,170px);align-items:center;max-width:360px}.race-warning{top:calc(var(--race-top) + 103px)}.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:11px}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:48%;font-size:55px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
+@media(max-height:520px) and (min-width:600px){.race-hud-left{grid-template-columns:auto minmax(0,170px);align-items:center;max-width:360px}.race-warning{top:calc(var(--race-top) + 103px)}.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:11px}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:25%;font-size:44px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
 @media(max-width:350px){.race-touch-button{width:54px;height:60px}.race-root .race-recover{width:44px;font-size:0;padding:5px 2px}.race-recover:after{content:"↺";font-size:23px}.race-boostbar{width:100px}.race-root[data-touch=true] .race-minimap{width:100px;height:70px}.race-hud-box{padding:9px 10px;gap:10px}.race-hud{gap:5px}.race-time{padding:10px 8px}}
 .race-online-panel{margin-top:18px;padding:13px 18px;border:1px solid #38536b;border-radius:16px;background:#10263be8}.race-online-panel>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750;color:#d6efbf}.race-online-entry{display:grid;gap:10px}.race-online-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.race-room-input{width:100%;min-height:46px;border:1px solid #547183;border-radius:10px;background:#071c2e;color:#e1f5ff;font:inherit;padding:10px;user-select:text;touch-action:auto}.race-room-members{padding-left:20px;color:#c7e2ef;font-size:12px}.race-room-code{font-size:18px;letter-spacing:.08em}.race-watch-tools{position:absolute;bottom:calc(var(--race-bottom) + 18px);left:50%;transform:translateX(-50%);z-index:4;background:#10263be8;border:1px solid #38536b;border-radius:12px;display:flex;align-items:center;gap:8px;max-width:95%;font-size:10px}.race-watch-tools>.race-button{width:44px;min-width:44px;height:44px;padding:8px;flex:0 0 44px}.race-watch-tools>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-root button:disabled{opacity:.5;cursor:default}.race-root[data-online=true] .race-hint{display:none}
 .race-audio-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.race-audio-volume{display:flex;gap:8px;align-items:center;font-size:11px;color:#a9bed0}.race-audio-volume input{max-width:140px;min-height:44px;touch-action:pan-x}.race-compact .race-audio-controls{border-top:1px solid #294054;padding-top:12px}
+
+.race-warning-source{width:14px;height:14px;vertical-align:-3px;margin-right:5px}.race-threat-map{display:block;width:140px;height:30px;margin:4px auto 0;border-radius:5px}.race-item{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 151px);z-index:3;width:76px;height:62px;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:3px;background:#12283fec;border:2px solid #71879b;border-radius:16px;touch-action:none;box-shadow:0 3px 0 #071522}.race-item-icon{font-size:25px;line-height:1}.race-item-name{font-size:8px;letter-spacing:.06em;line-height:1.25}.race-item[data-item=shield]{border-color:#89eaff;color:#c5f6ff}.race-item[data-item=pulse]{border-color:#ffb17b;color:#ffe4cc}.race-item[aria-disabled=true]{color:#a7b8c5;border-color:#506779}.race-item[data-active=true]{box-shadow:0 0 0 3px #89eaff44}.race-item-key{font-size:8px;color:#abc0cc}.race-root[data-touch=true] .race-item-key{display:none}.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 18px);bottom:calc(var(--race-bottom) + 97px);width:65px;height:55px}.race-root[data-touch=true][data-handed=left] .race-item{right:auto;left:calc(var(--race-left) + 18px)}.race-root[data-touch=true][data-features=true] .race-minimap{bottom:calc(var(--race-bottom) + 166px)}.race-warning[data-kind=pulse]{background:#43291feb;border-color:#ffc48b;color:#fff0d8;font-size:11px;white-space:normal;text-align:center;max-width:min(340px,calc(100% - 32px));top:calc(var(--race-top) + 145px)}
+@media(max-width:760px){.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 13px);width:59px;bottom:calc(var(--race-bottom) + 96px)}.race-root[data-touch=true][data-handed=left] .race-item{left:calc(var(--race-left) + 13px)}}
+@media(max-height:520px) and (min-width:600px){.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 18px);width:57px;height:48px;bottom:calc(var(--race-bottom) + 87px)}.race-root[data-touch=true][data-handed=left] .race-item{left:calc(var(--race-left) + 18px)}.race-root[data-touch=true][data-features=true] .race-minimap{bottom:calc(var(--race-bottom) + 145px)}.race-warning[data-kind=pulse]{top:calc(var(--race-top) + 70px)}}
+@media(max-width:350px){.race-root[data-touch=true] .race-item{width:54px;bottom:calc(var(--race-bottom) + 93px)}}
 @media(prefers-reduced-motion:reduce){.race-root *{transition:none!important}}
+
+@media(max-width:360px) and (max-height:650px){.race-root[data-touch=true] .race-minimap{display:none}}
 `;
   function create(opts = {}) {
     const R = root.SpaceManRace;
@@ -83,8 +158,9 @@
       speed,
       fuel,
       driveFeedback,
+      itemSlot, itemIcon, itemName, itemKey,
       banner,
-      warning,
+      warning, warningCopy, warningSource, sourceG, threatMap, threatG,
       resultRows,
       resultTitle,
       description,
@@ -102,7 +178,12 @@
       audio = null,
       perspective = null,
       previousPose = null,
-      renderDt = 1 / 60;
+      renderDt = 1 / 60,
+      renderFrame = 0,
+      itemRequest = createItemRequest(),
+      displayedWarnings = Array(5).fill(0),
+      noticeText = "", noticeUntil = 0, noticeTick = -1, noticeSerial = 0, warningSoundKey = "";
+    const warningReceipt = createWarningReceipt();
     const audioControls = [], audioOverrides = {};
     let localSession = null, sharedSession = null, inputSuspended = false;
     let selected = { trackId: "starlight", difficulty: "normal" },
@@ -272,12 +353,13 @@
           roomRole,
           !status.current || status.current.status !== "lobby",
         );
-        if (status.connection || status.stale) {
-          keys.clear();
-          resetTouch();
-          pad = { steer: 0, boost: false, brake: false, recover: false };
-          padNeutral = true;
-        }
+        const interrupted = !!(status.connection || status.stale),
+          wasInterrupted = !!(previous?.connection || previous?.stale),
+          ownershipChanged = previous?.active &&
+            (previous.info?.role !== status.info?.role || previous.info?.myP !== status.info?.myP);
+        // Clear queued native presses as well as held controls. Only transitions
+        // release, so repeated stale-status refreshes cannot exhaust generations.
+        if (interrupted !== wasInterrupted || ownershipChanged) resetInput();
       } else if (previous?.active || status.closedReason) {
         state = null;
         view = "lobby";
@@ -317,8 +399,15 @@
         old.tick > next.tick ||
         old.trackId !== next.trackId ||
         (old.phase === "finished" && next.phase !== "finished");
+      const oldPilot = old?.actors.find(a => a.controller === "human"),
+        nextPilot = next.actors.find(a => a.controller === "human"),
+        inputChanged = networkEpoch !== snapshot.epoch ||
+          oldPilot?.id !== nextPilot?.id || oldPilot?.peerP !== nextPilot?.peerP;
       state = next;
       networkEpoch = snapshot.epoch;
+      // A lost paused snapshot can hide an entire pause/resume cycle. The epoch
+      // still invalidates the old native queue, even at the same simulation tick.
+      if (inputChanged && !newRound) resetInput();
       if (newRound) {
         cosmeticRound++;
         previousPose = null;
@@ -590,6 +679,7 @@
     }
     function cancelCorner() {
       lastControl = { steer: 0, brake: false };
+      itemRequest.reset(); displayedWarnings = Array(5).fill(0); warningReceipt.reset(); warningSoundKey = "";
       if (onlineActive()) room.release();
       else R.cancelControl(state);
     }
@@ -657,7 +747,7 @@
       const key = (e.key || "").toLowerCase();
       for (const a of ["left", "right"])
         if (prefs.keys && prefs.keys[a] === key) return a;
-      return {
+      const fixed = {
         ArrowLeft: "left",
         KeyA: "left",
         ArrowRight: "right",
@@ -669,6 +759,11 @@
         ShiftRight: "boost",
         KeyR: "recover",
       }[e.code];
+      if (fixed) return fixed;
+      // Keep all established driving/camera/menu bindings ahead of Item remaps.
+      if (["KeyC", "Escape", "Tab", "Enter"].includes(e.code)) return undefined;
+      if (e.code === "KeyF" || e.code === "KeyJ" || (prefs.keys?.fire && prefs.keys.fire === key)) return "item";
+      return undefined;
     }
     function focusables() {
       return Array.from(
@@ -717,6 +812,11 @@
         }
         return;
       }
+      if (e.target === itemSlot && ["Enter", "Space"].includes(e.code)) {
+        e.preventDefault();
+        if (!e.repeat && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
+        return;
+      }
       if (e.code === "KeyC" && !e.repeat && !actionFor(e)) {
         e.preventDefault();
         perspective?.cycle();
@@ -726,6 +826,7 @@
       if (a) {
         e.preventDefault();
         if (e.repeat && !keys.has(e.code)) return;
+        if (a === "item" && !e.repeat && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
         keys.set(e.code, a);
       }
     }
@@ -759,6 +860,7 @@
           boost: b(0) || b(7),
           brake: b(1) || b(6),
           recover: b(2),
+          item: b(5),
           pause: b(9),
           left: b(14) || p.axes[0] < -0.55,
           right: b(15) || p.axes[0] > 0.55,
@@ -785,13 +887,16 @@
         if (edge("boost") && modal.contains(document.activeElement))
           document.activeElement.click();
         if (edge("brake")) escape();
-      } else
+      } else {
+        if (edge("item") && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
         pad = {
           steer,
           boost: raw.boost,
           brake: raw.brake,
           recover: raw.recover,
+          item: raw.item,
         };
+      }
       padPrevious = raw;
     }
     function input() {
@@ -809,6 +914,8 @@
         boost: held("boost") || pad.boost,
         brake: held("brake") || pad.brake,
         recover: held("recover") || pad.recover,
+        item: itemRequest.sample(held("item") || pad.item, !onlineActive() || room.itemReady?.() !== false),
+        warnings: displayedWarnings.slice(),
       };
     }
     // Recovery taps are idempotent and work even when iOS drops a click after a canceled drag.
@@ -925,7 +1032,7 @@
       canvas.tabIndex = -1;
       canvas.setAttribute(
         "aria-label",
-        "Star Circuit. Auto acceleration. Left and right to steer, Down to brake; brake while turning to drift, release the brake after a corner for boost. Space to boost, R to recover, Escape to pause.",
+        "Star Circuit. Auto acceleration. Left and right to steer, Down to brake; brake while turning to drift, release the brake after a corner for boost. Space to boost, F or J to use an item, R to recover, Escape to pause.",
       );
       g = canvas.getContext("2d", { alpha: false });
       rootEl.append(canvas);
@@ -980,7 +1087,7 @@
         el(
           "div",
           "race-hint",
-          "← → STEER · ↓ + TURN DRIFT · RELEASE ↓ FOR BOOST",
+          "← → STEER · ↓ + TURN DRIFT · F / J ITEM",
         ),
       );
       minimap = el("canvas", "race-minimap");
@@ -990,7 +1097,38 @@
       rootEl.append(minimap);
       banner = el("div", "race-banner");
       warning = el("div", "race-warning");
+      warning.setAttribute("role", "status");
+      warningCopy = el("span");
+      warningSource = el("canvas", "race-warning-source");
+      warningSource.width = warningSource.height = 28; warningSource.hidden = true;
+      warningSource.setAttribute("role", "img"); sourceG = warningSource.getContext("2d");
+      threatMap = el("canvas", "race-threat-map");
+      threatMap.width = 280; threatMap.height = 60;
+      threatMap.setAttribute("role", "img"); threatMap.hidden = true;
+      threatG = threatMap.getContext("2d");
+      warning.append(warningSource, warningCopy, threatMap);
       rootEl.append(banner, warning);
+      itemSlot = button("", "race-item", e => {
+        if (e.detail === 0 && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
+      });
+      itemSlot.dataset.action = "item";
+      itemSlot.setAttribute("aria-label", "Use item");
+      itemSlot.hidden = true;
+      itemIcon = el("span", "race-item-icon", "◇");
+      itemName = el("span", "race-item-name", "ITEM");
+      itemKey = el("span", "race-item-key", "F / J");
+      itemSlot.append(itemIcon, itemName, itemKey);
+      itemSlot.addEventListener("pointerdown", e => {
+        if (!isRunning() || !canControl() || !ownActor()?.item) return;
+        e.preventDefault();
+        itemRequest.request();
+        if (e.pointerType === "mouse") return;
+        rootEl.dataset.touch = "true";
+        touches.set(e.pointerId, { action: "item", el: itemSlot });
+        itemSlot.classList.add("race-pressed");
+        try { itemSlot.setPointerCapture(e.pointerId); } catch (_) {}
+      });
+      rootEl.append(itemSlot);
       touch = el("div", "race-touch");
       const steering = el("div", "race-touch-group race-steering"),
         actions = el("div", "race-touch-group race-actions");
@@ -1124,7 +1262,7 @@
         el(
           "p",
           "",
-          "Auto-drive is on. Steer with A/D or ←/→. Hold S/↓ while turning to drift. Hold a full turn for at least 0.4 seconds, then release Brake for an exit boost. Brake alone slows down. Space/Shift boosts; R rescues you to the last checkpoint with a 1.5-second stop. Escape pauses. Touch: steering on the left; hold Brake + a turn to drift, then release Brake. Boost is on the right. Controller: stick/D-pad, B/L2 brake/drift, A/R2 boost, X rescue, Menu pause. Friend-room handling follows the host build; everyone should refresh for drift rewards.",
+          "Auto-drive is on. Steer with A/D or ←/→. Hold S/↓ while turning to drift. Hold a full turn for at least 0.4 seconds, then release Brake for an exit boost. Brake alone slows down. Space/Shift boosts; R rescues you to the last checkpoint with a 1.5-second stop. Escape pauses. Touch: steering on the left; hold Brake + a turn to drift, then release Brake. Boost is on the right. Starlight ramps launch automatically; stars refill boost. Choose a Shield or Pulse item by steering through its icon, then press F/J, the Item button, or controller R1/RB to use it. Move out of a warned pulse lane or activate Shield. Controller: stick/D-pad, B/L2 brake/drift, A/R2 boost, X rescue, Menu pause. Friend-room handling follows the host build; everyone should refresh for drift rewards.",
         ),
       );
       setup.append(
@@ -1508,10 +1646,89 @@
         }
       g.restore();
     }
+    function updateFeatureNotice() {
+      if (!state) return;
+      const actor = ownActor();
+      if (state.tick < noticeTick) { noticeSerial = 0; noticeUntil = 0; noticeText = ""; }
+      const messages = { coin: "+6 BOOST", shield: "SHIELD ON", pulse: "PULSE CHARGING", block: "BLOCKED", hit: "PULSE HIT · KEEP STEERING", "land-pulse": "LAND TO PULSE" };
+      for (const event of state.events || []) {
+        const serial = event.serial || 0;
+        const fresh = serial ? serial > noticeSerial : state.tick !== noticeTick;
+        noticeSerial = Math.max(noticeSerial, serial);
+        if (!fresh || event.id !== actor?.id) continue;
+        const message = event.type === "item" && actor.item ? actor.item.toUpperCase() + " READY" : messages[event.type];
+        if (message) { noticeText = message; noticeUntil = state.tick + 60; }
+      }
+      noticeTick = state.tick;
+    }
+    function actorElevation(actor) {
+      if (!state) return 0;
+      const c = R.course(state.trackId);
+      return clamp(root.SpaceManRaceScene?.actorHeight?.(actor, c, R.features(c), R.nearest) ?? (actor.z || 0), 0, 40);
+    }
+    function drawTrackFeatures(ctx, c, actor, catalog) {
+      const point = (object) => {
+        const p = R.at(c, object.s);
+        return { x: p.x - p.ty * object.d, y: p.y + p.tx * object.d, heading: Math.atan2(p.ty, p.tx) };
+      };
+      function symbol(kind, x, y, size = 1) {
+        ctx.save(); ctx.translate(x,y); ctx.rotate(-camera.rotation); ctx.scale(size,size);
+        ctx.lineWidth = 2; ctx.strokeStyle = "#081a2b";
+        if (kind === "coin") {
+          ctx.fillStyle = "#ffd976"; ctx.beginPath();
+          for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2?5:12; if(i)ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);else ctx.moveTo(Math.cos(a)*r,Math.sin(a)*r);}
+          ctx.closePath();ctx.fill();ctx.stroke();
+        } else if (kind === "shield") {
+          ctx.fillStyle="#8de7ff";ctx.beginPath();ctx.moveTo(0,-15);ctx.lineTo(13,-10);ctx.lineTo(10,5);ctx.lineTo(0,16);ctx.lineTo(-10,5);ctx.lineTo(-13,-10);ctx.closePath();ctx.fill();ctx.stroke();
+          ctx.strokeStyle="#e8fdff";ctx.beginPath();ctx.moveTo(-5,-5);ctx.lineTo(0,7);ctx.lineTo(5,-5);ctx.stroke();
+        } else {
+          ctx.fillStyle="#ffc18a";ctx.beginPath();ctx.moveTo(-10,-13);ctx.lineTo(14,0);ctx.lineTo(-10,13);ctx.lineTo(-4,0);ctx.closePath();ctx.fill();ctx.stroke();
+        }
+        ctx.restore();
+      }
+      for(const ramp of catalog.ramps) {
+        const p = point(ramp);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);
+        const gradient=ctx.createLinearGradient(-60,0,0,0);gradient.addColorStop(0,"#264852");gradient.addColorStop(1,"#6398a6");
+        ctx.fillStyle=gradient;ctx.fillRect(-60,-ramp.width/2,60,ramp.width);
+        ctx.strokeStyle="#9cf5ff";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(0,-ramp.width/2);ctx.lineTo(0,ramp.width/2);ctx.stroke();
+        for(const side of[-55,0,55]){ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-40,side-13);ctx.lineTo(-23,side);ctx.lineTo(-40,side+13);ctx.stroke();}
+        ctx.restore();
+      }
+      for(const coin of catalog.coins) {
+        if ((actor.coinMask || 0) & (1<<coin.index)) continue;
+        const p=point(coin);ctx.fillStyle="#08121a55";ctx.beginPath();ctx.ellipse(p.x,p.y,11,7,p.heading,0,TAU);ctx.fill();
+        ctx.save();ctx.translate(p.x,p.y);ctx.rotate(-camera.rotation);
+        if(coin.airborne){ctx.strokeStyle="#ffe5a84d";ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,13,0,TAU);ctx.stroke();ctx.translate(0,-14);}
+        ctx.rotate(camera.rotation);symbol("coin",0,0);ctx.restore();
+      }
+      for(const row of catalog.rows) {
+        if ((actor.rowMask || 0) & (1<<row.index)) continue;
+        for(const choice of row.choices) {
+          const p=point(choice);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);
+          ctx.fillStyle=choice.item==="shield"?"#18455e":"#644630";ctx.strokeStyle=choice.item==="shield"?"#8de7ff":"#ffc18a";ctx.lineWidth=2;
+          round(ctx,-22,-22,44,44,9);ctx.fill();ctx.stroke();ctx.restore();symbol(choice.item,p.x,p.y);
+          const approach=point({...choice,s:choice.s-120});symbol(choice.item,approach.x,approach.y,.55);
+        }
+      }
+      for(const effect of state.effects || []) {
+        if(effect.phase === "charge") {
+          ctx.save();ctx.strokeStyle="#ffc38b";ctx.lineWidth=2;ctx.lineCap="butt";ctx.lineJoin="round";
+          for(const side of[-1,1]){ctx.beginPath();for(let n=0;n<=12;n++){const p=point({s:effect.s+36+n*29.6667,d:effect.d+side*10});if(n)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}ctx.stroke();}
+          for(let distance=56;distance<=392;distance+=48){const p=point({s:effect.s+distance,d:effect.d});ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);ctx.beginPath();ctx.moveTo(-6,-9);ctx.lineTo(5,0);ctx.lineTo(-6,9);ctx.stroke();ctx.restore();}
+          ctx.restore();
+        } else {
+          const p=point(effect);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.heading);ctx.fillStyle="#ffe4be";ctx.strokeStyle="#fb9f5b";ctx.lineWidth=4;
+          ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-7,-10);ctx.lineTo(-13,-10);ctx.lineTo(8,0);ctx.lineTo(-13,10);ctx.lineTo(-7,10);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();
+        }
+      }
+    }
     function kart(ctx, a, scale = 1, hero = false) {
       const appearance = a.appearance || ((hero || a.id === ownActor()?.id) && typeof opts.appearance === 'function' ? opts.appearance() : null);
       const style = root.SpaceManArt.characterStyle(appearance, a.color);
-      ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.heading); ctx.scale(scale, scale);
+      const rise = hero ? 0 : actorElevation(a), lift = rise * .8, bodyScale = scale * (1 + rise / 200);
+      ctx.save();ctx.translate(a.x,a.y);ctx.rotate(a.heading);ctx.scale(scale,scale);
+      ctx.fillStyle="#0006";ctx.beginPath();ctx.ellipse(0,5,28,19,0,0,TAU);ctx.fill();ctx.restore();
+      ctx.save(); ctx.translate(a.x - Math.sin(camera.rotation)*lift, a.y - Math.cos(camera.rotation)*lift); ctx.rotate(a.heading); ctx.scale(bodyScale, bodyScale);
       const slip = a.speed > 3 ? Math.atan2(Math.sin(a.heading - Math.atan2(a.vy, a.vx)), Math.cos(a.heading - Math.atan2(a.vy, a.vx))) : 0;
       if (!a.offroad && Math.abs(slip) > .18 && !a.recoveryTicks) {
         ctx.strokeStyle = "#89eaff"; ctx.lineWidth = 2.5;
@@ -1519,7 +1736,8 @@
           ctx.beginPath(); ctx.moveTo(-13, side); ctx.lineTo(-38, side + slip * 35); ctx.stroke();
         }
       }
-      root.SpaceManArt.hoverpod(ctx, style, { tick: state?.tick || 20, id: a.id, calm: calm(), boosting: !!(a.boosting || a.padTicks > 0), hero });
+      root.SpaceManArt.hoverpod(ctx, style, { tick: state?.tick || 20, id: a.id, calm: calm(), boosting: !!(a.boosting || a.padTicks > 0), hero, shadow: false });
+      if(a.shieldTicks > 0){ctx.strokeStyle="#98eaff";ctx.lineWidth=3;ctx.beginPath();for(let i=0;i<6;i++){const a=i*TAU/6;if(i)ctx.lineTo(Math.cos(a)*37,Math.sin(a)*30);else ctx.moveTo(Math.cos(a)*37,Math.sin(a)*30);}ctx.closePath();ctx.stroke();}
       ctx.restore();
     }
     function drawHero() {
@@ -1610,6 +1828,7 @@
           actorId: a.id,
           localActorId: ownActor()?.id || null,
           previous: onlineActive() ? null : previousPose,
+          epoch: networkEpoch,
           network: onlineActive(),
           paused: onlineActive() ? roomPaused : paused,
           alpha: paused || state.phase === "finished" ? 1 : acc * 60,
@@ -1662,9 +1881,24 @@
         speed.parentNode.hidden = true;
         banner.hidden = true;
         warning.hidden = true;
+        itemSlot.hidden = true;
         return;
       }
       speed.parentNode.hidden = false;
+      const catalog = R.features(c);
+      rootEl.dataset.features = String(catalog.rows.length > 0);
+      itemSlot.hidden = view !== "play" || !catalog.rows.length;
+      const heldItem = a.item || null;
+      itemSlot.dataset.item = heldItem || "empty";
+      itemSlot.dataset.active = String(a.shieldTicks > 0);
+      itemSlot.setAttribute("aria-disabled", String(!isRunning() || !canControl() || !ownActor()?.item));
+      setDisabled(itemSlot, !isRunning() || !canControl());
+      setText(itemIcon, heldItem === "shield" ? "⬡" : heldItem === "pulse" ? "➤" : a.shieldTicks ? "⬡" : "◇");
+      setText(itemName, heldItem ? heldItem.toUpperCase() : a.shieldTicks ? "GUARDED" : "ITEM");
+      const mappedItemKey = prefs.keys?.fire && !["c", "r", "s", "a", "d", " "].includes(prefs.keys.fire) ? prefs.keys.fire.toUpperCase() : "F / J";
+      setText(itemKey, mappedItemKey);
+      itemSlot.setAttribute("aria-label", heldItem ? "Use " + heldItem + " item" : a.shieldTicks ? "Shield active" : "Item slot empty");
+      updateFeatureNotice();
       const zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
       // Keep the fallback camera warm while WebGL is active, so switching view
       // or losing the graphics context never flies back from an old position.
@@ -1690,6 +1924,7 @@
         g.rotate(camera.rotation);
         g.translate(-camera.x, -camera.y);
         road(g, c);
+        drawTrackFeatures(g, c, a, catalog);
         if (a.finishTick === null) {
           const gate = c.gates[a.nextGate];
           g.save();
@@ -1726,11 +1961,11 @@
         const project = actor => {
           const dx = actor.x - camera.x, dy = actor.y - camera.y;
           return { x: width / 2 + (dx * cos - dy * sin) * zoom,
-            y: height * 0.48 + (dx * sin + dy * cos) * zoom };
+            y: height * 0.48 + (dx * sin + dy * cos - actorElevation(actor)*.8) * zoom };
         };
         const focus = project(a), own = a.id === ownActor()?.id;
         const bodies = state.actors.map(actor => {
-          const p = project(actor), r = 36 * zoom;
+          const p = project(actor), r = 36 * zoom * (1+actorElevation(actor)/200);
           return {id:actor.id,x:p.x-r,y:p.y-r,w:r*2,h:r*2};
         });
         const cue = root.SpaceManArt.identityMarkerLayout(a.id, bodies,
@@ -1779,19 +2014,30 @@
       // Do not pretend a remote client knows the host-only drift-charge timer.
       const sliding = a.id === ownActor()?.id && lastControl.brake &&
         Math.abs(lastControl.steer) >= .35 && !a.offroad && !a.recoveryTicks && slip > 0.18;
+      const notice = state.tick < noticeUntil ? noticeText : "";
       driveFeedback.hidden = state.phase !== "racing" || a.recoveryTicks > 0 ||
-        (!a.boosting && !a.padTicks && !sliding);
+        (!a.boosting && !a.padTicks && !sliding && !notice);
       driveFeedback.dataset.kind = a.boosting || a.padTicks ? "boost" : "drift";
-      setText(driveFeedback, a.boosting || a.padTicks ? "BOOST!" : "DRIFT");
+      setText(driveFeedback, notice || (a.boosting || a.padTicks ? "BOOST!" : "DRIFT"));
       banner.hidden = state.phase !== "countdown";
       if (!banner.hidden) {
         banner.replaceChildren(
           document.createTextNode(String(Math.ceil(state.countdown / 60))),
-          el("small", "", "BRAKE + TURN = DRIFT"),
+          el("small", "", catalog.ramps.length ? "RAMPS LAUNCH · STARS FILL BOOST" : "BRAKE + TURN = DRIFT"),
         );
       }
+      const threats = canControl() && ownActor() && isRunning() ? R.warningFor(state, ownActor()) : [];
+      const guide = threats.length ? pulseGuide(a, c, threats, R.nearest) : null;
+      let sourceArrow = "↑";
+      if (threats.length) {
+        const source = R.at(c, threats[0].s), dx = source.x-a.x, dy = source.y-a.y;
+        const angle = rendered3d ? -a.heading-Math.PI/2 : camera.rotation;
+        const sx = dx*Math.cos(angle)-dy*Math.sin(angle), sy = dx*Math.sin(angle)+dy*Math.cos(angle);
+        sourceArrow = sourceBearingArrow(sx, sy);
+      }
+      const pulseText = guide ? guide.label : "";
       warning.hidden =
-        !a.offroad &&
+        !threats.length && !a.offroad &&
         !a.recoveryTicks &&
         !(
           onlineActive() &&
@@ -1800,7 +2046,7 @@
             a.finishTick !== null ||
             a.forfeited)
         );
-      warning.textContent =
+      const warningText =
         onlineActive() && (roomStatus?.connection || roomStatus?.stale)
           ? "WAITING FOR CONNECTION · CONTROLS RELEASED"
           : a.forfeited
@@ -1811,11 +2057,56 @@
                 ? "RESCUING · BACK TO LAST CHECKPOINT"
                 : a.offroad
                   ? "TRACK EDGE · STEER BACK INTO THE LANE"
-                  : "";
+                  : threats.length
+                    ? pulseText
+                    : "";
+      setText(warningCopy, warningText);
+      const pulseVisible = !!threats.length && warningText === pulseText;
+      threatMap.hidden = !pulseVisible; warningSource.hidden = !pulseVisible;
+      if (pulseVisible) {
+        const bearing = ["→","↘","↓","↙","←","↖","↑","↗"].indexOf(sourceArrow);
+        const words = ["right","rear right","behind","rear left","left","front left","ahead","front right"];
+        warningSource.setAttribute("aria-label", "Pulse source: " + words[bearing]);
+        sourceG.clearRect(0,0,28,28); sourceG.save(); sourceG.translate(14,14); sourceG.rotate(bearing*Math.PI/4);
+        sourceG.strokeStyle="#ffe5bd";sourceG.lineWidth=3;sourceG.lineJoin="round";sourceG.lineCap="round";
+        sourceG.beginPath();sourceG.moveTo(-8,0);sourceG.lineTo(8,0);sourceG.moveTo(1,-7);sourceG.lineTo(8,0);sourceG.lineTo(1,7);sourceG.stroke();sourceG.restore();
+      }
+      if (pulseVisible) {
+        threatMap.setAttribute("aria-label", guide.description);
+        threatG.setTransform(2,0,0,2,0,0); threatG.clearRect(0,0,140,30);
+        threatG.fillStyle = "#112a3c"; threatG.fillRect(0,0,140,30);
+        threatG.strokeStyle = "#9cb8c266"; threatG.lineWidth = 1; threatG.setLineDash([3,3]);
+        for(const x of[47,93]){threatG.beginPath();threatG.moveTo(x,0);threatG.lineTo(x,30);threatG.stroke();}
+        threatG.setLineDash([]);
+        for(const danger of guide.dangerous){
+          const x=(danger-38+90)/180*140,w=76/180*140;
+          threatG.fillStyle="#f8a15b88";threatG.fillRect(x,0,w,30);
+          threatG.strokeStyle="#ffd29b";threatG.lineWidth=2;
+          const mid=(danger+90)/180*140;threatG.beginPath();threatG.moveTo(mid-5,10);threatG.lineTo(mid,4);threatG.lineTo(mid+5,10);threatG.stroke();
+        }
+        if(guide.safe!==null){const x=(guide.safe+90)/180*140;threatG.strokeStyle="#9eeeb9";threatG.lineWidth=2;threatG.strokeRect(x-7,10,14,16);}
+        const x=clamp((guide.d+90)/180*140,5,135);
+        threatG.fillStyle="#e8fbff";threatG.strokeStyle="#071524";threatG.lineWidth=2;threatG.beginPath();threatG.arc(x,22,4,0,TAU);threatG.fill();threatG.stroke();
+      }
+      warning.dataset.kind = pulseVisible ? "pulse" : "status";
+      const serials = Array(5).fill(0);
+      for (const threat of threats) {
+        const slot = Number(threat.ownerId.slice(6));
+        if (slot >= 0 && slot < 5) serials[slot] = threat.serial;
+      }
+      const soundKey = pulseVisible ? serials.join(":") : "";
+      if (soundKey && soundKey !== warningSoundKey) audio?.threat?.();
+      warningSoundKey = soundKey;
+      displayedWarnings = warningReceipt.observe(serials, {
+        visible: pulseVisible && guide.actionable && !threatMap.hidden && !warning.hidden && !document.hidden && !rootEl.inert && isRunning(),
+        frame: renderFrame, actorId: ownActor()?.id, epoch: networkEpoch,
+      });
+      if (onlineActive()) room.observeWarnings?.(displayedWarnings);
     }
     function tick(now) {
       frameId = 0;
       if (!active || document.hidden) return;
+      renderFrame++;
       pollPad();
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
       last = now;
@@ -1846,6 +2137,7 @@
           lastControl = cmds[state.actors[0].id];
           previousPose = root.SpaceManRacePresentation?.capture(state);
           R.step(state, cmds);
+          updateFeatureNotice();
           audio?.update(state, followActor());
           acc -= 1 / 60;
           for (const e of state.events) {
@@ -2054,5 +2346,5 @@
       },
     });
   }
-  root.SpaceManRaceUI = Object.freeze({ create });
+  root.SpaceManRaceUI = Object.freeze({ create, createWarningReceipt, createItemRequest, pulseGuide, sourceBearingArrow });
 })(typeof window !== "undefined" ? window : globalThis);

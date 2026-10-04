@@ -258,10 +258,10 @@ const characterHats = {
 };
 
 
-  function hoverpod(c, style, { tick = 20, id = 0, calm = false, boosting = false, hero = false } = {}) {
+  function hoverpod(c, style, { tick = 20, id = 0, calm = false, boosting = false, hero = false, shadow = true } = {}) {
     const P = style.palette, accent = style.accent, ship = style.appearance.ship;
     c.save();
-    c.fillStyle = '#0006'; c.beginPath(); c.ellipse(0, 5, 28, 19, 0, 0, TAU); c.fill();
+    if (shadow) { c.fillStyle = '#0006'; c.beginPath(); c.ellipse(0, 5, 28, 19, 0, 0, TAU); c.fill(); }
     if (boosting || hero) {
       c.fillStyle = accent; c.globalAlpha *= .35; c.beginPath(); c.moveTo(-19, -8); c.lineTo(-44 - (calm ? 0 : tick % 6), 0); c.lineTo(-19, 8); c.fill(); c.globalAlpha /= .35;
       c.fillStyle = '#DFFBFF'; c.beginPath(); c.moveTo(-22, -3); c.lineTo(-34, 0); c.lineTo(-22, 3); c.fill();

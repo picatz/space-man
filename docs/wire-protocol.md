@@ -876,23 +876,40 @@ feature — features negotiate, they are never assumed.
 | 5 | `0x20` | ARENA (explicit mode 1) |
 | 6 | `0x40` | Legacy RACE geometry revision 1; no longer advertised |
 | 7 | `0x80` | Legacy RACE geometry/contact revision 2; no longer advertised |
-| 8 | `0x100` | RACE geometry/contact revision 3 (rounded Ember and visible runoff) |
+| 8 | `0x100` | Legacy RACE geometry/contact revision 3; no longer advertised |
+| 9 | `0x200` | Legacy JOURNEY revision 1; no longer advertised |
+| 10 | `0x400` | Optional fixed-catalog APPEARANCE, independent of mode |
+| 11 | `0x800` | RACE revision 4: Starlight feature rules/catalog and race codec v2 |
+| 12 | `0x1000` | JOURNEY revision 2: Starlight race compatibility and envelope v2 |
 
-The runner mask remains `0x1F`; Arena adds bit 5, and current Star Circuit adds
-only bit 8. Race revisions are mutually exclusive compatibility requirements,
-not optional features. Revision 3 rounds Ember, opens driveable runoff, and moves props out of that space;
-guests reconstruct course geometry from their local build, so old/new race
-clients must not share a match even though snapshot field widths are unchanged.
+The base mask is `0x41F`, including optional appearance. Arena adds bit 5,
+current Star Circuit adds only bit 11, and current Star Expedition adds only
+bit 12. Legacy race bits 6/7/8 and journey bit 9 are not advertised. These are
+exclusive compatibility requirements, not optional features. Journey checks
+its own revision before the first encounter; it must advance atomically with
+any incompatible inner-race revision, even though it does not advertise the
+standalone race capability.
 
-Both HELLO and WELCOME require the local race revision capability. A current
-host rejects a legacy guest before assigning a seat; a current guest refuses a
-legacy host's WELCOME (and legacy hosts reject its new HELLO). This also applies
-to watchers. New clients show an instruction to refresh both games and create a
-new invite. Already-cached legacy clients may show their older generic mode
-mismatch message, but cannot enter the incompatible match. Runner protocol 6,
-Arena, invite mode flags, and race snapshot schema version 1 stay unchanged.
-Changes to race geometry or simulation compatibility must update this exclusive
-capability atomically with the authored data/rules and the offline cache version.
+HELLO, held-join approval, reconnect HELLO and WELCOME all revalidate the mode
+and exclusive revision for players and watchers. Old/new rooms reject each
+other before incompatible gameplay. A mismatched reconnect retires its old
+transport ownership; a rejected coordinator cleans up so Join/Cancel remain
+usable. Current clients show: “This room uses a newer racing version. Leave the
+room, refresh all games, then ask the host for a new invite.” Expedition uses
+“newer expedition version”. These actionable errors apply only to updated
+clients. Historical journey clients retain their original different-mode error
+on rejected admission (or their older “different game version” coordinator
+message); the new host cannot replace text embedded in an old page. They still
+cannot enter the incompatible match.
+
+App protocol **6**, runner/Arena behavior, optional appearance bit 10, invite
+mode flags and encrypted frame IDs remain unchanged. Race input/snapshot schema
+is **2**, its Starlight catalog revision is **1**, and the journey envelope is
+**2** (still 34 bytes). The race packet ceiling is **990 bytes**; the current
+maximum is 648 bytes, or 682 with the journey wrapper. See
+[race-feature-wire.md](race-feature-wire.md) for offsets, bounds and warning
+receipt/Item authority. Publish rules, renderers, controls, negotiation and
+offline cache assets together; do not reload a live room for an update.
 
 ### 12.3 Callsigns
 

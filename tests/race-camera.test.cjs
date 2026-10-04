@@ -211,3 +211,69 @@ test('slide framing follows travel without mutating authority or rolling the hor
   assert.ok(camera.target[1]<camera.eye[1]);assert.equal(JSON.stringify(actor),original);
   assert.equal(Camera.travelHeading({...actor,speed:0,vx:0,vy:0}),0);
 });
+
+test('hops leave Chase ground-relative and cap the Cockpit rise, removing it in reduced motion',()=>{
+  const c=R.course('starlight'),a=R.create().actors[0],air={...a,airRamp:1,airTicks:14,z:29};
+  const ground=Camera.create().update(a,c,R.at,{mode:'chase'}),jump=Camera.create().update(air,c,R.at,{mode:'chase'});
+  assert.deepEqual(jump,ground);
+  const cockpit=Camera.create().update(air,c,R.at,{mode:'cockpit'});
+  assert.equal(cockpit.eye[1],42);assert.equal(cockpit.target[1],25);
+  assert.equal(Camera.create().update(air,c,R.at,{mode:'cockpit',reduceMotion:true}).eye[1],34);
+});
+const landingViews = [320/568,390/844,568/320,844/390,820/1180,1280/720];
+function launchActor(ramp, s, lane, speed = 6.4) {
+  const c=R.course('starlight'),p=R.at(c,s),base=R.create().actors[0];
+  return {...base,x:p.x-p.ty*lane,y:p.y+p.tx*lane,heading:Math.atan2(p.ty,p.tx),
+    vx:p.tx*speed,vy:p.ty*speed,speed};
+}
+function assertLandingRoad(view,ramp,aspect,label) {
+  const M=require('../src/render3d.js'),c=R.course('starlight');
+  const matrix=M.multiply(M.perspective(view.fov,aspect,view.near,view.far),M.lookAt(view.eye,view.target));
+  for(let offset=108;offset<=270;offset+=9) for(const d of [-c.width/2,0,c.width/2]) {
+    const q=R.at(c,ramp.s+offset),shown=M.project([q.x-q.ty*d,0,q.y+q.tx*d],matrix);
+    assert.ok(shown.visible,`${ramp.id} ${label}: landing ${offset}/${d}, projected ${shown.x}/${shown.y}`);
+  }
+}
+test('the full landing road fits from center and both coin lanes in every camera and viewport',()=>{
+  const c=R.course('starlight');
+  for(const ramp of R.features(c).ramps) for(const s of [ramp.startS,ramp.s-30,ramp.s])
+    for(const lane of [-44,0,44]) for(const speed of [3.6,6.4,9])
+      for(const aspect of landingViews) for(const mode of ['chase','cockpit']) for(const reduceMotion of [false,true]) {
+        const a=launchActor(ramp,s,lane,speed),before=JSON.stringify(a);
+        const view=Camera.create().update(a,c,R.at,{aspect,mode,reduceMotion});
+        assertLandingRoad(view,ramp,aspect,`${mode} aspect${aspect} lane${lane} speed${speed} calm${reduceMotion}`);
+        assert.equal(JSON.stringify(a),before);
+        const look=Math.atan2(view.target[2]-view.eye[2],view.target[0]-view.eye[0]);
+        assert.ok(Math.abs(Camera.wrap(look-a.heading))<=.34,'lane framing cannot swing the horizon excessively');
+        const baseFov=mode==='cockpit'?Math.max(68,Math.min(150,2*Math.atan(1/aspect)*180/Math.PI)):59;
+        const expected=(baseFov+(reduceMotion?0:Math.min(4,speed*.5)))*Math.PI/180;
+        assert.equal(view.fov,expected,'lane framing adds no field of view');
+      }
+});
+test('lane framing stays ground-relative and repeatable through a reduced-motion hop',()=>{
+  const c=R.course('starlight');
+  for(const ramp of R.features(c).ramps) for(const lane of [-44,44]) for(const mode of ['chase','cockpit']) {
+    const a=launchActor(ramp,ramp.s,lane),camera=Camera.create();
+    const ground=camera.update(a,c,R.at,{mode,aspect:390/844,reduceMotion:true});
+    for(const [airTicks,z] of [[0,10],[12,29],[29,3],[0,0]]) {
+      const frame=camera.update({...a,z,airTicks,airRamp:z?ramp.index+1:0},c,R.at,
+        {mode,aspect:390/844,reduceMotion:true,dt:1/30});
+      assert.deepEqual(frame,ground,'height and airtime cannot steer or raise a reduced-motion camera');
+    }
+  }
+});
+test('rotation immediately fits the landing road while normal approach follow remains bounded',()=>{
+  const c=R.course('starlight');
+  for(const ramp of R.features(c).ramps) for(const lane of [-44,44]) for(const mode of ['chase','cockpit']) {
+    const camera=Camera.create();
+    for(let s=ramp.startS-120;s<=ramp.s;s+=3) {
+      const a=launchActor(ramp,s,lane),view=camera.update(a,c,R.at,{mode,aspect:390/844,dt:1/60});
+      if(s>=ramp.startS) assertLandingRoad(view,ramp,390/844,`${mode} moving lane${lane}`);
+    }
+    const a=launchActor(ramp,ramp.s,lane);
+    for(const aspect of [844/390,390/844,820/1180,320/568,1280/720]) {
+      const view=camera.update(a,c,R.at,{mode,aspect,dt:1/60});
+      assertLandingRoad(view,ramp,aspect,`${mode} rotation lane${lane}`);
+    }
+  }
+});

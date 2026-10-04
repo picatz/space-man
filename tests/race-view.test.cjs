@@ -392,3 +392,81 @@ test("spectators identify the followed racer as WATCHING through seat changes an
   assert.equal(h.marker.hidden, true, "top-down supplies its own screen-space marker");
   h.view.destroy();
 });
+
+test('WebGL integrates followed-pilot availability and both pulse phases with battery saver',()=>{
+  const h=harness({batterySaver:true});
+  const state={...h.snapshot,actors:h.snapshot.actors.map((a,i)=>({...a,coinMask:i===0?1:1023,rowMask:i===0?1:3})),
+    effects:[{ownerId:'pilot-1',serial:1,phase:'charge',age:20,s:600,d:-44,originS:500},
+      {ownerId:'pilot-2',serial:1,phase:'wave',age:3,s:680,d:44,originS:644}]};
+  freeze(state);const before=JSON.stringify(state);
+  assert.equal(h.view.render(state,h.config),true);
+  let features=h.frames.at(-1).meshes.filter(m=>m.featureKind);
+  assert.equal(features.filter(m=>m.featureKind==='coin').length,9);
+  assert.equal(features.filter(m=>m.featureKind==='item').length,2);
+  assert.deepEqual(Array.from(features.filter(m=>m.featureKind==='pulse'),m=>m.featurePhase),['charge','wave']);
+  assert.equal(h.view.render(state,{...h.config,actorId:state.actors[1].id,localActorId:null}),true);
+  features=h.frames.at(-1).meshes.filter(m=>m.featureKind);
+  assert.equal(features.filter(m=>m.featureKind==='coin').length,0);
+  assert.equal(features.filter(m=>m.featureKind==='item').length,0);
+  assert.equal(features.filter(m=>m.featureKind==='pulse').length,2);
+  assert.equal(JSON.stringify(state),before);
+  h.lose();assert.equal(h.view.render(state,h.config),false);assert.equal(h.base.hidden,false);
+  h.restore();h.view.render({...state,effects:[]},h.config);
+  assert.ok(!h.frames.at(-1).meshes.some(m=>m.featureKind==='pulse'),'restoration uses current effects without replay');
+  h.view.destroy();
+});
+test('an airborne YOU marker follows the same elevated craft and face above a grounded shadow',()=>{
+  const h=harness({width:390,height:844});h.view.render(h.snapshot,h.config);
+  const groundCamera=h.frames.at(-1).camera,groundTop=parseFloat(h.marker.style.top);
+  const state={...h.snapshot,actors:h.snapshot.actors.map(a=>({...a,airRamp:1,airTicks:12,z:28}))};
+  h.view.render(state,h.config);const frame=h.frames.at(-1),id=h.config.actorId;
+  assert.deepEqual(frame.camera,groundCamera,'Chase horizon does not track the hop');
+  assert.equal(frame.meshes.find(m=>m.actorId===id).model[13],28);
+  assert.equal(frame.meshes.find(m=>m.faceActorId===id).model[13],28);
+  assert.equal(frame.meshes.find(m=>m.shadowActorId===id).model[13],0);
+  assert.ok(parseFloat(h.marker.style.top)<groundTop);
+  const a=state.actors[0],matrix=Render3D.multiply(Render3D.perspective(frame.camera.fov,390/844,frame.camera.near,frame.camera.far),Render3D.lookAt(frame.camera.eye,frame.camera.target));
+  const hatTop={antenna:40,sprout:37,beanie:38.1,halo:37.2,crown:37,cone:44.5,catears:39,phones:34};
+  const point=Render3D.project([a.x-Math.cos(a.heading)*5,(hatTop[a.appearance?.hat]||34)+28,a.y-Math.sin(a.heading)*5],matrix),expected=Math.max(35,Math.min(834,(1-point.y)*844/2-6));
+  assert.ok(Math.abs(parseFloat(h.marker.style.top)-expected)<.00001);
+  h.view.destroy();
+});
+test('same-track same-tick epoch changes and follow changes discard buffered airborne poses',()=>{
+  const h=harness(),id=h.config.actorId;
+  const first={...h.snapshot,tick:30,phase:'racing',actors:h.snapshot.actors.map(a=>({...a,z:28,airRamp:1,airTicks:12}))};
+  const config={...h.config,network:true,epoch:1};
+  h.view.render(first,config);h.view.render(first,config);
+  const next={...first,tick:33,actors:first.actors.map(a=>({...a,x:a.x+6,z:0,airRamp:0,airTicks:0}))};
+  h.view.render(next,config);
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===id).model[13],28,'latest HUD authority does not extrapolate buffered pose');
+  h.view.render(next,{...config,epoch:2});
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===id).model[13],0);
+  const later={...next,tick:36,actors:next.actors.map(a=>({...a,x:a.x+6,z:20,airRamp:2,airTicks:5}))};
+  h.view.render(later,{...config,epoch:2,actorId:later.actors[1].id,localActorId:null});
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===later.actors[1].id).model[13],20);
+  assert.equal(h.marker.dataset.role,'watching');
+  h.view.destroy();
+});
+
+test('Cockpit uses its exact rendered eye to suppress only nearby rival exhaust and Chase restores it',()=>{
+  const h=harness({width:844,height:390}),owner=h.snapshot.actors[0],co=Math.cos(owner.heading),si=Math.sin(owner.heading),
+    rival={...h.snapshot.actors[1],x:owner.x+56*co,y:owner.y+56*si,heading:owner.heading,
+      airRamp:1,airTicks:12,z:28,boosting:true,padTicks:0},
+    state=freeze({...h.snapshot,tick:97,actors:[{...owner,airRamp:1,airTicks:12,z:28},rival]});
+  const full=Scene.actorMeshes(state).find(m=>m.actorId===rival.id);
+  h.view.setMode('cockpit');h.view.render(state,h.config);
+  const cockpit=h.frames.at(-1),body=cockpit.meshes.find(m=>m.actorId===rival.id),face=cockpit.meshes.find(m=>m.faceActorId===rival.id);
+  assert.ok(body&&face,'the near rival and helmet remain visible');
+  assert.ok(!cockpit.meshes.some(m=>m.actorId===owner.id),'only the ordinary self-craft omission applies');
+  assert.equal(full.vertices.length-body.vertices.length,108);
+  assert.equal(face.vertices,Scene.actorMeshes(state).find(m=>m.faceActorId===rival.id).vertices);
+  const expected=Scene.actorMeshes(state,{cockpitEye:cockpit.camera.eye}).find(m=>m.actorId===rival.id);
+  assert.equal(body.vertices,expected.vertices,'suppression uses the same eye that draws this frame');
+  h.view.setMode('chase');h.view.render(state,h.config);
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===rival.id).vertices,full.vertices);
+  h.view.setMode('cockpit');
+  const far={...state,actors:[state.actors[0],{...rival,x:owner.x+200*co,y:owner.y+200*si}]};
+  h.view.render(far,h.config);
+  assert.equal(h.frames.at(-1).meshes.find(m=>m.actorId===rival.id).vertices,full.vertices,'distant Cockpit exhaust remains intact');
+  h.view.destroy();
+});

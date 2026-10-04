@@ -12,12 +12,18 @@
     return {
       tick: snapshot.tick,
       trackId: snapshot.trackId,
+      epoch: snapshot.epoch,
+      phase: snapshot.phase,
       actors: snapshot.actors.map((a) => ({
         id: a.id,
         x: a.x,
         y: a.y,
         heading: a.heading,
         recoveries: a.recoveries,
+        recoveryTicks: a.recoveryTicks,
+        z: a.z || 0,
+        airRamp: a.airRamp || 0,
+        airTicks: a.airTicks || 0,
       })),
     };
   }
@@ -26,6 +32,8 @@
       !previous ||
       !current ||
       previous.trackId !== current.trackId ||
+      previous.epoch !== current.epoch ||
+      (previous.phase === "finished" && current.phase !== "finished") ||
       previous.tick > current.tick
     )
       return current;
@@ -40,6 +48,8 @@
         if (
           !p ||
           p.recoveries !== a.recoveries ||
+          (!p.recoveryTicks && a.recoveryTicks) ||
+          (p.airRamp && a.airRamp && (p.airRamp !== a.airRamp || p.airTicks > a.airTicks)) ||
           Math.hypot(a.x - p.x, a.y - p.y) > 120
         )
           return { ...a };
@@ -48,28 +58,48 @@
           x: p.x + (a.x - p.x) * t,
           y: p.y + (a.y - p.y) * t,
           heading: p.heading + angle(a.heading - p.heading) * t,
+          ...airPose(p, a, t),
         };
       }),
+    };
+  }
+  function airPose(previous, current, t) {
+    const height = (a) => clamp(Number.isFinite(a.z) ? a.z : 0, 0, 32),
+      before = previous.airRamp || 0, after = current.airRamp || 0;
+    // Only interpolate heights that authority actually sent. In particular, a
+    // missing apex snapshot cannot create a new parabola or extend a lost hop.
+    // Keep the outgoing hop's identity until the interpolated landing completes.
+    return {
+      z: height(previous) + (height(current) - height(previous)) * t,
+      airRamp: t === 1 ? after : before || after,
+      airTicks: t === 1 ? (current.airTicks || 0) :
+        clamp((previous.airTicks || 0) +
+          ((after ? current.airTicks || 0 : before ? 30 : 0) - (previous.airTicks || 0)) * t, 0, 30),
     };
   }
   function createTimeline({ delayTicks = 3 } = {}) {
     let frames = [],
       playTick = null,
-      lastNow = null;
+      lastNow = null,
+      followedId = null;
     function reset() {
       frames = [];
       playTick = null;
       lastNow = null;
+      followedId = null;
     }
-    function sample(snapshot, now, { paused = false } = {}) {
+    function sample(snapshot, now, { paused = false, actorId = null } = {}) {
       if (!snapshot) return null;
       const last = frames.at(-1);
       if (
         last &&
-        (snapshot.trackId !== last.trackId || snapshot.tick < last.tick)
+        (snapshot.trackId !== last.trackId || snapshot.epoch !== last.epoch ||
+          snapshot.tick < last.tick || followedId !== actorId ||
+          (last.phase === "finished" && snapshot.phase !== "finished"))
       ) {
         reset();
       }
+      followedId = actorId;
       if (!frames.length || frames.at(-1).tick !== snapshot.tick) {
         frames.push(snapshot);
         if (frames.length > 10) frames.shift();
@@ -109,14 +139,15 @@
         current,
         span ? clamp((playTick - previous.tick) / span, 0, 1) : 1,
       );
-      // HUD and phase always use the newest authority; only x/y/heading are sampled.
+      // HUD and item/effect state use newest authority; only position, heading
+      // and the received height/air progress are sampled.
       const byId = new Map(poses.actors.map((a) => [a.id, a]));
       return {
         ...newest,
         actors: newest.actors.map((a) => {
           const p = byId.get(a.id);
           return p && p.recoveries === a.recoveries
-            ? { ...a, x: p.x, y: p.y, heading: p.heading }
+            ? { ...a, x: p.x, y: p.y, heading: p.heading, z: p.z, airRamp: p.airRamp, airTicks: p.airTicks }
             : { ...a };
         }),
       };

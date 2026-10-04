@@ -165,7 +165,7 @@
           connection = host
             ? "Connection lost · match paused"
             : "Reconnecting · controls released";
-          pending = null;
+          pending = null; client.cancel(true);
           if (host) host.pause(true);
           publish(true);
           changed();
@@ -175,7 +175,7 @@
         } else if (event === "bye") {
           const message =
             data && data.reason === 3 && data.detail === 32
-              ? "This Star Circuit room uses an incompatible race version. Refresh both games, then ask the host to create a new invite."
+              ? "This room uses a newer racing version. Leave the room, refresh all games, then ask the host for a new invite."
               : data && data.reason === 4
               ? "This race room is full."
               : data && data.reason === 3 && data.detail === 16
@@ -308,15 +308,15 @@
         return false;
       }
     }
-    function submit(command, time = now()) {
+    function submit(command, time = now(), released = false) {
       if (!active || connection || (!host && now() - lastReceived > 1500))
         return;
-      const packet = client.input(command, info().myP);
+      const packet = released ? client.release(info().myP) : client.input(command, info().myP);
       if (!packet) return;
       if (host) host.receive(1, "host", packet, time);
       else {
         pending = packet;
-        if (time - lastInput >= 30) {
+        if (released || time - lastInput >= 30) {
           lastInput = time;
           net.sendRace(pending).catch(() => {});
           pending = null;
@@ -340,8 +340,9 @@
       }
     }
     function release() {
+      client.cancel();
       if (active) {
-        submit(sim.command(), now());
+        submit(sim.command(), now(), true);
         if (pending) {
           net.sendRace(pending).catch(() => {});
           pending = null;
@@ -404,6 +405,9 @@
       role,
       step,
       release,
+      observeWarnings: serials => client.observeWarnings(serials),
+      itemReady: () => !!(active && !connection && (host || now() - lastReceived <= 1500) &&
+        info().role === 0 && client.itemReady(info().myP)),
       close,
       status,
       get active() {

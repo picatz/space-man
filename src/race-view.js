@@ -21,6 +21,9 @@
       pendingQuality = 1,
       scene = null,
       trackId = null,
+      followedId = null,
+      presentationEpoch = null,
+      networkView = null,
       w = 1,
       h = 1,
       dpr = 1,
@@ -109,6 +112,7 @@
       if (!modes.includes(value)) return;
       mode = value;
       camera.reset();
+      timeline?.reset();
       marker.hidden = true;
       menu.hidden = true;
       toggle.setAttribute("aria-expanded", "false");
@@ -136,11 +140,13 @@
       renderer = root.SpaceManRender3D?.create(canvas, {
         powerSaving: !!options.settings?.().batterySaver,
         onLost() {
+          timeline?.reset();
           fail("Graphics interrupted · top-down active");
         },
         onRestored() {
           fallback = false;
           camera.reset();
+          timeline?.reset();
           note.textContent = "3D restored · C switches view";
           resize(w, h, dpr);
         },
@@ -182,13 +188,24 @@
         slow = fast = 0;
         resize(w, h, dpr);
       }
+      const nextFollow = snapshot.actors.find(a => a.id === config.actorId)?.id || snapshot.actors[0]?.id,
+        nextEpoch = config.epoch ?? snapshot.epoch ?? null,
+        discontinuity = followedId !== null && (followedId !== nextFollow || presentationEpoch !== nextEpoch);
+      if (followedId !== nextFollow || presentationEpoch !== nextEpoch || networkView !== !!config.network) {
+        camera.reset();
+        timeline?.reset();
+        followedId = nextFollow;
+        presentationEpoch = nextEpoch;
+        networkView = !!config.network;
+      }
       snapshot =
         config.network && timeline
           ? timeline.sample(snapshot, root.performance.now(), {
               paused: config.paused,
+              actorId: followedId,
             })
           : root.SpaceManRacePresentation?.between(
-              config.previous,
+              discontinuity ? null : config.previous,
               snapshot,
               config.alpha,
             ) || snapshot;
@@ -204,24 +221,32 @@
         timeline?.reset();
         lastTick = null;
       }
-      // Reuse immutable local-space craft meshes on the GPU. Only small model
-      // transforms change each display frame, including interpolated frames.
-      const moving = root.SpaceManRaceScene.actorMeshes(snapshot, {
-        hideId: mode === "cockpit" ? a.id : null,
-        calm: !!config.reduceMotion,
-        chaseActor: mode === "chase" ? a : null,
-      });
+      const catalog = root.SpaceManRace.features?.(course);
       const view = camera.update(a, course, root.SpaceManRace.at, {
         mode,
         dt: config.dt,
         aspect: w / h,
         reduceMotion: config.reduceMotion,
       });
+      // Reuse immutable local-space craft meshes on the GPU. Only small model
+      // transforms change each display frame, including interpolated frames.
+      const moving = root.SpaceManRaceScene.actorMeshes(snapshot, {
+        hideId: mode === "cockpit" ? a.id : null,
+        calm: !!config.reduceMotion,
+        chaseActor: mode === "chase" ? a : null,
+        cockpitEye: mode === "cockpit" ? view.eye : null,
+        course, catalog, nearest: root.SpaceManRace.nearest,
+      });
+      const features = root.SpaceManRaceScene.featureMeshes?.(snapshot, course, root.SpaceManRace.at, catalog, {
+        actorId: a.id, hideId: mode === "cockpit" ? a.id : null,
+        chaseActor: mode === "chase" ? a : null,
+        calm: !!config.reduceMotion, nearest: root.SpaceManRace.nearest,
+      }) || [];
       const started = root.performance.now();
       const ok = renderer.draw({
         ...scene,
         camera: view,
-        meshes: [...scene.meshes, ...moving],
+        meshes: [...scene.meshes, ...features, ...moving],
       });
       const cost = root.performance.now() - started;
       if (!ok) {
@@ -236,12 +261,11 @@
         );
         // Anchor above the same interpolated pilot and camera used for this draw.
         // Cockpit deliberately has no floating self marker or hidden-craft proxy.
-        // Project the actual helmet/accessory silhouette, then add a CSS-pixel
-        // gap. A fixed world-height label anchor floated far above small pilots.
+        const elevation = root.SpaceManRaceScene.actorHeight(a, course, catalog, root.SpaceManRace.nearest);
         const hatTop = { antenna: 40, sprout: 37, beanie: 38.1, halo: 37.2,
           crown: 37, cone: 44.5, catears: 39, phones: 34 };
         const pilotTop = hatTop[a.appearance?.hat] || 34;
-        const point = math.project([a.x - Math.cos(a.heading) * 5, pilotTop,
+        const point = math.project([a.x - Math.cos(a.heading) * 5, pilotTop + elevation,
           a.y - Math.sin(a.heading) * 5], matrix);
         if (point.visible) {
           const own = a.id === config.localActorId && a.controller === "human";

@@ -364,6 +364,7 @@ test(
         testPad.axes[0] = c.steer;
         testPad.buttons[0].pressed = c.boost;
         testPad.buttons[1].pressed = c.brake;
+        testPad.buttons[5].pressed = c.item;
       }, 16);
     });
     await page.waitForFunction(
@@ -429,6 +430,7 @@ test(
           testPad.axes[0] = c.steer;
           testPad.buttons[0].pressed = c.boost;
           testPad.buttons[1].pressed = c.brake;
+        testPad.buttons[5].pressed = c.item;
         }, 16);
       });
       for (const gate of [5, 10, 15, 19]) {
@@ -552,6 +554,7 @@ test(
         testPad.axes[0] = c.steer;
         testPad.buttons[0].pressed = c.boost;
         testPad.buttons[1].pressed = c.brake;
+        testPad.buttons[5].pressed = c.item;
       }, 16);
     });
     const samples = await page.evaluate(
