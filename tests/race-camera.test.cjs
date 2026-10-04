@@ -277,3 +277,64 @@ test('rotation immediately fits the landing road while normal approach follow re
     }
   }
 });
+
+test('topdown easing uses elapsed time: 60Hz and 120Hz have the same stationary-target response', () => {
+  const actor = { id: 'pilot-0', x: 0, y: 0, heading: 0, recoveries: 0 };
+  function run(hz) {
+    const camera = Camera.createTopdown();
+    camera.update(actor, { portrait: true });
+    let shown;
+    for (let frame = 0; frame < hz / 2; frame++) shown = camera.update(
+      { ...actor, x: 100, y: 75, heading: 1 }, { portrait: true, dt: 1 / hz });
+    return shown;
+  }
+  const a = run(60), b = run(120);
+  for (const field of ['x', 'y', 'rotation']) assert.ok(Math.abs(a[field] - b[field]) < 1e-9);
+});
+
+test('topdown moving camera tracks the same path at 60/120Hz without changing the pilot', () => {
+  function run(hz) {
+    const camera = Camera.createTopdown(), path = [];
+    for (let frame = 0; frame <= hz; frame++) {
+      const t = frame / hz, actor = Object.freeze({ id: 'pilot-0', x: 180 * t,
+        y: 45 * t, heading: .4 * t, recoveries: 0 });
+      path.push(camera.update(actor, { portrait: true, dt: 1 / hz }));
+    }
+    return path;
+  }
+  const a = run(60), b = run(120);
+  for (let i = 0; i < a.length; i++) {
+    assert.ok(Math.hypot(a[i].x - b[i * 2].x, a[i].y - b[i * 2].y) < 1,
+      'time-based tracking remains within one world unit across refresh rates');
+    assert.ok(Math.abs(a[i].rotation - b[i * 2].rotation) < .002);
+  }
+});
+
+test('topdown pause is stationary and rescue, watch, track, epoch and rotation reset cleanly', () => {
+  const camera = Camera.createTopdown(), a = { id: 'pilot-0', x: 0, y: 0, heading: 0, recoveries: 0 },
+    options = { trackId: 'starlight', epoch: 1, portrait: true };
+  camera.update(a, options);
+  const b = { ...a, x: 30, heading: .2 }, shown = camera.update(b, options);
+  for (let i = 0; i < 100; i++) assert.deepEqual(camera.update(b,
+    { ...options, paused: true, dt: .1 }), shown);
+  for (const [actor, settings] of [
+    [{ ...b, recoveries: 1 }, options], [{ ...b, id: 'pilot-1' }, options],
+    [b, { ...options, epoch: 2 }], [b, { ...options, trackId: 'bloom' }],
+    [b, { ...options, portrait: false }], [b, { ...options, reduceMotion: true }],
+  ]) {
+    const actual = camera.update(actor, settings), fresh = Camera.createTopdown().update(actor, settings);
+    assert.deepEqual(actual, fresh);
+  }
+  camera.reset();
+  assert.deepEqual(camera.update(a, options), Camera.createTopdown().update(a, options));
+});
+
+test('topdown redraws without elapsed frame time do not spend camera easing twice', () => {
+  const camera = Camera.createTopdown(), actor = { id: 'pilot-0', x: 0, y: 0, heading: 0, recoveries: 0 };
+  camera.update(actor);
+  const moved = { ...actor, x: 100, heading: .5 }, shown = camera.update(moved, { dt: 1 / 60 });
+  for (let i = 0; i < 10; i++) assert.deepEqual(camera.update(moved, { dt: 0 }), shown);
+  const portrait = camera.update(moved, { dt: 0, portrait: true });
+  assert.deepEqual(portrait, Camera.createTopdown().update(moved, { portrait: true }),
+    'a genuine viewport orientation change still reframes immediately');
+});

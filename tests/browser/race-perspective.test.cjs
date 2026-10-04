@@ -537,6 +537,7 @@ function installLapTrace() {
   const trace = window.raceLapTrace = {
     recording: false, done: false, start: null, end: null,
     frames: [], steps: [], events: [], driver: [],
+    sampler: { calls: 0, checked: 0, mismatches: 0, movedFromAuthority: 0, sameTickPairs: 0, sameTickMotion: 0 },
   };
   let frame = null, driver;
   const raf = window.requestAnimationFrame;
@@ -659,6 +660,47 @@ function installLapTrace() {
       return view;
     },
   }));
+  intercept("SpaceManRacePresentation", (api) => Object.freeze({
+    ...api,
+    createSampler(...args) {
+      const sampler = api.createSampler.apply(this, args), sample = sampler.sample;
+      let previousSample = null;
+      sampler.sample = function (state, options = {}) {
+        const shown = sample.call(this, state, options), began = performance.now();
+        try {
+          if (!trace.recording || !state || !shown) return shown;
+          const a = state.actors.find((actor) => actor.id === options.actorId),
+            p = options.previous?.actors.find((actor) => actor.id === a?.id),
+            display = shown.actors.find((actor) => actor.id === a?.id),
+            alpha = Math.max(0, Math.min(1, options.alpha));
+          trace.sampler.calls++;
+          // Check the actual UI sampler's output, without manufacturing a frame
+          // or changing the authoritative clock. Natural no-step frames are
+          // diagnostic only: software CI can run below the physics frequency.
+          if (a && p && display && previousSample && !options.network && !options.paused &&
+              p.recoveries === a.recoveries && !a.recoveryTicks &&
+              Math.hypot(a.x - p.x, a.y - p.y) < 120 && Number.isFinite(alpha)) {
+            trace.sampler.checked++;
+            const error = Math.hypot(display.x - (p.x + (a.x - p.x) * alpha),
+              display.y - (p.y + (a.y - p.y) * alpha));
+            if (error > 1e-6) trace.sampler.mismatches++;
+            if (Math.hypot(display.x - a.x, display.y - a.y) > 1e-6)
+              trace.sampler.movedFromAuthority++;
+            if (previousSample.tick === state.tick) {
+              trace.sampler.sameTickPairs++;
+              if (Math.hypot(display.x - previousSample.x, display.y - previousSample.y) > 1e-6)
+                trace.sampler.sameTickMotion++;
+            }
+          }
+          if (display) previousSample = { tick: state.tick, x: display.x, y: display.y };
+          return shown;
+        } finally {
+          if (frame) frame.probeMs += performance.now() - began;
+        }
+      };
+      return sampler;
+    },
+  }));
   trace.startDriver = () => {
     driver = setInterval(() => {
       const began = performance.now(), s = raceUI.snapshot(),
@@ -730,7 +772,7 @@ function summarizeLapTrace(trace) {
     probePerCallback: timingStats(trace.frames.map((f) => f.probeMs)),
     driverCallback: timingStats(trace.driver.map((s) => s.totalMs)),
     driverSnapshot: timingStats(trace.driver.map((s) => s.snapshotMs)),
-    eventCounts, buckets,
+    eventCounts, buckets, sampler: trace.sampler,
   };
 }
 
@@ -761,8 +803,8 @@ test(
           await page.evaluate(() => raceLapTrace.stopDriver());
         }
         const trace = await page.evaluate(() => {
-          const { frames, steps, events, driver, start, end } = raceLapTrace;
-          return { frames, steps, events, driver, start, end };
+          const { frames, steps, events, driver, sampler, start, end } = raceLapTrace;
+          return { frames, steps, events, driver, sampler, start, end };
         });
         const summary = {
           browser: process.env.SPACE_MAN_RACE_BROWSER || "chromium", camera,
@@ -778,9 +820,8 @@ test(
           ],
         };
         console.log("Complete-lap software-browser diagnostics (not physical-device FPS):", JSON.stringify(summary));
-        // Optional raw JSON for a local run or a future CI artifact configuration.
-        // The existing screenshot workflow only uploads PNGs; do not imply that
-        // setting SPACE_MAN_RACE_SCREENSHOTS alone archives this trace.
+        // Raw JSON is archived by the perspective workflow alongside screenshots.
+        // Local runs can opt in with SPACE_MAN_RACE_TRACES.
         if (process.env.SPACE_MAN_RACE_TRACES) {
           await fs.mkdir(process.env.SPACE_MAN_RACE_TRACES, { recursive: true });
           await fs.writeFile(path.join(process.env.SPACE_MAN_RACE_TRACES,
@@ -791,6 +832,11 @@ test(
         assert.ifError(waitError);
         assert.equal(summary.renderer, camera === "topdown" ? "2d" : "webgl");
         assert.ok(trace.frames.every((f) => f.renderer === summary.renderer), "renderer remains stable throughout the lap");
+        if (camera === "topdown") {
+          assert.ok(trace.sampler.checked > 0, "topdown calls the display-pose sampler");
+          assert.equal(trace.sampler.mismatches, 0, "display poses match render-only interpolation");
+          assert.ok(trace.sampler.movedFromAuthority > 0, "topdown uses intermediate display poses");
+        }
         assert.equal(trace.start.passed, 20);
         assert.equal(trace.end.passed, 40);
         assert.equal(trace.end.recoveries, trace.start.recoveries);
