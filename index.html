@@ -801,29 +801,12 @@
   .roster-actions-head { font-size: 12px; letter-spacing: 1px; color: var(--ui); margin-bottom: 10px; text-transform: uppercase; }
   .roster-actions-head .glyph { color: var(--cyan-lt); margin-right: 4px; }
 
-  .wardrobe-panel { width:min(480px,100%); max-height:100%; overflow-y:auto; touch-action:pan-y; }
-  .ward-copy { margin:6px auto 8px; color:#91ACC5; font:400 11px/1.5 system-ui,sans-serif; letter-spacing:0; }
-  #wardPreview { display:block; width:240px; max-width:100%; height:116px; margin:0 auto 8px; }
-  .ward-tabs { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; margin:8px 0 12px; }
-  .ward-tab { min-width:0; min-height:44px; border:1px solid #29465D; border-radius:9px; padding:6px 3px; color:#B5CEE3; background:#0A1B2A; font:600 11px/1.3 system-ui,sans-serif; cursor:pointer; }
-  .ward-tab[aria-selected=true] { color:#FFE5B2; border-color:#FFB454; background:#332B29; }
-  @media (max-width:430px) { .ward-tabs { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-  .ward-choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
-  .ward-choice { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-width:0; min-height:64px; padding:8px 5px; border:1px solid #29465D; border-radius:10px; color:#D8E8F4; background:#112438; font:600 10px/1.3 system-ui,sans-serif; cursor:pointer; }
-  .ward-choice.sel { border-color:#38E1FF; background:#163849; box-shadow:inset 0 0 0 1px #38E1FF; }
-  .ward-choice small { font-size:8px; letter-spacing:.08em; color:#A2BAD0; }
-  .ward-choice.sel small { color:#9FF1FF; } .ward-choice.locked { border-style:dashed; background:#0B1928; }
-  .ward-swatch { display:block; width:22px; height:22px; border-radius:50%; border:1px solid #D7EDFF55; }
-  .ward-choice canvas { width:30px!important; height:30px!important; }
-  .wardrobe-panel .ward-hint { min-height:30px; height:auto; white-space:normal; font:400 11px/1.4 system-ui,sans-serif; }
-  .ward-callsign { width:100%; min-height:44px; background:transparent; border:0; color:inherit; cursor:pointer; }
-  .wardrobe-panel .dock { position:sticky; bottom:-1px; padding:10px 0 0; background:linear-gradient(transparent,#091426 12px); z-index:2; }
-  @media (max-height:500px) and (min-width:550px) { #wardPreview { height:72px; width:149px; margin-bottom:0; } .ward-choices { grid-template-columns:repeat(5,minmax(0,1fr)); } .wardrobe-panel { width:min(640px,100%); } }
 
 </style>
 <link rel="stylesheet" href="src/space-theme.css" />
 <link rel="stylesheet" href="src/expedition.css" />
 <link rel="stylesheet" href="src/home.css" />
+<link rel="stylesheet" href="src/wardrobe.css" />
 </head>
 <body>
 
@@ -845,20 +828,20 @@
     </div>
     <main class="home-launch">
       <section class="home-adventure" aria-labelledby="homeAdventureTitle">
-        <div class="home-kicker"><span aria-hidden="true">✦</span> STAR EXPEDITION</div>
-        <h2 id="homeAdventureTitle">Adventure awaits.</h2>
-        <p>Run, battle &amp; race through one endless journey.</p>
-        <div class="home-play-actions">
+        <div class="home-kicker"><span aria-hidden="true">✦</span> THREE WAYS TO PLAY</div>
+        <h2 id="homeAdventureTitle">Pick your game.</h2>
+        <p>Run, battle or race. One game at a time.</p>
+        <div class="home-play-actions" hidden>
           <button class="btn" id="btnExpedition" aria-label="Play solo. Start a continuous Star Expedition."><span class="home-play-icon" aria-hidden="true">▶</span> Play solo <span class="home-play-arrow" aria-hidden="true">↗</span></button>
           <button class="btn ghost" id="btnExpeditionFriends" aria-label="Star Expedition with friends. Create, join or watch a shared adventure."><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></svg>With friends</button>
         </div>
       </section>
       <section class="home-arcade" aria-labelledby="homeArcadeTitle">
-        <div class="home-section-heading"><h2 id="homeArcadeTitle">Pick a quick game</h2><span>YOUR ARCADE</span></div>
+        <div class="home-section-heading"><h2 id="homeArcadeTitle">Find your next favorite</h2><span>SOLO + FRIENDS</span></div>
         <div class="launch-modes" role="group" aria-label="Game modes">
-          <div class="home-mode home-run"><canvas id="homeRunArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn mode-link" id="btnPlay" aria-label="Endless Run. Outrun the flare, solo or with friends.">Endless Run</button><span aria-hidden="true">Outrun the flare</span></div>
-          <div class="home-mode home-arena"><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn ghost mode-link" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends.">Orbital Arena</button><span aria-hidden="true">Tiny suits. Big KOs.</span></div>
-          <div class="home-mode home-race"><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><button class="btn ghost mode-link" id="btnRace" aria-label="Star Circuit. Arcade hover racing.">Star Circuit</button><span aria-hidden="true">Catch a boost</span></div>
+          <button class="home-mode home-run" id="btnPlay" aria-label="Endless Run. Outrun the flare, solo or with friends."><canvas id="homeRunArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Endless Run</span><span class="home-mode-caption" aria-hidden="true">Outrun the flare</span></button>
+          <button class="home-mode home-arena" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends."><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Orbital Arena</span><span class="home-mode-caption" aria-hidden="true">Tiny suits. Big KOs.</span></button>
+          <button class="home-mode home-race" id="btnRace" aria-label="Star Circuit. Arcade hover racing."><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Star Circuit</span><span class="home-mode-caption" aria-hidden="true">Catch a boost</span></button>
         </div>
         <button class="home-run-together" id="btnTogether">Run Together <span>Shared-course runner</span><b aria-hidden="true">↗</b></button>
       </section>
@@ -887,7 +870,8 @@
 <!-- Pause -->
 <div class="overlay" id="ovPause">
   <div class="panel">
-    <div class="title-lg">Paused</div>
+    <div class="title-lg" id="pauseTitle">Paused</div>
+    <p id="pauseSessionNote" class="pause-session-note" hidden></p>
     <div class="dock top"><button class="btn" id="btnResume">Resume</button></div>
     <div class="control-guide desktop-guide">
       <div><b>A D / ← →</b><span>MOVE</span></div><div><b>SPACE</b><span>JUMP</span></div><div><b>F / CLICK</b><span>FIRE</span></div>
@@ -953,18 +937,22 @@
   </div>
 </div>
 
-<!-- Wardrobe — one compact category at a time; every equipped choice travels. -->
+<!-- Suit studio: one shared character, cosmetic-only choices in every mode. -->
 <div class="overlay attract-anchor" id="ovWardrobe">
   <div class="panel wardrobe-panel" role="dialog" aria-modal="true" aria-labelledby="wardTitle">
-    <div class="title-lg t-md" id="wardTitle">Your Spacefarer</div>
-    <p class="ward-copy">One look for every adventure. Just for fun, never extra power.</p>
-    <canvas id="wardPreview" width="240" height="116" role="img" aria-label="Your equipped Spacefarer"></canvas>
-    <div class="ward-tabs" id="wardTabs" role="tablist" aria-label="Customize your Spacefarer"></div>
-    <div class="ward-choices" id="wardChoices" role="tabpanel"></div>
-    <div class="ward-name" id="wardName"></div>
-    <div class="ward-hint" id="wardHint" role="status" aria-live="polite"></div>
-    <div class="ward-copy" id="wardCount"></div>
-    <div class="dock"><button class="btn" id="btnWardrobeDone">Done</button></div>
+    <header class="ward-header"><div><div class="ward-kicker">SPACE MAN / SUIT STUDIO</div><h1 id="wardTitle">Your Spacefarer</h1></div><div class="dock"><button class="btn" id="btnWardrobeDone">Done</button></div></header>
+    <section class="ward-portrait" aria-label="Outfit preview">
+      <canvas id="wardPreview" width="480" height="360" role="img" aria-label="Your equipped Spacefarer"></canvas>
+      <div class="ward-name" id="wardName"></div>
+      <p class="ward-copy">A little suit. A character all your own.</p>
+      <div id="wardIdentity"></div>
+    </section>
+    <section class="ward-workbench" aria-label="Choose your look">
+      <div class="ward-tabs" id="wardTabs" role="tablist" aria-label="Customize your Spacefarer"></div>
+      <div class="ward-choices" id="wardChoices" role="tabpanel"></div>
+      <div class="ward-hint" id="wardHint" role="status" aria-live="polite"></div>
+      <footer class="ward-footer"><span id="wardCount"></span><span>Just for fun. Never extra power.</span></footer>
+    </section>
   </div>
 </div>
 
@@ -2288,7 +2276,7 @@ function topOverlayId() {
 }
 const visibleEl = (el) => !el.disabled && el.getClientRects().length > 0;
 function menuItems(id) { return id ? Array.from(document.getElementById(id).querySelectorAll('button, input[type="range"], summary')).filter(visibleEl) : []; }
-function menuFocusFirst(id) { const it = menuItems(id); const featured = id === 'ovAttract' && it.find(el => el.id === 'btnExpedition'); if (it.length) (featured || it[0]).focus(); return it.length > 0; }
+function menuFocusFirst(id) { const it = menuItems(id); const featured = id === 'ovAttract' && it.find(el => el.id === 'btnPlay'); if (it.length) (featured || it[0]).focus(); return it.length > 0; }
 // Spatial move: nearest control whose centre lies in the pressed direction
 // (cross-axis distance weighted 2x); vertical presses wrap in DOM order.
 function menuMove(dx, dy) {
@@ -2509,6 +2497,14 @@ function onTapDown(e) {
   if (onCanvas) { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} }
   input.downIds.add(e.pointerId);
   if (netInRun() && netPointerDown(e)) return;   // Run Together: spectator chrome / LEAVE / emote-wheel arm (solo: no-op)
+  const p = pointerPos(e);
+  input.usingTouch = e.pointerType !== 'mouse';
+  if (input.usingTouch) input.usingKeys = false;
+  // Pause is a shared pointer action, before either mouse fire or touch steering.
+  if ((G.mode === 'play' || G.mode === 'resume') && G._pauseHit && p.x >= G._pauseHit.x0 && p.x <= G._pauseHit.x1 && p.y >= G._pauseHit.y0 && p.y <= G._pauseHit.y1) {
+    if (G.mode === 'resume') G.mode = 'play';
+    togglePause(); return;
+  }
   // A mouse is a direct fire input; don't switch the HUD into touch mode or
   // spawn a joystick beneath the cursor.
   if (e.pointerType === 'mouse') {
@@ -2521,15 +2517,12 @@ function onTapDown(e) {
   }
   input.usingTouch = true; input.usingKeys = false;
   Audio.ensure(); Audio.resume();
-  const p = pointerPos(e);
   if (G.mode === 'attract') { startRun(); return; }
   if (G.mode === 'dead') { tryRestart(); return; }
   // Countdown touches arm the stick/jump/fire zones so the player is already
   // moving at GO — the state sits armed until the first simulated tick.
   if (G.mode !== 'play' && G.mode !== 'resume') return;
   layoutTouch();
-  // pause icon zone (top-right)
-  if (G._pauseHit && p.x >= G._pauseHit.x0 && p.x <= G._pauseHit.x1 && p.y >= G._pauseHit.y0 && p.y <= G._pauseHit.y1) { togglePause(); return; }
   // mute icon: gesture resolves on release (tap) or in frame() (long-press) — never stick/jump
   if (inMuteHit(p)) { input.muteHold = { id: e.pointerId, t: performance.now(), fired: false }; return; }
   if (inShoot(p)) { input.shootBtn.pressed = true; input.shootBtn.id = e.pointerId; input.shoot = true; flags.taughtShoot = true; return; }
@@ -3882,7 +3875,7 @@ function updateFlare() {
   const B = bandParams(G.band, G.dist);
   G.flare.prevX = G.flare.x;
   let target = B.flare;
-  if (G.mercyLvl > 0 && (G.time - G.runStart) < 30) target *= (0.94 - 0.02 * G.mercyLvl);
+  if (G.mercyLvl > 0 && G.frameCount * STEP < 30) target *= (0.94 - 0.02 * G.mercyLvl);
   if (G.flareMul !== 1) target = Math.min(target * G.flareMul, CFG.maxRun - 0.6);   // AFTERBURNER Daily
   G.flare.speed += (target - G.flare.speed) * 0.01;
   // Rubber-band: the flare is the game's forward pressure. A player at max run
@@ -4193,7 +4186,7 @@ function finalizeDeath(completed = false) {
   if (G.dist >= 600) stats.deepRuns = (stats.deepRuns || 0) + 1;                       // lilac-suit counter
   flags.bestStreak = fs > G.prevBest && fs > 0 ? (flags.bestStreak || 0) + 1 : 0;      // halo-hat streak
   // Quick death = short OR shallow: a 19s death at 250m is a decent run; a slow 90m death isn't.
-  if (!completed && ((G.time - G.runStart) < 20 || G.dist < 150)) stats.deadStreak++; else stats.deadStreak = 0;
+  if (!completed && (G.frameCount * STEP < 20 || G.dist < 150)) stats.deadStreak++; else stats.deadStreak = 0;
   stats.mercy = stats.deadStreak >= 3;
   let medal = null;
   for (const md of MEDALS) if (fs >= md.v) { medal = md; break; }
@@ -4506,6 +4499,7 @@ function frame(now) {
   // interpolating there oscillates against a prev that never advances.
   const stepping = (G.mode === 'play' || G.mode === 'attract');
   render(stepping ? clamp(acc / STEP, 0, 1) : 1);
+  if (G.wardrobeOpen && !lessMotion()) wardrobePreview();
   tickAudio();
 }
 /* ---------------------------------------------------------------------------
@@ -5546,6 +5540,8 @@ function drawPistol(P) {   // ~7×4 body in visBot, 1.5px emitter tip in visTop
 // A screen-space ownership marker survives matching outfits and busy scenery.
 // It is drawn once by the scene, never by drawPlayer's borrowed ghost/wardrobe rig.
 function drawRunnerIdentity(alpha) {
+  // A solo pilot needs no ownership arrow. Keep it for shared runs and viewers.
+  if (!netInRun() && !netSpectating()) return;
   if (!['play', 'pause', 'resume'].includes(G.mode) || !G.player || (!netSpectating() && G.player.dead) || !ART.identityCue) return;
   const watching = netSpectating(), target = watching ? ghosts.find(g => g.active && g.p === spec.watchP && g.alpha > .1) : null;
   if (watching && !target) return;
@@ -6292,6 +6288,12 @@ function drawTouchControls() {
 const $ = (id) => document.getElementById(id);
 function hideAllOverlays() { OVERLAY_IDS.forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; cancelRebind(); }
 function showOverlay(id) {
+  if (id === 'ovPause') {
+    const localMenu = netInRun() && !(sharedRunnerActive() && journeyUI.room.isHost);
+    $('pauseTitle').textContent = localMenu ? 'Menu' : 'Paused';
+    $('pauseSessionNote').hidden = !localMenu;
+    $('pauseSessionNote').textContent = localMenu ? 'The session continues while this menu is open.' : '';
+  }
   const el = $(id);
   el.classList.add('show');
   if (input.pad.connected && !SHOT) menuFocusFirst(topOverlayId());   // controller players land on the first control
@@ -6648,13 +6650,29 @@ function hatThumb(id) {   // painted by drawHat itself — a thumbnail can never
 }
 let wardrobeSlot = 'suit';
 const WARDROBE_LABELS = { suit: 'Color', hat: 'Hat', eyes: 'Eyes', helmet: 'Helmet', detail: 'Suit', ship: 'Ship' };
+let wardrobeInspect = null, wardrobeReactionAt = -10;
 function wardrobePreview() {
   const canvas = $('wardPreview'), dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = 240 * dpr; canvas.height = 116 * dpr;
-  const c = canvas.getContext('2d'); c.scale(dpr, dpr); c.clearRect(0, 0, 240, 116);
-  if (ART.drawAvatar) ART.drawAvatar(c, 120, 57, 96, equippedAppearance(), { time: 0, reduceMotion: true, ship: wardrobeSlot === 'ship' });
-  else { c.fillStyle = PALETTES[G.cosmetics.suit].suit; c.beginPath(); c.arc(120, 48, 22, 0, TAU); c.fill(); c.fillRect(105, 71, 30, 28); }
-  canvas.setAttribute('aria-label', 'Your equipped Spacefarer: ' + COSMETICS.SLOTS.map(slot => cosmeticName(G.cosmetics[slot])).join(', '));
+  if (canvas.width !== 480 * dpr || canvas.height !== 360 * dpr) { canvas.width = 480 * dpr; canvas.height = 360 * dpr; }
+  const c = canvas.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, 480, 360);
+  const appearance = wardrobeInspect || equippedAppearance(), quiet = lessMotion() || !!SHOT;
+  const elapsed = G.time - wardrobeReactionAt;
+  const reaction = quiet || elapsed < 0 || elapsed >= .85 ? 0 : Math.sin(Math.PI * elapsed / .85);
+  // A quiet pressure-suit work light and landing pad, using the home materials.
+  c.fillStyle = '#081423'; c.beginPath(); c.ellipse(240, 312, 130, 20, 0, 0, TAU); c.fill();
+  c.fillStyle = '#254B59'; c.beginPath(); c.ellipse(240, 302, 115, 18, 0, 0, TAU); c.fill();
+  c.fillStyle = '#477783'; c.beginPath(); c.ellipse(240, 296, 115, 17, 0, 0, TAU); c.fill();
+  c.strokeStyle = '#8BC9CD'; c.lineWidth = 2; c.beginPath(); c.ellipse(240, 295, 94, 12, 0, 0, TAU); c.stroke();
+  if (ART.drawAvatar) ART.drawAvatar(c, 240, 177, 238, appearance, { time: quiet ? 0 : G.time, reduceMotion: quiet, ship: wardrobeSlot === 'ship', greeting: reaction });
+}
+function wardThumb(slot, id) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), canvas = makeCanvas(72 * dpr, 52 * dpr), c = canvas.getContext('2d');
+  canvas.className = 'ward-thumb'; canvas.setAttribute('aria-hidden', 'true'); c.scale(dpr, dpr);
+  const appearance = { ...equippedAppearance(), [slot]: id }, style = ART.characterStyle(appearance);
+  if (slot === 'eyes' || slot === 'helmet' || slot === 'hat') {
+    c.save(); c.translate(36, 31); c.scale(1.55, 1.55); ART.characterHelmet(c, 0, 0, style, { tick: 20, calm: true }); c.restore();
+  } else ART.drawAvatar(c, 36, 24, 47, appearance, { reduceMotion: true, ship: slot === 'ship' });
+  return canvas;
 }
 function wardItem(slot, item) {
   const id = item.id, selected = G.cosmetics[slot] === id, locked = !G.cosmetics.unlocked.includes(id);
@@ -6662,14 +6680,13 @@ function wardItem(slot, item) {
   b.dataset.cosmetic = id; b.dataset.slot = slot;
   b.setAttribute('aria-pressed', String(selected));
   b.setAttribute('aria-label', item.name + (selected ? ', equipped' : locked ? ', locked. ' + item.hint : ', ready to wear'));
-  if (slot === 'suit') { const swatch = document.createElement('span'); swatch.className = 'ward-swatch'; swatch.style.background = PALETTES[id].suit; b.appendChild(swatch); }
-  if (slot === 'hat') b.appendChild(hatThumb(id));
+  b.appendChild(wardThumb(slot, id));
   const label = document.createElement('span'); label.textContent = item.name; b.appendChild(label);
   const state = document.createElement('small'); state.textContent = selected ? 'EQUIPPED' : locked ? 'TO FIND' : 'READY'; b.appendChild(state);
   b.onclick = () => {
-    if (locked) { $('wardHint').textContent = item.name + ': ' + item.hint + '. No win required.'; Audio.sfx.ui(1); return; }
+    if (locked) { wardrobeInspect = { ...equippedAppearance(), [slot]: id }; wardrobePreview(); $('wardName').textContent = item.name + ' · Preview'; $('wardPreview').setAttribute('aria-label', 'Previewing ' + item.name + '. Your equipped look is unchanged.'); $('wardHint').textContent = item.name + ': ' + item.hint + '. No win required. Preview only.'; Audio.sfx.ui(1); return; }
     const result = COSMETICS.equip(G.cosmetics, slot, id); if (!result.equipped) return;
-    G.cosmetics = result.profile; refreshFaviconSkin();
+    G.cosmetics = result.profile; wardrobeInspect = null; wardrobeReactionAt = G.time; refreshFaviconSkin();
     if (NET && typeof NET.setAppearance === 'function') NET.setAppearance(equippedAppearance());
     Audio.sfx.ui(3); saveJSON(LS.cosmetics, G.cosmetics); buildWardrobe();
     $('wardHint').textContent = item.name + ' equipped in every mode';
@@ -6678,6 +6695,7 @@ function wardItem(slot, item) {
   return b;
 }
 function buildWardrobe() {
+  wardrobeInspect = null;
   const tabs = $('wardTabs'), choices = $('wardChoices'); tabs.innerHTML = ''; choices.innerHTML = '';
   COSMETICS.SLOTS.forEach((slot, index) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'ward-tab'; b.textContent = WARDROBE_LABELS[slot]; b.id = 'wardTab-' + slot;
@@ -6690,10 +6708,12 @@ function buildWardrobe() {
   for (const item of COSMETICS.CATALOG[wardrobeSlot]) choices.appendChild(wardItem(wardrobeSlot, item));
   $('wardName').textContent = cosmeticName(G.cosmetics[wardrobeSlot]);
   $('wardCount').textContent = G.cosmetics.unlocked.length + ' of ' + COSMETICS.SLOTS.reduce((n, slot) => n + COSMETICS.CATALOG[slot].length, 0) + ' keepsakes collected';
+  $('wardPreview').setAttribute('aria-label', 'Your equipped Spacefarer: ' + COSMETICS.SLOTS.map(slot => cosmeticName(G.cosmetics[slot])).join(', '));
   wardrobePreview();
 }
 function showWardrobe() {   // G.mode stays 'attract': the live idle scene IS the preview
   G.newCosmetics.length = 0;
+  wardrobeReactionAt = G.time;
   updateWardrobeBadge();
   $('wardHint').textContent = '';
   buildWardrobe();
@@ -6713,7 +6733,7 @@ function ensureWardrobeCallsign() {
     row.innerHTML = '<span>Callsign</span>';
     const v = document.createElement('span'); v.className = 'net-val'; v.id = 'wardCallsignVal'; row.appendChild(v);
     row.onclick = () => showCallsign(() => showWardrobe());
-    panel.insertBefore(row, $('btnWardrobeDone').parentNode);
+    $('wardIdentity').appendChild(row);
   }
   const cs = getCallsign();
   $('wardCallsignVal').textContent = cs ? (NET.callsignText(cs[0], cs[1]) || 'Pick one') : 'Pick one';
@@ -8459,10 +8479,11 @@ function doRosterKick() { const r = rosterActionTarget; hideAllOverlays(); if (G
 // the shared round starts. The existing keyboard shortcut stays unchanged.
 function netLabelPlayButton() {
   const b = $('btnPlay'); if (!b) return;
-  if (!netLive() || NET.mockActive) { b.textContent = 'Endless Run'; b.setAttribute('aria-label', 'Endless Run. Outrun the flare, solo or with friends.'); return; }
-  if (NET.info().isHost) { b.textContent = 'Start Round'; b.setAttribute('aria-label', 'Start the round — everyone runs this course together.'); }
-  else if (netRoundActive()) { b.textContent = 'Join Round'; b.setAttribute('aria-label', 'Join the round already in progress.'); }
-  else { b.textContent = 'Ready to Run'; b.setAttribute('aria-label', 'Wait at the start line for the host’s countdown.'); }
+  const label = b.querySelector('.mode-link') || b; // Preserve the full-card illustration and native hit target.
+  if (!netLive() || NET.mockActive) { label.textContent = 'Endless Run'; b.setAttribute('aria-label', 'Endless Run. Outrun the flare, solo or with friends.'); return; }
+  if (NET.info().isHost) { label.textContent = 'Start Round'; b.setAttribute('aria-label', 'Start the round — everyone runs this course together.'); }
+  else if (netRoundActive()) { label.textContent = 'Join Round'; b.setAttribute('aria-label', 'Join the round already in progress.'); }
+  else { label.textContent = 'Ready to Run'; b.setAttribute('aria-label', 'Wait at the start line for the host’s countdown.'); }
 }
 function netLabelAgainButton() {
   const b = $('btnAgain'); if (!b) return;
@@ -8681,7 +8702,7 @@ function exitExpedition() {
   cancelDeathAnim(); Audio.killSting(); Audio.resume(); releaseExpeditionInputs(); input.gamepadX = 0; arenaPadNeutral = true; acc = 0; lastT = 0;
   expeditionKeyGate.clear();
   $('btnQuit').textContent = 'Quit to Title';
-  showAttract(); $('btnExpedition').focus();
+  showAttract(); $('btnPlay').focus();
   if (completed) queueToast('Expedition complete · ' + completed + ' routes explored', 'sys');
 }
 $('btnExpedition').onclick = openExpedition;
@@ -8723,7 +8744,7 @@ function getJourneyUI() {
       if (status.connection || status.stale || status.journey?.phase === 'paused') clearInput();
     },
     onExit(reason) { endSharedJourney(reason); },
-    onClose() { showAttract(); $('btnExpeditionFriends').focus(); },
+    onClose() { showAttract(); $('btnTogether').focus(); },
   });
   return journeyUI;
 }
@@ -8743,7 +8764,7 @@ function endSharedJourney(reason) {
   arenaUI?.closeSharedSession(); raceUI?.closeSharedSession(); sharedEncounter = null; sharedRunnerBanked = false; sharedRunnerParticipated = false; NET = TRANSPORT; $('btnJourneyCrew').hidden = true;
   clearTimeout(expeditionCueTimer); $('expeditionCue').hidden = true; document.body.appendChild($('expeditionCue'));
   cancelDeathAnim(); Audio.killSting(); Audio.resume(); releaseExpeditionInputs(); expeditionKeyGate.clear(); acc = 0; lastT = 0;
-  $('btnQuit').textContent = 'Quit to Title'; showAttract(); $('btnExpeditionFriends').focus(); sharedEnding = false;
+  $('btnQuit').textContent = 'Quit to Title'; showAttract(); $('btnTogether').focus(); sharedEnding = false;
   if (reason) announce(reason);
 }
 $('btnExpeditionFriends').onclick = openSharedJourney;

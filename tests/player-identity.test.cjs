@@ -23,7 +23,7 @@ test('runner marker belongs to the scene, does not change outfits and never mark
  const {client,relay}=require('./harness.cjs'),c=client(relay());
  try {
   const got=JSON.parse(c.run(`(()=>{startRun();vigPose=null;G.player.dead=false;G.player.x=G.player.px=180;G.player.y=G.player.py=220;ctx.getTransform=()=>({a:view.dpr,b:0,c:0,d:view.dpr,e:0,f:0});const calls=[];const old=ART.identityCue;ART.identityCue=(...a)=>calls.push(a[3]);const appearance=JSON.stringify(G.cosmetics);drawRunnerIdentity(1);const solo=calls.splice(0);const spectating=netSpectating;netSpectating=()=>true;spec.watchP=2;ghosts.push({active:true,p:2,alpha:1,rx:170,ry:240});G.player.dead=true;drawRunnerIdentity(1);const watched=calls.splice(0);ghosts.length=0;drawRunnerIdentity(1);ART.identityCue=old;netSpectating=spectating;return JSON.stringify({solo,watched,noTarget:calls,unchanged:appearance===JSON.stringify(G.cosmetics)});})()`));
-  assert.deepEqual(got,{solo:['you'],watched:['watching'],noTarget:[],unchanged:true});
+  assert.deepEqual(got,{solo:[],watched:['watching'],noTarget:[],unchanged:true});
  } finally {c.close();}
 });
 

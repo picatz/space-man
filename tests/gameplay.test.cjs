@@ -166,7 +166,7 @@ test('quick deaths arm graduated mercy, which shrinks opening gaps and slows the
     stats.mercy = false; resetRun(99); const plainGap = firstGap();
     G.flare.speed = 0; G.runStart = G.time; for (let i = 0; i < 600; i++) updateFlare(); const plainSpeed = G.flare.speed;
     // A long run clears the streak again.
-    resetRun(5); G.runStart = G.time - 60; G.dist = 900; finalizeDeath();
+    resetRun(5); G.frameCount = 3600; G.runStart = G.time - 60; G.dist = 900; finalizeDeath();
     return { streaks, mercyLvl, mercyGap, plainGap, mercySpeed, plainSpeed, after: [stats.deadStreak, stats.mercy] };`);
   assert.deepEqual(r.streaks, [[1, false], [2, false], [3, true], [4, true]]);
   assert.equal(r.mercyLvl, 2);                                   // clamp(deadStreak - 2, 1, 3)

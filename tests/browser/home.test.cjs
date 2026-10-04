@@ -11,7 +11,7 @@ const ROOT = path.resolve(__dirname, '../..');
 const engineName = process.env.SPACE_MAN_HOME_BROWSER || 'chromium';
 const engine = engineName === 'webkit' ? webkit : chromium;
 const SHOTS = process.env.SPACE_MAN_HOME_SCREENSHOTS;
-const entries = ['btnExpedition', 'btnExpeditionFriends', 'btnPlay', 'btnArena', 'btnRace', 'btnTogether', 'btnDaily', 'btnWardrobe', 'btnTrophy', 'btnSettings'];
+const entries = [ 'btnPlay', 'btnArena', 'btnRace', 'btnTogether', 'btnDaily', 'btnWardrobe', 'btnTrophy', 'btnSettings'];
 const sizes = [[320, 568], [390, 844], [667, 375], [820, 1180], [1440, 900]];
 
 async function launch(t, viewport = { width: 1440, height: 900 }, controller = false) {
@@ -44,10 +44,10 @@ async function launch(t, viewport = { width: 1440, height: 900 }, controller = f
     if (new URL(route.request().url()).origin === new URL(base).origin) return route.continue();
     externalRequests.push(route.request().url()); return route.abort();
   });
-  if (controller) await context.addInitScript(() => {
-    window.homeTestPad = { connected: true, mapping: 'standard', index: 0, id: 'Xbox home test', axes: [0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+  if (controller) await context.addInitScript(id => {
+    window.homeTestPad = { connected: true, mapping: 'standard', index: 0, id, axes: [0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
     Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [homeTestPad] });
-  });
+  }, typeof controller === 'string' ? controller : 'Xbox home test');
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   t.after(() => {
@@ -87,7 +87,7 @@ async function reachable(page, id) {
   await node.scrollIntoViewIfNeeded();
   const result = await node.evaluate(n => {
     const b = n.getBoundingClientRect(), target = n.closest('.home-mode') || n, t = target.getBoundingClientRect();
-    // The arcade button's ::before deliberately expands across the illustration.
+    // The native card button owns its illustration, title and surrounding space.
     const x = b.left + b.width / 2, y = b.top + b.height / 2, hit = document.elementFromPoint(x, y);
     return { x: b.left, y: b.top, right: b.right, bottom: b.bottom, width: t.width, height: t.height, hit: hit === n || n.contains(hit), enabled: !n.disabled, viewport: [innerWidth, innerHeight] };
   });
@@ -108,16 +108,6 @@ async function assertReturnFocus(page, id, keyboard = false) {
   assert.ok(active.id === id || (pointerWebKit && active.tag === 'BODY' && active.id === ''),
     `${id}: return focus ${JSON.stringify(active)}${keyboard ? ' after keyboard activation' : ''}`);
   assert.equal(await page.locator('#' + id).isVisible(), true, 'return destination remains visible');
-}
-async function leaveExpedition(page, keyboard = false) {
-  await page.waitForFunction(() => expedition?.snapshot().phase === 'playing');
-  const mode = await page.evaluate(() => expedition.snapshot().current.id);
-  await page.keyboard.press('Escape');
-  const exit = page.locator(mode === 'runner' ? '#btnQuit' : mode === 'arena' ? '#arenaExit' : '#raceExit');
-  if (keyboard) { await exit.focus(); await page.keyboard.press('Enter'); } else await exit.click();
-  await home(page);
-  assert.equal(await page.evaluate(() => expedition), null);
-  await assertReturnFocus(page, 'btnExpedition', keyboard);
 }
 async function stopRun(page) {
   await page.waitForFunction(() => G.mode === 'play');
@@ -182,19 +172,11 @@ for (const [width, height] of sizes) test(`home ${width}x${height}: exact screen
   await capture(page, `home-${width}x${height}-utilities`);
   await resetScroll(page);
   // The first action is visible even on the smallest phone and landscape view.
-  const primary = await page.locator('#btnExpedition').boundingBox();
-  assert.ok(primary.y >= 0 && primary.y + primary.height <= height + 1, 'Play solo is visible without scrolling');
+  const primary = await page.locator('#btnPlay').boundingBox();
+  assert.ok(primary.y >= 0 && primary.y + primary.height <= height + 1, 'Endless Run is visible without scrolling');
 
-  await activate(page, 'btnExpedition');
-  await leaveExpedition(page);
-  await activate(page, 'btnExpeditionFriends');
-  await page.locator('#journeyFriends:not([hidden])').waitFor();
-  assert.equal(await page.locator('#journeyHost').isEnabled(), true);
-  assert.equal(await page.locator('#journeyJoinInput').isVisible(), true);
-  assert.equal(await page.evaluate(() => journeyUI.room.status().active), false, 'friends front door does not create a room');
-  await capture(page, `home-${width}x${height}-friends`);
-  await page.keyboard.press('Escape'); await home(page);
-  await assertReturnFocus(page, 'btnExpeditionFriends');
+  assert.equal(await page.locator('#btnExpedition').isVisible(), false, 'mixed adventure is absent from launcher');
+  assert.equal(await page.locator('#btnExpeditionFriends').isVisible(), false, 'mixed friends entry is absent from launcher');
 
   await activate(page, 'btnPlay'); await stopRun(page);
   await activate(page, 'btnArena'); await page.locator('.arena-root[data-screen=lobby]').waitFor();
@@ -250,27 +232,19 @@ for (const [width, height] of [[390, 844], [1440, 900]]) test(`home ${width}x${h
   await fit(page); await capture(page, `home-${width}x${height}-equipped-reloaded`);
 });
 
-test('keyboard and controller focus, repeated friends dismissal, and saved reduced motion', { timeout: 60000 }, async t => {
+test('keyboard and controller focus, standalone entries, and saved reduced motion', { timeout: 60000 }, async t => {
   const { page } = await launch(t, { width: 1440, height: 900 }, true);
   await page.waitForFunction(() => input.pad.connected);
-  await page.locator('#btnExpedition').focus(); await page.keyboard.press('Tab');
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'btnExpeditionFriends');
-  assert.equal(await page.locator('#btnExpeditionFriends').evaluate(n => getComputedStyle(n).outlineStyle), 'solid');
-  for (let i = 0; i < 2; i++) {
-    await page.keyboard.press('Enter'); await page.locator('#journeyFriends:not([hidden])').waitFor();
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'journeyHost');
-    await page.keyboard.press('Shift+Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'journeyLeave');
-    await page.keyboard.press('Tab'); assert.equal(await page.evaluate(() => document.activeElement.id), 'journeyHost');
-    await page.keyboard.press('Escape'); await home(page);
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'btnExpeditionFriends');
-  }
+  await page.locator('#btnPlay').focus(); await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'btnArena');
+  assert.equal(await page.locator('#btnArena').evaluate(n => getComputedStyle(n).outlineStyle), 'solid');
   await page.locator('#btnWardrobe').focus(); await page.keyboard.press('Enter');
   await page.locator('#ovWardrobe.show').waitFor();
   await page.evaluate(() => { homeTestPad.buttons[1].pressed = true; });
   await home(page);
   await page.evaluate(() => { homeTestPad.buttons[1].pressed = false; });
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'btnExpedition', 'controller return selects the featured adventure');
-  await page.keyboard.press('Enter'); await leaveExpedition(page, true);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'btnPlay', 'controller return selects the first standalone game');
+  await page.keyboard.press('Enter'); await stopRun(page);
   await page.locator('#btnArena').focus(); await page.keyboard.press('Tab');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'btnRace');
 
@@ -304,4 +278,68 @@ test('home mirrors timed feedback above its opaque scene and points challenges a
   assert.match(await page.locator('#challengeBanner').innerText(), /Choose Endless Run to play/);
   await activate(page, 'btnPlay'); await page.waitForFunction(() => G.mode === 'play');
   assert.equal(await page.evaluate(() => G.course.seed), 77);
+});
+
+// Browser-standard DualSense mapping, not a physical Bluetooth/USB device claim.
+test('simulated DualSense home focus, Cross activation, Options pause and Circle back', {timeout:30000}, async t => {
+  const {page} = await launch(t, {width:1440,height:900}, 'DualSense Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)');
+  await page.waitForFunction(()=>input.pad.connected);
+  assert.equal(await page.locator('body').getAttribute('data-pad'),'playstation');
+  const release = async index => {
+    await page.evaluate(i=>{homeTestPad.buttons[i].pressed=false;},index);
+    await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  };
+  const move = async (index,expected) => {
+    await page.evaluate(i=>{homeTestPad.buttons[i].pressed=true;},index);
+    await page.waitForFunction(id=>document.activeElement.id===id,expected);
+    await release(index);
+    const state=await page.locator('#'+expected).evaluate(e=>{const r=e.getBoundingClientRect();return {outline:getComputedStyle(e).outlineStyle,inView:r.top>=0&&r.bottom<=innerHeight};});
+    assert.equal(state.outline,'solid'); assert.equal(state.inView,true);
+  };
+  await page.locator('#btnPlay').focus();
+  await move(15,'btnArena'); await move(15,'btnRace');
+  await move(14,'btnArena'); await move(14,'btnPlay');
+  await page.evaluate(()=>{homeTestPad.buttons[0].pressed=true;});
+  await page.waitForFunction(()=>G.mode==='play'); await release(0);
+  assert.equal(await page.evaluate(()=>expedition),null,'Cross starts only the chosen standalone runner');
+  await page.evaluate(()=>{homeTestPad.buttons[9].pressed=true;});
+  await page.locator('#ovPause.show').waitFor(); await release(9);
+  await page.locator('#btnQuit').click(); await home(page);
+  await page.locator('#btnWardrobe').click(); await page.locator('#ovWardrobe.show').waitFor();
+  await page.evaluate(()=>{homeTestPad.buttons[1].pressed=true;});
+  await home(page); await release(1);
+  assert.equal(await page.evaluate(()=>G.mode),'attract','Circle dismisses without starting a run');
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'btnPlay','return focus is on visible primary mode');
+});
+
+for (const [width,height] of [[390,844],[1440,900]]) test(`home ${width}x${height}: illustration and card edge activate once on first tap and reopen`, {timeout:60000}, async t => {
+  const {page} = await launch(t,{width,height});
+  await page.evaluate(()=>{
+    window.cardActivationCounts={};
+    for(const id of ['btnPlay','btnArena','btnRace']) document.getElementById(id).addEventListener('click',()=>{cardActivationCounts[id]=(cardActivationCounts[id]||0)+1;});
+  });
+  for(const id of ['btnPlay','btnArena','btnRace']) {
+    const button=page.locator('#'+id);
+    assert.equal(await button.evaluate(e=>e.tagName),'BUTTON','whole card is one native control');
+    assert.equal(await button.locator('button,a,input,[tabindex]').evaluateAll(nodes=>nodes.filter(n=>!(n.closest('.hapt')?.getAttribute('aria-hidden')==='true' && n.tabIndex===-1)).length),0,'no nested accessible or focus targets; the existing aria-hidden iOS haptic shim never becomes a second action');
+    for(const region of ['illustration','edge']) {
+      await button.scrollIntoViewIfNeeded();
+      const point=await button.evaluate((e,region)=>{
+        const r=(region==='illustration'?e.querySelector('canvas'):e).getBoundingClientRect();
+        const x=region==='illustration'?r.x+r.width/2:r.x+4, y=r.y+r.height/2;
+        const target=document.elementFromPoint(x,y);
+        return {x,y,owner:target?.closest('button')?.id};
+      },region);
+      assert.equal(point.owner,id,region+' directly belongs to the card button');
+      if(width<1000) await page.touchscreen.tap(point.x,point.y); else await page.mouse.click(point.x,point.y);
+      if(id==='btnPlay') { await page.waitForFunction(()=>G.mode==='play'); await stopRun(page); }
+      else {
+        await page.locator(id==='btnArena'?'.arena-root[data-screen=lobby]':'.race-root[data-screen=lobby]').waitFor();
+        await page.getByRole('button',{name:'← All games',exact:true}).filter({visible:true}).click();
+        await home(page);
+      }
+      assert.equal(await page.evaluate(id=>cardActivationCounts[id],id),region==='illustration'?1:2,region+' triggers exactly once without a second tap');
+      assert.equal(await page.evaluate(()=>expedition),null,'remains a standalone entry');
+    }
+  }
 });
