@@ -157,12 +157,13 @@
       edge = rgb(palette.edge),
       accent = rgb(palette.accent),
       road = rgb(palette.road);
+    const styled = c.id === 'starlight' || c.id === 'prism', roofs = builder();
     const half = c.width / 2,
       clearance = (c.runoff || 0) + 28 + 12,
       clearances = [];
     const trackMesh = TrackMesh.build(c);
     // Repeated luminous pylons create strong speed/depth cues without collision walls.
-    for (let d = 0; d < c.length; d += c.id === 'starlight' ? 180 : 105) {
+    for (let d = 0; d < c.length; d += styled ? 180 : 105) {
       const p = at(c, d),
         h = Math.atan2(p.ty, p.tx);
       for (const side of [-1, 1]) {
@@ -174,7 +175,7 @@
         b.box(x, 16, z, 8, 3, 8, edge, h);
       }
     }
-    if (c.id === 'starlight') {
+    if (styled) {
       // Cut-corner housings echo the craft's fitted panels without repeating pods.
       const housing = (x,y,z,w,h,d,color,heading) => {
         const cut=Math.min(w,d)*.16, co=Math.cos(heading),si=Math.sin(heading),
@@ -198,6 +199,18 @@
       for (const structure of Art.circuitStructures(c,at,TrackMesh.distance)) {
         const {x,z,width:w,depth:d,height:h,heading}=structure;
         clearances.push({...structure,type:'landmark'});
+        if(structure.kind==='mesa') {
+          const rings=Art.circuitMesaRings(structure);
+          for(let tier=0;tier<rings.length-1;tier++) for(let i=0;i<8;i++) {
+            const next=(i+1)%8;
+            b.quad(rings[tier][i],rings[tier+1][i],rings[tier+1][next],rings[tier][next],
+              shade(rgb(tier===1?palette.strata:palette.stone),.72+(i%3)*.1));
+          }
+          for(let i=0;i<8;i++) b.triangle([x,h,z],rings[4][(i+1)%8],rings[4][i],rgb(palette.strata));
+          b.crystal(x,h,z,12,26,rgb(palette.crystal),5);
+          continue;
+        }
+
         housing(x,-3,z,w+6,8,d+6,rgb(palette.curb),heading);
         housing(x,5,z,w,h,d,rgb(palette.road),heading);
         b.box(x,10,z,w+1,2,d+1,shade(edge,.65),heading);
@@ -222,7 +235,7 @@
       }
     }
     // Other courses retain their existing biome silhouettes.
-    for (let i = 0; c.id !== 'starlight' && i < 32; i++) {
+    for (let i = 0; !styled && i < 32; i++) {
       const p = at(c, (i * c.length) / 32),
         side = i % 2 ? -1 : 1,
         dist = half + 180 + (i % 4) * 55,
@@ -257,6 +270,35 @@
         b.box(x, 55 + (i % 5) * 27, z, 36, 5, 33, shade(edge, 0.8));
         b.crystal(x, 85 + (i % 5) * 27, z, 22, 30, shade(edge, 0.7));
       }
+    }
+    if(c.architecture?.gallery) {
+      const gallery=c.architecture.gallery, begin=gallery.start*c.length,end=gallery.end*c.length,
+        span=gallery.span/2, height=gallery.clearance, count=Math.ceil((end-begin)/105);
+      // Open-sided observatory gallery: the complete driving corridor and runoff
+      // remain unobstructed. All overhead geometry is its own top-down cutaway.
+      const point=(s,d,y)=>{const p=at(c,s);return [p.x-p.ty*d,y,p.y+p.tx*d];};
+      for(let i=0;i<=count;i++) {
+        const s=begin+(end-begin)*i/count,p=at(c,s),heading=Math.atan2(p.ty,p.tx);
+        for(const side of [-1,1]) {
+          const [x,,z]=point(s,side*span,0), radius=12;
+          if(TrackMesh.distance(c,x,z)<half+(c.runoff||0)+28+radius+8)
+            throw new RangeError('Gallery support intersects racing clearance');
+          clearances.push({x,z,radius,type:'gallery',height});
+          b.box(x,-3,z,18,height+3,18,rgb(palette.housing),heading);
+          b.box(x,35,z,19,4,19,edge,heading);
+          if(side===1) roofs.box(p.x,height,p.y,15,14,gallery.span+18,rgb(palette.housing),heading);
+        }
+        if(i<count) {
+          const next=begin+(end-begin)*(i+1)/count;
+          // Fitted roof panels follow the centerline with a bright inset center
+          // skylight. A visible underside works from cockpit and chase alike.
+          for(const [lo,hi,color] of [[-span,-35,palette.road],[-35,35,palette.strata],[35,span,palette.road]]) {
+            roofs.quad(point(s,lo,height+14),point(next,lo,height+14),point(next,hi,height+14),point(s,hi,height+14),rgb(color));
+            roofs.quad(point(s,hi,height+10),point(next,hi,height+10),point(next,lo,height+10),point(s,lo,height+10),shade(rgb(color),.72));
+          }
+        }
+      }
+      for(const side of [-1,1]) ribbon(b,c,at,begin,end,side*(half+25),3,.3,edge);
     }
     for (const fraction of c.pads) {
       const p = at(c, fraction * c.length),
@@ -352,6 +394,7 @@
     skyMesh.static = true;
     return {
       meshes: [skyMesh, ...(trackMesh.chunks || [trackMesh]), mesh],
+      roofMeshes: c.architecture?.gallery ? [boundedMesh(roofs, { kind: "gallery-roof" })] : [],
       clearances,
       background: rgb(c.sky),
       fog: { color: rgb(c.sky), near: 1700, far: 6000 },

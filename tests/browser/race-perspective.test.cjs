@@ -7,6 +7,8 @@ const fs = require("node:fs/promises"),
   path = require("node:path");
 const { chromium, webkit } = require("playwright");
 const ROOT = path.resolve(__dirname, "../..");
+const EVIDENCE_TRACK = process.env.SPACE_MAN_RACE_COURSE || "starlight";
+assert.ok(["starlight", "prism"].includes(EVIDENCE_TRACK));
 const engine =
   process.env.SPACE_MAN_RACE_BROWSER === "webkit" ? webkit : chromium;
 async function launch(t, device = {}, init) {
@@ -350,6 +352,7 @@ test(
         configurable: true,
       });
     });
+    await page.locator(`[data-track="${EVIDENCE_TRACK}"]`).click();
     await page.locator(".race-launch").click();
     await page
       .getByRole("button", { name: "Camera view", exact: true })
@@ -783,7 +786,7 @@ test(
     for (const camera of ["topdown", "chase", "cockpit"])
       await t.test(camera, { timeout: 105000 }, async (t) => {
         const { page } = await launch(t, {}, installLapTrace);
-        await page.locator('[data-track="starlight"]').click();
+        await page.locator(`[data-track="${EVIDENCE_TRACK}"]`).click();
         await page.locator(".race-launch").click();
         await page.getByRole("button", { name: "Camera view", exact: true }).click();
         await page.locator(`.race-view-menu [data-camera="${camera}"]`).click();
@@ -825,7 +828,7 @@ test(
         if (process.env.SPACE_MAN_RACE_TRACES) {
           await fs.mkdir(process.env.SPACE_MAN_RACE_TRACES, { recursive: true });
           await fs.writeFile(path.join(process.env.SPACE_MAN_RACE_TRACES,
-            `starlight-${summary.browser}-${camera}.json`), JSON.stringify({
+            `${EVIDENCE_TRACK}-${summary.browser}-${camera}.json`), JSON.stringify({
               summary, trace,
             }, null, 2) + "\n");
         }
@@ -991,25 +994,34 @@ test(
   "perspective art evidence: complete first Starlight laps in three phone cameras",
   { timeout: 295000 },
   async (t) => {
-    // Six first laps, no warm-up lap, and at most 24 screenshots. Keep this
-    // bounded for the 15-minute browser workflow; these are not FPS samples.
-    for (const orientation of ["portrait", "landscape"])
-      for (const camera of ["topdown", "chase", "cockpit"])
+    // Six Starlight or eight Prism first laps, with no warm-up. Prism adds
+    // compact phone and tablet evidence; these screenshots are not FPS samples.
+    const views=["portrait", "landscape"].flatMap(orientation => ["topdown", "chase", "cockpit"].map(camera => ({orientation,camera})));
+    if(EVIDENCE_TRACK==='prism') views.push({orientation:'small-phone',camera:'cockpit'}, {orientation:'tablet',camera:'chase'});
+    for (const {orientation,camera} of views)
         await t.test(`${orientation} ${camera}`, { timeout: 48000 }, async (t) => {
           const deadline = Date.now() + 45000,
-            viewport = orientation === "portrait"
+            viewport = orientation === "small-phone" ? {width:320,height:568} : orientation === "tablet" ? {width:820,height:1180} : orientation === "portrait"
               ? { width: 390, height: 844 } : { width: 844, height: 390 },
             { page } = await launch(t, {
               viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 2,
             }, installLapVisualEvidence);
-          await page.locator('[data-track="starlight"]').click();
+          await page.locator(`[data-track="${EVIDENCE_TRACK}"]`).click();
           await page.locator(".race-launch").click();
           await page.getByRole("button", { name: "Camera view", exact: true }).click();
           await page.locator(`.race-view-menu [data-camera="${camera}"]`).click();
           await playing(page);
-          const checkpoints = await page.evaluate(() => {
-            const course = SpaceManRace.course("starlight"), features = SpaceManRace.features(course),
+          const checkpoints = await page.evaluate(trackId => {
+            const course = SpaceManRace.course(trackId), features = SpaceManRace.features(course),
               progress = s => s / course.length * SpaceManRace.constants.GATES;
+            if (trackId === 'prism') return [
+              { name: "boost-approach", progress: 2.6 },
+              { name: "ramp-rise", progress: progress(features.ramps[0].s - 25) },
+              { name: "landing", progress: progress(features.ramps[0].s + 240) },
+              { name: "gallery-entry", progress: 11.35 },
+              { name: "gallery-interior", progress: 12.5 },
+              { name: "spacious-finish", progress: 18.6 },
+            ];
             return [
               { name: "start", progress: 0 },
               { name: "ramp-approach", progress: progress(features.ramps[0].startS - 125) },
@@ -1019,7 +1031,7 @@ test(
               { name: "shield-pulse-decision", progress: progress(features.rows[0].s - 140) },
               { name: "return-to-finish", progress: progress(course.length - 300) },
             ];
-          });
+          }, EVIDENCE_TRACK);
           const captures = [];
           let runError;
           await page.evaluate(() => raceLapVisualEvidence.startDriver());
@@ -1031,7 +1043,7 @@ test(
                 raceLapVisualEvidence.sample().progress >= target,
               checkpoint.progress, { polling: "raf", timeout: Math.max(1, deadline - Date.now()) });
               const before = await page.evaluate(() => raceLapVisualEvidence.sample()),
-                name = `starlight-lap-${orientation}-${camera}-${checkpoint.name}`;
+                name = `${EVIDENCE_TRACK}-lap-${orientation}-${camera}-${checkpoint.name}`;
               await capture(page, name);
               const after = await page.evaluate(() => raceLapVisualEvidence.sample());
               captures.push({
@@ -1072,7 +1084,7 @@ test(
           if (directory) {
             await fs.mkdir(directory, { recursive: true });
             await fs.writeFile(path.join(directory,
-              `starlight-lap-${report.browser}-${orientation}-${camera}.json`), JSON.stringify(report, null, 2) + "\n");
+              `${EVIDENCE_TRACK}-lap-${report.browser}-${orientation}-${camera}.json`), JSON.stringify(report, null, 2) + "\n");
           }
           assert.ifError(runError);
           assert.equal(report.renderer, camera === "topdown" ? "2d" : "webgl");
@@ -1080,7 +1092,11 @@ test(
           assert.equal(observed.end.passed, 20, "the driver completed all ordered gates of the first lap");
           assert.equal(observed.end.recoveries, observed.start.recoveries);
           assert.ok(observed.driverSamples > 0);
-          assert.equal(captures.length, orientation === "portrait" ? 5 : 3);
+          assert.equal(captures.length, EVIDENCE_TRACK === "prism" ? 6 : orientation === "portrait" ? 5 : 3);
+          if(EVIDENCE_TRACK === "prism") {
+            assert.ok(observed.playerEvents.some(e => e.type === "jump"), "real ramp traversal");
+            assert.ok(observed.playerEvents.some(e => e.type === "land"), "real landing");
+          }
           assert.ok(captures.every(c => c.before.lap === 1), "all checkpoint captures begin on the first lap");
           assert.ok(captures.slice(1).every((c, i) => c.before.tick > captures[i].before.tick));
         });

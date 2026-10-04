@@ -99,6 +99,26 @@
       ],
       pads: [0.12, 0.38, 0.7],
     },
+    {
+      // Append-only wire ID: existing course indexes must never move.
+      id: "prism",
+      name: "Prism Canyon",
+      subtitle: "Wide canyon sweeps. A sky ramp. The prism gallery.",
+      difficulty: "OPEN · MEDIUM",
+      width: 208,
+      sky: "#12152b",
+      road: "#344559",
+      edge: "#a8d7dc",
+      accent: "#f4ce84",
+      planet: "#736b96",
+      points: [
+        [315, 346.5], [871.5, 189], [1459.5, 283.5], [1680, 588],
+        [1722, 997.5], [1375.5, 1186.5], [798, 1197], [315, 1050],
+        [147, 735],
+      ],
+      pads: [.15, .52, .84],
+      architecture: { gallery: { start: .58, end: .68, clearance: 210, span: 432 } },
+    },
   ]);
   const colors = freeze([
     "#73ecff",
@@ -218,6 +238,21 @@
         })),
       }));
     }
+    if (c.id === "prism") {
+      // One generous straight launch; every landing remains on visible road.
+      const s = c.length * .195;
+      catalog.ramps = [{ id: "prism-rise", index: 0, s, startS: s - 60,
+        d: 0, width: c.width, gate: 3 }];
+      catalog.coins = [.055, .08, .105].map((f, index) => ({
+        id: "prism-entry-" + index, index, s: c.length * f, d: 44, airborne: false,
+      }));
+      for (let i=0; i<3; i++) catalog.coins.push({ id: "prism-sky-" + i,
+        index: catalog.coins.length, s: s + 54 * (i+1), d: -44, airborne: true });
+      catalog.rows = [{ id: "prism-exit", index: 0, s: c.length * .745, gate: 14,
+        choices: ["shield", "pulse"].map((item, i) => ({
+          id: "prism-exit-" + item, item, s: c.length * .745, d: i ? 44 : -44,
+        })) }];
+    }
     freeze(catalog); featureCache.set(c.id, catalog); return catalog;
   }
   const uint16 = (v) => Number.isInteger(v) && v >= 0 && v <= 65535 ? v : 0;
@@ -253,7 +288,7 @@
     if (!state) return;
     for (const a of state.actors) if (!actorId || a.id === actorId) {
       a.airRamp = a.airTicks = a.z = a.shieldTicks = a.slowTicks = 0;
-      a.immunityTicks = options.keepItem && state.trackId === "starlight" ? 90 : 0;
+      a.immunityTicks = options.keepItem && features(state.trackId).rows.length > 0 ? 90 : 0;
       if (!options.keepItem) a.item = null;
       state.effects = state.effects.filter(e => e.ownerId !== a.id);
       cancelControl(state, a.id);
@@ -665,7 +700,7 @@
         // The release frame is already visible as an active kart. Resolve
         // contacts now, but keep the complete stationary recovery wait.
         if (a.recoveryTicks === 0) {
-          a.immunityTicks = state.trackId === "starlight" ? 90 : 0;
+          a.immunityTicks = features(state.trackId).rows.length > 0 ? 90 : 0;
           previous.set(a.id, { x: a.x, y: a.y, released: true });
         }
         continue;

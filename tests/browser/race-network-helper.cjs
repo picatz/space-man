@@ -428,6 +428,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     t.diagnostic(`${live ? 'Live' : 'Simulated'} relay (${name}): desktop, phone and spectator agree on race-room membership.`);
 
     stage = 'starting five authoritative racers with CPU fill and read-only spectating';
+    if(process.env.SPACE_MAN_RACE_COURSE) await host.page.locator(`[data-track="${process.env.SPACE_MAN_RACE_COURSE}"]`).click();
     await host.page.locator('.race-launch').click();
     await Promise.all(clients.map(c => wait(c, () => raceUI.snapshot()?.phase === 'racing')));
     const first = await snapshot(host);

@@ -246,7 +246,7 @@
       const ok = renderer.draw({
         ...scene,
         camera: view,
-        meshes: [...scene.meshes, ...features, ...moving],
+        meshes: [...scene.meshes, ...(mode === "topdown" ? [] : scene.roofMeshes || []), ...features, ...moving],
       });
       const cost = root.performance.now() - started;
       if (!ok) {

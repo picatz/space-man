@@ -9,13 +9,13 @@ const source = fs.readFileSync(require.resolve('../src/net.js'), 'utf8');
 function peer(hub, legacy = false) {
   const c = client(hub, { game: false });
   if (legacy) {
-    assert.ok(source.includes('const CAP_RACE = 1 << 11,'), 'fixture tracks the current exclusive race capability');
-    c.run(source.replace('const CAP_RACE = 1 << 11,', 'const CAP_RACE = 1 << '+(legacy === true ? 7 : legacy)+','));
+    assert.ok(source.includes('const CAP_RACE = 1 << 13,'), 'fixture tracks the current exclusive race capability');
+    c.run(source.replace('const CAP_RACE = 1 << 13,', 'const CAP_RACE = 1 << '+(legacy === true ? 7 : legacy)+','));
     c.net = c.context.SpaceManNet;
   }
   return c;
 }
-for (const revision of [6,7,8]) for (const hostLegacy of [false,true]) for (const role of [0,1]) {
+for (const revision of [6,7,8,11]) for (const hostLegacy of [false,true]) for (const role of [0,1]) {
   test(`legacy bit ${revision}: ${hostLegacy?'legacy':'current'} race host rejects ${hostLegacy?'current':'legacy'} ${role?'spectator':'player'} before admission`, async t => {
     const hub = relay(), host = peer(hub,hostLegacy ? revision : false), guest = peer(hub,hostLegacy ? false : revision);
     t.after(() => { host.close(); guest.close(); });
@@ -48,7 +48,7 @@ test('same revision race players and watchers still join, while runner and Arena
   assert.equal(host.net._room.caps.CAP_APPEARANCE,1<<10);
   assert.equal(host.net._room.caps.CAP_ARENA,1<<5);
   assert.equal(host.net._n1.PROTO,6);
-  assert.equal(host.net._room.caps.CAP_RACE,1<<11);
+  assert.equal(host.net._room.caps.CAP_RACE,1<<13);
   await host.net.openRoom({ relayHost:'relay.test',code:false,mode:'race' });
   assert.equal(host.net.info().caps & ((1<<6)|(1<<7)|(1<<8)|(1<<9)),0,'new geometry must not claim legacy compatibility');
   const invite = host.net.info().link.split('#j=')[1];

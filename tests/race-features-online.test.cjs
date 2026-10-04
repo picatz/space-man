@@ -29,7 +29,7 @@ test('v2 carries bounded full actor/effect state and reaches only 648 bytes / 68
   const host = { state: h.state, seats: h.seats, revision: 2, epoch: h.epoch, now: time(h), status: 'running',
     events: Array.from({ length: 12 }, (_, i) => ({ serial: i + 1, type: 'coin', id: 'pilot-' + (i % 5) })) };
   const b = O.encodeSnapshot(host), d = O.decodeSnapshot(b);
-  assert.equal(O.VERSION, 2); assert.equal(O.CATALOG_VERSION, 1); assert.equal(b.length, 648); assert.ok(d);
+  assert.equal(O.VERSION, 2); assert.equal(O.CATALOG_VERSION, 2); assert.equal(b.length, 648); assert.ok(d);
   assert.equal(d.state.effects.length, 5); assert.equal(d.state.actors[0].coinMask, 1023);
   assert.equal(d.state.actors[0].z, 29); assert.equal(d.state.actors[0].pulseSerial, 65535);
   assert.equal(d.state.effects[0].observedAt, undefined, 'receipt clocks stay host-only');

@@ -133,7 +133,7 @@
     if (!Number.isFinite(course && course.width) || course.width <= 0)
       throw new TypeError("Course width must be positive and finite");
     const { lines, bounds } = geometry(course), half = course.width / 2,
-      palette = Art.circuitPalette(course), starlight = course.id === "starlight",
+      palette = Art.circuitPalette(course), starlight = course.id === "starlight" || course.id === "prism",
       cellSize = Math.min(12, course.width / 12),
       // Distance to a segment is convex with curvature <= 1 / distance. This
       // conservative interpolation allowance is < 0.7 units on shipped tracks;
