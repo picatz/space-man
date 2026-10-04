@@ -261,43 +261,35 @@ const characterHats = {
   function hoverpod(c, style, { tick = 20, id = 0, calm = false, boosting = false, hero = false, shadow = true } = {}) {
     const P = style.palette, accent = style.accent, ship = style.appearance.ship;
     c.save();
-    if (shadow) { c.fillStyle = '#0006'; c.beginPath(); c.ellipse(0, 5, 28, 19, 0, 0, TAU); c.fill(); }
-    if (boosting || hero) {
-      // Both views have two rear thrusters, never a central rocket flame.
-      for (const side of [-16, 16]) {
-        c.fillStyle = accent; c.globalAlpha *= .35; c.beginPath();
-        c.moveTo(-22, side - 3); c.quadraticCurveTo(-33, side - 5, -43 - (calm ? 0 : tick % 6), side);
-        c.quadraticCurveTo(-33, side + 5, -22, side + 3); c.fill(); c.globalAlpha /= .35;
-        c.fillStyle = '#DFFBFF'; c.beginPath(); c.moveTo(-23, side - 1.5); c.lineTo(-34, side); c.lineTo(-23, side + 1.5); c.fill();
-      }
+    if (shadow) {
+      for(let ring=4;ring>0;ring--) {c.save();c.globalAlpha*=.035;c.fillStyle='#102337';c.beginPath();c.ellipse(0,3,23+ring*1.5,14+ring,0,0,TAU);c.fill();c.restore();}
     }
     if (ship === 'orbit') {
-      c.strokeStyle = '#415D78'; c.lineWidth = 5; c.beginPath(); c.ellipse(-8, 0, 17, 20, 0, 0, TAU); c.stroke();
-      c.strokeStyle = accent; c.lineWidth = 1.5; c.stroke();
+      c.strokeStyle = accent; c.lineWidth = 1.6; c.beginPath(); c.ellipse(-8,0,20,24,0,0,TAU);c.stroke();
     }
-    for (const side of [-1, 1]) {
-      if (ship !== 'orbit') {
-        const leaf = ship === 'leaf';
-        c.fillStyle = accent; c.beginPath();
-        c.ellipse(leaf ? -8 : -15, side * (leaf ? 20 : 18.5), leaf ? 16 : 10, leaf ? 7 : 5, 0, 0, TAU); c.fill();
+    for(const side of [-1,1]) {
+      c.fillStyle=accent;c.beginPath();c.moveTo(8,side*11);c.lineTo(-10,side*12);c.lineTo(-20,side*(ship==='leaf'?28:20));c.lineTo(2,side*18);c.closePath();c.fill();
+      const center=side*17;
+      if(boosting||hero) {
+        c.save();c.globalAlpha*=.22;c.fillStyle=accent;c.beginPath();c.moveTo(-25,center-2.4);c.quadraticCurveTo(-34,center-3,-43,center);c.quadraticCurveTo(-34,center+3,-25,center+2.4);c.fill();
+        c.globalAlpha*=2.7;c.fillStyle='#DFFBFF';c.beginPath();c.moveTo(-25,center-1.2);c.lineTo(-41,center);c.lineTo(-25,center+1.2);c.fill();c.restore();
       }
-      c.fillStyle = P.legB; c.beginPath(); c.ellipse(-3, side * 16 + 1, 23, 5.5, 0, 0, TAU); c.fill();
-      c.fillStyle = accent; c.beginPath(); c.ellipse(-1, side * 16 - 1, 21, 4.6, 0, 0, TAU); c.fill();
-      c.fillStyle = '#DFFBFF'; c.beginPath(); c.ellipse(2, side * 16 - 2, 13, 1, 0, 0, TAU); c.fill();
-      c.fillStyle = '#DFFBFF'; rrPath(c, -25, side * 16 - 2, 3, 4, 1.5); c.fill();
+      // Same truncated rear / slim waist / rounded leading tip as the 3D pod.
+      c.fillStyle=accent;c.beginPath();c.moveTo(-25,center-3.3);c.bezierCurveTo(-18,center-4.5,8,center-4.2,20,center-2.3);c.quadraticCurveTo(26,center,20,center+2.3);c.bezierCurveTo(8,center+4.2,-18,center+4.5,-25,center+3.3);c.closePath();c.fill();
+      c.fillStyle='#DFFBFF';c.beginPath();c.moveTo(-13,center-.4);c.quadraticCurveTo(1,center-1,14,center);c.quadraticCurveTo(1,center+.7,-13,center+.4);c.fill();
+      c.fillStyle='#193349';rrPath(c,-25.8,center-3.3,1.6,6.6,.6);c.fill();
+      c.fillStyle='#CBF7FF';c.beginPath();c.ellipse(-25.9,center, .65,2,0,0,TAU);c.fill();
     }
-    c.fillStyle = P.legB; c.beginPath(); c.moveTo(29, 1); c.quadraticCurveTo(18, -13, -14, -12); c.lineTo(-22, -5); c.lineTo(-22, 7); c.lineTo(-13, 14); c.quadraticCurveTo(18, 14, 29, 1); c.fill();
-    c.fillStyle = P.suit; c.beginPath(); c.moveTo(29, -1); c.quadraticCurveTo(18, -14, -13, -12); c.lineTo(-21, -5); c.lineTo(-21, 5); c.lineTo(-13, 11); c.quadraticCurveTo(18, 12, 29, -1); c.fill();
-    c.fillStyle = accent; rrPath(c, 12, -4, 13, 5, 2.5); c.fill();
-    c.strokeStyle = P.legB; c.lineWidth = .8; c.beginPath(); c.moveTo(15, 5); c.lineTo(23, 2); c.stroke();
-    c.fillStyle = '#243C57'; rrPath(c, -16, -8, 23, 17, 6); c.fill();
-    c.fillStyle = P.suit; rrPath(c, -11, -5, 13, 12, 4); c.fill();
-    c.save(); c.translate(-7, 2); c.scale(.72, .72); suitDetails(c, 0, 0, style); c.restore();
-    c.fillStyle = P.legB; c.beginPath(); c.ellipse(-16, 0, 3, 4.5, 0, 0, TAU); c.fill(); c.fillStyle = accent; rrPath(c, -18, -2, 1.5, 4, .75); c.fill();
-    c.save(); c.translate(-5, -3); c.scale(.75, .75);
-    characterHelmet(c, 0, 0, style, { tick, id, calm, mood: boosting ? 1 : 0 }); c.restore();
-    if (style.appearance.detail === 'stripe') { c.strokeStyle = accent; c.lineWidth = 1.5; c.beginPath(); c.moveTo(-9, 9); c.lineTo(16, 7); c.stroke(); }
-    if (style.appearance.detail === 'stars') { c.fillStyle = accent; c.save(); c.translate(18, 5); c.rotate(Math.PI / 4); c.fillRect(-1.5, -1.5, 3, 3); c.restore(); }
+    const hull = offset => {c.beginPath();c.moveTo(32,offset);c.bezierCurveTo(25,-10+offset,9,-14+offset,-3,-12.5+offset);c.quadraticCurveTo(-14,-11+offset,-21,-7+offset);c.lineTo(-21,7+offset);c.quadraticCurveTo(-14,11+offset,-3,12.5+offset);c.bezierCurveTo(9,14+offset,25,10+offset,32,offset);c.closePath();};
+    c.fillStyle=P.legB;hull(1.7);c.fill();c.fillStyle=P.suit;hull(0);c.fill();
+    c.fillStyle=accent;c.beginPath();c.moveTo(9,-2.7);c.quadraticCurveTo(21,-2.2,29,0);c.quadraticCurveTo(21,2.2,9,2.7);c.closePath();c.fill();
+    c.fillStyle='#152D43';c.beginPath();c.ellipse(-5,0,10,7.8,0,0,TAU);c.fill();
+    c.fillStyle=P.suit;rrPath(c,-10,-3,11,8,3);c.fill();
+    c.save();c.translate(-7,1);c.scale(.62,.62);suitDetails(c,0,0,style);c.restore();
+    c.fillStyle=P.legB;rrPath(c,-16,-3,3.5,6,1.4);c.fill();c.fillStyle=accent;rrPath(c,-16.3,-1.5,1,3,.5);c.fill();
+    c.save();c.translate(-5,-2);c.scale(.75,.75);characterHelmet(c,0,0,style,{tick,id,calm,mood:boosting?1:0});c.restore();
+    if(style.appearance.detail==='stripe'){c.strokeStyle=accent;c.lineWidth=1.2;c.beginPath();c.moveTo(-8,10);c.lineTo(14,8);c.stroke();}
+    if(style.appearance.detail==='stars'){c.fillStyle=accent;c.save();c.translate(18,5);c.rotate(Math.PI/4);c.fillRect(-1.5,-1.5,3,3);c.restore();}
     c.restore();
   }
   // Full appearance preview with no dependency on a running game or player.

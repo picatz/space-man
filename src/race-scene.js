@@ -123,6 +123,20 @@
             [normal(a, d), normal(b, d), normal(b, c), normal(a, c)]);
         }
     }
+    function surface(at, around, across, color) {
+      const normal = (u, v) => {
+        const a = at(u + .0001, v), b = at(u - .0001, v),
+          c = at(u, v + .0001), d = at(u, v - .0001),
+          du = a.map((x, i) => x - b[i]), dv = c.map((x, i) => x - d[i]);
+        const n = [du[1]*dv[2]-du[2]*dv[1],du[2]*dv[0]-du[0]*dv[2],du[0]*dv[1]-du[1]*dv[0]], len = Math.hypot(...n) || 1;
+        return n.map(x => x / len);
+      };
+      for (let i = 0; i < around; i++) for (let j = 0; j < across; j++) {
+        const u = i / around, next = (i + 1) / around, v = j / across, end = (j + 1) / across;
+        quad(at(u,v),at(next,v),at(next,end),at(u,end),color,
+          [normal(u,v),normal(next,v),normal(next,end),normal(u,end)]);
+      }
+    }
     return {
       triangle,
       quad,
@@ -130,6 +144,7 @@
       crystal,
       sphere,
       ellipsoid,
+      surface,
       mesh: () => ({ vertices: new Float32Array(v) }),
     };
   }
@@ -313,57 +328,77 @@
         style = Art.characterStyle(a.appearance, a.color),
         P = style.palette, appearance = style.appearance,
         color = rgb(style.accent), white = rgb(P.suit);
+      let pilotOffset = 0;
       const p = (f, u, side) => [
         a.x + co * f - si * side,
-        u + height,
+        u + height + pilotOffset,
         a.y + si * f + co * side,
       ];
       const pod = (f, u, side, rx, ry, rz, col, segments = 10, rings = 4) =>
         b.ellipsoid(...p(f, u, side), rx, ry, rz, col, h, segments, rings);
-      // A pearl-shell hover roadster: rounded bow, open dark cockpit and
-      // compact twin pods. Match Art.hoverpod's silhouette/material hierarchy.
-      pod(1, 8, 0, 28, 4.5, 15, rgb(P.legB), 16, 5);
-      pod(3, 11, 0, 27, 6, 14, white, 16, 6);
-      pod(17, 15.5, 0, 10, 1.25, 4.4, color);
-      // Raised coaming makes the pilot sit inside the craft rather than atop
-      // stacked white discs. It is opaque and deliberately below the shoulders.
-      pod(-6, 15, 0, 12.5, 2.5, 9.4, rgb('#243C57'));
-      pod(-6, 16, 0, 10.5, 1.3, 7.6, rgb('#102D49'));
-      if (appearance.ship === 'orbit') {
-        ring(b, p, -8, 9, 0, 20, 24, 2.5, color);
+      // One thin, forward-biased deck surrounds a real recessed opening.
+      // These surfaces meet at shared boundaries: no stacked full ellipsoids.
+      const outline = angle => {
+        const c = Math.cos(angle), si = Math.sin(angle);
+        return [Math.max(-21, 4 + 28*c), 9.4 + 2.3*c + .8*si*si, 13.5*si*(.96 + .12*c)];
+      };
+      const opening = angle => [-5 + 10*Math.cos(angle), 12 + 1.8*Math.cos(angle), 7.8*Math.sin(angle)];
+      const mixPoint = (a,b,t) => a.map((x,i) => x+(b[i]-x)*t);
+      const deck = (angle,v,clearance=0) => {
+        const point=mixPoint(opening(angle),outline(angle),v);
+        point[1]+=Math.sin(v*Math.PI)*.7+clearance;
+        return p(...point);
+      };
+      b.surface((u,v)=>deck(u*Math.PI*2,v),32,3,white);
+      // Tuck the lower skirt under the deck; the colored band is a thin seam.
+      b.surface((u,v) => {
+        const point = outline(u*Math.PI*2);
+        point[0] = 2+(point[0]-2)*(1-.07*v);
+        point[2] *= 1-.13*v;
+        point[1] -= 3.3*Math.sin(v*Math.PI/2);
+        return p(...point);
+      },32,3,rgb(P.legB));
+      // Inner walls and floor are physically below the opening, not a dark puck.
+      b.surface((u,v) => {
+        const point = opening(u*Math.PI*2);
+        point[0] = -5+(point[0]+5)*(1-.12*v); point[2]*=1-.12*v;
+        point[1] = point[1]*(1-v)+8.4*v;
+        return p(...point);
+      },32,1,rgb('#152D43'));
+      for(let i=0;i<32;i++) {
+        const point = angle => p(-5+8.8*Math.cos(angle),8.4,6.85*Math.sin(angle));
+        b.triangle(p(-5,8.4,0),point((i+1)*Math.PI/16),point(i*Math.PI/16),rgb('#102337'));
       }
-      for (const side of [-18, 18]) {
-        // Short, round stabilizers retain distinct leaf/twin-pod silhouettes
-        // without the long triangular blades that overwhelmed the chase view.
-        if (appearance.ship !== 'orbit') {
-          const leaf = appearance.ship === 'leaf';
-          pod(leaf ? -8 : -15, 9, side * (leaf ? 1.22 : 1.15),
-            leaf ? 16 : 10, 1.8, leaf ? 7 : 5, shade(color, .85));
-        }
-        // One continuous shell avoids intersecting ellipsoids producing jagged
-        // seams. The reflector follows its analytic surface with tiny clearance.
-        pod(-3, 8, side, 23, 4.5, 5.5, color, 16, 6);
-        const reflector = (f, z) => p(f,
-          8 + 4.5 * Math.sqrt(Math.max(0, 1 - ((f + 3) / 23) ** 2 - (z / 5.5) ** 2)) + .12, side + z);
-        for (let stripe = 0; stripe < 8; stripe++) {
-          const f = -15 + stripe * 3, next = f + 3;
-          b.quad(reflector(f, -.7), reflector(f, .7), reflector(next, .7), reflector(next, -.7), rgb('#DFFBFF'));
-        }
-        // Bright rear engine discs remain readable even without boosting.
-        for (let i = 0; i < 10; i++) {
-          const a0 = (i * Math.PI) / 5,
-            a1 = ((i + 1) * Math.PI) / 5;
-          b.triangle(
-            p(-25.5, 8, side),
-            p(-25.5, 8 + 2.2 * Math.cos(a1), side + 2.2 * Math.sin(a1)),
-            p(-25.5, 8 + 2.2 * Math.cos(a0), side + 2.2 * Math.sin(a0)),
-            [0.8, 1, 1],
-          );
+      // A tapered nose inlay gives the front a readable direction.
+      b.surface((u,t)=>deck((u-.5)*(.55*(1-.9*t)),.16+t*.75,.08),2,10,color);
+      if (appearance.ship === 'orbit') ring(b,p,-8,7.5,0,20,24,1.6,color);
+      for(const side of [-1,1]) {
+        const leaf = appearance.ship === 'leaf';
+        // Short swept shoulders make the engines parts of one craft. Leaf
+        // changes the planform rather than attaching another inflated lobe.
+        b.quad(p(8,9.4,side*11),p(-10,8.8,side*12),p(-20,7.5,side*(leaf?28:20)),p(2,8.7,side*18),shade(color,.82));
+        const sections = [[-25,8,2.6,3.3],[-22,8.2,3,3.8],[-13,8.6,3.2,4.1],[-1,9.2,3,3.8],[11,9.5,2.7,3.4],[20,9.4,1.7,2.3],[23,9.2,.1,.1]];
+        // Smooth cubic profile: rounded leading tip, slim waist, clipped engine
+        // face. No sphere point masquerading as an exhaust connection.
+        const profile = value => {
+          const t = Math.max(0,Math.min(sections.length-1,value*(sections.length-1))), i=Math.min(sections.length-2,Math.floor(t)), f=t-i;
+          const a=sections[Math.max(0,i-1)],b=sections[i],c=sections[i+1],d=sections[Math.min(sections.length-1,i+2)];
+          return b.map((_,k)=>.5*((2*b[k])+(-a[k]+c[k])*f+(2*a[k]-5*b[k]+4*c[k]-d[k])*f*f+(-a[k]+3*b[k]-3*c[k]+d[k])*f*f*f));
+        };
+        const engine = (u,v) => {const q=profile(v),angle=u*Math.PI*2;return p(q[0],q[1]+q[2]*Math.cos(angle),side*17+q[3]*Math.sin(angle));};
+        b.surface(engine,16,12,color);
+        // Fitted tapered reflector is a surface patch, not another solid part.
+        b.surface((u,v)=>{const t=.2+v*.56, q=profile(t),angle=(u-.5)*(.24*Math.sin(v*Math.PI)+.02);return p(q[0],q[1]+(q[2]+.12)*Math.cos(angle),side*17+(q[3]+.12)*Math.sin(angle));},2,8,rgb('#DFFBFF'));
+        for(let i=0;i<16;i++) {
+          const ringPoint=(angle,scale)=>p(-25.12,8+2.6*scale*Math.cos(angle),side*17+3.3*scale*Math.sin(angle));
+          const a=i*Math.PI/8,n=(i+1)*Math.PI/8;
+          b.quad(ringPoint(a,1),ringPoint(n,1),ringPoint(n,.62),ringPoint(a,.62),rgb('#193349'));
         }
       }
+      pilotOffset = -1.5;
       // Suit, shoulder capsules, collar and instrument panel belong to the
       // same astronaut used on foot. The helmet keeps a generous silhouette.
-      pod(-7, 17, 0, 7, 6, 7, white);
+      pod(-7, 15.8, 0, 6.2, 5, 6.4, white);
       pod(-1, 18, -6.5, 4.5, 2, 2, rgb(P.arm));
       pod(-1, 18, 6.5, 4.5, 2, 2, rgb(P.arm));
       pod(-5, 18.5, 0, 6, 1.5, 6, rgb(P.legB));
@@ -371,7 +406,7 @@
       b.box(...p(1, 19, 0), .4, 1.1, 3, color, h);
       const helmetRadius = appearance.helmet === 'round' ? 8.5 : 9.2;
       if (appearance.helmet === 'retro') pod(-5, 24, 0, 8.2, 8, 9.1, white);
-      else b.ellipsoid(...p(-5, 24, 0), helmetRadius, helmetRadius, helmetRadius, white, h, 16, 8);
+      else b.ellipsoid(...p(-5, 24, 0), helmetRadius, helmetRadius, helmetRadius, white, h, 20, 10);
       // A tessellated outer glass shell. One tall chord used to intersect the
       // helmet's different triangle grid, showing white teeth through the glass.
       // Short 2px strips plus radial clearance keep every triangle outside it.
@@ -400,33 +435,16 @@
       pilotHat(b, p, h, appearance.hat, P, color);
       if (appearance.detail === 'stripe') {
         b.box(...p(-5, 30, 0), 8, 1, 1.5, color, h);
-        for (const side of [-10, 10]) b.box(...p(10, 15.3, side), 15, .5, 1.5, color, h);
-      } else if (appearance.detail === 'stars') {
-        b.quad(p(12, 16.8, -2), p(14, 16.8, 0), p(12, 16.8, 2), p(10, 16.8, 0), color);
       }
       // Colored life-support panel at the rear of the suit/helmet.
-      pod(-13, 21, 0, 2.1, 3.7, 3.8, rgb(P.legB));
-      pod(-14.9, 21.2, 0, .4, .8, 2.7, color);
-      // Soft-edged geometric contact shadow: no downloaded texture.
-      const ground = (f, y, side) => [a.x + co * f - si * side, y, a.y + si * f + co * side];
-      for (let i = 0; shadows && i < 16; i++) {
-        const a0 = (i * Math.PI) / 8,
-          a1 = ((i + 1) * Math.PI) / 8;
-        b.triangle(
-          ground(0, 0.15, 0),
-          ground(30 * Math.cos(a0), 0.15, 24 * Math.sin(a0)),
-          ground(30 * Math.cos(a1), 0.15, 24 * Math.sin(a1)),
-          [0.045, 0.08, 0.12],
-        );
-      }
-      if (a.boosting || a.padTicks > 0) {
-        // Short rounded ion wakes read as engine energy, not opaque swept
-        // blades. Both views use two bright plumes and preserve calm rendering.
-        const length = calm ? 10 : 10 + (snapshot.tick % 5) * .35;
-        for (const side of [-18, 18])
-          pod(-25 - length, 8, side, length, 1.4, 1.7,
-            color.map(v => .7 + v * .3), 8, 3);
-      }
+      pod(-13, 21, 0, 1.5, 2.7, 3.2, rgb(P.legB));
+      pod(-14.4, 21.2, 0, .25, .55, 2.1, color);
+      pilotOffset = 0;
+      if(appearance.detail==='stripe') for(const side of [-1,1])
+        b.surface((u,t)=>deck(side*.75+(u-.5)*.06,.45+t*.45,.09),2,6,color);
+      else if(appearance.detail==='stars') b.quad(p(18,13.7,-2),p(20,13.7,0),p(18,13.7,2),p(16,13.7,0),color);
+      // Raw mesh consumers get no opaque shadow: the scene adds a blended one.
+
     }
     return b.mesh();
   }
@@ -467,7 +485,7 @@
   }
   function faceMesh(appearance, pose) {
     const b = builder(), r = (appearance.helmet === 'round' ? 8.5 : 9.2) + .7;
-    const point = (angle,y) => [-5+Math.sqrt(Math.max(0,r*r-(y-24)*(y-24)))*Math.cos(angle),y,Math.sqrt(Math.max(0,r*r-(y-24)*(y-24)))*Math.sin(angle)];
+    const point = (angle,y) => [-5+Math.sqrt(Math.max(0,r*r-(y-24)*(y-24)))*Math.cos(angle),y-1.5,Math.sqrt(Math.max(0,r*r-(y-24)*(y-24)))*Math.sin(angle)];
     const patch = (angle,y,width,height) => b.quad(point(angle-width/2,y-height/2),point(angle-width/2,y+height/2),point(angle+width/2,y+height/2),point(angle+width/2,y-height/2),rgb('#DFFBFF'));
     for (const side of [-1,1]) {
       const a=side*.28+pose.lookX*.08, y=24.9-pose.lookY*.5;
@@ -481,7 +499,7 @@
   }
   // Geometry caches are bounded. Animation swaps only a tiny visor mesh; it
   // never rebuilds the full craft on a blink or on a fractional display frame.
-  const kartModels = new Map(), faceModels = new Map(), slideModels = new Map();
+  const kartModels = new Map(), faceModels = new Map(), slideModels = new Map(), engineModels = new Map();
   function cache(map, key, build, limit) {
     if (!map.has(key)) { map.set(key, build()); if(map.size > limit) map.delete(map.keys().next().value); }
     return map.get(key);
@@ -510,8 +528,8 @@
         plume = boosted && !plumeNearEye(a, height, options.cockpitEye);
       // Reuse the existing two cached hull variants. Only the two decorative
       // wake capsules differ; face animation still reads the real boost cue.
-      const key = [style.accent, appearance.suit, appearance.helmet, appearance.hat, appearance.detail, appearance.ship, plume].join(':');
-      const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, z: 0, airRamp: 0, heading: 0, boosting: plume, padTicks: 0 }] }, { calm: true, shadows: false }).vertices, 32);
+      const key = [style.accent, appearance.suit, appearance.helmet, appearance.hat, appearance.detail, appearance.ship].join(':');
+      const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, z: 0, airRamp: 0, heading: 0, boosting: false, padTicks: 0 }] }, { calm: true, shadows: false }).vertices, 32);
       const c = Math.cos(a.heading), s = Math.sin(a.heading);
       const model = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,height,a.y,1]);
       const groundModel = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,0,a.y,1]);
@@ -520,7 +538,22 @@
       const faceKey = [appearance.helmet, pose.happy,pose.determined,pose.height,pose.width,pose.closed].join(':');
       const faceVertices = cache(faceModels, faceKey, () => faceMesh(appearance,pose), 24);
       out.push({ vertices: faceVertices, static: true, emissive: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[6,33,11] }, model });
-      out.push({ ...shadowMesh(), shadowActorId: a.id, model: groundModel });
+      out.push({ ...shadowMesh(), opacity: .28, softShadow: true, shadowActorId: a.id, model: groundModel });
+      const engines = cache(engineModels, style.accent+':'+plume, () => {
+        const b=builder(),core=rgb('#CBF7FF'),glow=rgb(style.accent).map(v=>.5+.5*v);
+        for(const side of [-17,17]) {
+          for(let i=0;i<16;i++) {const a=i*Math.PI/8,n=(i+1)*Math.PI/8;
+            b.triangle([-25.25,8,side],[-25.25,8+1.55*Math.cos(n),side+2*Math.sin(n)],[-25.25,8+1.55*Math.cos(a),side+2*Math.sin(a)],core);}
+          if(plume) {
+            b.quad([-25.4,6.5,side],[-25.4,9.5,side],[-42,8.3,side],[-42,7.7,side],glow);
+            b.quad([-25.4,8,side-1.7],[-25.4,8,side+1.7],[-42,8,side+.25],[-42,8,side-.25],glow);
+          }
+        }
+        return b.mesh().vertices;
+      },32);
+      out.push({ vertices: engines, static: true, emissive: true, opacity: .85, tailFade: true,
+        engineActorId: a.id, plumeActorId: plume ? a.id : null,
+        bounds:{min:[-42,6,-20],max:[-25,10,20]}, model });
       const slip = a.speed > 3 ? Math.atan2(Math.sin(a.heading - Math.atan2(a.vy, a.vx)), Math.cos(a.heading - Math.atan2(a.vy, a.vx))) : 0;
       if (!a.offroad && !a.recoveryTicks && !a.airRamp && Math.abs(slip) > .18) {
         const direction = Math.sign(slip);
@@ -581,10 +614,10 @@
   function shadowMesh() {
     return featureModel('shadow', () => {
       const b = builder();
-      for (let i = 0; i < 16; i++) {
-        const a = i * Math.PI / 8, n = (i + 1) * Math.PI / 8;
+      for (let i = 0; i < 32; i++) {
+        const a = i * Math.PI / 16, n = (i + 1) * Math.PI / 16;
         b.triangle([0,.15,0], [30*Math.cos(n),.15,24*Math.sin(n)],
-          [30*Math.cos(a),.15,24*Math.sin(a)], [.045,.08,.12]);
+          [30*Math.cos(a),.15,24*Math.sin(a)], [.035,.07,.11]);
       }
       return b;
     });

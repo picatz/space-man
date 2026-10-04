@@ -68,7 +68,7 @@ test('every visor triangle stays outside the helmet shell at its centroid', () =
     let n=0;
     for(let i=0;i<vertices.length;i+=27) {
       if(Math.abs(vertices[i+6]-.063)>.00001||Math.abs(vertices[i+7]-.176)>.00001||Math.abs(vertices[i+8]-.286)>.00001)continue;
-      const x=(vertices[i]+vertices[i+9]+vertices[i+18])/3+5,y=(vertices[i+1]+vertices[i+10]+vertices[i+19])/3-24,z=(vertices[i+2]+vertices[i+11]+vertices[i+20])/3;
+      const x=(vertices[i]+vertices[i+9]+vertices[i+18])/3+5,y=(vertices[i+1]+vertices[i+10]+vertices[i+19])/3-22.5,z=(vertices[i+2]+vertices[i+11]+vertices[i+20])/3;
       assert.ok(Math.hypot(x,y,z)>radius+.2,helmet+' glass cannot cut through shell');n++;
     }
     assert.ok(n>=120,'curved visor is vertically subdivided');

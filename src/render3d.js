@@ -97,9 +97,9 @@
   const VERTEX_SHADER = [
     'attribute vec3 aPosition;', 'attribute vec3 aNormal;', 'attribute vec3 aColor;',
     'uniform mat4 uViewProjection;', 'uniform mat4 uModel;', 'uniform mat3 uNormal;',
-    'uniform vec3 uEye;', 'uniform float uEmissive;', 'varying mediump vec3 vColor;', 'varying mediump float vDistance;',
+    'uniform vec3 uEye;', 'uniform float uEmissive;', 'varying mediump vec3 vColor;', 'varying mediump float vDistance;', 'varying mediump vec3 vLocal;',
     'void main() {',
-    '  vec4 world = uModel * vec4(aPosition, 1.0);',
+    '  vec4 world = uModel * vec4(aPosition, 1.0);', '  vLocal = aPosition;',
     '  vec3 normal = uNormal * aNormal;',
     '  normal /= max(length(normal), 0.00001);',
     '  float diffuse = max(dot(normal, normalize(vec3(-0.4, 0.8, 0.35))), 0.0);',
@@ -108,11 +108,14 @@
     '  gl_Position = uViewProjection * world;', '}'
   ].join('\n');
   const FRAGMENT_SHADER = [
-    'precision mediump float;', 'varying mediump vec3 vColor;', 'varying mediump float vDistance;',
+    'precision mediump float;', 'varying mediump vec3 vColor;', 'varying mediump float vDistance;', 'varying mediump vec3 vLocal;', 'uniform float uOpacity;', 'uniform float uSoftShadow;', 'uniform float uTailFade;',
     'uniform vec3 uFogColor;', 'uniform vec2 uFogRange;',
     'void main() {',
     '  float fog = smoothstep(uFogRange.x, uFogRange.y, vDistance);',
-    '  gl_FragColor = vec4(mix(vColor, uFogColor, fog), 1.0);', '}'
+    '  float alpha = uOpacity;',
+    '  if (uSoftShadow > 0.5) alpha *= 1.0 - smoothstep(0.15, 1.0, length(vLocal.xz / vec2(30.0, 24.0)));',
+    '  if (uTailFade > 0.5) alpha *= smoothstep(-42.0, -25.0, vLocal.x);',
+    '  gl_FragColor = vec4(mix(vColor, uFogColor, fog), alpha);', '}'
   ].join('\n');
 
   // Conservative homogeneous-frustum test for an axis-aligned local-space box.
@@ -175,7 +178,7 @@
         }
         locations = {};
         ['aPosition', 'aNormal', 'aColor'].forEach(name => { locations[name] = gl.getAttribLocation(program, name); });
-        ['uViewProjection', 'uModel', 'uNormal', 'uEye', 'uFogColor', 'uFogRange', 'uEmissive'].forEach(name => {
+        ['uViewProjection', 'uModel', 'uNormal', 'uEye', 'uFogColor', 'uFogRange', 'uEmissive', 'uOpacity', 'uSoftShadow', 'uTailFade'].forEach(name => {
           locations[name] = gl.getUniformLocation(program, name);
         });
         stream = gl.createBuffer();
@@ -285,10 +288,19 @@
           // Tiny LED face overlays emit their own light, while retaining depth
           // and distance fog. Reset per mesh so it cannot brighten the hull.
           gl.uniform1f(locations.uEmissive, mesh.emissive === true ? 1 : 0);
+          const opacity = clamp(finite(mesh.opacity, 1), 0, 1), transparent = opacity < 1 || mesh.softShadow === true || mesh.tailFade === true;
+          gl.uniform1f(locations.uOpacity, opacity);
+          gl.uniform1f(locations.uSoftShadow, mesh.softShadow === true ? 1 : 0);
+          gl.uniform1f(locations.uTailFade, mesh.tailFade === true ? 1 : 0);
+          // Local translucent effects are drawn after their owning opaque hull.
+          // They test road/hull depth but never write it or affect later actors.
+          if (transparent) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); }
+          else { gl.disable(gl.BLEND); gl.depthMask(true); }
           gl.uniformMatrix4fv(locations.uModel, false, model);
           gl.uniformMatrix3fv(locations.uNormal, false, model === IDENTITY ? IDENTITY_NORMAL : normalMatrix(model));
           gl.drawArrays(gl.TRIANGLES, 0, Math.floor(vertices.length / 27) * 3);
         }
+        gl.disable(gl.BLEND); gl.depthMask(true);
         // Courses can replace their immutable geometry. Reclaim old GPU buffers
         // after two seconds at 60fps, while retaining briefly culled geometry.
         if (frame % 60 === 0) records.forEach(record => {

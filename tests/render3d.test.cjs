@@ -51,7 +51,7 @@ function harness(options = {}) {
   };
   for (const name of ['compileShader', 'attachShader', 'linkProgram', 'deleteShader', 'deleteProgram',
     'deleteBuffer', 'enable', 'depthFunc', 'depthMask', 'disable', 'clearDepth', 'viewport', 'clearColor',
-    'clear', 'useProgram', 'uniformMatrix4fv', 'uniformMatrix3fv', 'uniform3fv', 'uniform2f', 'uniform1f',
+    'clear', 'blendFunc', 'useProgram', 'uniformMatrix4fv', 'uniformMatrix3fv', 'uniform3fv', 'uniform2f', 'uniform1f',
     'enableVertexAttribArray', 'vertexAttribPointer', 'drawArrays']) {
     gl[name] = (...args) => calls.push([name, ...args]);
   }
@@ -366,4 +366,14 @@ test('only explicitly marked LED meshes bypass diffuse light and keep ordinary f
   assert.match(h.gl.shaders[0].source,/mix\(0.42 \+ 0.58 \* diffuse, 1.0, uEmissive\)/);
   assert.match(h.gl.shaders[1].source,/mix\(vColor, uFogColor, fog\)/);
   assert.ok(h.calls.some(c=>c[0]==='enable'&&c[1]===h.gl.DEPTH_TEST));renderer.dispose();
+});
+
+
+test('translucent ship shadows and engine wakes restore opaque depth and material state',()=>{
+ const h=harness(),r=Render3D.create(h.canvas),vertices=triangle();
+ assert.equal(r.draw({meshes:[{vertices},{vertices,opacity:.28,softShadow:true,emissive:true},{vertices,opacity:.85,tailFade:true,emissive:true},{vertices}]}),true);
+ for(const [uniform,values] of [['uOpacity',[1,.28,.85,1]],['uSoftShadow',[0,1,0,0]],['uTailFade',[0,0,1,0]]])
+  assert.deepEqual(h.calls.filter(c=>c[0]==='uniform1f'&&c[1]===uniform).map(c=>c[2]),values);
+ assert.deepEqual(h.calls.filter(c=>c[0]==='depthMask').slice(-5).map(c=>c[1]),[true,false,false,true,true]);
+ assert.equal(h.count('blendFunc'),2);r.dispose();
 });
