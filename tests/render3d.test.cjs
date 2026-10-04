@@ -372,8 +372,22 @@ test('only explicitly marked LED meshes bypass diffuse light and keep ordinary f
 test('translucent ship shadows and engine wakes restore opaque depth and material state',()=>{
  const h=harness(),r=Render3D.create(h.canvas),vertices=triangle();
  assert.equal(r.draw({meshes:[{vertices},{vertices,opacity:.28,softShadow:true,emissive:true},{vertices,opacity:.85,tailFade:true,emissive:true},{vertices}]}),true);
- for(const [uniform,values] of [['uOpacity',[1,.28,.85,1]],['uSoftShadow',[0,1,0,0]],['uTailFade',[0,0,1,0]]])
+ for(const [uniform,values] of [['uOpacity',[1,1,.28,.85]],['uSoftShadow',[0,0,1,0]],['uTailFade',[0,0,0,1]]])
   assert.deepEqual(h.calls.filter(c=>c[0]==='uniform1f'&&c[1]===uniform).map(c=>c[2]),values);
- assert.deepEqual(h.calls.filter(c=>c[0]==='depthMask').slice(-5).map(c=>c[1]),[true,false,false,true,true]);
+ assert.deepEqual(h.calls.filter(c=>c[0]==='depthMask').slice(-5).map(c=>c[1]),[true,true,false,false,true]);
  assert.equal(h.count('blendFunc'),2);r.dispose();
+});
+
+
+test('all opaque hulls precede view-depth-sorted wakes independent of input order',()=>{
+ const h=harness(),r=Render3D.create(h.canvas),order=[],draw=h.gl.drawArrays;
+ h.gl.drawArrays=(...args)=>{const buffer=h.calls.filter(c=>c[0]==='bindBuffer').at(-1)[2],upload=h.calls.find(c=>c[0]==='bufferData'&&c[4]===buffer);order.push(upload[2]);draw(...args);};
+ const mesh=(z,opacity=1)=>({vertices:triangle(),static:true,opacity,model:new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,z,1])});
+ const nearWake=mesh(-3,.3),farHull=mesh(-8),farWake=mesh(-9,.3),frontHull=mesh(-2);
+ assert.equal(r.draw({camera:{eye:[0,0,0],target:[0,0,-1]},meshes:[nearWake,farHull,farWake,frontHull]}),true);
+ assert.deepEqual(order,[farHull.vertices,frontHull.vertices,farWake.vertices,nearWake.vertices]);
+ order.length=0;
+ assert.equal(r.draw({camera:{eye:[0,0,-12],target:[0,0,0]},meshes:[farWake,frontHull,nearWake,farHull]}),true);
+ assert.deepEqual(order,[frontHull.vertices,farHull.vertices,nearWake.vertices,farWake.vertices],'reversing the eye reverses effect depth, not the roster');
+ r.dispose();
 });

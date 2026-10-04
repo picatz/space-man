@@ -257,7 +257,27 @@
         gl.uniform2f(locations.uFogRange, fogNear, fogFar);
         for (const name of ['aPosition', 'aNormal', 'aColor']) gl.enableVertexAttribArray(locations[name]);
         frame++;
-        for (const mesh of scene.meshes || []) {
+        // Opaque actors must establish depth before any wake/shadow blends.
+        // Sort the small effects list far-to-near in view space so roster order
+        // cannot make a farther hull erase a nearer translucent effect.
+        const opaque=[], translucent=[], forward=normalize(target.map((n,i)=>n-eye[i]),[0,0,-1]);
+        const isTransparent=mesh=>clamp(finite(mesh.opacity,1),0,1)<1 || mesh.softShadow===true || mesh.tailFade===true;
+        const depth=mesh=>{
+          const lo=mesh.bounds?.min,hi=mesh.bounds?.max,
+            x=lo&&hi?finite((lo[0]+hi[0])/2,0):0,
+            y=lo&&hi?finite((lo[1]+hi[1])/2,0):0,
+            z=lo&&hi?finite((lo[2]+hi[2])/2,0):0,
+            m=mesh.model&&mesh.model.length===16?mesh.model:IDENTITY;
+          return finite((m[0]*x+m[4]*y+m[8]*z+m[12]-eye[0])*forward[0]+
+            (m[1]*x+m[5]*y+m[9]*z+m[13]-eye[1])*forward[1]+
+            (m[2]*x+m[6]*y+m[10]*z+m[14]-eye[2])*forward[2],0);
+        };
+        for(const mesh of scene.meshes||[]) if(mesh) {
+          if(isTransparent(mesh))translucent.push({mesh,depth:depth(mesh)});else opaque.push(mesh);
+        }
+        translucent.sort((a,b)=>b.depth-a.depth);
+        for(const entry of translucent)opaque.push(entry.mesh);
+        for (const mesh of opaque) {
           if (!mesh || !mesh.vertices) continue;
           const vertices = mesh.vertices;
           // Cross-realm Float32Arrays are valid. Ignore incomplete triangles.
@@ -295,8 +315,8 @@
           gl.uniform1f(locations.uOpacity, opacity);
           gl.uniform1f(locations.uSoftShadow, mesh.softShadow === true ? 1 : 0);
           gl.uniform1f(locations.uTailFade, mesh.tailFade === true ? 1 : 0);
-          // Local translucent effects are drawn after their owning opaque hull.
-          // They test road/hull depth but never write it or affect later actors.
+          // Translucent effects follow all opaque geometry. They test its
+          // completed depth buffer but never write depth themselves.
           if (transparent) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); }
           else { gl.disable(gl.BLEND); gl.depthMask(true); }
           gl.uniformMatrix4fv(locations.uModel, false, model);
