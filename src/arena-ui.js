@@ -240,7 +240,7 @@
     let savedFocus = null, inertSiblings = [], savedBodyOverflow = '';
     const cosmeticSession = Date.now().toString(36) + ':' + Math.random().toString(36).slice(2, 9);
     let cosmeticRound = 0;
-    let arena, state = null, view = 'lobby', paused = false, activeModal = null, selections = { arenaId: '', format: 'duel', difficulty: 'normal' };
+    let arena, actionBuffer, state = null, view = 'lobby', paused = false, activeModal = null, selections = { arenaId: '', format: 'duel', difficulty: 'normal' };
     let frameId = 0, lastTime = 0, accumulator = 0, lastDraw = 0, lastHudTick = -1, lastCountdown = '', resultAt = 0, matchSerial = 0;
     let identitySafeTop = 0, identityHudBottom = 0, identityBoundsDirty = true;
     let thumbBounds = null;
@@ -348,11 +348,12 @@
       const previousTouches = Array.from(touches);
       touches.clear(); stick = null; moveX = moveY = 0;
       recoveryTap = null;
-      if (clearEdges) touchEdges = { jump: false, attack: false, dash: false };
+      if (clearEdges) { touchEdges = { jump: false, attack: false, dash: false }; actionBuffer?.reset(); }
       for (const [id, data] of previousTouches) { data.el.classList.remove('arena-pressed'); try { if (data.el.hasPointerCapture(id)) data.el.releasePointerCapture(id); } catch (_) {} }
       if (stickBase) { stickBase.classList.remove('arena-stick-active'); stickBase.style.removeProperty('left'); stickBase.style.removeProperty('top'); stickKnob.style.transform = 'translate(-50%,-50%)'; }
     }
     function resetInput() {
+      actionBuffer?.reset();
       if (onlineActive()) room.release();
       held.clear(); jumpEdge = attackEdge = dashEdge = false; pad = { moveX: 0, moveY: 0, jump: false }; padNeedsNeutral = true;
       resetTouchInput();
@@ -434,7 +435,7 @@
         touches.delete(e.pointerId);
         const remaining = Array.from(touches.values());
         if (!remaining.some(t => t.el === data.el)) data.el.classList.remove('arena-pressed');
-        if (e.type !== 'pointerup' && !remaining.some(t => t.action === data.action)) touchEdges[data.action] = false;
+        if (e.type !== 'pointerup' && !remaining.some(t => t.action === data.action)) { touchEdges[data.action] = false; actionBuffer?.reset(); }
         try { if (data.el.hasPointerCapture(e.pointerId)) data.el.releasePointerCapture(e.pointerId); } catch (_) {}
       }
       if (stick && e.pointerId === stick.id) { stick = null; moveX = moveY = 0; stickBase.classList.remove('arena-stick-active'); stickBase.style.removeProperty('left'); stickBase.style.removeProperty('top'); stickKnob.style.transform = 'translate(-50%,-50%)'; }
@@ -483,7 +484,8 @@
       const keyboardY = (actionHeld('down') ? 1 : 0) - (actionHeld('jump') && (held.has('KeyW') || held.has('ArrowUp')) ? 1 : 0);
       const c = { moveX: clamp(keyboardX + moveX + pad.moveX, -1, 1), moveY: clamp(keyboardY + moveY + pad.moveY, -1, 1),
         jumpPressed: jumpEdge || touchEdges.jump, jumpHeld: actionHeld('jump') || pad.jump || Array.from(touches.values()).some(t => t.action === 'jump'), attackPressed: attackEdge || touchEdges.attack, dashPressed: dashEdge || touchEdges.dash };
-      jumpEdge = attackEdge = dashEdge = false; touchEdges = { jump: false, attack: false, dash: false }; return c;
+      jumpEdge = attackEdge = dashEdge = false; touchEdges = { jump: false, attack: false, dash: false };
+      return actionBuffer.sample(c, localActor(), state?.tick, isRunning() && state.phase === 'playing' && canControl(), rootEl.dataset.epoch || matchSerial, { nowMs: performance.now(), authoritative: !onlineActive() || room.isHost });
     }
     // Only guarded, idempotent menu actions use this fallback. Native browsers
     // can omit a compatibility click after a captured drag is interrupted.
@@ -634,6 +636,7 @@
     function build() {
       if (built) return;
       arena = root.SpaceManArena;
+      actionBuffer = arena.createActionBuffer();
       if (!arena || !Array.isArray(arena.arenas) || !arena.arenas.length) throw new Error('Arena simulation is not available.');
       loadSelection();
       rootEl = el('section', 'arena-root'); rootEl.id = 'arenaRoot'; const scopedStyle = el('style'); scopedStyle.textContent = STYLES + ONLINE_STYLES + IDENTITY_STYLES + THUMB_STYLES; rootEl.append(scopedStyle); rootEl.hidden = true; rootEl.setAttribute('aria-label', 'Space Man Orbital Arena'); rootEl.dataset.touch = 'false';
@@ -1073,6 +1076,7 @@
       const vv = root.visualViewport;
       if (vv && viewportBox && (Math.abs(vv.width - viewportBox.width) > 1 || Math.abs(vv.height - viewportBox.height) > 1 || Math.abs(vv.offsetLeft - viewportBox.left) > 1 || Math.abs(vv.offsetTop - viewportBox.top) > 1)) resize();
       updatePrefs(); pollGamepad();
+      if (!isRunning() || !canControl()) actionBuffer.reset();
       if (!active || document.hidden) return;
       const elapsed = lastTime ? Math.min(.1, Math.max(0, (now - lastTime) / 1000)) : 0; lastTime = now;
       if (isRunning()) {
