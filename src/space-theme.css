@@ -454,3 +454,21 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 .secondary-panel [role="button"]:focus-visible,
 body.gamepad-active .secondary-panel textarea:focus,
 body.gamepad-active .secondary-panel [role="button"]:focus { outline:3px solid var(--sm-focus); outline-offset:-3px; }
+/* A short landscape viewport must expose the complete invite, not only a
+   scrollable canvas whose lower half is permanently under the action dock. */
+@media (min-width:600px) {
+ #ovRoom .dock { display:flex; justify-content:flex-end; align-items:center; gap:12px; }
+ #ovRoom .dock .btn { margin:0; }
+}
+@media (min-width:600px) and (max-height:560px) {
+ #ovRoom .room-qr { width:min(245px,calc(100dvh - 136px - var(--game-ui-top, 0px) - var(--game-ui-bottom, 0px))); }
+}
+.secondary-panel .net-sub, .secondary-panel .room-relay,
+.secondary-panel .code-note, .secondary-panel .offline-note { opacity:1; color:var(--sm-copy); font:400 13px/1.5 var(--sm-font-body); letter-spacing:0; }
+.secondary-panel .invite-block .k { font:600 12px/1.5 var(--sm-font-body); letter-spacing:.04em; color:var(--sm-copy); }
+.secondary-panel .mini-chip { text-transform:none; letter-spacing:0; }
+.secondary-panel .roster-row { font:500 14px/1.5 var(--sm-font-body); letter-spacing:0; }
+.secondary-panel .room-log summary { min-height:44px; display:flex; align-items:center; font:500 13px/1.4 var(--sm-font-body); letter-spacing:0; opacity:1; }
+#ovRoom .secondary-panel, #ovSettings .secondary-panel {
+ max-height:calc(100dvh - 2 * var(--oy) - var(--game-ui-top, env(safe-area-inset-top, 0px)) - var(--game-ui-bottom, env(safe-area-inset-bottom, 0px)));
+}

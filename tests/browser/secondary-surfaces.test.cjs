@@ -447,6 +447,33 @@ for (const [width, height] of SIZES) test(`secondary room ${width}x${height}: re
   assert.ok((await page.locator('#roomLink').innerText()).length > 10);
   await fit(page, 'ovRoom'); await targets(page, 'ovRoom');
   await capture(page, `room-${width}x${height}-top`);
+  // A scannable canvas can still be hidden by the sticky actions. Expose it
+  // with ordinary panel scrolling, then test the whole square, not its center.
+  const qr = page.locator('#roomQr');
+  await qr.evaluate(n => n.scrollIntoView({ block: 'start', inline: 'nearest' }));
+  const qrBounds = await qr.evaluate(async n => {
+    let previous = '', stable = 0;
+    for (let frame = 0; frame < 120; frame++) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      const r = n.getBoundingClientRect(), p = n.closest('.panel').getBoundingClientRect();
+      const dock = n.closest('.panel').querySelector('.dock').getBoundingClientRect();
+      const bounds = { top: r.top, right: r.right, bottom: r.bottom, left: r.left,
+        width: r.width, height: r.height, panelTop: p.top, panelBottom: p.bottom,
+        footerTop: dock.top, viewportWidth: innerWidth, viewportHeight: innerHeight };
+      const current = JSON.stringify(bounds);
+      stable = current === previous ? stable + 1 : 0;
+      if (stable >= 3) return bounds;
+      previous = current;
+    }
+    throw new Error('Room QR bounds did not settle after normal scrolling');
+  });
+  await capture(page, `room-${width}x${height}-qr`);
+  assert.ok(qrBounds.width > 0 && Math.abs(qrBounds.width - qrBounds.height) <= 1,
+    'room invite QR remains a nonempty square');
+  assert.ok(qrBounds.left >= -1 && qrBounds.right <= qrBounds.viewportWidth + 1
+    && qrBounds.top >= Math.max(0, qrBounds.panelTop) - 1
+    && qrBounds.bottom <= Math.min(qrBounds.viewportHeight, qrBounds.panelBottom, qrBounds.footerTop) + 1,
+    `entire room QR is readable above the sticky footer after normal scrolling: ${JSON.stringify(qrBounds)}`);
   for (const id of ['btnRoomCopy', 'roomApprove', 'btnRoomNewLink', 'btnRoomNewWorld', 'btnRoomLeave', 'btnRoomPlay', 'btnRoomBack']) await reachable(page, '#' + id);
   await capture(page, `room-${width}x${height}-actions`);
   const socketsBefore = relayClient.sockets;
