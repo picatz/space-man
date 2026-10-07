@@ -193,3 +193,33 @@ test('Space and Enter on a focused Daily / Share button activate only that butto
   assert.equal(press('Enter', 'dead', true), 'dead');
   assert.equal(press('r', 'dead', true), 'play');                        // other keys still retry
 });
+
+test('an explicit restart skips the ragdoll from 0.8 s, still commits the run, and ignores repeats and early presses', (t) => {
+  const c = solo(t);
+  const key = (k, repeat) => c.run(`onKey({ key: ${JSON.stringify(k)}, repeat: ${!!repeat}, target: document.body, preventDefault() {} }, true); G.mode`);
+  c.run("startRun(); G.score = 321; die('contact'); G.deathSeq = 0.79;");
+  const runs = c.run('stats.runs');
+  key(' ');                                                              // before 0.8 s: ignored
+  assert.equal(c.run('G.player.dead'), true);
+  c.run('G.deathSeq = 0.85;');
+  key(' ', true);                                                        // a held key repeating never counts
+  assert.equal(c.run('G.player.dead'), true);
+  key(' ');
+  assert.equal(c.run('G.player.dead'), false);                           // fresh press: the next run is already going
+  assert.equal(c.run('G.mode'), 'play');
+  assert.equal(c.run('stats.runs'), runs + 1);                           // finalizeDeath committed it
+  assert.equal(c.run('bestScore'), 321);
+});
+
+test('tap and gamepad restarts share the 0.8 s gate; the passive card path is unchanged', (t) => {
+  const c = solo(t);
+  c.run("startRun(); die('contact'); G.deathSeq = 0.5;");
+  assert.equal(c.run('tryEarlyRestart()'), false);
+  assert.equal(c.run('G.deathCardShown'), false);
+  c.run('G.deathSeq = 0.9;');
+  assert.equal(c.run('tryEarlyRestart()'), true);
+  assert.equal(c.run('G.player.dead'), false);
+  c.run("die('void'); G.deathSeq = 1.0;");                               // no input: still the ragdoll at 1.0 s
+  assert.equal(c.run('G.mode'), 'play');
+  assert.equal(c.run('G.deathCardShown'), false);
+});

@@ -373,3 +373,37 @@ test('save migration never throws on garbage and always returns sane settings', 
     return failures.slice(0, 5);`);
   assert.deepEqual(r, []);
 });
+
+test('Hot Pursuit: 2 s inside 12 m lights x1.5 on kills and stars, holds to 20 m, cools over 1 s', (t) => {
+  const c = solo(t);
+  c.run(`startRun(); G.mode = 'play';
+    globalThis.__ticks = (m, s) => { for (let i = 0; i < Math.round(s / STEP); i++) { G.flare.x = G.player.x - m * 10; updateHeat(m * 10); } };
+    globalThis.__stomp = () => { const s = G.score; killEnemy({ x: 0, y: 0, type: 'grunt', dead: false }, 'stomp', false); return G.score - s; };`);
+  assert.equal(c.run('__stomp()'), 30);
+  c.run('__ticks(11, 1.9)');                                             // close, but not for long enough
+  assert.equal(c.run('G.hot'), false);
+  c.run('__ticks(15, 0.1)');                                             // the gap opens before it lit: the build resets
+  assert.equal(c.run('G.heatT'), 0);
+  c.run('__ticks(11, 2.1)');
+  assert.equal(c.run('G.hot'), true);
+  assert.equal(c.run('__stomp()'), 45);
+  const shard = c.run(`const p = G.player; G.pickups.push({ type: 'shard', x: p.x + p.w / 2, y: p.y + p.h / 2, grabbed: false }); G.shardStreak = 0; const s = G.score; collisions(); G.score - s`);
+  assert.equal(shard, 18);                                               // 12 x 1.5
+  c.run('__ticks(16, 3)');                                               // 12-20 m: held, not cooled
+  assert.equal(c.run('G.hot'), true);
+  c.run('__ticks(25, 0.5)');                                             // wide gap: cooling, still hot for a moment
+  assert.equal(c.run('G.hot'), true);
+  c.run('__ticks(25, 0.6)');
+  assert.equal(c.run('G.hot'), false);
+  assert.equal(c.run('__stomp()'), 30);
+  c.run('startRun()');
+  assert.equal(c.run('G.hot'), false);                                   // never carries into the next run
+  assert.equal(c.run('G.heatT'), 0);
+});
+
+test('Hot Pursuit HUD renders in both states and the first sector hues are widely spaced', (t) => {
+  const c = solo(t);
+  c.run("startRun(); G.mode = 'play'; G.hot = true; G.heatT = 2; drawHUD(); G.hot = false; G.heatT = 1; drawHUD();");
+  const hues = json(c, 'return BAND_HUE');
+  for (let i = 1; i < 4; i++) assert.ok(hues[i] - hues[i - 1] >= 15, `band ${i} hue step`);
+});
