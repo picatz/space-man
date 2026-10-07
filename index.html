@@ -2480,7 +2480,7 @@ function onKey(e, down) {
       if (k === 'enter') { startRun(); return; }
     }
     if (k === 'escape' && crew.open) { toggleCrew(false); return; }
-    if (!e.repeat && (act === 'jump' || k === 'enter' || k === 'r')) tryEarlyRestart();
+    if (!e.repeat && (act === 'jump' || k === 'enter' || k === 'r')) tryEarlyRestart(k === 'r');
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) { if (!menuSubOpen()) startRun(); }
@@ -3273,15 +3273,17 @@ function startRun(options) {
 }
 // GF-05: the ragdoll is skippable. A FRESH explicit input (key press, tap, pad
 // jump — never a repeat or a hold carried from before death) from DEATH_SKIP s on
-// commits the run through showDeathCard (records persist) and restarts at once.
+// commits the run through showDeathCard (records persist) and brings the card up
+// at once, so a reflexive tap still shows the score; the card's own retry follows.
+// R is the one deliberate "restart now" key and skips the card too.
 // Passive path unchanged: the card still appears at 1.6 s on its own.
 const DEATH_SKIP = 0.8;
-function tryEarlyRestart() {
+function tryEarlyRestart(instant) {
   const p = G.player;
   if (G.mode !== 'play' || !p || !p.dead || G.deathCardShown || G.deathSeq < DEATH_SKIP) return false;
   if (sharedRunnerActive() || expeditionRunnerActive()) return false;   // those hand the round to their own result flow
   showDeathCard();
-  if (G.mode === 'dead' && !$('ovInitials').classList.contains('show')) tryRestart(true);   // an initials picker still owns input
+  if (instant && G.mode === 'dead' && !$('ovInitials').classList.contains('show')) tryRestart(true);   // an initials picker still owns input
   return true;
 }
 function tryRestart(skipGuard) {

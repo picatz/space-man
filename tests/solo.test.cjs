@@ -205,20 +205,26 @@ test('an explicit restart skips the ragdoll from 0.8 s, still commits the run, a
   key(' ', true);                                                        // a held key repeating never counts
   assert.equal(c.run('G.player.dead'), true);
   key(' ');
-  assert.equal(c.run('G.player.dead'), false);                           // fresh press: the next run is already going
-  assert.equal(c.run('G.mode'), 'play');
+  assert.equal(c.run('G.mode'), 'dead');                                 // fresh press: the card comes up now, score visible
+  assert.equal(c.run('G.deathCardShown'), true);
   assert.equal(c.run('stats.runs'), runs + 1);                           // finalizeDeath committed it
   assert.equal(c.run('bestScore'), 321);
+  c.run("startRun(); die('contact'); G.deathSeq = 0.85;");
+  key('r');                                                              // R: the deliberate restart skips the card too
+  assert.equal(c.run('G.player.dead'), false);
+  assert.equal(c.run('G.mode'), 'play');
 });
 
-test('tap and gamepad restarts share the 0.8 s gate; the passive card path is unchanged', (t) => {
+test('tap and gamepad skips share the 0.8 s gate; the passive card path is unchanged', (t) => {
   const c = solo(t);
   c.run("startRun(); die('contact'); G.deathSeq = 0.5;");
   assert.equal(c.run('tryEarlyRestart()'), false);
   assert.equal(c.run('G.deathCardShown'), false);
   c.run('G.deathSeq = 0.9;');
   assert.equal(c.run('tryEarlyRestart()'), true);
-  assert.equal(c.run('G.player.dead'), false);
+  assert.equal(c.run('G.mode'), 'dead');                                 // a reflexive tap never hides the result card
+  assert.equal(c.run('G.deathCardShown'), true);
+  c.run('startRun();');
   c.run("die('void'); G.deathSeq = 1.0;");                               // no input: still the ragdoll at 1.0 s
   assert.equal(c.run('G.mode'), 'play');
   assert.equal(c.run('G.deathCardShown'), false);

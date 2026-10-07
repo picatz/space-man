@@ -1968,7 +1968,6 @@
       let pre = S.prelim.get(key);
       if (!pre) { pre = { lastHello: -Infinity, helloN: 0, strikes: 0 }; prelimSet(key, pre); }   // first hello always eligible
       if (t - pre.lastHello < 5000 || pre.helloN >= 5) return;
-      pre.lastHello = t; pre.helloN++;
       S.joinTimes = S.joinTimes.filter((x) => t - x < 60000);
       if (S.joinTimes.length >= 10) return;
       // Room-wide pre-join token bucket: key-rotation spray must not burn host CPU on
@@ -1977,6 +1976,9 @@
       S.preBucketT = t;
       if (S.preBucket < 1) return;
       S.preBucket -= 1;
+      // Spend this key's HELLO allowance only once room-wide budgets let it through,
+      // so someone else's spray can't exhaust a real guest's five tries.
+      pre.lastHello = t; pre.helloN++;
       // Arcade rooms retire absent rows quickly. Re-admitting the same key must never
       // restart its host nonce at zero. Disjoint per-admission counter ranges
       // avoid key/nonce reuse even if the wall clock moves backwards.

@@ -84,7 +84,7 @@
       for(const[i,k]of['x','y','px','py','vx','vy'].entries()){a[k]=v.getFloat32(o+7+i*4,true);if(!Number.isFinite(a[k])||Math.abs(a[k])>8192)return null;}
       a.damage=v.getUint16(o+31,true);if(a.damage>999)return null;
       for(const[i,k]of['stocks','deaths','kos','stun','invulnerable','attackTicks','dashTicks','dashCooldown','respawnTicks','jumpCount'].entries())a[k]=b[o+33+i];
-      if(a.stocks>3||a.attackTicks>Arena.constants.CHARGED_TICKS||b[o+63]>Arena.constants.CHARGE_AUTO||a.dashTicks>Arena.constants.DASH_TICKS||a.jumpCount>2||b[o+47]>15||b[o+52]>(journey?state.actors.length:4))return null;
+      if(a.stocks>3||a.attackTicks>((b[o+47]&8)?Arena.constants.CHARGED_TICKS:Arena.constants.ATTACK_TICKS)||b[o+63]>Arena.constants.CHARGE_AUTO||a.dashTicks>Arena.constants.DASH_TICKS||a.jumpCount>2||b[o+47]>15||b[o+52]>(journey?state.actors.length:4))return null;
       a.attackDirX=v.getInt16(o+43,true)/32767;a.attackDirY=v.getInt16(o+45,true)/32767;a.onGround=!!(b[o+47]&1);a.airDashAvailable=!!(b[o+47]&2);a.facing=b[o+47]&4?1:-1;a.attackSerial=v.getUint32(o+48,true);a.lastHitBy=b[o+52]||null;a.charge=b[o+63];a.attackCharge=b[o+47]&8?Arena.constants.CHARGE_MAX:0;o+=ACTOR_BYTES;
     }
     if(boss){
