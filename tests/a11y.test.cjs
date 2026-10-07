@@ -286,6 +286,11 @@ test('pause, mute, drop, camera, dash and rescue are rebindable and drive the ru
   assert.equal(c.run('settings.keys.rescue'), 'r');
   c.run('beginRebind("rescue", "Rescue"); rebindKey("q")');
   assert.equal(c.run('settings.keys.rescue'), 'q');
+  c.run('beginRebind("rescue", "Rescue"); rebindKey("r")');
+  assert.equal(c.run('settings.keys.rescue'), 'r', 'rescue can always return to its own default, R');
+  const pause = c.run('settings.keys.pause');
+  assert.equal(c.run('beginRebind("pause", "Pause"); rebindKey("r")'), false);
+  assert.equal(c.run('settings.keys.pause'), pause, 'no other action may take R');
 });
 
 test('saves from before the new actions keep their four keys and get free defaults for the rest', (t) => {

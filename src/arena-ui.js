@@ -461,7 +461,7 @@
       if (local2) return LOCAL_KEYS[1][e.code] || null;
       const key = (e.key || '').toLowerCase(), bindings = currentPrefs.keys || {};
       for (const action of ['left', 'right', 'jump', 'fire', 'down', 'dash']) if (bindings[action] === key) return action;
-      if (bindings.pause === key) return null;   // a key bound to Pause is never also a fixed move
+      if (Object.values(bindings).includes(key)) return null;   // a key bound to Pause, Mute, Camera… is never also a fixed move
       return ({ ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'jump', KeyW: 'jump', Space: 'jump', ArrowDown: 'down', KeyS: 'down', KeyF: 'fire', KeyJ: 'fire', ShiftLeft: 'dash', ShiftRight: 'dash', KeyK: 'dash' })[e.code] || null;
     }
     function actionHeld(action) { for (const value of held.values()) if (value === action) return true; return false; }
@@ -567,11 +567,14 @@
       moveX = Math.abs(x) > .14 ? x : 0; moveY = Math.abs(y) > .2 ? y : 0;
       stickKnob.style.transform = 'translate(calc(-50% + ' + (x * 32).toFixed(1) + 'px),calc(-50% + ' + (y * 32).toFixed(1) + 'px))';
     }
+    // A guest's playout buffer belongs to one room; a rejoin must never interpolate from the last one.
+    function dropPlayout() { if (playout) { playout.reset(); playout = null; } }
     function pollGamepad() {
       if (!ownsInput()) return;
       let pads;
       try { pads = root.navigator.getGamepads && root.navigator.getGamepads(); } catch (_) { return; }
-      const list = pads ? Array.from(pads).filter(q => q && q.connected) : [];
+      // Standard-mapped pads first: a wheel or HID with mapping "" at index 0 must not take the slot of a real controller.
+      const list = pads ? Array.from(pads).filter(q => q && q.connected).sort((a, b) => (b.mapping === 'standard') - (a.mapping === 'standard')) : [];
       if (local2 && !activeModal) { pollLocalPads(list); return; }
       const swallow = playerCount === 2 && lobbyJoinPoll(list);
       const p = list[0];
@@ -782,7 +785,7 @@
         roomRole.textContent = status.info.role === 1 ? 'Join next match' : 'Watch instead'; roomRole.disabled = !status.current || status.current.status !== 'lobby';
         if (status.connection || status.stale) resetInput();
         if (view === 'match') { const q = opts.net.quality(); matchTitle.textContent = selectedArena().name + ' · ' + (status.connection || (status.stale ? 'WAITING FOR HOST' : q.rttMs ? q.rttMs + ' ms · FRIEND ARENA' : 'FRIEND ARENA')); }
-      } else if (status.closedReason && view === 'match') { state = null; view = 'lobby'; paused = roomPaused = localRoomMenu = false; setModal(lobby); paintLobby(); announce(status.closedReason); }
+      } else if (status.closedReason && view === 'match') { state = null; dropPlayout(); view = 'lobby'; paused = roomPaused = localRoomMenu = false; setModal(lobby); paintLobby(); announce(status.closedReason); }
       if (!status.active) syncChoices(); else syncRoomChoices();
     }
     function networkSnapshot(snapshot) {
@@ -790,7 +793,7 @@
       const old = state, newRound = !old || priorNetworkTick < 0 || snapshot.epoch !== (rootEl.dataset.epoch | 0); rootEl.dataset.epoch = snapshot.epoch;
       selections.arenaId = snapshot.state.arenaId; selections.format = snapshot.state.format; selections.difficulty = snapshot.state.difficulty;
       if (snapshot.status === 'lobby') {
-        if (view !== 'lobby') { resetInput(); state = null; view = 'lobby'; paused = roomPaused = localRoomMenu = false; resultAt = 0; effects = []; resetFeel(); setModal(lobby); paintLobby(); }
+        if (view !== 'lobby') { resetInput(); state = null; dropPlayout(); view = 'lobby'; paused = roomPaused = localRoomMenu = false; resultAt = 0; effects = []; resetFeel(); setModal(lobby); paintLobby(); }
         priorNetworkTick = -1; syncChoices(); return;
       }
       state = snapshot.state; state.events = state.events.filter(e => { if (!e.serial || e.serial <= networkEventHigh) return false; networkEventHigh = e.serial; return true; });
@@ -1496,7 +1499,7 @@
       } else accumulator = 0;
       if (isMatch() && (state.phase === 'over' || localRescue()) && !activeModal && resultAt && now >= resultAt) showResults();
       const renderGap = saver() ? 1000 / 30 : 1000 / 60;
-      if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { const buffered = onlineActive() && !room.isHost && playout && playout.apply(state, now, state.phase === 'over'); paint(paused || state.phase === 'over' ? 1 : feel.freezeLeft > 0 ? feel.holdAlpha : onlineActive() && !room.isHost ? (buffered ? 1 : clamp((now - networkReceived) / 50, 0, 1)) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
+      if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { const buffered = onlineActive() && !room.isHost && playout && playout.apply(state, performance.now(), state.phase === 'over'); paint(paused || state.phase === 'over' ? 1 : feel.freezeLeft > 0 ? feel.holdAlpha : onlineActive() && !room.isHost ? (buffered ? 1 : clamp((now - networkReceived) / 50, 0, 1)) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
       if (!frameId && active && !document.hidden) frameId = root.requestAnimationFrame(frame);
     }
     function ensureFrame() { if (active && !document.hidden && !frameId) { lastTime = 0; frameId = root.requestAnimationFrame(frame); } }
@@ -1537,7 +1540,7 @@
       if (!active) return;
       if (localSession || sharedSession) { close(); return; }
       if (onlineActive()) { if (!room.isHost) { leaveArenaRoom(); return; } room.lobby(); }
-      resetInput(); local2 = null; rootEl.dataset.players = '1'; state = null; view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; resetFeel(); camera.initialized = false;
+      resetInput(); local2 = null; rootEl.dataset.players = '1'; state = null; dropPlayout(); view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; resetFeel(); camera.initialized = false;
       syncChoices(); setModal(lobby, formatButtons.find(b => b.dataset.format === selections.format)); paintLobby(); announce('Choose your arena match');
       if (audio && audio.state === 'running') audio.suspend().catch(() => {});
     }
@@ -1621,7 +1624,7 @@
       resetInput(); local2 = null; playerCount = 1; p2Joined = false; active = false; if (frameId) root.cancelAnimationFrame(frameId); frameId = 0; lastTime = 0; accumulator = 0;
       for (const [target, type, fn, settings] of listeners.splice(0)) target.removeEventListener(type, fn, settings);
       if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
-      rootEl.hidden = true; viewportBox = null; activeModal = null; state = null; view = 'lobby'; paused = false; effects = []; resetFeel();
+      rootEl.hidden = true; viewportBox = null; activeModal = null; state = null; dropPlayout(); view = 'lobby'; paused = false; effects = []; resetFeel();
       inertSiblings.forEach(s => { if (s.node.isConnected) s.node.inert = s.inert; }); inertSiblings = []; document.body.style.overflow = savedBodyOverflow;
       if (audio && audio.state === 'running') audio.suspend().catch(() => {});
       if (savedFocus && savedFocus.isConnected && typeof savedFocus.focus === 'function') savedFocus.focus({ preventScroll: true });

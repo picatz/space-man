@@ -955,9 +955,9 @@
       if (!ownsInput()) return;
       let p;
       try {
-        p = Array.from(root.navigator.getGamepads?.() || []).find(
-          (p) => p && p.connected,   // mapping "" pads get the standard indices; the page announces them
-        );
+        // Prefer a standard-mapped pad; a mapping "" pad gets the standard indices and the page announces it.
+        const pads = Array.from(root.navigator.getGamepads?.() || []).filter((q) => q && q.connected);
+        p = pads.find((q) => q.mapping === "standard") || pads[0];
       } catch (_) {}
       if (!p) {
         pad = { steer: 0, boost: false, brake: false, recover: false };
