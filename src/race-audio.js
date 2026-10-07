@@ -219,6 +219,8 @@
       finishPlayed = true;
       cue("finish", [69, 74, 78, 81], 0.13, 0.7);
     }
+    // Slipstream engaging: a quiet low airy tick, never a melodic reward.
+    function draft() { cue("draft", [45, 52], 0.06, 0.22, 0.03); }
     function boost(value) { boostAmount = value === true ? 1 : clamp(value, 0, 1); }
     function phase(value) {
       value = value === "results" ? "finished" : value;
@@ -426,7 +428,7 @@
         engineVoices: engine ? engine.oscs.length : 0,
       });
     }
-    return Object.freeze({ unlock: () => unlock(false), resume, update, phase, countdown, checkpoint, pad, recover, lap, finish, boost, threat, pause, stop, destroy, diagnostics });
+    return Object.freeze({ unlock: () => unlock(false), resume, update, phase, countdown, checkpoint, pad, recover, lap, finish, boost, threat, draft, pause, stop, destroy, diagnostics });
   }
   return Object.freeze({ create });
 });

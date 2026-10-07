@@ -61,3 +61,10 @@ contrast were inspected while driving Ember. The cloud browser used 2D fallback;
 WebGL framing evidence comes from hosted Chromium/WebKit raster tests and
 independent screenshot review. This is not physical-device testing or a claim
 that automated driving proves subjective fun.
+
+## Slipstream, CPU catch-up and boost punch
+
+- Slipstream applies equally to humans and CPUs. A kart 50-125 units behind another, inside a cone along the leader's travel line (lateral limit 16 + 0.18 x distance, same direction, both at least 2.5 speed, grounded, on road) accumulates `draftTicks`. After 20 ticks draft ramps over 20 more to 1; it drains 2 ticks per tick when the tow is lost. Full draft adds +0.6 top speed (road only) and 1.5x boost regeneration. CPUs add the same bonus to their target speed.
+- `draftTicks`/`draft` are host-only and are not on the wire. Clients derive the visual/audio cue from synced poses with `Race.draftTarget(state, actor)`.
+- CPU target speeds keep their per-difficulty value and per-id personality offset, plus a bounded rubber band against the leading live human: up to +0.25 when 3 or more gates behind (dead band 1 gate), down to -0.15 when 3 or more gates ahead, never above 6.4 before draft.
+- Boost punch is presentation only: a pad/exit boost widens the camera FOV by up to 9 degrees over 0.6 s (boost button: 4.5), with radial speed lines; slipstream draws faint wind streaks and one quiet audio tick. Reduced motion disables the FOV kick and all streaks; top-down has none.

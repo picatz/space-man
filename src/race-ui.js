@@ -1871,10 +1871,25 @@
     }
     // Resize/viewport paints reframe immediately without spending the last
     // animation frame's elapsed time a second time on camera easing.
+    // Slipstream cue: derived locally from the synced poses (no wire field),
+    // smoothed for the wind streaks, and one soft audio tick when it engages.
+    let draftLevel = 0, draftSounded = false;
+    function stepDraft(a, dt) {
+      const live = !!(a && state && state.phase === "racing" && !paused && !roomPaused && R.draftTarget);
+      const target = live && R.draftTarget(state, a) ? 1 : 0;
+      draftLevel += (target - draftLevel) * (1 - Math.exp(-Math.min(0.1, dt || 1 / 60) * (target ? 2.2 : 6)));
+      if (draftLevel < 0.01) draftLevel = 0;
+      if (draftLevel > 0.55 && !draftSounded) {
+        draftSounded = true;
+        if (a.id === ownActor()?.id) audio?.draft?.();
+      } else if (draftLevel < 0.15) draftSounded = false;
+      return draftLevel;
+    }
     function paint(frameDt = 0) {
       if (!active || !g) return;
       const c = R.course(state?.trackId || selected.trackId);
       const a = state ? followActor() : null;
+      const draftNow = stepDraft(a, frameDt);
       const shown = state && (flatPresentation?.sample(state, {
         actorId: a.id, previous: previousPose, epoch: networkEpoch,
         network: onlineActive(), now: root.performance.now(),
@@ -1893,6 +1908,7 @@
           paused: onlineActive() ? roomPaused : paused,
           alpha: paused || state.phase === "finished" ? 1 : acc * 60,
           dt: frameDt,
+          draft: draftNow,
           reduceMotion: calm(),
         });
       // The hidden fallback canvas does not need a second full-screen sky pass.

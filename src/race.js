@@ -539,6 +539,9 @@
         offroad: false,
         // Host-only bookkeeping; remote clients render authoritative snapshots.
         offroadTicks: 0,
+        // Slipstream: host-only, derived each tick from synced positions.
+        draftTicks: 0,
+        draft: 0,
         recoveries: 0,
         recoveryTicks: 0,
         recoverHeld: false,
@@ -571,6 +574,51 @@
       finishReason: null,
     };
   }
+  // Slipstream. A kart close behind another, inside a narrow cone along the
+  // leader's travel line, builds draft. Pure function of synced kart poses, so
+  // clients can reproduce the instantaneous cue without any wire field.
+  const DRAFT = Object.freeze({ range: 125, near: 50, lateral: 16, cone: 0.18,
+    minSpeed: 2.5, engage: 20, full: 40, rampTicks: 20, decay: 2, topSpeed: 0.6, fuel: 0.5 });
+  function draftable(a) {
+    return a && !a.dnf && a.finishTick === null && !a.recoveryTicks && !a.airRamp && !a.offroad &&
+      finite(a.speed) >= DRAFT.minSpeed;
+  }
+  // Returns the kart being drafted (or null) for actor `a` from current poses.
+  function draftTarget(state, a) {
+    if (!draftable(a)) return null;
+    const ah = Math.cos(a.heading), av = Math.sin(a.heading);
+    let best = null, bestBack = Infinity;
+    for (const b of state.actors) {
+      if (b === a || !draftable(b)) continue;
+      const fx = Math.cos(b.heading), fy = Math.sin(b.heading),
+        rx = a.x - b.x, ry = a.y - b.y,
+        back = -(rx * fx + ry * fy), side = Math.abs(-rx * fy + ry * fx);
+      if (back < DRAFT.near || back > DRAFT.range || side > DRAFT.lateral + back * DRAFT.cone) continue;
+      if (ah * fx + av * fy < 0.7) continue;
+      if (back < bestBack) { best = b; bestBack = back; }
+    }
+    return best;
+  }
+  function updateDraft(state) {
+    // Evaluate every kart from the same pre-move poses (order independent).
+    const hits = state.actors.map(a => draftTarget(state, a) !== null);
+    state.actors.forEach((a, i) => {
+      a.draftTicks = hits[i] ? Math.min(DRAFT.full, finite(a.draftTicks) + 1)
+        : Math.max(0, finite(a.draftTicks) - DRAFT.decay);
+      a.draft = clamp((a.draftTicks - DRAFT.engage) / DRAFT.rampTicks, 0, 1);
+    });
+  }
+  // Gentle CPU rubber band relative to the leading live human, in gates.
+  const CATCHUP = Object.freeze({ behind: 0.25, ahead: 0.15, deadband: 1, span: 2, cap: 6.4 });
+  function catchUp(state, actor, c) {
+    let lead = -Infinity;
+    for (const h of state.actors)
+      if (h.controller === "human" && !h.dnf && h.finishTick === null) lead = Math.max(lead, raceDistance(h, c));
+    if (lead === -Infinity) return 0;
+    const gap = (lead - raceDistance(actor, c)) / (c.length / 20);
+    return gap > CATCHUP.deadband ? clamp((gap - CATCHUP.deadband) / CATCHUP.span, 0, 1) * CATCHUP.behind :
+      gap < -CATCHUP.deadband ? -clamp((-gap - CATCHUP.deadband) / CATCHUP.span, 0, 1) * CATCHUP.ahead : 0;
+  }
   function cpuInput(state, actor) {
     const c = course(state.trackId), n = nearest(c, actor.x, actor.y),
       catalog = features(c), incoming = threats(state, actor.id),
@@ -601,8 +649,11 @@
       targetX = ahead.x-ahead.ty*lane, targetY = ahead.y+ahead.tx*lane,
       desired = Math.atan2(targetY-actor.y,targetX-actor.x),
       turn = angle(desired-actor.heading),
-      target = { easy: 4.5, normal: 5.6, hard: 6.35 }[state.difficulty] *
-        (1-(actor.id.charCodeAt(actor.id.length-1)%3)*.025),
+      // Personality (per-id offset) is kept; rubber band is additive, never lifts
+      // a CPU past the human top speed, and draft is shared with human karts.
+      target = Math.min(CATCHUP.cap, { easy: 4.5, normal: 5.6, hard: 6.35 }[state.difficulty] *
+        (1-(actor.id.charCodeAt(actor.id.length-1)%3)*.025) + catchUp(state, actor, c)) +
+        DRAFT.topSpeed * finite(actor.draft),
       useShield = actor.item === "shield" && !actor.shieldTicks && (perceived ||
         // An otherwise quiet easy race still teaches activation; keep most
         // shields for real threats and never infer another pilot's input.
@@ -661,6 +712,8 @@
     a.padTicks = 0;
     a.offroad = false;
     a.offroadTicks = 0;
+    a.draftTicks = 0;
+    a.draft = 0;
     a.progress = a.passed + Math.max(0, 12-back) / (c.length / 20);
     a.recoveryTicks = 90;
     a.recoveries++;
@@ -738,6 +791,7 @@
     state.raceTick++;
     const c = course(state.trackId),
       previous = new Map(), exitBoosts = new Set();
+    updateDraft(state);
     for (const a of state.actors) {
       if (a.finishTick !== null || a.dnf) continue;
       const input = command(inputs[a.id]),
@@ -775,7 +829,7 @@
       if (a.padCooldown > 0) a.padCooldown--;
       if (a.padTicks > 0) a.padTicks--;
       a.boosting = input.boost && a.fuel > 1 && !a.offroad && !input.brake && !a.slowTicks;
-      a.fuel = clamp(a.fuel + (a.boosting ? -0.72 : 0.17), 0, 100);
+      a.fuel = clamp(a.fuel + (a.boosting ? -0.72 : 0.17 * (1 + DRAFT.fuel * finite(a.draft))), 0, 100);
       const speed = Math.hypot(a.vx, a.vy),
         // A small high-speed correction must not become a spin. Low-speed
         // manoeuvres stay nimble, while boost asks for a wider, cleaner line.
@@ -810,7 +864,9 @@
         lateral = -a.vx * fy + a.vy * fx;
       const boost = !a.slowTicks && (a.boosting || a.padTicks > 0),
         shoulder = clamp((n.distance - (c.width / 2 - 4)) / RUNOFF, 0, 1),
-        max = invalid ? 2.6 : a.offroad ? 5.2 - 1.5 * shoulder : a.drifting ? 5.6 : boost ? 9 : 6.4;
+        max = (invalid ? 2.6 : a.offroad ? 5.2 - 1.5 * shoulder : a.drifting ? 5.6 : boost ? 9 : 6.4) +
+          // Slipstream: modest, bounded, on-road only.
+          (invalid || a.offroad ? 0 : DRAFT.topSpeed * finite(a.draft));
       let accel = input.throttle * (boost ? 0.19 : 0.125);
       if (input.brake) accel = a.drifting ? 0.06 : -0.2;
       const velocity = clamp(
@@ -1007,6 +1063,10 @@
     at,
     nearest,
     nearestScan,
+    draftTarget,
+    catchUp,
+    draft: DRAFT,
+    catchup: CATCHUP,
     command,
     cancelControl,
     create,
