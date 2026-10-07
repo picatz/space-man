@@ -29,6 +29,15 @@ chain mid-air combos, and chase your personal best.
 - Standard gamepads are supported, including PS5 and Xbox-style layouts:
   left stick or D-pad to move, Cross/A to jump, Square/X or R1/R2 to fire, and
   Options/Menu to pause. Supported controllers use the optional haptics setting.
+  A controller whose browser mapping is not "standard" (common in Firefox on
+  Linux and with generic USB pads) is still tried with the same basic buttons
+  (button 1 jumps, Start pauses, left stick moves), and the game says so once
+  with a toast and a screen-reader announcement.
+- Settings: **Text size** (Normal / Large / Larger) scales captions, menus and the
+  canvas HUD; no text renders below 9px. **Keyboard** rebinds move, jump, fire,
+  drop/brake, dash/boost (Arena and Star Circuit), rescue, camera / crew
+  standings, pause and mute. Escape always pauses too. R stays reserved for
+  restart (Rescue starts on it), and couch play keeps its fixed keys.
 
 ## History
 

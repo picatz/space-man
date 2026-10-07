@@ -356,7 +356,7 @@ test('secondary Settings: switches, native range keys, rebinding and native conn
   await bind.click(); await page.keyboard.press('Escape');
   assert.equal(await bind.innerText(), 'J', 'Escape cancels only rebinding');
   assert.equal(await page.locator('#ovSettings.in').isVisible(), true);
-  await bind.click(); await page.keyboard.press('m');
+  await bind.click(); await page.keyboard.press('r');
   assert.match(await bind.innerText(), /^press a key$/i, 'reserved key is rejected');
   await page.keyboard.press('Escape');
   for (const mode of ['custom', 'list', 'default', 'custom']) {
@@ -396,7 +396,7 @@ test('secondary Settings: switches, native range keys, rebinding and native conn
   assert.equal(await servers.inputValue(), saved.netRelayList);
   assert.equal(await settingsPanel.locator('.net-radio-opt[data-mode="list"]').getAttribute('aria-pressed'), 'true');
   await settingsPanel.getByRole('button', { name: 'Reset keys to defaults', exact: true }).click();
-  assert.deepEqual((await stored(page, 'settings')).keys, { left: 'a', right: 'd', jump: 'w', fire: 'f' }, 'key reset restores only the key map');
+  assert.deepEqual((await stored(page, 'settings')).keys, { left: 'a', right: 'd', jump: 'w', fire: 'f', down: 's', dash: 'shift', rescue: 'r', camera: 'c', pause: 'p', mute: 'm' }, 'key reset restores only the key map');
   assert.equal((await stored(page, 'settings')).musicVol, 0.55);
   await page.keyboard.press('Escape'); await home(page);
 });

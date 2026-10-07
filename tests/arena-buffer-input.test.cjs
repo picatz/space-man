@@ -61,3 +61,14 @@ test('host to guest to host ownership never transfers a queued action',()=>{
  for(let n=0;n<7;n++){x.advance();assert.equal(x.c.command().attackPressed,false);}
  x.press('keyboard','attack');assert.equal(x.c.command().attackPressed,true);
 });
+test('solo Arena honors the rebindable dash, drop and pause keys; the fixed alternates remain',()=>{
+ const x=ui();const k=(key,code)=>({code,key,repeat:false,preventDefault(){},stopImmediatePropagation(){}});
+ x.c.currentPrefs={keys:{left:'a',right:'d',jump:'w',fire:'f',down:'z',dash:'x',rescue:'r',camera:'c',pause:'o',mute:'m'}};
+ x.c.onKeyDown(k('x','KeyX'));assert.equal(x.c.actionHeld('dash'),true,'the bound dash key dashes');
+ x.c.onKeyUp(k('x','KeyX'));x.c.onKeyDown(k('Shift','ShiftLeft'));assert.equal(x.c.actionHeld('dash'),true,'Shift still dashes');
+ x.c.onKeyUp(k('Shift','ShiftLeft'));
+ x.c.onKeyDown(k('z','KeyZ'));assert.equal(x.c.actionHeld('down'),true,'the bound drop key drops');
+ x.c.onKeyUp(k('z','KeyZ'));
+ assert.equal(x.c.paused,false);x.c.onKeyDown(k('o','KeyO'));assert.equal(x.c.paused,true,'the bound pause key pauses a live match');
+ x.c.onKeyDown(k('o','KeyO'));assert.equal(x.c.paused,false,'and resumes it');
+});

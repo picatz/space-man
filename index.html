@@ -51,7 +51,9 @@
        The canvas mirrors the palette in src/art.js (SpaceManArt.C). */
     --r-xs: 8px; --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-pill: 999px;
     --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
-    --fs-cap: 10px; --fs-sm: 12px; --fs-md: 14px; --fs-lg: 21px; --fs-hero: 46px;
+    /* Text size: Settings > Text size sets --ui-scale (1 / 1.15 / 1.3) on :root; every small-type token and caption below multiplies by it. */
+    --ui-scale: 1;
+    --fs-cap: calc(10px * var(--ui-scale)); --fs-sm: calc(12px * var(--ui-scale)); --fs-md: calc(14px * var(--ui-scale)); --fs-lg: 21px; --fs-hero: 46px;
     --line: rgba(207, 227, 255, 0.08); --line-2: rgba(207, 227, 255, 0.16); --edge: rgba(56, 225, 255, 0.25);
     --ease-out: cubic-bezier(.2, .9, .3, 1); --ease-spring: cubic-bezier(.34, 1.4, .64, 1);
     --dur-1: 110ms; --dur-2: 200ms; --dur-3: 320ms;
@@ -102,7 +104,7 @@
   .game-status {
     min-width: 0; max-width: 100%; padding: 2px 6px;
     border: 1px solid #ffc93c; border-radius: 4px; background: #060818; color: #ffc93c;
-    font: 10px/14px monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font: calc(10px * var(--ui-scale, 1))/14px monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .game-status-error { white-space: normal; }
 
@@ -385,8 +387,8 @@
   .swatch.sel, .hat-tile.sel { border-color: var(--cyan); box-shadow: 0 0 10px rgba(56, 225, 255, 0.45); }
   .swatch.locked, .hat-tile.locked { opacity: 0.35; }
   .swatch .lock, .hat-tile .lock { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-  .ward-name { font-size: 10px; letter-spacing: 2px; color: var(--cyan-lt); min-height: 13px; margin-bottom: 4px; text-transform: uppercase; }
-  .ward-hint { font-family: var(--font-num); font-size: 10px; letter-spacing: 1px; color: var(--gold); min-height: 13px; margin: 6px 0 2px; }
+  .ward-name { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 2px; color: var(--cyan-lt); min-height: 13px; margin-bottom: 4px; text-transform: uppercase; }
+  .ward-hint { font-family: var(--font-num); font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--gold); min-height: 13px; margin: 6px 0 2px; }
 
   table.scores {
     width: 100%;
@@ -420,15 +422,15 @@
   .stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); margin: 12px 0 4px; }
   .stat-grid .stat { padding: 7px 4px 6px; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); }
   .stat-grid b { display: block; font: 800 15px var(--font-num); color: var(--suit); letter-spacing: 0.5px; }
-  .stat-grid span { display: block; margin-top: 2px; font-size: 9px; letter-spacing: 1.5px; color: var(--cyan); opacity: 0.9; }
+  .stat-grid span { display: block; margin-top: 2px; font-size: calc(9px * var(--ui-scale, 1)); letter-spacing: 1.5px; color: var(--cyan); opacity: 0.9; }
   .stat-grid .stat.done b { color: var(--green); }
-  .next-goal { font-size: 11px; letter-spacing: 1px; margin-top: 6px; color: var(--cyan-lt); opacity: 0.85; }
+  .next-goal { font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1px; margin-top: 6px; color: var(--cyan-lt); opacity: 0.85; }
   .next-goal::before { content: '▸ '; color: var(--gold); }
   @keyframes medalStamp { 0% { transform: scale(1.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
   #deadMedal.stamp { animation: medalStamp 0.25s cubic-bezier(.2, .9, .3, 1); }
   #deadDelta { opacity: 0; transform: translateY(6px); transition: opacity 0.25s ease, transform 0.25s ease; }
   #deadDelta.reveal { opacity: 1; transform: translateY(0); }
-  #deadTapHint { opacity: 0; font-size: 10px; letter-spacing: 2px; margin-top: 10px; transition: opacity 0.4s ease; }
+  #deadTapHint { opacity: 0; font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 2px; margin-top: 10px; transition: opacity 0.4s ease; }
   #deadTapHint.show { opacity: 0.5; }
 
   .medal-empty { font-size: var(--fs-cap); letter-spacing: 2px; text-transform: uppercase; color: var(--ui); opacity: 0.6; }
@@ -437,7 +439,7 @@
     .panel { --px: 18px; }
     .btn { letter-spacing: 1px; font-size: 13px; }
     .row .btn { padding: 12px 6px; }
-    #btnDaily .daily-info { font-size: 10px; }
+    #btnDaily .daily-info { font-size: calc(10px * var(--ui-scale, 1)); }
   }
   /* Short portrait (small phones): the title card sheds its teaching rows so the
      wordmark and the hero keep their sky — the first run teaches in-game anyway. */
@@ -451,7 +453,7 @@
     .panel { --px: 18px; --py: 10px; border-radius: 14px; }
     .title-lg { font-size: 18px; margin-bottom: 2px; }
     .panel .btn { padding: 8px 14px; }
-    table.scores td, table.scores th { padding: 2px 8px; font-size: 11px; }
+    table.scores td, table.scores th { padding: 2px 8px; font-size: calc(11px * var(--ui-scale, 1)); }
     .toggle-row { padding: 5px 4px; font-size: 12px; }
     .slider-row input[type='range'] { height: 32px; margin: -6px 0; }
     .swatch-row { gap: 5px; margin: 4px 0 0; }
@@ -508,7 +510,7 @@
     align-items: center;
     padding: 5px 2px;
     border-bottom: 1px solid rgba(207, 227, 255, 0.08);
-    font-size: 10px;
+    font-size: calc(10px * var(--ui-scale, 1));
     letter-spacing: 1px;
     min-height: 28px;
   }
@@ -523,7 +525,7 @@
   }
 
   .stats-line {
-    font-size: 11px;
+    font-size: calc(11px * var(--ui-scale, 1));
     letter-spacing: 1px;
     opacity: 0.6;
     margin-top: 10px;
@@ -543,8 +545,8 @@
     background: rgba(255, 255, 255, 0.035);
   }
   .control-guide b, .control-guide span { display: block; }
-  .control-guide b { color: var(--suit); font-size: 11px; letter-spacing: .5px; }
-  .control-guide span { margin-top: 4px; color: var(--cyan); font-size: 8px; letter-spacing: 1px; }
+  .control-guide b { color: var(--suit); font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: .5px; }
+  .control-guide span { margin-top: 4px; color: var(--cyan); font-size: calc(9px * var(--ui-scale, 1)); letter-spacing: 1px; }
 
   @media (pointer: coarse) {
     .toggle-row { min-height: 48px; }
@@ -610,7 +612,7 @@
     max-height: 40%;
     overflow: auto;
     color: #ff9db0;
-    font: 11px/1.4 monospace;
+    font: calc(11px * var(--ui-scale, 1))/1.4 monospace;
     background: rgba(0, 0, 0, 0.7);
     padding: 4px;
     z-index: 999;
@@ -637,10 +639,10 @@
 
   /* ============ DAILY COURSE + CHALLENGE LINKS ============ */
   #btnDaily { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  #btnDaily .daily-info { font-family: var(--font-num); font-size: 11px; letter-spacing: 1px; color: var(--gold); text-transform: none; }
+  #btnDaily .daily-info { font-family: var(--font-num); font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--gold); text-transform: none; }
   /* Today's Daily theme (world gen 2): a name on the button, one line of rules under it. */
-  #btnDaily .daily-theme { display: block; font-size: 10px; letter-spacing: 1.5px; color: var(--gold); opacity: .9; }
-  .daily-blurb { font-size: 11px; line-height: 1.35; opacity: .72; text-align: center; margin: -4px auto 6px; max-width: 300px; text-transform: none; }
+  #btnDaily .daily-theme { display: block; font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1.5px; color: var(--gold); opacity: .9; }
+  .daily-blurb { font-size: calc(11px * var(--ui-scale, 1)); line-height: 1.35; opacity: .72; text-align: center; margin: -4px auto 6px; max-width: 300px; text-transform: none; }
   .challenge-banner {
     font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--gold);
     border: 1px solid rgba(255, 201, 60, 0.35); background: rgba(255, 201, 60, 0.08);
@@ -653,7 +655,7 @@
   /* Key binds read as keycaps. */
   .key-row .mini-chip { min-width: 44px; font: 700 12px var(--font-num); color: var(--suit); background: rgba(207, 227, 255, 0.06);
     border: 1px solid var(--line-2); border-bottom-width: 3px; border-radius: var(--r-xs); }
-  .net-sub { font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; margin: 2px 0 10px; }
+  .net-sub { font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--ui); opacity: 0.7; margin: 2px 0 10px; }
   .net-sub .num { font-family: var(--font-num); }
 
   /* Room card. On short (landscape) viewports the card is taller than the
@@ -670,7 +672,7 @@
     .room-invite { width: 100%; }
   }
   .room-invite { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-  .invite-block .k { font-size: 9px; letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
+  .invite-block .k { font-size: calc(9px * var(--ui-scale, 1)); letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
   .invite-block .v { font-family: var(--font-num); font-size: 12px; color: var(--suit); word-break: break-all; margin-top: 2px; }
   .invite-block .code { font-size: 24px; letter-spacing: 3px; color: var(--cyan-lt); white-space: nowrap; }
   .chip-row { display: flex; gap: 8px; margin-top: 6px; }
@@ -682,11 +684,11 @@
   @media (max-width: 430px) { .room-codebar .code { font-size: 26px; letter-spacing: 3px; } }
   .invite-block .code { cursor: pointer; }
   .invite-block .code:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
-  .invite-block .code-note { font-size: 10px; letter-spacing: 1px; color: var(--ui); opacity: 0.6; margin-top: 4px; }
+  .invite-block .code-note { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--ui); opacity: 0.6; margin-top: 4px; }
   /* Run Together hub: create a room, or join one with a code or link. */
-  .together-or { display: flex; align-items: center; gap: 10px; margin: 16px 0 10px; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--ui); opacity: 0.6; }
+  .together-or { display: flex; align-items: center; gap: 10px; margin: 16px 0 10px; font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 3px; text-transform: uppercase; color: var(--ui); opacity: 0.6; }
   .together-or::before, .together-or::after { content: ''; flex: 1; height: 1px; background: rgba(56, 225, 255, 0.22); }
-  .join-label { display: block; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); margin-bottom: 6px; }
+  .join-label { display: block; font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); margin-bottom: 6px; }
   .join-input { width: 100%; box-sizing: border-box; min-height: 54px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(56, 225, 255, 0.4); background: rgba(6, 10, 28, 0.75); color: var(--suit); font: 700 20px var(--font-num); letter-spacing: 3px; text-transform: uppercase; text-align: center; }
   .join-input::placeholder { color: rgba(207, 227, 255, 0.32); }
   .join-input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
@@ -695,25 +697,25 @@
   .join-hint { min-height: 36px; margin: 8px 2px 6px; font-size: 12px; line-height: 1.45; color: var(--ui); opacity: 0.85; }
   .join-hint.err { color: var(--coral); opacity: 1; }
   .mini-chip {
-    font-family: var(--font); font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    font-family: var(--font); font-size: calc(10px * var(--ui-scale, 1)); font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
     color: var(--cyan); background: rgba(56, 225, 255, 0.12); border: 1px solid rgba(56, 225, 255, 0.3);
     border-radius: 8px; padding: 8px 12px; min-height: 36px; cursor: pointer;
   }
   .mini-chip.coral { color: var(--coral); background: rgba(255, 79, 102, 0.1); border-color: rgba(255, 79, 102, 0.35); }
   .mini-chip:active { transform: scale(0.96); }
 
-  .room-relay { font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; text-align: left; margin: 2px 0; }
+  .room-relay { font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--ui); opacity: 0.7; text-align: left; margin: 2px 0; }
   /* Link quality (Run Together): one dot + a word + the round trip, never louder than the relay line. */
   .q { font-weight: 700; white-space: nowrap; }
   .q::before { content: '●'; margin-right: 3px; }
   .q-good { color: #5CF2A4; } .q-fair { color: #FFC93C; } .q-poor, .q-reconnecting { color: var(--coral); } .q-unknown, .q-connecting { color: var(--ui); opacity: 0.8; }
-  .roster-row .q { font-size: 10px; margin-left: auto; padding-left: 6px; }
-  .offline-note { margin-top: 8px; font-size: 11px; letter-spacing: 1px; color: var(--ui); opacity: 0.75; }
+  .roster-row .q { font-size: calc(10px * var(--ui-scale, 1)); margin-left: auto; padding-left: 6px; }
+  .offline-note { margin-top: 8px; font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--ui); opacity: 0.75; }
   .room-relay .num { font-family: var(--font-num); }
   .room-log { text-align: left; margin: 2px 0 6px; }
-  .room-log summary { font-size: 10px; letter-spacing: 1px; color: var(--cyan); cursor: pointer; opacity: 0.8; list-style: none; }
+  .room-log summary { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--cyan); cursor: pointer; opacity: 0.8; list-style: none; }
   .room-log summary::-webkit-details-marker { display: none; }
-  .room-log .log-line { font-size: 10px; letter-spacing: 1px; color: var(--ui); opacity: 0.7; padding: 4px 0 0 12px; }
+  .room-log .log-line { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--ui); opacity: 0.7; padding: 4px 0 0 12px; }
   .room-log .log-line .num { font-family: var(--font-num); }
 
   .roster { text-align: left; margin: 6px 0 10px; max-height: 232px; overflow-y: auto; }
@@ -736,7 +738,7 @@
   #btnJoinNotNow, #btnJoinAnyway, #btnRejoinLast { opacity: 0.75; }
   #btnRejoinLast[hidden] { display: none; }
   #joinState { font-size: 12px; letter-spacing: 1px; color: var(--ui); opacity: 0.75; margin: 6px 0; min-height: 16px; }
-  #joinCustomDir { font-size: 11px; letter-spacing: 1px; color: var(--gold); opacity: 0.85; margin: 4px 0; display: none; }
+  #joinCustomDir { font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--gold); opacity: 0.85; margin: 4px 0; display: none; }
   #joinCustomDir.show { display: block; }
 
   /* Callsign picker */
@@ -754,7 +756,7 @@
   .net-radio-opt { display: flex; align-items: center; gap: 8px; padding: 8px 2px; font-size: 12px; letter-spacing: 0.5px; color: var(--ui); cursor: pointer; text-transform: none; min-height: 40px; }
   .net-radio-opt .dot { flex: 0 0 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(56, 225, 255, 0.4); position: relative; }
   .net-radio-opt.sel .dot::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--cyan); }
-  .net-radio .hint { font-size: 10px; color: var(--ui); opacity: 0.5; padding: 0 0 4px 24px; letter-spacing: 0.5px; }
+  .net-radio .hint { font-size: calc(10px * var(--ui-scale, 1)); color: var(--ui); opacity: 0.5; padding: 0 0 4px 24px; letter-spacing: 0.5px; }
   .net-radio input, .net-radio textarea {
     width: 100%; margin: 4px 0 6px; background: rgba(255, 255, 255, 0.05); color: var(--suit);
     border: 1px solid rgba(207, 227, 255, 0.18); border-radius: 8px; padding: 8px; font: 12px var(--font-num); box-sizing: border-box;
@@ -766,15 +768,15 @@
   /* Run Together — in-run surfaces (N3) */
   /* Crew standings: one renderer, three homes (floating panel in a run, pause card, death card). */
   .crew { text-align: left; font-family: var(--font-num); }
-  .crew-sum { font-size: 11px; letter-spacing: 1.5px; color: var(--cyan-lt); font-weight: 700; margin: 2px 0 6px; text-transform: uppercase; }
-  .crew-head { display: flex; align-items: baseline; gap: 6px; font-size: 10px; letter-spacing: 2.5px; color: var(--ui); opacity: 0.8; margin: 10px 0 2px; text-transform: uppercase; }
+  .crew-sum { font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1.5px; color: var(--cyan-lt); font-weight: 700; margin: 2px 0 6px; text-transform: uppercase; }
+  .crew-head { display: flex; align-items: baseline; gap: 6px; font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 2.5px; color: var(--ui); opacity: 0.8; margin: 10px 0 2px; text-transform: uppercase; }
   .crew-head .n { color: var(--cyan); font-weight: 800; }
   .crew-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 12px; border-bottom: 1px solid rgba(207,227,255,0.08); }
   .crew-row .pl { flex: 0 0 26px; color: var(--cyan); font-weight: 800; }
   .crew-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--suit); font-weight: 700; text-transform: uppercase; }
   .crew-row .nm .tag { color: var(--ui); opacity: 0.7; font-weight: 500; text-transform: none; }
   .crew-row .fig { flex: 0 0 auto; font-weight: 700; text-align: right; }
-  .crew-row .fig small { display: block; font-size: 9px; opacity: 0.6; font-weight: 500; letter-spacing: 0.5px; }
+  .crew-row .fig small { display: block; font-size: calc(9px * var(--ui-scale, 1)); opacity: 0.6; font-weight: 500; letter-spacing: 0.5px; }
   .crew-row.you { background: rgba(56,225,255,0.10); border-radius: 6px; }
   .crew-row.out { opacity: 0.6; }
   .crew-row.unverified { opacity: 0.45; }
@@ -786,14 +788,14 @@
   .pause-settings[open] > summary { border-color: rgba(56,225,255,0.4); color: var(--cyan); margin-bottom: 6px; }
   .crew-win { font-size: 12px; letter-spacing: 1.5px; font-weight: 800; color: var(--gold); margin: 2px 0 6px; }
   .crew-row .nm .wins { color: var(--gold); font-weight: 800; }
-  .crew-empty { font-size: 11px; opacity: 0.6; padding: 4px; }
+  .crew-empty { font-size: calc(11px * var(--ui-scale, 1)); opacity: 0.6; padding: 4px; }
   #crewPanel { position: fixed; right: 12px; top: calc(var(--game-ui-top, env(safe-area-inset-top, 0px)) + 84px); width: min(330px, calc(100vw - 24px)); max-height: calc(100vh - 150px);
     overflow-y: auto; padding: 10px 12px 12px; border-radius: 14px; background: rgba(6,12,30,0.88); border: 1px solid rgba(56,225,255,0.22);
     box-shadow: 0 10px 40px rgba(0,0,0,.45); pointer-events: none; z-index: 7; display: none; }
   #crewPanel.show { display: block; }
-  #crewPanel .crew-title { font-size: 11px; letter-spacing: 3px; font-weight: 800; color: var(--cyan); }
-  #crewPanel .crew-hint { font-size: 9px; letter-spacing: 1px; opacity: 0.55; margin-top: 8px; }
-  .room-caption { font-size: 10px; letter-spacing: 3px; color: var(--ui); opacity: 0.7; margin: 12px 0 2px; }
+  #crewPanel .crew-title { font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 3px; font-weight: 800; color: var(--cyan); }
+  #crewPanel .crew-hint { font-size: calc(9px * var(--ui-scale, 1)); letter-spacing: 1px; opacity: 0.55; margin-top: 8px; }
+  .room-caption { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 3px; color: var(--ui); opacity: 0.7; margin: 12px 0 2px; }
   table.scores tr.unverified { opacity: 0.5; }
   .round-head { font-size: 12px; letter-spacing: 3px; font-weight: 700; color: var(--cyan); margin: 12px 0 2px; }
   .round-standings { font: 700 13px var(--font-num); line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
@@ -1327,7 +1329,7 @@ if (typeof settings.netRelayUrl !== 'string') settings.netRelayUrl = '';
 if (typeof settings.netRelayList !== 'string') settings.netRelayList = '';
 // Raw overlay wins for switches (legacy precedence) but the mixer trio must stay sane.
 settings.musicVol = migratedSave.settings.musicVol; settings.sfxVol = migratedSave.settings.sfxVol; settings.muted = migratedSave.settings.muted;
-settings.reduceMotion = migratedSave.settings.reduceMotion; settings.keys = migratedSave.settings.keys;
+settings.reduceMotion = migratedSave.settings.reduceMotion; settings.keys = migratedSave.settings.keys; settings.uiScale = migratedSave.settings.uiScale;
 // Live check (the switch applies the moment it flips). SHOT keeps the OS answer
 // so a stale profile can never perturb a golden.
 function lessMotion() { return SHOT ? osReducedMotion : settings.reduceMotion; }
@@ -1413,7 +1415,12 @@ const view = { w: 640, h: 360, scale: 1, dpr: 1, isTablet: false };
 // HUD chrome and the popup layer so the two never drift apart.
 // Floor 0.86: a phone held upright (420 logical px) still gets a HUD you can read
 // at a glance mid-jump (the odometer lands ~16 CSS px instead of ~13).
-const uiScale = () => clamp(view.w / 560, 0.86, 1);
+// settings.uiScale (Settings > Text size: 1 / 1.15 / 1.3) multiplies it, so the canvas HUD grows
+// with the DOM's --ui-scale. #shot always renders at 1 so goldens never depend on a profile.
+const textScale = () => (SHOT ? 1 : settings.uiScale || 1);
+const uiScale = () => clamp(view.w / 560, 0.86, 1) * textScale();
+// Canvas text never renders below 9 CSS px, whatever the viewport scale.
+const hudPx = (n) => Math.max(9, n);
 
 // Adaptive resolution: a phone that can't hold ~45fps steps its backing-store
 // DPR down (2 → 1.5 → 1) at a calm moment. Render-only — logical view size,
@@ -2359,13 +2366,35 @@ function padFamily(gp) {
   return 'generic';
 }
 function padName(gp) { return { playstation: 'DUALSENSE', xbox: 'XBOX CONTROLLER', nintendo: 'PRO CONTROLLER', generic: 'CONTROLLER' }[padFamily(gp)]; }
+// Pads that report mapping "" (Firefox on Linux, many generic USB pads) are used best-effort with the
+// standard indices the game reads (A = button 0, Start = 9, stick axes 0/1) and say so once, never silently.
+const genericPadsNoted = new Set();
+function noteGenericPad(gp) {
+  if (!gp || gp.mapping === 'standard') return false;
+  const key = gp.index + ':' + gp.id;
+  if (genericPadsNoted.has(key)) return false;
+  genericPadsNoted.add(key);
+  queueToast('CONTROLLER NOT STANDARD — BASIC BUTTONS ONLY', 'sys');
+  announce('Controller not standard: its buttons are not mapped by the browser. Trying basic controls: button 1 jumps, Start pauses, left stick moves.');
+  return true;
+}
+function pickGamepad(pads) {
+  let fallback = null;
+  for (const p of pads) {
+    if (!p || !p.connected) continue;
+    if (p.mapping === 'standard') return p;
+    if (!fallback) fallback = p;
+  }
+  return fallback;
+}
 function pollGamepad() {
   if (modeOverlayActive()) return;
   if (!navigator.getGamepads) return;
   const pads = navigator.getGamepads();
   let gp = input.pad.index >= 0 ? pads[input.pad.index] : null;
   if (!gp) {
-    for (const p of pads) if (p && p.connected && p.mapping === 'standard') { gp = p; input.pad.index = p.index; break; }
+    gp = pickGamepad(pads);
+    if (gp) input.pad.index = gp.index;
   }
   // An arena menu can be closed with A while that button is still held. Wait
   // for a neutral controller before resuming runner/menu input, so that same
@@ -2388,7 +2417,7 @@ function pollGamepad() {
   if (!input.pad.connected) {
     input.pad.connected = true; input.pad.prev = []; document.body.classList.add('gamepad-active');
     document.body.dataset.pad = padFamily(gp);
-    queueToast(padName(gp) + ' READY', 'sys');
+    if (!noteGenericPad(gp)) queueToast(padName(gp) + ' READY', 'sys');
   }
   const pressed = (i) => gamepadButton(gp, i);
   const just = (i) => pressed(i) && !input.pad.prev[i];
@@ -2424,15 +2453,22 @@ function pollGamepad() {
   if (axis) power.lastInputAt = performance.now();
 }
 
-window.addEventListener('gamepadconnected', (e) => { input.pad.index = e.gamepad.index; pollGamepad(); });
+window.addEventListener('gamepadconnected', (e) => {
+  input.pad.index = e.gamepad.index;
+  if (modeOverlayActive()) noteGenericPad(e.gamepad);   // Arena / Star Circuit own the pad; the toast is hidden there, the announcement is not
+  pollGamepad();
+});
 window.addEventListener('gamepaddisconnected', (e) => { if (input.pad.index === e.gamepad.index) { input.pad.index = -1; pollGamepad(); } });
-// Rebindable primaries live in settings.keys (left/right/jump/fire); arrows,
+// Rebindable primaries live in settings.keys (left/right/jump/fire/down plus pause, mute, camera); arrows,
 // space, S and J/X stay as fixed alternates. A bound key always wins, so
 // rebinding onto an alternate simply takes it over.
 const KEY_ALTS = { arrowleft: 'left', arrowright: 'right', arrowup: 'jump', ' ': 'jump', arrowdown: 'down', s: 'down', j: 'fire', x: 'fire' };
+// down/dash/rescue/camera/pause/mute are rebindable too: here only down is a runner move, the rest are read
+// by key in onKey. A bound key always wins, so it never also fires a fixed alternate.
+const RUNNER_MOVES = ['left', 'right', 'jump', 'fire', 'down'];
 function keyAction(k) {
   const b = settings.keys;
-  for (const a in b) if (b[a] === k) return a;
+  for (const a in b) if (b[a] === k) return RUNNER_MOVES.indexOf(a) >= 0 ? a : null;
   return KEY_ALTS[k] || null;
 }
 // Is keyboard focus on a live overlay control? Then Enter/Space belong to it.
@@ -2463,7 +2499,7 @@ function onKey(e, down) {
   const act = keyAction(k);
   // Crew standings: hold Tab to peek (the scoreboard convention), or tap C to pin it open. In a room only.
   if (k === 'tab' && netInRun() && G.mode === 'play') { e.preventDefault(); if (down) { if (!e.repeat) { crew.peek = !crew.open; toggleCrew(true); } } else if (crew.peek) { crew.peek = false; toggleCrew(false); } return; }
-  if (down && k === 'c' && !act && !e.repeat && netInRun() && !e.metaKey && !e.ctrlKey) { crew.peek = false; toggleCrew(); return; }
+  if (down && k === settings.keys.camera && !act && !e.repeat && netInRun() && !e.metaKey && !e.ctrlKey) { crew.peek = false; toggleCrew(); return; }
   if (act === 'left' || act === 'right' || act === 'down') input[act] = down;
   if (act === 'jump') { if (down && !input.jumpHeld) input.jumpPressed = true; input.jumpHeld = down; e.preventDefault(); }
   if (act === 'fire') input.fireKey = down;
@@ -2481,8 +2517,8 @@ function onKey(e, down) {
     }
     if (k === 'escape' && crew.open) { toggleCrew(false); return; }
     if (!e.repeat && (act === 'jump' || k === 'enter' || k === 'r')) tryEarlyRestart(k === 'r');
-    if (k === 'escape' || k === 'p') togglePause();
-    if (k === 'm') toggleMute();
+    if (k === 'escape' || k === settings.keys.pause) togglePause();
+    if (k === settings.keys.mute) toggleMute();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) { if (!menuSubOpen()) startRun(); }
     else if (G.mode === 'dead') {
       if ($('ovInitials').classList.contains('show')) {
@@ -4853,9 +4889,9 @@ function drawToast() {
   if (G.toastT <= 0 || G.deathCardShown) return;   // the death card owns the screen
   const gold = G.toastStyle === 'gold';
   const a = Math.min(1, G.toastT * 3, (G.toastMax - G.toastT) * 5);
-  ctx.font = '700 9px ' + FONT;
+  ctx.font = '700 ' + 9 * textScale() + 'px ' + FONT;
   const glyph = gold ? G.toastGlyph : null;   // postcards carry a 16px inline icon
-  const w = gold ? Math.max(176, ctx.measureText(G.toast).width + (glyph ? 52 : 26)) : 176;
+  const w = Math.max(176, ctx.measureText(G.toast).width + (glyph ? 52 : 26));   // long sys toasts and larger text grow the pill
   const h = glyph ? 30 : 28, x = view.w / 2 - w / 2, y = 18 + viewInset('top');
   ctx.save(); ctx.globalAlpha = a;
   ctx.fillStyle = 'rgba(10,14,32,.88)'; roundRect(x, y, w, h, 10); ctx.fill();
@@ -4870,7 +4906,7 @@ function drawToast() {
       ctx.fillStyle = '#FFC93C'; ctx.font = '16px ' + FONT; ctx.textAlign = 'left';
       ctx.fillText(glyph, x + 9, y + h / 2 + 6);
     }
-    ctx.font = '700 9px ' + FONT;
+    ctx.font = '700 ' + 9 * textScale() + 'px ' + FONT;
   }
   ctx.fillStyle = gold ? '#FFE59A' : '#CFE3FF'; ctx.textAlign = 'center';
   ctx.fillText(G.toast, view.w / 2 + (glyph ? 12 : 0), y + h / 2 + 4); ctx.restore();
@@ -5507,9 +5543,9 @@ function drawPBFlag() {
   ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx, fy - 44); ctx.stroke();
   ctx.fillStyle = G.pbPassed ? '#FFC93C' : '#FF4F66';
   ctx.beginPath(); ctx.moveTo(fx, fy - 44); ctx.lineTo(fx + 25, fy - 37); ctx.lineTo(fx, fy - 30); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#060818'; ctx.font = '700 8px ' + FONT; ctx.textAlign = 'center';
+  ctx.fillStyle = '#060818'; ctx.font = '700 ' + 9 * textScale() + 'px ' + FONT; ctx.textAlign = 'center';
   ctx.fillText(flags.initials, fx + 10, fy - 35);
-  ctx.fillStyle = 'rgba(207,227,255,.72)'; ctx.font = '700 7px ' + FONT;
+  ctx.fillStyle = 'rgba(207,227,255,.72)'; ctx.font = '700 ' + 9 * textScale() + 'px ' + FONT;
   ctx.fillText('BEST ' + stats.bestDist + 'm', fx, fy - 52);
 }
 
@@ -6920,6 +6956,8 @@ const SETTINGS_DEF = [
   { key: 'shake', section: 'Motion & controls', type: 'switch', label: 'Screen shake' },
   // noShot rows (like net rows) never appear under #shot, so goldens hold.
   { key: 'reduceMotion', type: 'switch', label: 'Reduce motion', noShot: true },
+  // Text size drives --ui-scale (DOM tokens + captions) and the canvas HUD fonts. noShot: #shot always renders at 1.
+  { key: 'uiScale', type: 'choice', label: 'Text size', noShot: true },
   { key: 'lefty', type: 'switch', label: 'Left-handed' },
   { key: 'autorun', type: 'switch', label: 'Auto-run (touch)' },
   // Device-dependent (adaptive resolution never runs under #shot): noShot keeps
@@ -6933,6 +6971,12 @@ const SETTINGS_DEF = [
   { key: 'key:right', bind: 'right', type: 'key', label: 'Move right', noShot: true },
   { key: 'key:jump', bind: 'jump', type: 'key', label: 'Jump', noShot: true },
   { key: 'key:fire', bind: 'fire', type: 'key', label: 'Fire', noShot: true },
+  { key: 'key:down', bind: 'down', type: 'key', label: 'Drop / brake', noShot: true },
+  { key: 'key:dash', bind: 'dash', type: 'key', label: 'Dash / boost', noShot: true },
+  { key: 'key:rescue', bind: 'rescue', type: 'key', label: 'Rescue (Star Circuit)', noShot: true },
+  { key: 'key:camera', bind: 'camera', type: 'key', label: 'Camera / crew standings', noShot: true },
+  { key: 'key:pause', bind: 'pause', type: 'key', label: 'Pause (Esc always works)', noShot: true },
+  { key: 'key:mute', bind: 'mute', type: 'key', label: 'Mute', noShot: true },
   { key: 'key:reset', type: 'keyreset', label: 'Default keys', noShot: true },
   // Run Together — network (net-spec §4.8 / blueprint §9). Music-independent.
   // net:true rows are suppressed under #shot so the pause/settings goldens stay
@@ -6982,6 +7026,11 @@ function buildSettings(host) {
       b.setAttribute('role', 'switch'); b.setAttribute('aria-label', def.label);
       b.onclick = () => toggleSetting(def.key);
       row.appendChild(b);
+    } else if (def.type === 'choice') {
+      const b = document.createElement('button');
+      b.className = 'mini-chip'; b.dataset.choice = def.key;
+      b.onclick = () => cycleTextScale();
+      row.appendChild(b);
     } else if (keyRow) {
       row.classList.add('key-row');
       const b = document.createElement('button');
@@ -7028,6 +7077,10 @@ function syncSettingsUI() {
       el.nextElementSibling.textContent = v + '%';
     }
   });
+  document.querySelectorAll('[data-choice="uiScale"]').forEach((el) => {
+    const label = TEXT_SCALE_LABELS[textScaleIndex()];
+    el.textContent = label; el.setAttribute('aria-label', 'Text size: ' + label + '. Activate to change.');
+  });
   document.querySelectorAll('[data-key-bind]').forEach((el) => {
     const a = el.dataset.keyBind, def = SETTINGS_DEF.find((d) => d.bind === a);
     el.textContent = rebinding === a ? 'Press a key' : keyLabel(settings.keys[a]);
@@ -7055,6 +7108,18 @@ function toggleSetting(key) {
   }
   syncSettingsUI(); persistAll();
 }
+// Text size: three steps. --ui-scale on :root feeds the CSS tokens and captions; the canvas HUD reads settings.uiScale per frame.
+const TEXT_SCALE_LABELS = ['Normal', 'Large', 'Larger'];
+function textScaleIndex() { return Math.max(0, window.SpaceManSave.TEXT_SCALES.indexOf(settings.uiScale)); }
+function applyTextScale() {
+  document.documentElement.style.setProperty('--ui-scale', String(SHOT ? 1 : settings.uiScale || 1));
+}
+function cycleTextScale() {
+  const steps = window.SpaceManSave.TEXT_SCALES;
+  settings.uiScale = steps[(textScaleIndex() + 1) % steps.length];
+  applyTextScale(); syncSettingsUI(); persistAll();
+  announce('Text size ' + TEXT_SCALE_LABELS[textScaleIndex()] + '.');
+}
 // Mirrors the live switch onto the CSS motion rules; render/sim read lessMotion() per frame.
 function applyMotionPref() { document.body.classList.toggle('reduce-motion', lessMotion()); refreshFaviconSkin(); }
 
@@ -7068,6 +7133,8 @@ function rebindKey(k) {
   const a = rebinding;
   if (!window.SpaceManSave.bindableKey(k)) { announce(keyLabel(k) + ' is reserved. Try another key.'); return false; }
   const other = Object.keys(settings.keys).find((x) => x !== a && settings.keys[x] === k);
+  // A swap hands the other action this one's old key; refuse if that key is not legal there (rescue holds R by default).
+  if (other && !window.SpaceManSave.allowedKey(other, settings.keys[a])) { announce(keyLabel(settings.keys[a]) + ' cannot move to ' + SETTINGS_DEF.find((d) => d.bind === other).label + '. Pick a free key.'); rebinding = null; syncSettingsUI(); return false; }
   if (other) settings.keys[other] = settings.keys[a];   // swap — two actions never share a key
   settings.keys[a] = k; rebinding = null;
   persistAll(); syncSettingsUI(); syncKeyGuide();
@@ -8296,7 +8363,7 @@ function drawLinkPill() {
   const q = NET.quality(), away = !!NET.info().hostAway;
   if (!away && q.level !== 'reconnecting' && q.level !== 'poor') return;
   const us = uiScale(), text = away ? 'HOST AWAY · HOLDING YOUR SEAT' : q.level === 'reconnecting' ? 'RECONNECTING…' : 'WEAK LINK · ' + (q.rttMs | 0) + ' ms';
-  ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
+  ctx.font = '700 ' + hudPx(10 * us) + 'px ' + FONT_NUM;
   const w = ctx.measureText(text).width + 22 * us, h = 18 * us;
   let x = view.w - 12 - viewInset('right') - w, y = 12 + viewInset('top') + 32;
   if (emoteAvailable()) { const b = emoteLayout().button; x = b.x - 8 - w; y = b.y + (b.h - h) / 2; }   // beside the emote button, never on it
@@ -8369,7 +8436,7 @@ function drawRaceStrip() {
     if (!r.you) _raceHits.push({ p: r.p, x: dx * hk, y: dy * hk, r: Math.max(rad + 6, 22 / hk) * hk });   // a finger-sized target per runner
     ctx.fillStyle = pal.fill || pal.suit || '#F4F7FF'; ctx.beginPath(); ctx.arc(dx, dy, rad, 0, TAU); ctx.fill();
     if (r.you) { ctx.strokeStyle = '#F4F7FF'; ctx.lineWidth = 1.5; ctx.stroke(); }
-    if (showLabels) { ctx.fillStyle = '#0A0E20'; ctx.font = '800 8px ' + FONT_NUM; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(r.p), dx, dy + 0.5); }
+    if (showLabels) { ctx.fillStyle = '#0A0E20'; ctx.font = '800 9px ' + FONT_NUM; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(r.p), dx, dy + 0.5); }
   }
   if (tag) { ctx.fillStyle = place === 1 ? '#FFC93C' : '#F4F7FF'; ctx.font = '700 11px ' + FONT_NUM; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(tag, x + w + tagW - 8, y + h / 2 + 0.5); }
   ctx.textBaseline = 'alphabetic';
@@ -8384,7 +8451,7 @@ function drawRoundStatus() {
   ctx.fillStyle = 'rgba(6,12,30,.88)'; roundRect(x - 145 * us, y - 36 * us, 290 * us, 94 * us, 12); ctx.fill();
   ctx.textAlign = 'center';
   drawGlowText(waiting ? 'CREW CONNECTED' : String(Math.ceil(rc.startInMs / 1000)), x, y, (waiting ? 17 : 36) * us, '#38E1FF', '#F4F7FF');
-  ctx.fillStyle = '#CFE3FF'; ctx.font = '600 ' + 11 * us + 'px ' + FONT_NUM;
+  ctx.fillStyle = '#CFE3FF'; ctx.font = '600 ' + hudPx(11 * us) + 'px ' + FONT_NUM;
   ctx.fillText(waiting ? 'Waiting for the host to start together' : 'GET READY · SAME COURSE, SAME START', x, y + 25 * us);
   ctx.fillText(NET.info().players + ' runners · ' + NET.info().spectators + ' watching', x, y + 43 * us);
 }
@@ -8473,7 +8540,7 @@ function toggleCrew(force) {
 function drawCrewChip() {
   const us = uiScale(), L = emoteLayout(), k = L.k, st = crewGlance();
   const text = 'CREW ' + st.counts.running + '/' + st.players + (st.counts.watching ? ' · ◎' + st.counts.watching : '');
-  ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
+  ctx.font = '700 ' + hudPx(10 * us) + 'px ' + FONT_NUM;
   const h = L.button.h, w = Math.max(64 / k, ctx.measureText(text).width + 20 * us);
   const withEmote = settings.netEmotes && !netSpectating();
   const x = withEmote ? L.button.x - 8 / k - w : L.button.x + L.button.w - w, y = L.button.y;
@@ -8491,7 +8558,7 @@ function drawCrewDirections() {
     const g = candidates[0]; if (!g) continue;
     const x = dir < 0 ? 12 : view.w - 12;
     ctx.textAlign = dir < 0 ? 'left' : 'right';
-    ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + 11 * us + 'px ' + FONT_NUM;
+    ctx.fillStyle = '#9FF1FF'; ctx.font = '700 ' + hudPx(11 * us) + 'px ' + FONT_NUM;
     const distance = Math.round(Math.abs(g.rx - G.player.x) / 10);
     // The right-hand cue steps down out of the way of the emote button (and its tray while open).
     let ly = y;
@@ -8511,9 +8578,9 @@ function drawSpectatorHUD() {
   } else if (down) { head = name + ' WENT DOWN'; sub = Math.round(t.dist) + 'm · ' + Math.floor(t.score) + ' points · cutting to the next runner'; }
   else if (st.winner) { head = 'ROUND OVER · ' + st.winner.name + ' WINS'; sub = Math.floor(st.winner.dist).toLocaleString() + 'm · the host starts the next round, or join the run'; }
   else { head = 'WAITING FOR A RUNNER'; sub = 'Stay here for the next round, or join the run'; }
-  ctx.textAlign = 'center'; ctx.fillStyle = down ? '#FF8A6B' : '#9FF1FF'; ctx.font = '700 ' + 13 * us + 'px ' + FONT_NUM;
+  ctx.textAlign = 'center'; ctx.fillStyle = down ? '#FF8A6B' : '#9FF1FF'; ctx.font = '700 ' + hudPx(13 * us) + 'px ' + FONT_NUM;
   ctx.fillText(head, view.w / 2, y, view.w - 2 * left);
-  ctx.font = '600 ' + 11 * us + 'px ' + FONT_NUM;
+  ctx.font = '600 ' + hudPx(11 * us) + 'px ' + FONT_NUM;
   ctx.fillText(sub, view.w / 2, y + 18 * us, view.w - 2 * left);
   const kx = vpW() / view.w, ky = vpH() / view.h;
   const labels = [['prev', '‹ PREV'], ['next', 'NEXT ›'], ['tour', spec.tour ? 'TOUR ON' : 'TOUR'], ['play', G.rolePending ? 'JOINING…' : 'JOIN RUN']];
@@ -8524,7 +8591,7 @@ function drawSpectatorHUD() {
     ctx.fillStyle = key === 'play' || (key === 'tour' && spec.tour) ? '#38E1FF' : 'rgba(10,14,32,.9)';
     roundRect(x, by, w, h, 8); ctx.fill();
     ctx.fillStyle = key === 'play' || (key === 'tour' && spec.tour) ? '#06122A' : '#CFE3FF';
-    ctx.font = '700 ' + 10 * us + 'px ' + FONT_NUM;
+    ctx.font = '700 ' + hudPx(10 * us) + 'px ' + FONT_NUM;
     ctx.fillText(label, x + w / 2, by + h / 2 + 4 * us, w - 8);
     _specHits[key] = { x0: x * kx, x1: (x + w) * kx, y0: by * ky, y1: (by + h) * ky };
   });
@@ -8546,9 +8613,9 @@ function drawUnstableBanner() {
   const label = 'UNSTABLE ROOM';
   ctx.fillStyle = 'rgba(20,8,14,0.86)'; roundRect(bx, y, bw, bh, 6); ctx.fill();
   ctx.strokeStyle = 'rgba(255,79,102,0.4)'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.fillStyle = '#FF8A9A'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FF8A9A'; ctx.font = '700 ' + hudPx(9 * us) + 'px ' + FONT; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   ctx.fillText(label, bx + 8 * us, y + bh / 2);
-  ctx.fillStyle = '#FF4F66'; ctx.font = '700 ' + (9 * us) + 'px ' + FONT; ctx.fillText('LEAVE', lx, y + bh / 2);
+  ctx.fillStyle = '#FF4F66'; ctx.font = '700 ' + hudPx(9 * us) + 'px ' + FONT; ctx.fillText('LEAVE', lx, y + bh / 2);
   ctx.textBaseline = 'alphabetic';
   _unstableHit = unstableHitRect();
 }
@@ -9809,7 +9876,7 @@ function boot() {
   resize();
   booted = true;
   document.querySelectorAll('[data-settings-host]').forEach(buildSettings);
-  syncSettingsUI(); applyMotionPref(); syncKeyGuide();
+  syncSettingsUI(); applyMotionPref(); applyTextScale(); syncKeyGuide();
   Audio.syncChannels();
   setupAnimatedFavicon();
   if (SHOT) { runShot(); return; }
