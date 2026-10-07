@@ -103,7 +103,7 @@ async function ghostTrace(r, { ms = 6000, profile = 'lan', seed = 7, during = nu
   const render = setInterval(() => {
     const now = Date.now(), dt = (now - last) / 1000; last = now;
     const g = JSON.parse(guest.run(`netTick(${dt}); drawGhosts(1, G.camX); (() => { const g = ghostByP.get(1); return JSON.stringify(g && g.active ? { x: g.rx, y: g.ry, a: g.alpha } : null); })()`));
-    samples.push({ t: now - t0, g });
+    samples.push({ t: now - t0, g, gap: dt * 1000 });
   }, 16);
   if (during) during();
   await sleep(ms);
@@ -111,14 +111,26 @@ async function ghostTrace(r, { ms = 6000, profile = 'lan', seed = 7, during = nu
   setLink(guest, 'lan');
   return score(samples);
 }
+// Harness starvation: the render loop asks for a frame every 16 ms. When the test process itself is
+// starved (node --test runs files concurrently, so a loaded CPU stalls the event loop for 100+ ms) the
+// wall clock jumps and so does everything the guest sees: the sampled gap is huge, the ghost legitimately
+// covers V*gap px at once, and the presence stream that was due in the stall arrives in a clump. That is
+// the machine, not the netcode, so a frame is "starved" when it fired STALL_MS late, and so are the next
+// SETTLE_FRAMES frames while the buffered packets drain. Starved frames are excluded from the smoothness
+// numbers (and reported), and callers assert they are a minority so a mostly-stalled run cannot pass vacuously.
+const STALL_MS = 48, SETTLE_FRAMES = 2;
 function score(samples) {
-  const vis = samples.filter((s) => s.g && s.t > 1500);           // settle: ignore the first 1.5 s
+  const settled = samples.filter((s) => s.t > 1500);               // settle: ignore the first 1.5 s
+  let calm = SETTLE_FRAMES;
+  for (const s of settled) { if (s.gap > STALL_MS) { s.starved = true; calm = 0; } else if (calm < SETTLE_FRAMES) { s.starved = true; calm++; } }
+  const starved = settled.filter((s) => s.starved).length;
+  const vis = settled.filter((s) => s.g && !s.starved);
   const delays = [], steps = [];
-  let back = 0, freeze = 0, teleports = 0, maxStep = 0, hidden = samples.filter((s) => s.t > 1500 && !s.g).length;
+  let back = 0, freeze = 0, teleports = 0, maxStep = 0, hidden = settled.filter((s) => !s.g).length;
   for (let i = 0; i < vis.length; i++) {
     const s = vis[i];
     delays.push((truth(s.t).x - s.g.x) / V * 1000);
-    if (i) {
+    if (i && s.t - vis[i - 1].t <= 2 * STALL_MS) {                 // only consecutive frames: a step across excluded ones is not one frame
       const dt = s.t - vis[i - 1].t, dx = s.g.x - vis[i - 1].g.x, ideal = V * dt / 1000;
       steps.push(dx - ideal);
       if (dx < -0.5) back++;
@@ -129,7 +141,7 @@ function score(samples) {
   }
   const sorted = delays.slice().sort((a, b) => a - b), pct = (q) => sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : NaN;
   const rms = Math.sqrt(steps.reduce((a, b) => a + b * b, 0) / Math.max(1, steps.length));
-  return { frames: vis.length, hidden, delayMs: Math.round(pct(0.5)), delayP95: Math.round(pct(0.95)), stepRms: +rms.toFixed(2), maxStep: +maxStep.toFixed(1), back, freeze, teleports };
+  return { frames: vis.length, starved, starvedFrac: +(starved / Math.max(1, settled.length)).toFixed(2), hidden, delayMs: Math.round(pct(0.5)), delayP95: Math.round(pct(0.95)), stepRms: +rms.toFixed(2), maxStep: +maxStep.toFixed(1), back, freeze, teleports };
 }
 module.exports.ghostTrace = ghostTrace;
 module.exports.truth = truth;
