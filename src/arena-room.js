@@ -12,7 +12,7 @@
     function roster(){return net.roster().map(r=>Object.assign({},r,{identity:r.p===1?'host':r.pubHex||('peer-'+r.p)}));}
     const overNow=(c)=>!!(c&&c.state&&c.state.phase==='over'),lobbyNow=(c)=>!!(c&&c.status==='lobby');
     function ensureVotes(){
-      if(!votes&&social)votes=social.createRoomVotes({net,host:()=>!!host,roster,myP:()=>info().myP,myRole:()=>info().role,isLobby:()=>lobbyNow(client.current),isOver:()=>overNow(client.current),blocked:()=>!active||!!connection,changed,delay:opts.autoStartDelayMs,autoStart:kind=>{if(opts.onAutoStart)opts.onAutoStart(kind);}});
+      if(!votes&&social)votes=social.createRoomVotes({net,host:()=>!!host,roster,myP:()=>info().myP,myRole:()=>info().role,isLobby:()=>lobbyNow(client.current),isOver:()=>overNow(client.current),blocked:()=>!active||!!connection||!!(opts.canStart&&!opts.canStart()),changed,delay:opts.autoStartDelayMs,autoStart:kind=>{if(opts.onAutoStart)opts.onAutoStart(kind);}});
       return votes;
     }
     function status(){return{active,busy,error,closedReason,connection,host:!!host,info:info(),roster:roster(),current:client.current,stale:active&&!host&&now()-lastReceived>1500,votes:active&&votes?votes.status():null};}
@@ -68,9 +68,8 @@
         if(peek.err)throw new Error(peek.err==='expired'?'This arena invite has expired.':'This invite is not compatible. Refresh both games.');
         if(peek.mode!=='arena')throw new Error(peek.mode==='race'?'That is a Star Circuit room. Join it from Star Circuit.':'That is a Run Together room. Join it from the runner.');
         if(net.blocklist().some(b=>b.pubkey===peek.hostHex))throw new Error('This host is blocked. Manage blocked hosts in the runner settings first.');
-        if(codeRoom&&lastRoom)lastRoom.save(codeRoom);
         await net.acceptJoin(payload,Object.assign({},typeof opts.identity==='function'?opts.identity():{},{mode:'arena',role:role===1?1:0}));
-        if(mine!==serial)return false;active=true;busy=false;lastReceived=now();if(client.current)present(client.current);changed();return true;
+        if(mine!==serial)return false;if(codeRoom&&lastRoom)lastRoom.save(codeRoom);active=true;busy=false;lastReceived=now();if(client.current)present(client.current);changed();return true;
       }catch(e){if(mine===serial){error=e&&e.message||'Could not join this arena.';cleanup();changed();}return false;}
     }
     function submit(command,time=now()){

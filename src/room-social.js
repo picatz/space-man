@@ -103,6 +103,10 @@
       onSignal(p, id) {
         const kind = kindOf(id); if (!kind) return false;
         if (p === env.myP()) settle(kind);
+        // A vote that lands after its phase ended (a READY in flight as the
+        // match starts, an AGAIN as the rematch begins) must not linger into
+        // the next lobby or results screen and auto-start a round nobody asked for.
+        if ((kind === 'ready' && !env.isLobby()) || (kind === 'again' && !env.isOver())) { env.changed(); return true; }
         votes.toggle(kind, p); evaluate(); env.changed(); return true;
       },
       // This client's own tap. The host tallies locally; a guest waits for the host's echo.

@@ -284,7 +284,9 @@
           rematch.removeAttribute("aria-pressed");
         } else if (!seated || !again) { setDisabled(rematch, true); setText(rematch, "Waiting for host…"); rematch.removeAttribute("aria-pressed"); }
         else {
-          setDisabled(rematch, !!roomStatus.connection || again.pending);
+          // Pending stays focusable (aria-disabled) so keyboard focus survives the tap.
+          setDisabled(rematch, !!roomStatus.connection);
+          rematch.setAttribute("aria-disabled", String(again.pending));
           rematch.setAttribute("aria-pressed", String(again.mine));
           setText(rematch, again.pending ? "Telling the host…" : again.mine ? "Waiting for host… · tap to undo" : "Race again?");
         }
@@ -329,7 +331,8 @@
       if (votes) {
         const r = votes.ready, a = votes.again;
         roomReady.setAttribute("aria-pressed", String(r.mine));
-        setDisabled(roomReady, !!roomStatus.connection || r.pending);
+        setDisabled(roomReady, !!roomStatus.connection);
+        roomReady.setAttribute("aria-disabled", String(r.pending));
         setText(roomReady, r.pending ? "Telling the host…" : r.mine ? "Ready ✓ · tap to undo" : "I’m ready");
         roomAutoLabel.hidden = !host;
         roomAuto.checked = votes.autoStart;

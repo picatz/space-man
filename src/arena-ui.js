@@ -21,7 +21,8 @@
     2: Object.freeze({ ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'jump', ArrowDown: 'down', Period: 'fire', Numpad1: 'fire', Slash: 'dash', Numpad2: 'dash', ShiftRight: 'dash' }),
   });
   // Joining uses P2's action keys only: arrows keep moving menu focus.
-  const P2_JOIN_KEYS = Object.freeze(['Period', 'Numpad1', 'Slash', 'Numpad2', 'ShiftRight']);
+  // Right Shift stays a P2 dash key but never joins: Shift+Tab must keep moving focus.
+  const P2_JOIN_KEYS = Object.freeze(['Period', 'Numpad1', 'Slash', 'Numpad2']);
   // Colour-blind safe pair (cyan / vermilion) plus a distinct shape per fighter.
   const LOCAL_COLORS = Object.freeze(['#38E1FF', '#FF7A45', '#B99AFF', '#8AECAB']);
   const LOCAL_GLYPHS = Object.freeze(['●', '■', '▲', '◆']);
@@ -365,6 +366,10 @@
     }
     // Couch play is local only: an online room, an expedition fight or a
     // touch-only device without two controllers never offers it.
+    // syncPlayers polls while the lobby is open; only touch the DOM on change so the
+    // polite live region and the focused launch button are not re-announced.
+    function setText(node, value) { if (node.textContent !== value) node.textContent = value; }
+    function setAttr(node, name, value) { if (node.getAttribute(name) !== value) node.setAttribute(name, value); }
     function syncPlayers() {
       if (!playersGroup) return;
       const standalone = !onlineActive() && !localSession && !sharedSession, pads = padList(), ok = !usingTouch || pads.length >= 2;
@@ -373,15 +378,15 @@
       playersGroup.hidden = !standalone || !ok;
       if (!standalone || !ok) { playerCount = 1; p2Joined = false; return; }
       const two = playerCount === 2, assign = assignPads(pads.map(q => q.index));
-      playerButtons.forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.players) === playerCount)));
+      playerButtons.forEach(b => setAttr(b, 'aria-pressed', String(Number(b.dataset.players) === playerCount)));
       joinButton.hidden = !two || p2Joined;
       const p1Device = assign.p1 !== null ? 'controller 1' : 'WASD · F pulse · G dash', p2Device = assign.p2 !== null ? (pads.length >= 2 ? 'controller 2' : 'your controller') + ' or arrows · . pulse · / dash' : 'arrows · . pulse · / dash';
-      playersNote.textContent = !two ? 'Share one screen: versus, free-for-all or team-up. Uses the keyboard, or controllers.'
+      setText(playersNote, !two ? 'Share one screen: versus, free-for-all or team-up. Uses the keyboard, or controllers.'
         : !p2Joined ? 'P2: press . or / on the keyboard (or A on a controller) to join.'
-        : 'P1 ' + p1Device + '  ·  P2 ' + p2Device;
-      if (!onlineActive()) formatButtons.forEach((b, i) => { const tag = b.querySelector('small'); if (tag) tag.textContent = two ? TWO_TAGS[i] : FORMATS[i].tag; });
+        : 'P1 ' + p1Device + '  ·  P2 ' + p2Device);
+      if (!onlineActive()) formatButtons.forEach((b, i) => { const tag = b.querySelector('small'); if (tag) setText(tag, two ? TWO_TAGS[i] : FORMATS[i].tag); });
       if (!launchButton || onlineActive()) return;
-      if (two) { launchButton.disabled = !p2Joined || !!(room && room.busy); if (!p2Joined) launchButton.textContent = 'Waiting for P2 to join…'; else launchButton.textContent = 'Launch 2P ' + (selections.format === 'teams' ? 'team-up' : selections.format === 'ffa' ? 'free-for-all' : 'duel') + '  ↗'; }
+      if (two) { launchButton.disabled = !p2Joined || !!(room && room.busy); setText(launchButton, !p2Joined ? 'Waiting for P2 to join…' : 'Launch 2P ' + (selections.format === 'teams' ? 'team-up' : selections.format === 'ffa' ? 'free-for-all' : 'duel') + '  ↗'); }
       else launchButton.disabled = !!(room && room.busy);
     }
     function setPlayers(n) { playerCount = n; if (n === 1) p2Joined = false; joinPadPrev = true; syncChoices(); }
@@ -693,7 +698,7 @@
         if (!online) { rematch.disabled = false; rematch.textContent = 'Rematch'; rematch.removeAttribute('aria-pressed'); }
         else if (host) { rematch.disabled = false; rematch.textContent = 'Rematch together' + (again && again.m > 1 ? ' (' + again.n + '/' + again.m + ' want one)' : ''); rematch.removeAttribute('aria-pressed'); }
         else if (!seated || !again) { rematch.disabled = true; rematch.textContent = 'Waiting for host…'; rematch.removeAttribute('aria-pressed'); }
-        else { rematch.disabled = !!roomStatus.connection || again.pending; rematch.setAttribute('aria-pressed', String(again.mine)); rematch.textContent = again.pending ? 'Telling the host…' : again.mine ? 'Waiting for host… · tap to undo' : 'Rematch?'; }
+        else { rematch.disabled = !!roomStatus.connection; rematch.setAttribute('aria-disabled', String(again.pending)); rematch.setAttribute('aria-pressed', String(again.mine)); rematch.textContent = again.pending ? 'Telling the host…' : again.mine ? 'Waiting for host… · tap to undo' : 'Rematch?'; }
       }
       paintVotes(votes);
       if (next) next.disabled = online && !host;
@@ -711,7 +716,7 @@
       let note = '', resultNote = '';
       if (votes) {
         const r = votes.ready, a = votes.again;
-        roomReady.setAttribute('aria-pressed', String(r.mine)); roomReady.disabled = !!roomStatus.connection || r.pending;
+        roomReady.setAttribute('aria-pressed', String(r.mine)); roomReady.disabled = !!roomStatus.connection; roomReady.setAttribute('aria-disabled', String(r.pending));
         roomReady.textContent = r.pending ? 'Telling the host…' : r.mine ? 'Ready ✓ · tap to undo' : 'I’m ready';
         roomAutoLabel.hidden = !host; roomAuto.checked = votes.autoStart;
         roomAutoCancel.hidden = votes.auto !== 'ready';
@@ -821,7 +826,7 @@
       roomBox.append(roomCode,roomMembers,roomReadyRow,roomInvite,shareRow,roomQRDetails);
       roomHint=el('p','arena-local-note');roomHint.id='arenaRoomHint';roomHint.setAttribute('role','status');roomLeave=button('Leave arena room','arena-text-button',leaveArenaRoom);roomLeave.id='arenaRoomLeave';roomLeave.hidden=true;roomDetails.append(roomEntry,roomBox,roomHint,roomLeave);roomDetails.addEventListener('toggle',paintRejoin);lobby.append(roomDetails);
       watchTools=el('div','arena-watch-tools');watchTools.hidden=true;const prev=button('←','arena-icon-button',()=>cycleWatch(-1));prev.id='arenaWatchPrevious';prev.setAttribute('aria-label','Watch previous fighter');const next=button('→','arena-icon-button',()=>cycleWatch(1));next.id='arenaWatchNext';next.setAttribute('aria-label','Watch next fighter');watchName=el('span','','WATCHING');watchTools.append(prev,watchName,next);rootEl.append(watchTools);
-      room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,lastRoom:opts.lastRoom,onAutoStart:()=>{if(room&&room.isHost)startMatch();},onChange:roomChanged,onSnapshot:networkSnapshot});
+      room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,lastRoom:opts.lastRoom,onAutoStart:()=>{if(room&&room.isHost)startMatch();},canStart:()=>!(selections.format==='duel'&&roomStatus&&roomStatus.info.players>2),onChange:roomChanged,onSnapshot:networkSnapshot});
     }
     function leaveArenaRoom() {
       if (!room) return true;

@@ -100,6 +100,25 @@ test('ready only exists in the lobby; again only on the results; observe() clear
   f.state.role = 1; f.state.over = true; assert.equal(rv.vote('again'), false, 'spectators cannot vote');
 });
 
+test('a vote that arrives after its phase ended is dropped, so it cannot auto-start the next round', () => {
+  const f = fakeEnv(); const rv = Social.createRoomVotes(f.env); f.state.lobby = false; f.state.over = false;   // the rematch is already running
+  rv.onSignal(2, 6); rv.onSignal(3, 6);                       // AGAIN frames that crossed the host's own Rematch tap
+  assert.equal(rv.status().again.n, 1, 'only the implicit host');
+  f.state.over = true; rv.observe(); rv.evaluate();            // next results screen
+  assert.equal(rv.status().auto, null, 'no surprise countdown');
+  f.state.over = false; f.state.lobby = false; rv.onSignal(2, 7);   // a READY that lands mid-match
+  f.state.lobby = true; rv.observe(); assert.equal(rv.status().ready.n, 0, 'not pre-checked in the next lobby');
+});
+
+test('auto-start stays held while the host cannot start (blocked), and re-arms once it can', () => {
+  let can = false; const f = fakeEnv(); const env = { ...f.env, blocked: () => !can };
+  const rv = Social.createRoomVotes(env);
+  rv.onSignal(2, 7); rv.onSignal(3, 7); rv.onSignal(1, 7);     // everyone ready, e.g. three seats in a duel
+  assert.equal(rv.status().ready.n, 3); assert.equal(rv.status().auto, null, 'an unstartable room never arms');
+  can = true; rv.evaluate(); assert.equal(rv.status().auto, 'ready', 'switching to a startable format arms it');
+  can = false; rv.evaluate(); assert.equal(rv.status().auto, null, 'and it disarms again if the room becomes unstartable');
+});
+
 test('again: the host counts as wanting a rematch; everyone else voting arms a countdown; a leaver is dropped', () => {
   const f = fakeEnv(); const rv = Social.createRoomVotes(f.env); f.state.lobby = false; f.state.over = true;
   assert.deepEqual(rv.status().again, { n: 1, m: 3, missing: [2, 3], mine: false, pending: false, unconfirmed: false });

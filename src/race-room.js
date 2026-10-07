@@ -312,7 +312,6 @@
           throw new Error(
             "This host is blocked. Manage blocked hosts in the runner settings first.",
           );
-        if (codeRoom && lastRoom) lastRoom.save(codeRoom);
         await net.acceptJoin(
           payload,
           Object.assign(
@@ -322,6 +321,7 @@
           ),
         );
         if (mine !== serial) return false;
+        if (codeRoom && lastRoom) lastRoom.save(codeRoom);
         active = true;
         busy = false;
         lastReceived = now();
