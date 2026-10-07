@@ -163,3 +163,14 @@ body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: no
   #ovAttract .home-shell::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 8px; background: #5c7d90; background-clip: padding-box; }
   #ovAttract .home-shell::-webkit-scrollbar-track { background: transparent; }
 }
+
+/* GD-06: one gold hero CTA bound to the last-played mode, Daily promoted to a card under it. */
+#ovAttract #btnHero { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 420px; min-height: 58px; margin: 16px 0 0; padding: 13px 16px; border: 0; border-radius: 15px; background: linear-gradient(180deg, #ffe08a, #ffbf3c); color: #2b1d00; box-shadow: 0 6px 22px #ffbf3c40; font: 800 15px/1.3 var(--sm-font-body); text-align: left; }
+#ovAttract #btnHero:hover, #ovAttract #btnHero:focus-visible { background: linear-gradient(180deg, #fff0b8, #ffcd5c); }
+#ovAttract #btnHero #heroLabel { flex: 1; min-width: 0; }
+#ovAttract #btnDaily { margin: 14px 0 0; padding: 11px 14px; border: 1px solid #ffce7a55; border-radius: 14px; background: #ffce7a14; }
+#ovAttract #btnDaily .daily-info { display: flex; flex-direction: column; font-size: 10px; }
+#ovAttract #btnDaily .daily-reset { color: #9dbace; font-weight: 500; }
+@media (max-width: 480px) { #ovAttract #btnHero { max-width: none; min-height: 54px; font-size: 14px; } }
+/* Short viewports keep the original order so Endless Run stays above the fold. */
+@media (max-height: 700px) { #ovAttract #btnHero { display: none; } #ovAttract .home-launch { display: flex; flex-direction: column; } #ovAttract .home-launch > * { order: 0; } #ovAttract .home-launch > #btnDaily { order: 3; } #ovAttract .home-launch > #dailyBlurb { order: 4; } }
