@@ -759,6 +759,12 @@ test('dodgeReads flags a dash i-framing through a live pulse, never respawn invu
   const found = Arena.feel.dodgeReads(state);
   assert.equal(found.length, 1);
   assert.equal(found[0].actorId, b.id); assert.equal(found[0].attackerId, a.id);
+  // The swing id is the attack's start tick, so the UI fires the beat once per swing, not once per tick.
+  const at = a.attackTicks, bx = b.x, by = b.y, read = () => { const q = Arena.attackBox(a); assert.ok(q.active); b.x = q.x; b.y = q.y; const r = Arena.feel.dodgeReads(state); assert.equal(r.length, 1); return r[0].swing; };
+  a.attackTicks = at + 1; const s1 = read();
+  state.tick++; a.attackTicks = at; const s2 = read();
+  assert.equal(s2, s1, 'one swing keeps one id across ticks');
+  state.tick--; b.x = bx; b.y = by;
   b.respawnTicks = 30;
   assert.deepEqual(Arena.feel.dodgeReads(state), []);
   b.respawnTicks = 0; b.invulnerable = 0;

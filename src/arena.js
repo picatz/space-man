@@ -828,7 +828,7 @@
         if (!box || !box.active) continue;
         for (const target of state.actors) {
           if (!enemies(state, attacker, target) || target.stocks <= 0 || target.respawnTicks || !(target.dashTicks > 0) || !(target.invulnerable > 0)) continue;
-          if (overlap(box, target)) out.push({ actorId: target.id, attackerId: attacker.id, swing: attacker.attackTicks, x: centerX(target), y: centerY(target) });
+          if (overlap(box, target)) out.push({ actorId: target.id, attackerId: attacker.id, swing: state.tick - attackElapsed(attacker), x: centerX(target), y: centerY(target) });
         }
       }
       return out;
