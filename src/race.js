@@ -197,9 +197,8 @@
       s,
     };
   }
-  function nearest(c, x, y) {
-    // This hot path serves steering and iterative contacts. Keep just the best
-    // scalars during the scan instead of allocating a new object per candidate.
+  function nearestScan(c, x, y) {
+    // Reference full scan. nearest() below must stay bit-identical to this.
     let best = null, dist = Infinity, bestX = 0, bestY = 0, bestS = 0;
     for (const g of c.segments) {
       const t = clamp(((x-g.x)*g.dx + (y-g.y)*g.dy)/(g.length*g.length), 0, 1),
@@ -210,6 +209,60 @@
       }
     }
     return best ? { x: bestX, y: bestY, tx: best.tx, ty: best.ty, s: bestS, distance: Math.sqrt(dist) } : null;
+  }
+  // Per-course lookup tables plus a small ring of recent queries. A tick asks
+  // about the same few kart positions dozens of times (steering, contacts,
+  // raceDistance inside CPU rival checks), so identical queries are answered
+  // from the ring and a miss starts from the closest recent segment, then
+  // skips every segment whose bounding circle cannot beat the best so far.
+  // The result, including first-index tie-breaking, equals nearestScan.
+  const lookups = new WeakMap(), RING = 16;
+  function lookup(c) {
+    let t = lookups.get(c);
+    if (!t) {
+      const n = c.segments.length;
+      t = { cx: new Float64Array(n), cy: new Float64Array(n), half: new Float64Array(n),
+        qx: new Float64Array(RING).fill(NaN), qy: new Float64Array(RING), qi: new Int32Array(RING), next: 0 };
+      c.segments.forEach((g, i) => {
+        t.cx[i] = g.x + g.dx / 2; t.cy[i] = g.y + g.dy / 2; t.half[i] = g.length / 2;
+      });
+      lookups.set(c, t);
+    }
+    return t;
+  }
+  function nearest(c, x, y) {
+    const segs = c.segments, n = segs.length;
+    if (!n || !(x - x === 0) || !(y - y === 0)) return nearestScan(c, x, y);
+    const t = lookup(c);
+    let hint = 0, hd = Infinity;
+    for (let k = 0; k < RING; k++) {
+      const dx = x - t.qx[k], dy = y - t.qy[k], d = dx * dx + dy * dy;
+      if (d < hd) { hd = d; hint = t.qi[k]; }   // NaN slots never win
+    }
+    let bi = -1, dist = Infinity, bestX = 0, bestY = 0, bestS = 0;
+    const consider = (i) => {
+      const g = segs[i],
+        u = clamp(((x-g.x)*g.dx + (y-g.y)*g.dy)/(g.length*g.length), 0, 1),
+        px = g.x + g.dx*u, py = g.y + g.dy*u,
+        d = (x-px)**2 + (y-py)**2;
+      if (d < dist || (d === dist && i < bi)) {
+        dist = d; bi = i; bestX = px; bestY = py; bestS = g.start+u*g.length;
+      }
+    };
+    if (hd === 0) consider(hint);   // identical query: its winner is already known
+    else {
+      for (let k = -6; k <= 6; k++) consider(((hint + k) % n + n) % n);
+      for (let i = 0; i < n; i++) {
+        const dx = x - t.cx[i], dy = y - t.cy[i],
+          lb = Math.sqrt(dx*dx + dy*dy) - t.half[i] - 1e-6;
+        if (lb > 0 && lb * lb > dist) continue;
+        consider(i);
+      }
+      const slot = t.next; t.next = (slot + 1) % RING;
+      t.qx[slot] = x; t.qy[slot] = y; t.qi[slot] = bi;
+    }
+    const g = segs[bi];
+    return { x: bestX, y: bestY, tx: g.tx, ty: g.ty, s: bestS, distance: Math.sqrt(dist) };
   }
   // This is the single geometry/rules catalog used by simulation, renderers,
   // CPU routing and wire validation. There is no screen-space collision data.
@@ -953,6 +1006,7 @@
     clearFeatures,
     at,
     nearest,
+    nearestScan,
     command,
     cancelControl,
     create,
