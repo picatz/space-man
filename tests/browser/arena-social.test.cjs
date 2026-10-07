@@ -23,7 +23,9 @@ test('arena social UI: ready tally, auto-start, rematch votes and last-room memo
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const base = `http://127.0.0.1:${server.address().port}/`;
-  const browser = await chromium.launch({ headless: true });
+  // Close the server if the browser cannot launch, or the open socket keeps the test process alive.
+  const browser = await chromium.launch(process.env.SPACE_MAN_CHROMIUM_PATH ? { headless: true, executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : { headless: true })
+    .catch(async e => { server.closeAllConnections(); await new Promise(r => server.close(r)); throw e; });
   t.after(async () => {
     for (const c of pages) if (!c.page.isClosed()) await Promise.race([c.page.evaluate(() => { window.SpaceManNet?.leave(); sessionStorage.clear(); }).catch(() => {}), new Promise(r => setTimeout(r, 1200))]);
     await new Promise(r => setTimeout(r, 80));
