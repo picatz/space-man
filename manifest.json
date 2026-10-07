@@ -1,6 +1,8 @@
 {
     "id": "/space-man/",
     "name": "Space Man",
+    "lang": "en",
+    "dir": "ltr",
     "short_name": "Space Man",
     "description": "An addictive arcade space platformer. Outrun the solar flare, stomp aliens, chain combos.",
     "start_url": "./",
@@ -13,6 +15,9 @@
     "categories": ["games", "entertainment"],
     "launch_handler": { "client_mode": "navigate-existing" },
     "prefer_related_applications": false,
+    "shortcuts": [
+        { "name": "Daily Course", "short_name": "Daily", "url": "./#daily" }
+    ],
     "screenshots": [
         {
             "src": "screenshots/gameplay-wide.png",

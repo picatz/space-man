@@ -737,6 +737,13 @@
   .stack-btn { display: flex; flex-direction: column; }
   #btnJoinNotNow, #btnJoinAnyway, #btnRejoinLast { opacity: 0.75; }
   #btnRejoinLast[hidden] { display: none; }
+  .toggle-row[hidden], .settings-group[hidden] { display: none; }
+  /* A11Y-07: green/coral is the classic red-green confusion pair. With the switch on the
+     tokens become a blue/orange pair (luminance-distinct too) wherever CSS uses them. */
+  body.cb-hud { --green: #5AB4FF; --coral: #FFA04A; }
+  body.cb-hud .mini-chip.coral { background: rgba(255, 160, 74, 0.12); border-color: rgba(255, 160, 74, 0.4); }
+  body.cb-hud .stat-grid .stat.done b::after { content: ' \2713'; }
+  body.cb-hud .q-good { color: #5AB4FF; }
   #joinState { font-size: 12px; letter-spacing: 1px; color: var(--ui); opacity: 0.75; margin: 6px 0; min-height: 16px; }
   #joinCustomDir { font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--gold); opacity: 0.85; margin: 4px 0; display: none; }
   #joinCustomDir.show { display: block; }
@@ -1330,6 +1337,7 @@ if (typeof settings.netRelayList !== 'string') settings.netRelayList = '';
 // Raw overlay wins for switches (legacy precedence) but the mixer trio must stay sane.
 settings.musicVol = migratedSave.settings.musicVol; settings.sfxVol = migratedSave.settings.sfxVol; settings.muted = migratedSave.settings.muted;
 settings.reduceMotion = migratedSave.settings.reduceMotion; settings.keys = migratedSave.settings.keys; settings.uiScale = migratedSave.settings.uiScale;
+settings.cbHud = migratedSave.settings.cbHud; settings.assistFlare = migratedSave.settings.assistFlare;
 // Live check (the switch applies the moment it flips). SHOT keeps the OS answer
 // so a stale profile can never perturb a golden.
 function lessMotion() { return SHOT ? osReducedMotion : settings.reduceMotion; }
@@ -1341,7 +1349,7 @@ let stats = Object.assign(
   { bestScore: 0, bestDist: 0, runs: 0, kills: 0, bestChain: 1, medals: { BRONZE: 0, SILVER: 0, GOLD: 0, PLATINUM: 0 }, deadStreak: 0, mercy: false, deepRuns: 0, missionsDone: 0 },
   loadJSON(LS.stats, {})
 );
-let flags = Object.assign({ taughtRun: false, taughtJump: false, taughtStomp: false, taughtShoot: false, installDismissed: false, initials: 'AAA', playDays: [], bestStreak: 0, ufoSeen: 0 }, loadJSON(LS.flags, {}));
+let flags = Object.assign({ taughtRun: false, taughtJump: false, taughtStomp: false, taughtShoot: false, installDismissed: false, installDismissedAt: 0, initials: 'AAA', playDays: [], bestStreak: 0, ufoSeen: 0 }, loadJSON(LS.flags, {}));
 let top5 = loadJSON(LS.top5, null);
 if (top5 !== null && !Array.isArray(top5)) top5 = null;   // corrupt/tampered JSON → re-migrate
 
@@ -1385,7 +1393,8 @@ function loadDaily() {
 }
 let dailyCardDay = null;   // the UTC day the title's Daily card last rendered
 // A validated #daily= / #seed=&beat= link waits here for the next START.
-let challenge = SHOT ? null : COURSE.parse(location.hash, Date.now());
+// A bare #daily (the installed app's Daily Course shortcut) means today's course.
+let challenge = SHOT ? null : (COURSE.parse(location.hash, Date.now()) || (location.hash === '#daily' ? dailyCourse() : null));
 function takeChallenge() { const c = challenge; challenge = null; return c ? refreshCourse(c) : null; }
 function dailyCourse(day) {
   const d = day || COURSE.dayKey(Date.now());
@@ -2811,7 +2820,7 @@ const G = {
   newBest: false, celebrate: 0, deathSeq: 0, deathZoom: 1, deathCardShown: false,
   vignette: 0, edgePulse: 0, stinger: 0, deep1000: false,
   hints: [], shootingStar: null, starTimer: 0,
-  runStart: 0, frameCount: 0, helmet: null, mercy: false, mercyLvl: 0,
+  runStart: 0, frameCount: 0, helmet: null, mercy: false, mercyLvl: 0, assisted: false,
   platIdx: 0, lastGenBand: 0, easeUntilM: -1, genStartM: 0, crumbleRun: 0, rampStep: 0, trailGot: 0, trailId: -1,
   body: null, kickX: 0, kickY: 0, kickAt: -9, deathFocus: null,
   crackle: 0, deadShownAt: 0, runMedal: null, qualifies: false,
@@ -3150,6 +3159,8 @@ function resetRun(seed, replayable, world) {
   G.sectorFadeT = 999; G.themeHueFrom = G.themeHueTo = BAND_HUE[0];
   // A human profile's deadStreak must never fork a seeded #shot world.
   G.frameCount = 0; G.runStart = G.time; G.prevBest = bestScore; G.mercy = stats.mercy && !SHOT && !G.worldRng;
+  // A11Y-08: assists are solo-only and never reach rooms, goldens or seeded boards; the run is flagged instead.
+  G.assisted = !!settings.assistFlare && !SHOT && SHOT_SEED === null && !netLive();
   G.mercyLvl = G.mercy ? clamp(stats.deadStreak - 2, 1, 3) : 0;
   G.pbFlagX = stats.bestDist > 0 ? G.startX + stats.bestDist * 10 : null;
   G.hints = [];
@@ -4001,11 +4012,13 @@ function updateHeat(gap) {
   } else if (G.hot && G.heatT <= 0) { G.hot = false; Audio.sfx.heat(false); }
 }
 const heatMul = () => G.hot ? HEAT_MULT : 1;
+const ASSIST_FLARE_MUL = 0.85;
 function updateFlare() {
   const B = bandParams(G.band, G.dist);
   G.flare.prevX = G.flare.x;
   let target = B.flare;
   if (G.mercyLvl > 0 && G.frameCount * STEP < 30) target *= (0.94 - 0.02 * G.mercyLvl);
+  if (G.assisted) target *= ASSIST_FLARE_MUL;   // A11Y-08 Slower solar flare: ~15% more distance before the flare catches up
   if (G.flareMul !== 1) target = Math.min(target * G.flareMul, CFG.maxRun - 0.6);   // AFTERBURNER Daily
   G.flare.speed += (target - G.flare.speed) * 0.01;
   // Rubber-band: the flare is the game's forward pressure. A player at max run
@@ -4346,7 +4359,7 @@ function finalizeDeath(completed = false) {
   }
   // Today's Daily Course record (a replayed past day's course is just a run).
   G.dailyPrev = null;
-  if (G.course && G.course.kind === 'daily' && !SHOT) {
+  if (G.course && G.course.kind === 'daily' && !SHOT && !G.assisted) {   // an assisted run never sets the Daily record
     const d = loadDaily();
     if (d.day === G.course.day && (G.course.gen || 1) === COURSE.GEN) {
       G.dailyPrev = d.runs ? d.best : -1;   // -1: first attempt today
@@ -6026,6 +6039,9 @@ function drawHints(camX, camY) {
       // world anchor floating above a platform they may have already run past.
       hx = camX + view.w * (settings.lefty ? 0.78 : 0.22);
       hy = camY + view.h - (view.isTablet ? 128 : 108);
+      // The stick spawns wherever the thumb lands, so while it is down the hint
+      // lifts clear of the well and knob (UX-04); it retires on the first drag.
+      if (input.stick.active) { hx = camX + input.stick.cx; hy = camY + clamp(input.stick.cy - 70, 24 + viewInset('top'), view.h - 108); }
       hx = clamp(hx, camX + hw + margin, camX + view.w - hw - margin);   // stick rest can sit closer to the edge than the text half-width
     } else if (hx >= camX) {
       // Only clamp into frame once the anchor is actually inside the viewport.
@@ -6477,6 +6493,13 @@ function hideAllOverlays() {
   const top = topOverlayId();
   focusReturn = top && overlayOpener[top] || null;
   OVERLAY_IDS.forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; cancelRebind();
+  syncBackdropInert();
+}
+// UX-06: while a dialog overlay is up the canvas and crew panel are not a place
+// a screen reader (or Tab) can wander to. The attract card keeps them live.
+function syncBackdropInert() {
+  const top = topOverlayId(), dialog = !!top && top !== 'ovAttract';
+  [$('game'), $('crewPanel')].forEach((n) => { if (n) n.inert = dialog; });
 }
 function showOverlay(id) {
   if (id === 'ovPause') {
@@ -6489,6 +6512,7 @@ function showOverlay(id) {
   const opener = document.activeElement;
   overlayOpener[id] = opener && opener !== document.body && opener.isConnected !== false && !(el.contains && el.contains(opener)) ? opener : null;
   el.classList.add('show');
+  syncBackdropInert();
   if ((input.pad.connected || (id === 'ovPause' && input.usingKeys)) && !SHOT) menuFocusFirst(topOverlayId());   // controller / keyboard players land on the first control
   const back = focusReturn; focusReturn = null;   // controller players keep the first-control landing above (Play on home)
   if (back && !SHOT && !input.pad.connected && el.contains && el.contains(back) && back.isConnected !== false && visibleEl(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
@@ -6683,7 +6707,7 @@ function renderDeathCard() {
   $('deadStats').style.gridTemplateColumns = G.missionsRun > 0 ? 'repeat(5, minmax(0, 1fr))' : '';
   const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
   if (target) { dt.textContent = target; dt.style.display = 'block'; } else dt.style.display = 'none';
-  const dc = $('deadCourse'), courseText = deathCourseLine(fs);
+  const dc = $('deadCourse'), courseText = (deathCourseLine(fs) || '') + (G.assisted ? (deathCourseLine(fs) ? ' · ' : '') + 'ASSISTED · NO DAILY RECORD OR CHALLENGE LINK' : '');
   if (courseText) { dc.textContent = courseText; dc.style.display = 'block'; } else dc.style.display = 'none';
   const sb = $('btnShare');
   sb.textContent = 'Share Run'; sb.style.display = SHOT || netLive() ? 'none' : '';
@@ -6704,7 +6728,7 @@ function renderDeathCard() {
   else { $('deadScores').style.display = ''; renderScoreTable('deadScores', true); }
   renderRoomBoard();               // Run Together: ROOM column + spectate/emote controls (no-op solo)
   const chip = $('installChip');
-  if (deferredPrompt && !flags.installDismissed && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
+  if (deferredPrompt && !installQuiet() && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
   $('updateChip').classList.toggle('show', swu.ready && !swu.reloading);
   hideAllOverlays(); showOverlay('ovDead');
   // SHOT goldens are captured on the frozen first frame — reveal everything
@@ -6728,7 +6752,7 @@ function shareRun() {
   const c = G.course && G.course.kind === 'daily' ? G.course : { kind: 'seed', seed: G.runSeed, gen: G.gen };
   const text = 'SPACE MAN · ' + (c.kind === 'daily' ? 'Daily ' + c.day + ' · ' : '') + fs.toLocaleString() + ' pts · ' + G.dist.toLocaleString() + ' m 🚀';
   // A mercy-assisted course can't be rebuilt from its seed — share the game, not a race.
-  const url = G.worldRng ? COURSE.link(c, fs) : COURSE.SITE, b = $('btnShare');
+  const url = G.worldRng && !G.assisted ? COURSE.link(c, fs) : COURSE.SITE, b = $('btnShare');   // assisted runs share the game, not a race
   const copied = () => {
     b.textContent = 'Copied ✓'; announce('Result and challenge link copied.');
     deathTimers.push(setTimeout(() => { b.textContent = 'Share Run'; }, 1800));
@@ -6961,6 +6985,12 @@ const SETTINGS_DEF = [
   { key: 'uiScale', type: 'choice', label: 'Text size', noShot: true },
   { key: 'lefty', type: 'switch', label: 'Left-handed' },
   { key: 'autorun', type: 'switch', label: 'Auto-run (touch)' },
+  // A11Y-07: colour is never the only cue. Swaps the green/coral pair for a blue/orange one
+  // and numbers the Star Circuit minimap pilots. noShot: goldens keep the default palette.
+  { key: 'cbHud', section: 'Vision', type: 'switch', label: 'Colour-blind safe HUD', noShot: true },
+  // A11Y-08: solo-runner assists. Never active in rooms or goldens; an assisted run is
+  // marked ASSISTED and does not count toward the Daily record or a challenge link.
+  { key: 'assistFlare', section: 'Assists', type: 'switch', label: 'Slower solar flare (solo)', noShot: true },
   // Device-dependent (adaptive resolution never runs under #shot): noShot keeps
   // the row out of the pause/settings goldens like the net rows below.
   { key: 'sharp', section: 'Performance', type: 'switch', label: 'Sharp rendering', noShot: true },
@@ -6968,6 +6998,7 @@ const SETTINGS_DEF = [
   { key: 'smooth', type: 'switch', label: 'Smooth motion (120 fps)', noShot: true },
   { key: 'batterySaver', type: 'switch', label: 'Battery saver', noShot: true },
   { key: 'autoSaver', type: 'switch', label: 'Save power when battery is very low', noShot: true },
+  { key: 'install', type: 'install', label: 'Install Space Man', section: 'App', noShot: true },
   { key: 'key:left', bind: 'left', type: 'key', label: 'Move left', section: 'Keyboard', noShot: true },
   { key: 'key:right', bind: 'right', type: 'key', label: 'Move right', noShot: true },
   { key: 'key:jump', bind: 'jump', type: 'key', label: 'Jump', noShot: true },
@@ -7032,6 +7063,12 @@ function buildSettings(host) {
       b.className = 'mini-chip'; b.dataset.choice = def.key;
       b.onclick = () => cycleTextScale();
       row.appendChild(b);
+    } else if (def.type === 'install') {
+      row.dataset.installRow = '1'; row.hidden = true;
+      const b = document.createElement('button');
+      b.className = 'mini-chip'; b.textContent = 'Install'; b.setAttribute('aria-label', def.label);
+      b.onclick = () => promptInstall();
+      row.appendChild(b);
     } else if (keyRow) {
       row.classList.add('key-row');
       const b = document.createElement('button');
@@ -7062,7 +7099,35 @@ function buildSettings(host) {
   syncHapticRows();
 }
 const AUDIO_ROWS = new Set(['music', 'musicVol', 'sfx', 'sfxVol']);
+// UX-05: "Install" lives in Settings too, so a dismissed chip is never the only way in.
+function installable() {
+  const standalone = !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  return !!deferredPrompt && !standalone;
+}
+function syncInstallRows() {
+  const on = installable();
+  document.querySelectorAll('[data-install-row]').forEach((row) => {
+    row.hidden = !on;
+    const g = row.closest('.settings-group'); if (g) g.hidden = !on;   // no orphan "App" heading
+  });
+}
+function promptInstall() {
+  if (!deferredPrompt) return;
+  const dp = deferredPrompt; deferredPrompt = null;
+  try { dp.prompt(); } catch (e) {}
+  dismissInstall(); syncInstallRows();
+}
+// A dismissed prompt only stays quiet for a month: the chip returns after that.
+const INSTALL_QUIET_MS = 30 * 24 * 3600 * 1000;
+function installQuiet() {
+  if (!flags.installDismissed) return false;
+  if (!(flags.installDismissedAt > 0)) { flags.installDismissedAt = Date.now(); persistAll(); }
+  return Date.now() - flags.installDismissedAt < INSTALL_QUIET_MS;
+}
+function dismissInstall() { flags.installDismissed = true; flags.installDismissedAt = Date.now(); persistAll(); $('installChip').classList.remove('show'); }
 function syncSettingsUI() {
+  syncInstallRows();
+  document.body.classList.toggle('cb-hud', !!settings.cbHud);
   document.body.classList.toggle('no-haptics', !settings.haptics);   // switches the iPhone tap overlays off with the setting
   document.querySelectorAll('[data-setting]').forEach((el) => {
     const key = el.dataset.setting;
@@ -9158,8 +9223,7 @@ $('btnReset').onclick = () => {
 };
 $('updateChip').onclick = () => { $('updateChip').classList.remove('show'); applyUpdate(true); };
 $('installChip').onclick = () => {
-  if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt = null; }
-  flags.installDismissed = true; persistAll(); $('installChip').classList.remove('show');
+  if (deferredPrompt) promptInstall(); else dismissInstall();
 };
 $('ovDead').addEventListener('pointerdown', (e) => {
   if (e.target.closest('.btn') || e.target.closest('.install-chip')) return;
@@ -9195,7 +9259,8 @@ document.addEventListener('visibilitychange', () => {
 });
 
 let deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; });
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; syncInstallRows(); });
+window.addEventListener('appinstalled', () => { deferredPrompt = null; syncInstallRows(); });
 
 /* ---------------------------------------------------------------------------
    26. SAFE-AREA INSET CSS VARS
