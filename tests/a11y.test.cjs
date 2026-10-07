@@ -328,3 +328,131 @@ test('a controller with no standard mapping is announced and still used best-eff
   d.run('pollGamepad()');
   assert.match(d.run('toastQ[0].text'), /READY/);
 });
+
+
+// ---- UX-04 / UX-05 / UX-06 / IN-04 / A11Y-06 / A11Y-07 / A11Y-08 ----
+const fs = require('node:fs');
+const path = require('node:path');
+const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+
+test('save schema persists and validates the new Vision and Assists switches', () => {
+  const migrate = (s) => {
+    const win = { SpaceManCosmetics: { migrateProfile: () => ({}) } };
+    new Function('window', read('src/save-schema.js'))(win);
+    return win.SpaceManSave.migrate({ settings: s }, {}).settings;
+  };
+  assert.equal(migrate({}).cbHud, false, 'off by default');
+  assert.equal(migrate({}).assistFlare, false, 'assists are off by default so standard play is the default');
+  assert.equal(migrate({ cbHud: true, assistFlare: true }).cbHud, true);
+  assert.equal(migrate({ cbHud: true, assistFlare: true }).assistFlare, true);
+  assert.equal(migrate({ cbHud: 'yes', assistFlare: 1 }).assistFlare, false, 'only literal true counts');
+  assert.equal(migrate({ cbHud: 'yes' }).cbHud, false);
+});
+
+test('the Colour-blind HUD switch swaps the CSS tokens and persists', (t) => {
+  const storage = new Map();
+  const { c } = solo(t, { storage });
+  assert.equal(c.run('document.body.classList.contains("cb-hud")'), false);
+  c.run('toggleSetting("cbHud")');
+  assert.equal(c.run('settings.cbHud'), true);
+  assert.equal(c.run('document.body.classList.contains("cb-hud")'), true);
+  assert.match(read('index.html'), /body\.cb-hud \{ --green: #[0-9A-Fa-f]{6}; --coral: #[0-9A-Fa-f]{6}; \}/);
+  assert.ok([...storage.values()].some((v) => /"cbHud":true/.test(v)), 'saved');
+});
+
+test('Slower flare assist: solo only, flagged, and keeps seeded boards honest', (t) => {
+  const { c } = solo(t);
+  c.run('settings.assistFlare = false; startRun(); G.mode = "play";');
+  assert.equal(c.run('G.assisted'), false);
+  c.run('settings.assistFlare = true; startRun(); G.mode = "play";');
+  assert.equal(c.run('G.assisted'), true, 'a solo run with the switch on is marked assisted');
+  const speed = (assist) => c.run(`settings.assistFlare = ${assist}; startRun(); G.mode = "play"; G.flare.speed = bandParams(G.band, G.dist).flare; updateFlare(); G.flare.speed`);
+  assert.ok(speed(true) < speed(false), 'assisted flare target is slower');
+  const html = read('index.html');
+  assert.match(html, /!SHOT && !G\.assisted\) \{/, 'daily record gated');
+  assert.match(html, /G\.worldRng && !G\.assisted \? COURSE\.link/, 'no challenge link for assisted runs');
+  assert.match(html, /G\.assisted = !!settings\.assistFlare && !SHOT && SHOT_SEED === null && !netLive\(\)/, 'never in rooms or goldens');
+  // Presentation/input side only: the sim and world generator never read the assist.
+  for (const f of ['src/arena.js', 'src/race.js', 'src/worldgen.js']) assert.ok(!/assistFlare|\bG\.assisted|cbHud/.test(read(f)), f + ' must not know about the UI assists');
+});
+
+test('Settings gets an Install row that follows the install prompt (UX-05)', (t) => {
+  const { c } = solo(t);
+  assert.equal(c.run('installable()'), false, 'nothing to install without beforeinstallprompt');
+  c.run('deferredPrompt = { prompt() {} }');
+  assert.equal(c.run('installable()'), true);
+  c.run('promptInstall()');
+  assert.equal(c.run('deferredPrompt'), null, 'prompt is single-use');
+  assert.equal(c.run('flags.installDismissed'), true);
+  assert.equal(c.run('installQuiet()'), true, 'quiet right after');
+  c.run('flags.installDismissedAt = Date.now() - 31 * 24 * 3600 * 1000');
+  assert.equal(c.run('installQuiet()'), false, 'the chip comes back after a month, not never');
+  const manifest = JSON.parse(read('manifest.json'));
+  assert.ok(manifest.shortcuts.some((s) => /Daily/.test(s.name) && s.url === './#daily'));
+  assert.equal(manifest.lang, 'en');
+  assert.match(read('index.html'), /location\.hash === '#daily' \? dailyCourse\(\)/, 'the shortcut url is handled');
+});
+
+test('Dialog overlays make the canvas and crew panel inert; race dialogs are aria-modal (UX-06)', (t) => {
+  const { c } = solo(t);
+  c.run('showOverlay("ovPause")');
+  assert.equal(c.run('$("game").inert'), true);
+  assert.equal(c.run('$("crewPanel").inert'), true);
+  c.run('hideAllOverlays()');
+  assert.equal(c.run('$("game").inert'), false);
+  c.run('showOverlay("ovAttract")');
+  assert.equal(c.run('$("game").inert'), false, 'the attract card keeps the scene live');
+  const race = read('src/race-ui.js');
+  for (const v of ['lobby', 'pausePanel', 'resultPanel']) assert.ok(race.includes(`${v}.setAttribute("aria-modal", "true")`), v);
+});
+
+test('Race minimap numbers its pilots under the colour-blind switch (A11Y-07)', () => {
+  const race = read('src/race-ui.js');
+  assert.match(race, /prefs\.cbHud\s*\? new Map\(R\.standings\(state\)/);
+  assert.match(race, /rootEl\.dataset\.cb = String\(!!prefs\.cbHud\)/);
+});
+
+test('flash budget: no full-viewport bright fill outside the vignette (A11Y-06)', () => {
+  const html = read('index.html');
+  const sources = { 'index.html': html, 'src/arena-ui.js': read('src/arena-ui.js'), 'src/race-view.js': read('src/race-view.js'), 'src/race-ui.js': read('src/race-ui.js') };
+  const bright = (col) => {
+    const m = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i.exec(col.trim());
+    if (m) { const h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1]; const n = parseInt(h, 16); return ((n >> 16) + ((n >> 8) & 255) + (n & 255)) / 3 > 170; }
+    return /^(white|rgba?\(\s*255\s*,\s*255\s*,\s*255)/i.test(col.trim());
+  };
+  const offenders = [];
+  let seen = 0;
+  for (const [file, src] of Object.entries(sources)) {
+    const lines = src.split('\n');
+    lines.forEach((line, i) => {
+      if (!/fillRect\(\s*0\s*,\s*0\s*,\s*(view\.w|W|width|cssW|canvas\.width)\b/.test(line)) return;
+      seen++;
+      const near = lines.slice(Math.max(0, i - 3), i + 1).join(' ');
+      const fills = [...near.matchAll(/fillStyle\s*=\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+      const last = fills[fills.length - 1];
+      // A brief, decaying pulse at <= 0.4 alpha is the budget (the arena KO flash); anything stronger fails.
+      const alphas = [...near.matchAll(/globalAlpha\s*=\s*(\.?\d*\.?\d+)/g)].map((m) => Number(m[1]));
+      const cap = alphas.length ? alphas[alphas.length - 1] : 1;
+      if (last && bright(last) && cap > 0.4) offenders.push(file + ':' + (i + 1) + ' ' + last);
+    });
+  }
+  const ko = read('src/arena-ui.js');
+  assert.match(ko, /if \(calm\(\)\) return;\s*\n\s*effects\.push\(\{ type: 'koflash'/, 'the KO flash is skipped under reduce motion');
+  assert.ok(seen > 0, 'the scan still finds full-screen fills to check');
+  assert.deepEqual(offenders, [], 'a full-screen bright fill is a photosensitivity risk; cap alpha and honour reduce motion');
+  // Pulsing UI stays under the 3 Hz general flash threshold (1.6 s loop) and stops under reduce motion.
+  assert.match(html, /\.btn\.pulse::after[^}]*animation: pulseHalo 1\.6s/);
+  assert.match(html, /reduce-motion[^{]*\.btn\.pulse|\.btn\.pulse[^{]*reduce-motion/);
+});
+
+test('iOS haptic label layer stays documented (IN-04)', () => {
+  const html = read('index.html');
+  const hap = /\.hap-touch\s*\{[^}]*z-index:\s*(\d+)/.exec(html);
+  assert.ok(hap, 'hap-touch layer exists');
+  assert.equal(Number(hap[1]), 4, 'DOM HUD controls must sit above z-index 4');
+  assert.match(html, /<label class="hap-touch" id="hapTouch" aria-hidden="true">/);
+});
+
+test('touch MOVE hint lifts clear of the active stick (UX-04)', () => {
+  assert.match(read('index.html'), /if \(input\.stick\.active\) \{ hx = camX \+ input\.stick\.cx; hy = camY \+ clamp\(input\.stick\.cy - 70/);
+});

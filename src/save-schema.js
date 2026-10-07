@@ -59,6 +59,9 @@
     s.reduceMotion = typeof s.reduceMotion === 'boolean' ? s.reduceMotion : !!(opts && opts.reduceMotion);
     s.keys = sanitizeKeys(s.keys);
     s.uiScale = sanitizeTextScale(s.uiScale);   // text size: 1 / 1.15 / 1.3
+    // A11Y-07/08: presentation / solo-assist switches. Anything but literal true is off.
+    s.cbHud = s.cbHud === true;
+    s.assistFlare = s.assistFlare === true;
     const c = window.SpaceManCosmetics.migrateProfile(input.cosmetics, { stats: input.stats, flags: input.flags });
     if (c.companion === undefined) c.companion = 'default';
     if (c.patches === undefined) c.patches = [];

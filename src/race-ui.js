@@ -70,8 +70,9 @@
     return { d, dangerous, safe, direction,
       // Cover the full 54-tick charge + 28-tick wave, plus two paint frames.
       actionable: safe !== null || actor.item === "shield" || actor.shieldTicks > 84,
-      label: (effects.length > 1 ? effects.length + " PULSES" : names[0]?.toUpperCase() + " LANE PULSE") + " · " +
-        (direction === "left" ? "MOVE LEFT / SHIELD" : direction === "right" ? "MOVE RIGHT / SHIELD" : direction === "hold" ? "HOLD YOUR LANE" : "SHIELD IF READY"),
+      // One verb only: the lane diagram carries the geometry and the count.
+      label: direction === "left" ? "MOVE LEFT" : direction === "right" ? "MOVE RIGHT" : direction === "hold" ? "HOLD LANE" : "SHIELD IF READY",
+      count: effects.length,
       description: "Pulse danger in " + names.join(" and ") + " lane. " +
         (safe === null ? "No comfortably clear lane is visible." : "Clear lane: " + laneName(safe) + "."),
     };
@@ -118,6 +119,7 @@
 @media(prefers-reduced-motion:reduce){.race-root *{transition:none!important}}
 
 @media(max-width:360px) and (max-height:650px){.race-root[data-touch=true] .race-minimap{display:none}}
+.race-root[data-cb=true] .race-position,.race-root[data-cb=true] .race-banner small{color:#8fd0ff}.race-root[data-cb=true] .race-boostfill{background:#8fd0ff}.race-root[data-cb=true] .race-drive-feedback[data-kind=boost]{color:#8fd0ff}.race-root[data-cb=true] .race-warning{background:#4a2a0de0;border-color:#ffa04a}
 `;
   function create(opts = {}) {
     const R = root.SpaceManRace;
@@ -708,6 +710,7 @@
       prefersReduced = !!root.matchMedia?.("(prefers-reduced-motion: reduce)")
         .matches;
       rootEl.dataset.calm = String(calm());
+      rootEl.dataset.cb = String(!!prefs.cbHud);
       rootEl.dataset.handed =
         prefs.lefty || prefs.handedness === "left" || prefs.leftHanded
           ? "left"
@@ -1292,6 +1295,7 @@
       modal = el("div", "race-modal");
       lobby = el("div", "race-dialog race-lobby");
       lobby.setAttribute("role", "dialog");
+      lobby.setAttribute("aria-modal", "true");
       lobby.setAttribute("aria-label", "Choose your race");
       const header = el("div", "race-lobby-header");
       header.append(
@@ -1408,6 +1412,7 @@
       lobby.append(header, grid);
       pausePanel = el("div", "race-dialog race-compact race-pause-panel");
       pausePanel.setAttribute("role", "dialog");
+      pausePanel.setAttribute("aria-modal", "true");
       pausePanel.setAttribute("aria-label", "Race paused");
       pausePanel.append(
         el("span", "race-pill", "PARKED IN ORBIT"),
@@ -1430,6 +1435,7 @@
 
       resultPanel = el("div", "race-dialog race-compact race-result-panel");
       resultPanel.setAttribute("role", "dialog");
+      resultPanel.setAttribute("aria-modal", "true");
       resultPanel.setAttribute("aria-label", "Race results");
       resultTitle = el("h2");
       resultRows = el("div", "race-results");
@@ -1953,7 +1959,7 @@
         root.SpaceManArt.characterStyle(appearance, actor.color), { calm: true });
       ctx.restore();
     }
-    function drawMap(ctx, c, w, h, actors) {
+    function drawMap(ctx, c, w, h, actors, ranks) {
       ctx.clearRect(0, 0, w, h);
       ctx.save();
       const scale = Math.min((w - 25) / 1800, (h - 20) / 1400);
@@ -1975,8 +1981,16 @@
           const selected = a.id === focused?.id;
           ctx.fillStyle = selected ? "#FFF3CE" : a.color;
           ctx.beginPath();
-          ctx.arc(a.x, a.y, selected ? 40 : 26, 0, TAU);
+          const cbR = ranks ? (selected ? 52 : 40) : 0;
+          ctx.arc(a.x, a.y, ranks ? cbR : selected ? 40 : 26, 0, TAU);
           ctx.fill();
+          if (ranks) {
+            // A11Y-07: colour is not the only cue; every dot carries its race position.
+            ctx.fillStyle = "#091727";
+            ctx.font = "900 " + (selected ? 60 : 48) + "px system-ui,sans-serif";
+            ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(String(ranks.get(a.id) || ""), a.x, a.y + 3);
+          }
           if (selected) {
             ctx.strokeStyle = "#091727";
             ctx.lineWidth = 16;
@@ -2181,7 +2195,8 @@
         if (cue) root.SpaceManArt.identityCue(g, cue.x+cue.w/2, cue.y+cue.h/2, own ? 'you' : 'watching', cue.targetX, cue.targetY, cue.link);
       }
       updateIdentity(a);
-      drawMap(mg, c, 340, 240, shown.actors);
+      drawMap(mg, c, 340, 240, shown.actors, prefs.cbHud
+        ? new Map(R.standings(state).map((x, i) => [x.id, i + 1])) : null);
       position.replaceChildren(
         document.createTextNode(
           String(
@@ -2272,6 +2287,7 @@
           const mid=(danger+90)/180*140;threatG.beginPath();threatG.moveTo(mid-5,10);threatG.lineTo(mid,4);threatG.lineTo(mid+5,10);threatG.stroke();
         }
         if(guide.safe!==null){const x=(guide.safe+90)/180*140;threatG.strokeStyle="#9eeeb9";threatG.lineWidth=2;threatG.strokeRect(x-7,10,14,16);}
+        if(guide.count>1){threatG.font="700 10px system-ui,sans-serif";threatG.textAlign="right";threatG.textBaseline="top";threatG.fillStyle="#ffe5bd";threatG.fillText("\u00d7"+guide.count,137,2);}
         const x=clamp((guide.d+90)/180*140,5,135);
         threatG.fillStyle="#e8fbff";threatG.strokeStyle="#071524";threatG.lineWidth=2;threatG.beginPath();threatG.arc(x,22,4,0,TAU);threatG.fill();threatG.stroke();
       }

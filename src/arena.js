@@ -815,6 +815,24 @@
       const e = event || {}, knock = Math.max(0, finite(e.knockback, 0)), dmg = Math.max(0, finite(e.damage, 0));
       return clamp(Math.round(2 + knock * 0.28 + (dmg >= 20 ? 1 : 0)), 2, 8);
     },
+    // Skill-read detector (presentation only, never mutates state): a dashing,
+    // non-respawning fighter whose dash i-frames sit inside an enemy's active
+    // pulse box just dodged it. Respawn invulnerability does not count.
+    DODGE_SLOW_TICKS: 9, DODGE_TIMESCALE: 0.4,
+    dodgeReads(state) {
+      const out = [];
+      if (!state || !Array.isArray(state.actors)) return out;
+      for (const attacker of state.actors) {
+        if (attacker.stocks <= 0 || attacker.respawnTicks || attacker.stun) continue;
+        const box = attackBox(attacker);
+        if (!box || !box.active) continue;
+        for (const target of state.actors) {
+          if (!enemies(state, attacker, target) || target.stocks <= 0 || target.respawnTicks || !(target.dashTicks > 0) || !(target.invulnerable > 0)) continue;
+          if (overlap(box, target)) out.push({ actorId: target.id, attackerId: attacker.id, swing: state.tick - attackElapsed(attacker), x: centerX(target), y: centerY(target) });
+        }
+      }
+      return out;
+    },
     // Trauma added by one hit; involved = the viewer dealt or took it.
     traumaFor(event, involved) {
       const e = event || {}, knock = Math.max(0, finite(e.knockback, 0));
