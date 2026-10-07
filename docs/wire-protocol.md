@@ -287,7 +287,7 @@ offset  size  field
 0       1     0x53                 ('S')
 1       1     0x06                 envelope version = PROTO (currently 6)
 2       1     dir                  0x01 guest→host, 0x02 host→guest
-3       8     counter u64 LE       per (pairKey, dir), starts at 0, +1 per frame
+3       8     counter u64 LE       per (pairKey, dir), host→guest starts at wall-clock ms, +1 per frame
 11      ...   AES-GCM ciphertext   (plaintext frame + 16-byte tag appended)
 ```
 
@@ -298,7 +298,7 @@ Header overhead = **11 bytes**; AES-GCM tag = **16 bytes**. Total per-frame over
 - **Nonce (96-bit, counter-based, never random):**
   `nonce = dir(1) || counter(u64 LE, 8) || 0x00 0x00 0x00`.
 - **AAD (11 bytes):** `ver(1)=PROTO (currently 0x06) || roomId(8) || epoch(1) || dir(1)`.
-- Counter starts at 0 and increments by 1 per sent frame per (pairKey, dir). A side restored after a reload (same keys) instead starts at the wall clock in ms so the peer never sees a replay. At 2⁵³ frames
+- A host→guest pair starts its counter at the wall clock in ms (never below one past the highest counter already used for that key), so a purged-and-rejoined key never reuses a nonce and the guest's replay window never sees it as stale; it then increments by 1 per sent frame per (pairKey, dir). Receivers accept any counter above their window, so older peers that assumed 0 interoperate unchanged. A restored side starts at the wall clock likewise. At 2⁵³ frames
   the pair is exhausted and MUST be closed (unreachable in practice — assert anyway).
 
 ### 7.3 Replay rule (MUST)

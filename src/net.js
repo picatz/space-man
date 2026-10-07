@@ -1484,6 +1484,7 @@
      Strikes/bans: 3 protocol violations ban the key for the room lifetime.
      ------------------------------------------------------------------------- */
   const STRIKE_LIMIT = 3;
+  const KNOWN_REHELLO_MS = 1000;   // a known row's re-HELLO limiter (quick-blip reconnect); unknown keys keep 5 s
   const PRELIM_CAP = 1024;     // pre-join tracking rows; oldest evicted (key-rotation spray must not grow host memory)
   const ROUND_PREROLL = 3000;  // New-Round pre-roll (ms): a synchronized 3-2-1 so every screen starts together
   const ABSENT_GRACE = 300000; // ms an absent (transport-dropped) row keeps its P# for a reconnect: long enough for a phone call or a closed lid
@@ -1604,6 +1605,8 @@
 
       roster: new Map(),         // pubHex → {p, pub, tag, suit, hat, role, adjIdx, nounIdx, pair, pres, strikes, bucket, lastHello, helloN, unverified, lastRole, runT0}
       banned: new Set(), joinTimes: [], prelim: new Map(),
+      ctrFloor: new Map(),       // pubHex → highest host→guest counter ever used for that key (never reuse a nonce under a pair key)
+      preBucket: 20, preBucketT: -Infinity,   // room-wide pre-join budget (SEC-03): burst 20, refill 4/s
       approveJoins: opts.approve === true, pending: new Map(), selfEmoteSeq: 0,   // held joins (approve mode) + host self-emote seq
       appearance: appearanceValue(opts.appearance, opts),
       p: 1, tag: wTag(opts.tag || 'AAA'), suit: opts.suit | 0, hat: opts.hat | 0,
@@ -1647,8 +1650,17 @@
     // Drop a row for good: its P# becomes reusable, so its board bests go too
     // (a newcomer must never inherit someone else's score).
     function removeRow(row) {
+      bumpCtrFloor(hex(row.pub), row.pair);
       S.roster.delete(hex(row.pub));
       S._board.delete(row.p);
+    }
+    // Counters for a pair key only ever move forward: a purged-and-rejoined key must
+    // not restart its host nonce at (or below) a value already spent under that key.
+    function bumpCtrFloor(key, pair) {
+      const cur = S.ctrFloor.get(key) || 0;
+      const v = pair && pair.sendCtr > cur ? pair.sendCtr : cur;
+      if (!S.ctrFloor.has(key) && S.ctrFloor.size >= 4096) S.ctrFloor.delete(S.ctrFloor.keys().next().value);
+      S.ctrFloor.set(key, v);
     }
     function strike(row, why) {
       row.strikes++;
@@ -1862,7 +1874,7 @@
       }
       if (pt[0] === A_HELLO) {                                   // reconnect re-hello: verify proof, re-WELCOME
         const t2 = performance.now();
-        if (row.lastHello && t2 - row.lastHello < 5000) return;
+        if (row.lastHello && t2 - row.lastHello < KNOWN_REHELLO_MS) return;
         row.lastHello = t2;
         const h = decHello(pt);
         if (!h) return strike(row, 'short');
@@ -1906,15 +1918,22 @@
       pre.lastHello = t; pre.helloN++;
       S.joinTimes = S.joinTimes.filter((x) => t - x < 60000);
       if (S.joinTimes.length >= 10) return;
+      // Room-wide pre-join token bucket: key-rotation spray must not burn host CPU on
+      // ECDH + HKDF + AES import. Checked after the cheap per-key limiter, before any crypto.
+      S.preBucket = Math.min(20, S.preBucket + (Number.isFinite(S.preBucketT) ? (t - S.preBucketT) / 250 : 20));
+      S.preBucketT = t;
+      if (S.preBucket < 1) return;
+      S.preBucket -= 1;
       // Arcade rooms retire absent rows quickly. Re-admitting the same key must never
       // restart its host nonce at zero. Disjoint per-admission counter ranges
       // avoid key/nonce reuse even if the wall clock moves backwards.
-      let startCtr = S.restored ? Date.now() : 0;
+      let startCtr = Math.max(Date.now(), (S.ctrFloor.get(key) || 0) + 1);
       if (arcadeMode(S)) {
         S.arenaCounterBase = (S.arenaCounterBase || 0) + 4294967296;
         if (S.arenaCounterBase + 4294967296 >= Number.MAX_SAFE_INTEGER) return;
         startCtr = S.arenaCounterBase;
       }
+      S.preDerives = (S.preDerives || 0) + 1;                        // observability: unauthenticated key derivations (SEC-03)
       const pair = makePair(await derivePairKey(S.keys, srcPub, S.roomId, S.epoch), S.roomId, S.epoch, DIR_H2G, startCtr);
       if (arcadeMode(S)) pair.sendEnd = startCtr + 4294967296;
       const res = await openApp(pair, wire);
@@ -1924,9 +1943,10 @@
       if (h.protoMin > PROTO || h.protoMax < PROTO) return;      // version gap → BYE(3) in N2; drop for now
       const want = joinProof(S.secret, S.roomId, S.epoch, srcPub, S.keys.pub);
       if (!ctEq(want, h.proof16)) { preStrike(key, pre); return; }   // silent: no oracle for secret-guessers
+      bumpCtrFloor(key, pair);                                       // any frame sent on this pair spent counters ≥ startCtr
       if (!modeMatches(S.mode, h)) {
         S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 3, modeRejection(S, h.mode))));
-        S.ev.emit('mode-rejected', { mode: S.mode }); return;
+        bumpCtrFloor(key, pair); S.ev.emit('mode-rejected', { mode: S.mode }); return;
       }
       // Separate caps (Addendum A): 32 players + 16 spectators, checked by role.
       if (arcadeMode(S) && S.roleLocked) h.role = ROLE_SPECTATOR;
@@ -1935,7 +1955,6 @@
         if (arcadeMode(S)) S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));
         return;
       }
-      S.joinTimes.push(t);
       // Approve-mode (Addendum G / §2.6): hold the proven join; the host UI shows
       // "X wants to join [✓][✕]" and calls approve(pubHex, ok). The join is fully
       // authenticated (proof verified) — approval gates ADMISSION, not identity.
@@ -1944,8 +1963,7 @@
           S.pending.set(key, { srcPub: srcPub.slice(), h, pair, t });
           S.ev.emit('approve-wait', { pubHex: key, tag: h.tag, role: h.role });
         }
-        S.prelim.delete(key);
-        return;
+        return;   // keep the prelim row: held guests' HELLO retries stay under the per-key limiter
       }
       await admitJoin(srcPub, key, h, pair);
     }
@@ -1953,6 +1971,7 @@
     // admitted later as a phantom row that holds a player slot forever.
     function dropPending(key) {
       if (!S.pending.delete(key)) return;
+      S.prelim.delete(key);
       S.ev.emit('reject', { pubHex: key });
     }
     // Roster insert + WELCOME + join-announce. Shared by the immediate join path
@@ -1995,6 +2014,7 @@
         absentAt: 0,
       };
       S.roster.set(key, row);
+      S.joinTimes.push(t);                                    // the join budget counts admissions, not proofs/retries
       S.prelim.delete(key);
       const w = encWelcome(S.out, {
         yourP: p, seed: S.seed, runId: S.runId, epoch: S.epoch, hostEpoch: S.hostEpoch, caps: S.caps, mode: modeByte(S), playerCap: S.playerCap, spectatorCap: S.spectatorCap,
@@ -2469,7 +2489,9 @@
       if (!pend) return false;
       S.pending.delete(key);
       if (ok === false) {
+        S.prelim.delete(key);
         try { S.relay.send(pend.srcPub, await sealApp(pend.pair, encBye(S.out, 6, 0).slice())); } catch (e) {}
+        bumpCtrFloor(key, pend.pair);
         S.ev.emit('reject', { pubHex: key });
         return true;
       }
