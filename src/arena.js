@@ -34,6 +34,14 @@
     ATTACK_REACH: 35, ATTACK_W: 48, ATTACK_H: 42, ACTION_BUFFER_TICKS: 6,
     DASH_TICKS: 10, DASH_SPEED: 11.5, DASH_COOLDOWN: 55, DODGE_TICKS: 8,
     RESPAWN_TICKS: 60, RESPAWN_INVULNERABLE: 90,
+    // Pulse commitment: recovery after the swing, a short post-hit guard that
+    // only blocks further pulses, and a hold-to-charge tier. A charge below
+    // CHARGE_MIN is an ordinary tap (windup pre-spent while held); a release at
+    // or above it fires a stronger, slower, telegraphed pulse.
+    ATTACK_RECOVERY: 10, HIT_GUARD: 8,
+    CHARGE_MIN: 18, CHARGE_MAX: 36, CHARGE_AUTO: 60, CHARGE_MOVE: 0.45,
+    CHARGED_WINDUP: 10, CHARGED_TICKS: 32, CHARGE_DAMAGE: 0.5, CHARGE_KNOCKBACK: 0.7,
+    LAND_MIN_IMPACT: 3,
   });
   const profiles = freeze([
     { id: 'nova', name: 'Nova', color: '#38E1FF', accent: '#9FF1FF', suit: '#F4F7FF' },
@@ -85,9 +93,9 @@
     },
   ]);
   const difficulties = freeze({
-    easy: { reaction: 15, attackDelay: 39, dodge: 0.12 },
-    normal: { reaction: 9, attackDelay: 29, dodge: 0.35 },
-    hard: { reaction: 5, attackDelay: 26, dodge: 0.60 },
+    easy: { reaction: 15, attackDelay: 39, dodge: 0.12, charge: 0.4 },
+    normal: { reaction: 9, attackDelay: 29, dodge: 0.35, charge: 1 },
+    hard: { reaction: 5, attackDelay: 26, dodge: 0.60, charge: 1.4 },
   });
 
   function getArena(id) { return arenas.find((arena) => arena.id === id) || arenas[0]; }
@@ -99,6 +107,7 @@
       jumpPressed: c.jumpPressed === true || c.jumpPressed === 1,
       jumpHeld: c.jumpHeld === true || c.jumpHeld === 1,
       attackPressed: c.attackPressed === true || c.attackPressed === 1,
+      attackHeld: c.attackHeld === true || c.attackHeld === 1,
       dashPressed: c.dashPressed === true || c.dashPressed === 1,
     };
   }
@@ -125,7 +134,9 @@
       if (scope !== key || tick < lastTick || now < lastNow) pending = null;
       scope = key; lastTick = tick; lastNow = now;
       // moveActor decrements these locks before considering an action.
-      const lock = action => action === 'dash' && !(actor.onGround || actor.airDashAvailable) ? Infinity : Math.max(actor.attackTicks, actor.dashTicks, action === 'dash' ? actor.dashCooldown : 0);
+      const lock = action => action === 'dash'
+        ? (!(actor.onGround || actor.airDashAvailable) ? Infinity : Math.max(dashLockTicks(actor), actor.dashTicks, actor.dashCooldown))
+        : actor.charge > 0 ? Infinity : Math.max(actor.attackTicks > 0 ? actor.attackTicks + constants.ATTACK_RECOVERY : (actor.attackCooldown || 0), actor.dashTicks);
       const fresh = c.attackPressed || c.dashPressed;
       if (fresh) {
         pending = null; // Latest deliberate action replaces, never stacks.
@@ -159,7 +170,7 @@
       onGround: true, supportId: null, damage: 0, stun: 0,
       jumpCount: 0, coyoteTicks: constants.COYOTE_TICKS, jumpBufferTicks: 0,
       jumpHeldLast: false, attackTicks: 0, attackDirX: actor.facing, attackDirY: 0,
-      attackHitIds: [], dashTicks: 0, dashCooldown: 0, airDashAvailable: true,
+      attackHitIds: [], attackCooldown: 0, attackCharge: 0, charge: 0, hitGuard: 0, dashTicks: 0, dashCooldown: 0, airDashAvailable: true,
       dropTicks: 0, dropPlatformId: null, respawnTicks: 0,
       invulnerable: constants.RESPAWN_INVULNERABLE, lastHitBy: null,
     });
@@ -221,7 +232,7 @@
           rngState: Math.floor(random(state) * 4294967296) >>> 0,
           aggression: 0.75 + random(state) * 0.5,
           reactionOffset: Math.floor(random(state) * 4),
-          nextThinkTick: 0, nextJumpTick: 0, nextAttackTick: 0,
+          nextThinkTick: 0, nextJumpTick: 0, nextAttackTick: 0, chargeUntil: 0, chargeAimX: 0, chargeAimY: 0,
           targetId: null, goalPlatformId: null, lastTick: -1,
           intent: normalizeCommand(), cachedCommand: normalizeCommand(),
         },
@@ -282,13 +293,29 @@
     const vertical = Math.abs(dy) > Math.abs(dx);
     const w = vertical ? constants.ATTACK_H : constants.ATTACK_W;
     const h = vertical ? constants.ATTACK_W : constants.ATTACK_H;
-    const elapsed = constants.ATTACK_TICKS - actor.attackTicks;
+    const elapsed = attackElapsed(actor), windup = attackWindup(actor);
     return {
       x: centerX(actor) + dx * constants.ATTACK_REACH - w / 2,
       y: centerY(actor) + dy * constants.ATTACK_REACH - h / 2, w, h,
-      active: elapsed >= constants.ATTACK_WINDUP && elapsed < constants.ATTACK_WINDUP + constants.ATTACK_ACTIVE,
+      active: elapsed >= windup && elapsed < windup + constants.ATTACK_ACTIVE,
+      charged: actor.attackCharge > 0,
     };
   }
+  // Pulse timeline helpers. A charged swing has a longer, telegraphed windup;
+  // a tapped swing may start with part of its windup already spent while held.
+  function attackTotal(actor) { return actor.attackCharge > 0 ? constants.CHARGED_TICKS : constants.ATTACK_TICKS; }
+  function attackWindup(actor) { return actor.attackCharge > 0 ? constants.CHARGED_WINDUP : constants.ATTACK_WINDUP; }
+  function attackElapsed(actor) { return attackTotal(actor) - actor.attackTicks; }
+  // Ticks until a dash may leave the swing. Only the active frames are
+  // committed: windup (a feint), end lag and recovery can all be dash-cancelled.
+  function dashLockTicks(actor) {
+    if (!(actor.attackTicks > 0)) return 0;
+    const elapsed = attackElapsed(actor), windup = attackWindup(actor);
+    return elapsed + 1 >= windup && elapsed + 1 < windup + constants.ATTACK_ACTIVE ? windup + constants.ATTACK_ACTIVE - elapsed : 0;
+  }
+  function chargeLevel(charge) { return charge >= constants.CHARGE_MIN ? Math.min(constants.CHARGE_MAX, Math.floor(charge)) : 0; }
+  function pulseDamage(actor) { return constants.ATTACK_DAMAGE + (actor && actor.attackCharge > 0 ? Math.round(actor.attackCharge * constants.CHARGE_DAMAGE) : 0); }
+  function pulseKnockback(actor) { return 1 + (actor && actor.attackCharge > 0 ? actor.attackCharge / constants.CHARGE_MAX * constants.CHARGE_KNOCKBACK : 0); }
   // The exact collision rectangle is also the telegraph: renderers never have
   // to guess where a special will land. Once charging starts it cannot track.
   function bossAttackBox(actor) {
@@ -349,13 +376,14 @@
         const force = 7 + target.damage * 0.055;
         target.vx = sign(centerX(target) - centerX(attacker) || attacker.facing) * force;
         target.vy = boss.move === 'shockwave' ? -8.5 : -6.5;
-        target.stun = 18; target.attackTicks = 0; target.dashTicks = 0;
+        target.stun = 18; target.attackTicks = 0; target.dashTicks = 0; clearPulse(target);
         target.onGround = false; target.supportId = null; target.coyoteTicks = 0;
         target.lastHitBy = attacker.id;
         emit(state, 'hit', attacker, { targetId: target.id, x: centerX(target), y: centerY(target), damage, knockback: force, move: boss.move });
       }
     }
   }
+  function clearPulse(actor) { actor.attackCharge = 0; actor.charge = 0; actor.attackCooldown = 0; }
   function overlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
   function emit(state, type, actor, extra) {
     state.events.push(Object.assign({ type, actorId: actor.id, x: centerX(actor), y: centerY(actor) }, extra));
@@ -370,23 +398,29 @@
     emit(state, 'jump', actor, { double: !groundJump });
     return true;
   }
-  function beginAttack(state, actor, command) {
-    const direction = aim(command, actor.facing);
+  function beginAttack(state, actor, command, charge) {
+    const direction = aim(command, actor.facing), level = chargeLevel(charge || 0);
     actor.attackDirX = direction.x; actor.attackDirY = direction.y;
-    actor.attackTicks = constants.ATTACK_TICKS; actor.attackSerial++;
+    actor.attackCharge = level; actor.charge = 0;
+    // A tap held for a few ticks already spent that much of its windup.
+    actor.attackTicks = constants.ATTACK_TICKS - (level ? 0 : Math.min(constants.ATTACK_WINDUP - 1, Math.max(0, (charge || 0) - 1)));
+    if (level) actor.attackTicks = constants.CHARGED_TICKS;
+    actor.attackSerial++;
     actor.attackHitIds = [];
     // A spawn shield is defensive, not a free unanswerable attack.
     actor.invulnerable = 0;
-    emit(state, 'attack', actor, { directionX: direction.x, directionY: direction.y });
+    emit(state, 'attack', actor, { directionX: direction.x, directionY: direction.y, charged: level > 0 });
   }
   function moveActor(state, actor, command, arena) {
     actor.px = actor.x; actor.py = actor.y;
     if (actor.boss && actor.boss.phase !== 'idle') {
       command = normalizeCommand(); actor.vx = 0;
     }
-    for (const field of ['stun', 'invulnerable', 'attackTicks', 'dashTicks', 'dashCooldown', 'dropTicks', 'jumpBufferTicks']) {
+    const wasAttacking = actor.attackTicks > 0, wasGrounded = actor.onGround;
+    for (const field of ['stun', 'invulnerable', 'attackTicks', 'attackCooldown', 'hitGuard', 'dashTicks', 'dashCooldown', 'dropTicks', 'jumpBufferTicks']) {
       if (actor[field] > 0) actor[field]--;
     }
+    if (wasAttacking && !actor.attackTicks) { actor.attackCooldown = constants.ATTACK_RECOVERY; actor.attackCharge = 0; }
     if (!actor.dropTicks) actor.dropPlatformId = null;
     if (actor.onGround) actor.coyoteTicks = constants.COYOTE_TICKS;
     else if (actor.coyoteTicks > 0) actor.coyoteTicks--;
@@ -402,19 +436,27 @@
           actor.vy = 1;
         } else startJump(state, actor);
       }
-      if (!actor.boss && command.dashPressed && !actor.dashCooldown && !actor.attackTicks && (actor.onGround || actor.airDashAvailable)) {
+      if (!actor.boss && command.dashPressed && !actor.dashCooldown && !dashLockTicks(actor) && (actor.onGround || actor.airDashAvailable)) {
         const direction = aim(command, actor.facing);
+        // Dash-cancel: leaving windup, charge or recovery drops the pulse.
+        actor.attackTicks = 0; clearPulse(actor);
         actor.dashTicks = constants.DASH_TICKS; actor.dashCooldown = constants.DASH_COOLDOWN;
         actor.invulnerable = Math.max(actor.invulnerable, constants.DODGE_TICKS);
         actor.vx = direction.x * constants.DASH_SPEED; actor.vy = direction.y * constants.DASH_SPEED;
         if (!actor.onGround) actor.airDashAvailable = false;
         actor.onGround = false; actor.supportId = null;
       }
-      if (!actor.boss && command.attackPressed && !actor.attackTicks && !actor.dashTicks) beginAttack(state, actor, command);
-    }
+      if (!actor.boss && actor.charge > 0) {
+        if (command.attackHeld && actor.charge < constants.CHARGE_AUTO) actor.charge++;
+        else beginAttack(state, actor, command, actor.charge);
+      } else if (!actor.boss && command.attackPressed && !actor.attackTicks && !actor.attackCooldown && !actor.dashTicks) {
+        // Holding the button charges; an unheld press is an immediate tap.
+        if (command.attackHeld) actor.charge = 1; else beginAttack(state, actor, command, 0);
+      }
+    } else if (actor.charge) actor.charge = 0;
 
     if (!actor.dashTicks) {
-      const input = actor.stun ? command.moveX * 0.10 : command.moveX;
+      const input = actor.stun ? command.moveX * 0.10 : actor.charge > 0 ? command.moveX * constants.CHARGE_MOVE : command.moveX;
       const accel = actor.onGround ? constants.ACCEL_GROUND : constants.ACCEL_AIR;
       if (input) {
         const desired = input * constants.MAX_RUN;
@@ -429,7 +471,7 @@
       actor.vy = Math.min(constants.MAX_FALL, actor.vy + (actor.vy < 0 ? constants.GRAVITY_RISE : constants.GRAVITY_FALL));
     }
     actor.jumpHeldLast = command.jumpHeld;
-    const oldFeet = actor.y + actor.h;
+    const oldFeet = actor.y + actor.h, fallSpeed = actor.vy;
     actor.x += actor.vx; actor.y += actor.vy;
     actor.onGround = false; actor.supportId = null;
     if (actor.vy >= 0) {
@@ -443,6 +485,7 @@
         actor.onGround = true; actor.supportId = landed.id;
         actor.jumpCount = 0; actor.coyoteTicks = constants.COYOTE_TICKS;
         actor.airDashAvailable = true;
+        if (!wasGrounded && fallSpeed >= constants.LAND_MIN_IMPACT) emit(state, 'land', actor, { impact: Math.round(fallSpeed * 10) / 10 });
       }
     }
   }
@@ -454,7 +497,7 @@
       const box = attackBox(attacker);
       if (!box || !box.active) continue;
       for (const target of state.actors) {
-        if (!enemies(state, attacker, target) || target.stocks <= 0 || target.respawnTicks || target.invulnerable || attacker.attackHitIds.includes(target.id)) continue;
+        if (!enemies(state, attacker, target) || target.stocks <= 0 || target.respawnTicks || target.invulnerable || target.hitGuard > 0 || attacker.attackHitIds.includes(target.id)) continue;
         if (overlap(box, target)) {
           attacker.attackHitIds.push(target.id);
           pending.push({ attacker, target });
@@ -482,19 +525,20 @@
         if (!b.boss.health) loseStock(state, b);
         continue;
       }
-      b.damage = Math.min(999, b.damage + constants.ATTACK_DAMAGE * hits.length);
+      b.damage = Math.min(999, b.damage + hits.reduce((sum, hit) => sum + pulseDamage(hit.attacker), 0));
       const force = 5.8 + b.damage * 0.105;
       let vx = 0, vy = 0;
       for (const hit of hits) {
         const a = hit.attacker;
         const launchX = Math.abs(a.attackDirX) < 0.12 ? (centerX(b) >= centerX(a) ? 0.14 : -0.14) : a.attackDirX;
-        vx += launchX * force * 1.15;
-        vy += a.attackDirY > 0.3 ? a.attackDirY * force : a.attackDirY * force - 5.2 - force * 0.20;
-        emit(state, 'hit', a, { targetId: b.id, x: centerX(b), y: centerY(b), damage: constants.ATTACK_DAMAGE, knockback: force });
+        const power = pulseKnockback(a);
+        vx += launchX * force * 1.15 * power;
+        vy += (a.attackDirY > 0.3 ? a.attackDirY * force : a.attackDirY * force - 5.2 - force * 0.20) * power;
+        emit(state, 'hit', a, { targetId: b.id, x: centerX(b), y: centerY(b), damage: pulseDamage(a), knockback: force * power, charged: a.attackCharge > 0 });
       }
       b.vx = vx / hits.length; b.vy = vy / hits.length;
       b.stun = Math.min(50, 15 + Math.floor(b.damage * 0.13));
-      b.attackTicks = 0; b.dashTicks = 0; b.onGround = false; b.supportId = null;
+      b.attackTicks = 0; b.dashTicks = 0; b.onGround = false; b.supportId = null; clearPulse(b); b.hitGuard = constants.HIT_GUARD;
       // Equal-strength simultaneous contributors tie by stable actor ID for KO
       // credit only; that cosmetic statistic never breaks a match-result tie.
       b.coyoteTicks = 0; b.lastHitBy = hits[0].attacker.id;
@@ -510,7 +554,7 @@
     actor.damage = 0;
     const credit = state.actors.find((other) => other.id === actor.lastHitBy);
     if (credit && enemies(state, actor, credit)) credit.kos++;
-    actor.vx = 0; actor.vy = 0; actor.attackTicks = 0; actor.dashTicks = 0;
+    actor.vx = 0; actor.vy = 0; actor.attackTicks = 0; actor.dashTicks = 0; clearPulse(actor);
     actor.respawnTicks = actor.stocks > 0 ? constants.RESPAWN_TICKS : 0;
     actor.onGround = false; actor.supportId = null;
     if (actor.boss) {
@@ -685,7 +729,7 @@
     // the unsupported action is discarded (including a run straight offstage).
     if (target && !actor.boss) {
       const dx = centerX(target) - centerX(actor), dy = centerY(target) - centerY(actor);
-      if (!offstage && Math.abs(dx) < 68 && Math.abs(dy) < 60 && !target.invulnerable && state.tick >= ai.nextAttackTick && !actor.stun && !actor.attackTicks && !actor.dashTicks) {
+      if (!offstage && Math.abs(dx) < 68 && Math.abs(dy) < 60 && !target.invulnerable && state.tick >= ai.nextAttackTick && !actor.stun && !actor.attackTicks && !actor.attackCooldown && !actor.charge && !actor.dashTicks) {
         c.attackPressed = true;
         // Aim through the target. Directional attacks still use the same axes
         // as a human, including the resulting ordinary movement that tick.
@@ -693,6 +737,13 @@
         c.moveY = Math.abs(dy) > 23 ? sign(dy) : 0;
         if (!c.moveX && !c.moveY) c.moveX = actor.facing;
         ai.nextAttackTick = state.tick + Math.round(difficulty.attackDelay / ai.aggression);
+        // Punish a long stun or a high-damage target with a charged pulse; the
+        // bot holds for a fixed span and releases along the aim it chose.
+        const chance = (target.stun >= 22 ? 0.5 : target.damage >= 70 ? 0.2 : 0.06) * difficulty.charge;
+        if (random(ai) < chance) {
+          ai.chargeUntil = state.tick + constants.CHARGE_MIN + 2 + Math.floor(random(ai) * (constants.CHARGE_MAX - constants.CHARGE_MIN));
+          ai.chargeAimX = c.moveX; ai.chargeAimY = c.moveY; c.attackHeld = true;
+        }
       }
       const safeDash = support && actor.x > support.x + 90 && actor.x + actor.w < support.x + support.w - 90;
       if (safeDash && !actor.dashCooldown && !actor.attackTicks && target.attackTicks > 0 && Math.abs(dx) < 95 && Math.abs(dy) < 55 && random(ai) < difficulty.dodge) {
@@ -735,9 +786,91 @@
         ai.nextThinkTick = state.tick + difficulties[state.difficulty].reaction + ai.reactionOffset;
       } else command = Object.assign({}, ai.intent);
     }
+    if (!actor.boss && (actor.charge > 0 || command.attackHeld)) {
+      // The hold is resolved every tick so release timing never waits for the
+      // slower think cadence.
+      if (state.tick < ai.chargeUntil && !actor.stun) command.attackHeld = true;
+      else { command.attackHeld = false; if (actor.charge > 0) { command.moveX = ai.chargeAimX; command.moveY = ai.chargeAimY; } }
+    } else command.attackHeld = false;
     ai.lastTick = state.tick; ai.cachedCommand = command;
     return Object.assign({}, command);
   }
+
+  // Presentation math, kept pure so node --test can pin it. Nothing here is read
+  // by step(): hit-stop, shake, slow-mo and edge cues never alter the simulation
+  // or the wire. Tuning mirrors the runner (trauma decays 0.03/tick, shake is
+  // trauma squared, directional kick eases out over ~0.15 s).
+  const feel = freeze({
+    TRAUMA_DECAY: 0.03, KICK_RATE: 16, SHAKE_PX: 9, SHAKE_ROT: 0.01,
+    KO_SLOW_TICKS: 21, KO_TIMESCALE: 0.4, KO_ZOOM: 0.06, KO_FLASH_TICKS: 14,
+    LAND_SQUASH_TICKS: 5, DANGER_RANGE: 180, DANGER_LOOKAHEAD: 14, BOUNDS_GLOW_RANGE: 220,
+    // Heavier hits freeze longer: a 0% pulse (knockback ~6) holds 4 ticks, a
+    // 100% pulse (~16) holds 7, a full charge holds the 8-tick cap.
+    hitstopTicksFor(event) {
+      const e = event || {}, knock = Math.max(0, finite(e.knockback, 0)), dmg = Math.max(0, finite(e.damage, 0));
+      return clamp(Math.round(2 + knock * 0.28 + (dmg >= 20 ? 1 : 0)), 2, 8);
+    },
+    // Trauma added by one hit; involved = the viewer dealt or took it.
+    traumaFor(event, involved) {
+      const e = event || {}, knock = Math.max(0, finite(e.knockback, 0));
+      const base = clamp(0.12 + knock * 0.02 + (finite(e.damage, 0) >= 20 ? 0.12 : 0), 0.15, 0.62);
+      return involved === false ? base * 0.35 : base;
+    },
+    addTrauma(trauma, amount) { return clamp(finite(trauma, 0) + finite(amount, 0), 0, 1); },
+    decayTrauma(trauma, ticks) { return Math.max(0, finite(trauma, 0) - feel.TRAUMA_DECAY * Math.max(0, finite(ticks, 1))); },
+    // Screen-space impulse along the victim's launch, in CSS px.
+    kickFor(event, victim) {
+      const e = event || {}, v = victim || {}, knock = clamp(finite(e.knockback, 0), 0, 30);
+      const vx = finite(v.vx, 0), vy = finite(v.vy, 0), len = Math.hypot(vx, vy) || 1;
+      const mag = clamp(2 + knock * 0.35, 2, 9);
+      return { x: vx / len * mag, y: vy / len * mag * 0.6 };
+    },
+    // seconds t; kick = {x, y, at}. Deterministic in its inputs.
+    shakeOffset(trauma, t, kick) {
+      const tr = clamp(finite(trauma, 0), 0, 1) ** 2, k = kick ? Math.exp(-Math.max(0, t - kick.at) * feel.KICK_RATE) : 0, amp = tr * feel.SHAKE_PX;
+      return {
+        x: amp * (Math.sin(t * 71.0) * 0.6 + Math.sin(t * 47.3) * 0.4) + (kick ? kick.x * k : 0),
+        y: amp * (Math.sin(t * 89.7 + 1.3) * 0.6 + Math.sin(t * 53.1 + 2.1) * 0.4) + (kick ? kick.y * k : 0),
+        rot: tr * feel.SHAKE_ROT * Math.sin(t * 61.3 + 0.7) || 0,
+      };
+    },
+    // Timescale for the KO slow-mo; remaining counts down from KO_SLOW_TICKS and
+    // eases back to real time over the final quarter.
+    koTimescale(remaining) {
+      if (!(remaining > 0)) return 1;
+      const ease = clamp(remaining / (feel.KO_SLOW_TICKS * 0.25), 0, 1);
+      return feel.KO_TIMESCALE + (1 - feel.KO_TIMESCALE) * (1 - ease);
+    },
+    // Squash and stretch for a landing; age counts ticks since the land event.
+    landSquash(age, impact) {
+      const n = feel.LAND_SQUASH_TICKS;
+      if (!(age >= 0) || age >= n) return { x: 1, y: 1 };
+      const strength = clamp((finite(impact, 0) - constants.LAND_MIN_IMPACT) / 9, 0, 1) * 0.5 + 0.5, k = 1 - age / n;
+      return { x: 1 + 0.15 * strength * k, y: 1 - 0.15 * strength * k };
+    },
+    dustCount(impact) { return impact > 6 ? clamp(Math.round(2 + (impact - 6) * 0.5), 4, 6) : 0; },
+    // Per-side alpha (0..1) for the edge-danger vignette. Distance is measured
+    // from the fighter's nearest edge to each blast line, shortened by up to
+    // DANGER_LOOKAHEAD ticks of travel toward that line so a launch warns early.
+    edgeDanger(actor, bounds) {
+      const out = { left: 0, right: 0, top: 0, bottom: 0, max: 0 };
+      if (!actor || !bounds) return out;
+      const range = feel.DANGER_RANGE, look = feel.DANGER_LOOKAHEAD;
+      const dist = {
+        left: actor.x - bounds.left, right: bounds.right - (actor.x + actor.w),
+        top: actor.y - bounds.top, bottom: bounds.bottom - (actor.y + actor.h),
+      };
+      const toward = { left: -finite(actor.vx, 0), right: finite(actor.vx, 0), top: -finite(actor.vy, 0), bottom: finite(actor.vy, 0) };
+      for (const side of ['left', 'right', 'top', 'bottom']) {
+        const projected = dist[side] - Math.max(0, toward[side]) * look;
+        out[side] = clamp(1 - projected / range, 0, 1);
+        if (out[side] > out.max) out.max = out[side];
+      }
+      return out;
+    },
+    // Alpha for the faint blast-line guide: how close any live fighter is.
+    boundsGlow(distance) { return clamp(1 - finite(distance, Infinity) / feel.BOUNDS_GLOW_RANGE, 0, 1); },
+  });
 
   function snapshot(state) { return JSON.parse(JSON.stringify(state)); }
   function restore(saved) {
@@ -762,10 +895,16 @@
       for (const key of ['x', 'y', 'px', 'py', 'vx', 'vy', 'w', 'h', 'stocks', 'damage', 'stun', 'invulnerable', 'attackTicks', 'dashTicks', 'respawnTicks']) {
         if (!Number.isFinite(actor[key])) throw new TypeError('Invalid arena snapshot number');
       }
+      // Pulse commitment fields arrived after VERSION 1 shipped; saves made
+      // without them restore with the neutral value.
+      for (const key of ['attackCooldown', 'attackCharge', 'charge', 'hitGuard']) {
+        if (actor[key] === undefined) actor[key] = 0;
+        else if (!Number.isInteger(actor[key]) || actor[key] < 0 || actor[key] > 255) throw new TypeError('Invalid arena snapshot number');
+      }
     }
     if (bossEncounter && saved.actors.filter((actor) => actor.boss).length !== 1) throw new TypeError('Invalid arena snapshot boss roster');
     return snapshot(saved);
   }
 
-  return freeze({ constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, createActionBuffer, step, cpuInput, attackBox, bossAttackBox, snapshot, restore });
+  return freeze({ feel, pulseDamage, pulseKnockback, dashLockTicks, constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, createActionBuffer, step, cpuInput, attackBox, bossAttackBox, snapshot, restore });
 });

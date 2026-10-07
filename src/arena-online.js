@@ -5,14 +5,18 @@
   if(typeof module==='object'&&module.exports)module.exports=api;else root.SpaceManArenaOnline=api;
 })(typeof window!=='undefined'?window:globalThis,function(Arena){
   'use strict';
-  const VERSION=1,INPUT=1,SNAPSHOT=2,MAX_BYTES=1024,INPUT_BYTES=23,HEADER_BYTES=27,ACTOR_BYTES=63,EVENT_BYTES=18;
-  // Shared-expedition packets have their own opt-in version. The standalone
-  // VERSION 1 layout and 1024-byte cap remain byte-for-byte unchanged.
-  const JOURNEY_VERSION=2,JOURNEY_MAX_BYTES=990,JOURNEY_HEADER_BYTES=35,JOURNEY_EVENT_BYTES=20,BOSS_BYTES=30;
+  const VERSION=3,INPUT=1,SNAPSHOT=2,MAX_BYTES=1024,INPUT_BYTES=23,HEADER_BYTES=27,ACTOR_BYTES=64,EVENT_BYTES=18;
+  // Shared-expedition packets have their own opt-in version. Versions 1/2 were
+  // the pre-charge layouts; 3/4 add the pulse charge byte, the charged-swing flag,
+  // the attackHeld input bit and the 'land' event, so older builds are rejected.
+  const JOURNEY_VERSION=4,JOURNEY_MAX_BYTES=990,JOURNEY_HEADER_BYTES=35,JOURNEY_EVENT_BYTES=20,BOSS_BYTES=30;
   const BOSS_PHASES=['idle','charging','active','recover','defeated'],BOSS_MOVES=['shockwave','lance'];
   const INPUT_TTL_MS=200,REJOIN_MS=10000,SNAPSHOT_MS=50;
-  const FORMATS=['duel','ffa','teams'],DIFFICULTIES=['easy','normal','hard'],PHASES=['countdown','playing','over'],EVENTS=['jump','attack','hit','ringout','respawn','finish'];
-  const JOURNEY_EVENTS=EVENTS.concat(['boss-warning','boss-strike','boss-exposed','boss-defeated']);
+  const FORMATS=['duel','ffa','teams'],DIFFICULTIES=['easy','normal','hard'],PHASES=['countdown','playing','over'],EVENTS=['jump','attack','hit','ringout','respawn','finish','land'];
+  // Appended codes keep every earlier index: 'land' is last in both tables.
+  const JOURNEY_EVENTS=EVENTS.slice(0,6).concat(['boss-warning','boss-strike','boss-exposed','boss-defeated','land']);
+  // Landings are cosmetic and frequent; only heavy ones may occupy the bounded ring.
+  const RING_LAND_IMPACT=6;
   const uint=(n,max=0xffffffff)=>Number.isInteger(n)&&n>=0&&n<=max;
   const blank=()=>Arena.normalizeCommand();
   function configuration(options){
@@ -26,13 +30,13 @@
   }
   function encodeInput(o,options){
     const c=Arena.normalizeCommand(o.command),b=new Uint8Array(INPUT_BYTES),v=new DataView(b.buffer);b[0]=options&&options.journey?JOURNEY_VERSION:VERSION;b[1]=INPUT;
-    v.setUint32(2,o.epoch,true);v.setUint32(6,o.seq,true);v.setUint32(10,o.tick,true);v.setInt8(14,Math.round(c.moveX*127));v.setInt8(15,Math.round(c.moveY*127));b[16]=c.jumpHeld?1:0;
+    v.setUint32(2,o.epoch,true);v.setUint32(6,o.seq,true);v.setUint32(10,o.tick,true);v.setInt8(14,Math.round(c.moveX*127));v.setInt8(15,Math.round(c.moveY*127));b[16]=(c.jumpHeld?1:0)|(c.attackHeld?2:0);
     v.setUint16(17,o.edges[0],true);v.setUint16(19,o.edges[1],true);v.setUint16(21,o.edges[2],true);return b;
   }
   function decodeInput(b,options){
-    if(!(b instanceof Uint8Array)||b.length!==INPUT_BYTES||b[0]!==(options&&options.journey?JOURNEY_VERSION:VERSION)||b[1]!==INPUT||b[16]>1)return null;
+    if(!(b instanceof Uint8Array)||b.length!==INPUT_BYTES||b[0]!==(options&&options.journey?JOURNEY_VERSION:VERSION)||b[1]!==INPUT||b[16]>3)return null;
     const v=new DataView(b.buffer,b.byteOffset,b.byteLength);
-    return{epoch:v.getUint32(2,true),seq:v.getUint32(6,true),tick:v.getUint32(10,true),edges:[v.getUint16(17,true),v.getUint16(19,true),v.getUint16(21,true)],command:Arena.normalizeCommand({moveX:v.getInt8(14)/127,moveY:v.getInt8(15)/127,jumpHeld:!!b[16]})};
+    return{epoch:v.getUint32(2,true),seq:v.getUint32(6,true),tick:v.getUint32(10,true),edges:[v.getUint16(17,true),v.getUint16(19,true),v.getUint16(21,true)],command:Arena.normalizeCommand({moveX:v.getInt8(14)/127,moveY:v.getInt8(15)/127,jumpHeld:!!(b[16]&1),attackHeld:!!(b[16]&2)})};
   }
   function encodeSnapshot(host){
     const s=host.state,journey=host.journey===true,headerBytes=journey?JOURNEY_HEADER_BYTES:HEADER_BYTES,eventBytes=journey?JOURNEY_EVENT_BYTES:EVENT_BYTES,eventTypes=journey?JOURNEY_EVENTS:EVENTS;
@@ -46,11 +50,11 @@
       const seat=host.seats.find(p=>p.actorId===a.id);b[o]=a.id;b[o+1]=seat?seat.p:0;b[o+2]=seat&&!seat.connected?1:0;v.setUint32(o+3,seat?seat.seq:0,true);
       for(const[i,k]of['x','y','px','py','vx','vy'].entries())v.setFloat32(o+7+i*4,a[k],true);v.setUint16(o+31,a.damage,true);
       for(const[i,k]of['stocks','deaths','kos','stun','invulnerable','attackTicks','dashTicks','dashCooldown','respawnTicks','jumpCount'].entries())b[o+33+i]=a[k];
-      v.setInt16(o+43,Math.round(a.attackDirX*32767),true);v.setInt16(o+45,Math.round(a.attackDirY*32767),true);b[o+47]=(a.onGround?1:0)|(a.airDashAvailable?2:0)|(a.facing>0?4:0);v.setUint32(o+48,a.attackSerial,true);b[o+52]=a.lastHitBy||0;v.setUint32(o+53,seat?seat.lastAcceptedTick:0,true);
-      for(let i=0;i<3;i++)v.setUint16(o+57+i*2,seat?seat.edges[i]:0,true);o+=ACTOR_BYTES;
+      v.setInt16(o+43,Math.round(a.attackDirX*32767),true);v.setInt16(o+45,Math.round(a.attackDirY*32767),true);b[o+47]=(a.onGround?1:0)|(a.airDashAvailable?2:0)|(a.facing>0?4:0)|(a.attackCharge>0?8:0);v.setUint32(o+48,a.attackSerial,true);b[o+52]=a.lastHitBy||0;v.setUint32(o+53,seat?seat.lastAcceptedTick:0,true);
+      for(let i=0;i<3;i++)v.setUint16(o+57+i*2,seat?seat.edges[i]:0,true);b[o+63]=a.charge||0;o+=ACTOR_BYTES;
     }
     if(boss){const a=boss.boss;b[o]=BOSS_PHASES.indexOf(a.phase);b[o+1]=BOSS_MOVES.indexOf(a.move);b[o+2]=a.phaseTicks;b[o+3]=a.phaseDuration;v.setUint16(o+4,a.health,true);v.setUint16(o+6,a.maxHealth,true);v.setUint32(o+8,a.cycle,true);b[o+12]=a.attack?1:0;if(a.attack)for(const[i,k]of['x','y','w','h'].entries())v.setFloat32(o+13+i*4,a.attack[k],true);b[o+29]=a.hitIds.reduce((mask,id)=>mask|(1<<(id-1)),0);o+=BOSS_BYTES;}
-    for(const e of events){v.setUint32(o,e.serial,true);b[o+4]=eventTypes.indexOf(e.type);b[o+5]=e.actorId||0;b[o+6]=e.targetId||0;v.setFloat32(o+7,e.x,true);v.setFloat32(o+11,e.y,true);b[o+15]=e.stocks||0;b[o+16]=e.double?1:0;b[o+17]=e.damage||0;if(journey){b[o+18]=e.move?BOSS_MOVES.indexOf(e.move)+1:0;b[o+19]=e.ticks||0;}o+=eventBytes;}
+    for(const e of events){v.setUint32(o,e.serial,true);b[o+4]=eventTypes.indexOf(e.type);b[o+5]=e.actorId||0;b[o+6]=e.targetId||0;v.setFloat32(o+7,e.x,true);v.setFloat32(o+11,e.y,true);b[o+15]=e.stocks||0;b[o+16]=e.double?1:0;b[o+17]=e.type==='land'?Math.min(255,Math.round((e.impact||0)*10)):e.damage||0;if(journey){b[o+18]=e.move?BOSS_MOVES.indexOf(e.move)+1:0;b[o+19]=e.ticks||0;}o+=eventBytes;}
     return b;
   }
   function decodeSnapshot(b,options){
@@ -80,8 +84,8 @@
       for(const[i,k]of['x','y','px','py','vx','vy'].entries()){a[k]=v.getFloat32(o+7+i*4,true);if(!Number.isFinite(a[k])||Math.abs(a[k])>8192)return null;}
       a.damage=v.getUint16(o+31,true);if(a.damage>999)return null;
       for(const[i,k]of['stocks','deaths','kos','stun','invulnerable','attackTicks','dashTicks','dashCooldown','respawnTicks','jumpCount'].entries())a[k]=b[o+33+i];
-      if(a.stocks>3||a.attackTicks>Arena.constants.ATTACK_TICKS||a.dashTicks>Arena.constants.DASH_TICKS||a.jumpCount>2||b[o+47]>7||b[o+52]>(journey?state.actors.length:4))return null;
-      a.attackDirX=v.getInt16(o+43,true)/32767;a.attackDirY=v.getInt16(o+45,true)/32767;a.onGround=!!(b[o+47]&1);a.airDashAvailable=!!(b[o+47]&2);a.facing=b[o+47]&4?1:-1;a.attackSerial=v.getUint32(o+48,true);a.lastHitBy=b[o+52]||null;o+=ACTOR_BYTES;
+      if(a.stocks>3||a.attackTicks>Arena.constants.CHARGED_TICKS||b[o+63]>Arena.constants.CHARGE_AUTO||a.dashTicks>Arena.constants.DASH_TICKS||a.jumpCount>2||b[o+47]>15||b[o+52]>(journey?state.actors.length:4))return null;
+      a.attackDirX=v.getInt16(o+43,true)/32767;a.attackDirY=v.getInt16(o+45,true)/32767;a.onGround=!!(b[o+47]&1);a.airDashAvailable=!!(b[o+47]&2);a.facing=b[o+47]&4?1:-1;a.attackSerial=v.getUint32(o+48,true);a.lastHitBy=b[o+52]||null;a.charge=b[o+63];a.attackCharge=b[o+47]&8?Arena.constants.CHARGE_MAX:0;o+=ACTOR_BYTES;
     }
     if(boss){
       const a=boss.boss,health=v.getUint16(o+4,true),maxHealth=v.getUint16(o+6,true);
@@ -95,7 +99,7 @@
     state.events=[];
     for(let i=0;i<b[26];i++){
       const e={serial:v.getUint32(o,true),type:eventTypes[b[o+4]],actorId:b[o+5],targetId:b[o+6]||null,x:v.getFloat32(o+7,true),y:v.getFloat32(o+11,true),stocks:b[o+15],double:!!b[o+16],damage:b[o+17]};
-      if(!e.type||e.actorId>(journey?state.actors.length:4)||e.targetId>(journey?state.actors.length:4)||!Number.isFinite(e.x)||!Number.isFinite(e.y)||Math.abs(e.x)>8192||Math.abs(e.y)>8192||(i&&e.serial<=state.events[i-1].serial))return null;if(journey){if(b[o+18]>2||b[o+19]>78)return null;if(b[o+18])e.move=BOSS_MOVES[b[o+18]-1];if(b[o+19])e.ticks=b[o+19];if(boss&&e.targetId===boss.id&&e.type==='hit')e.boss=true;}state.events.push(e);o+=eventBytes;
+      if(!e.type||e.actorId>(journey?state.actors.length:4)||e.targetId>(journey?state.actors.length:4)||!Number.isFinite(e.x)||!Number.isFinite(e.y)||Math.abs(e.x)>8192||Math.abs(e.y)>8192||(i&&e.serial<=state.events[i-1].serial))return null;if(journey){if(b[o+18]>2||b[o+19]>78)return null;if(b[o+18])e.move=BOSS_MOVES[b[o+18]-1];if(b[o+19])e.ticks=b[o+19];if(boss&&e.targetId===boss.id&&e.type==='hit')e.boss=true;}if(e.type==='land'){e.impact=e.damage/10;e.damage=0;}state.events.push(e);o+=eventBytes;
     }
     const winners=state.actors.filter(a=>b[24]&(1<<(a.id-1))).map(a=>a.id);
     state.result=b[25]?{winnerIds:winners,winnerTeam:state.format==='teams'&&!(b[25]&4)&&winners.length?state.actors[winners[0]-1].team:null,tie:!!(b[25]&4),reason:(b[25]&3)===2?'time':'stocks'}:null;
@@ -137,7 +141,7 @@
     function step(now){
       if(status!=='running'||state.phase==='over')return state;const commands={};
       for(const a of state.actors){const seat=seats.find(s=>s.actorId===a.id);if(!seat){commands[a.id]=Arena.cpuInput(state,a.id);continue;}forfeit(seat,now);commands[a.id]=seat.connected&&now-seat.receivedAt<=INPUT_TTL_MS?Object.assign({},seat.command,{jumpPressed:seat.pending[0],attackPressed:seat.pending[1],dashPressed:seat.pending[2]}):blank();seat.pending=[false,false,false];}
-      Arena.step(state,commands);for(const e of state.events)if(eventTypes.includes(e.type)){e.serial=++eventSerial;events.push(Object.assign({},e));}events=events.slice(-12);return state;
+      Arena.step(state,commands);for(const e of state.events)if(eventTypes.includes(e.type)&&(e.type!=='land'||e.impact>=RING_LAND_IMPACT)){e.serial=++eventSerial;events.push(Object.assign({},e));}events=events.slice(-12);return state;
     }
     const host={journey,syncRoster,configure,setTeam,start,lobby,pause,receive,step,packet(){revision++;return encodeSnapshot(host);},get state(){return state;},get status(){return status;},get seats(){return seats;},get epoch(){return epoch;},get revision(){return revision;},get events(){return events;}};return host;
   }

@@ -294,13 +294,13 @@ test('shared boss supports four safe crew slots and one enemy without displacing
   assert.equal(solo.encounter.wingmate, false);
 });
 
-test('standalone authority ignores expedition rules and preserves VERSION1 bytes exactly', () => {
+test('standalone authority ignores expedition rules and preserves the standalone layout exactly', () => {
   const crypto = require('node:crypto');
-  // Recorded from the pre-expedition VERSION1 encoder for this seeded stream.
+  // Recorded from the standalone (version 3, charge-aware) encoder for this seeded stream.
   const hashes = {
-    duel: 'b46b628d2c9caaeaf72107f1db6b9cf42d5dd8ea3355c0e43157478a18c67a13',
-    ffa: '9483f688b3823b94056199e6940afea315326d20c9ba9f32b2663ac9593e4627',
-    teams: '4ee2bbb0fece8384b4294c9e7df91d2ad6bf93c450f6a3b8c890521d9827c102',
+    duel: '4dd59b1c64d268d3840dcfcba33994dec74b09de89a7aef24e18def0f7436744',
+    ffa: '02a5160f95f1cf580bcdfe3e9b8037847c201a1c8acc877600da1e86affb5c8c',
+    teams: '618d72b98cc97f0f6847d5c356a389e5cc8ced48a36b1bce156db63b13f11c17',
   };
   for (const format of ['duel', 'ffa', 'teams']) {
     const host = Online.createHost({ arenaId: 'ember-foundry', format, difficulty: 'hard', encounter: 'boss', crewCount: 4, stocks: 1, countdownTicks: 0 });
@@ -309,7 +309,7 @@ test('standalone authority ignores expedition rules and preserves VERSION1 bytes
     host.start(47);
     for (let i = 0; i < 410; i++) host.step(i * 1000 / 60);
     const packet = host.packet();
-    assert.equal(packet[0], 1);
+    assert.equal(packet[0], Online.VERSION);
     assert.equal(crypto.createHash('sha256').update(packet).digest('hex'), hashes[format]);
     assert.ok(Online.decodeSnapshot(packet));
     assert.equal(Online.decodeSnapshot(packet, journey), null);
@@ -321,13 +321,13 @@ test('journey snapshot and input versions are opt-in and cannot cross standalone
   const host = Online.createHost(config, journey); host.syncRoster(crew, 0); host.start(12);
   const client = Online.createClient({ journey: true, config });
   const packet = host.packet();
-  assert.equal(packet[0], 2);
+  assert.equal(packet[0], Online.JOURNEY_VERSION);
   assert.equal(Online.decodeSnapshot(packet), null);
   assert.equal(Online.createClient().accept(packet), null);
   assert.equal(client.accept(packet, 2), null, 'only authenticated host sends authoritative state');
   assert.ok(client.accept(packet));
   const input = client.input({ moveX: 1, jumpPressed: true }, 1);
-  assert.equal(input.length, Online.INPUT_BYTES); assert.equal(input[0], 2);
+  assert.equal(input.length, Online.INPUT_BYTES); assert.equal(input[0], Online.JOURNEY_VERSION);
   assert.equal(Online.decodeInput(input), null);
   assert.ok(Online.decodeInput(input, journey));
   assert.equal(host.receive(1, 'crew-1', input, 0), true);
@@ -358,7 +358,7 @@ test('journey codecs preserve every telegraph, hit, recovery and defeat within t
   }
   assert.ok(['idle', 'charging', 'active', 'recover', 'defeated'].every((phase) => phases.has(phase)));
   assert.ok(['boss-warning', 'boss-strike', 'boss-exposed', 'boss-defeated'].every((type) => events.has(type)));
-  assert.ok(biggest <= 620, 'five actors, boss state and twelve presentation events remain bounded');
+  assert.ok(biggest <= 640, 'five actors, boss state and twelve presentation events remain bounded');
   assert.deepEqual(client.current.state.result, host.state.result);
 });
 
@@ -388,10 +388,10 @@ test('journey decoder rejects truncation, wrong configuration, boss ownership an
   for (let i = 0; i < packet.length; i++) assert.equal(Online.decodeSnapshot(packet.slice(0, i), journey), null);
   assert.equal(Online.decodeSnapshot(Uint8Array.from([...packet, 0]), journey), null);
   assert.equal(Online.decodeSnapshot(new Uint8Array(991), journey), null);
-  const bossOffset = 35 + 5 * 63;
+  const bossOffset = 35 + 5 * 64;
   for (const mutate of [
     (b) => { b[27] = 99; }, (b) => { b[31] = 9; }, (b) => { b[32] = 9; }, (b) => { b[34] = 5; },
-    (b) => { b[35 + 4 * 63 + 1] = 1; },
+    (b) => { b[35 + 4 * 64 + 1] = 1; },
     (b) => { b[bossOffset] = 99; }, (b) => { b[bossOffset + 1] = 99; },
     (b) => { b[bossOffset + 2] = 255; },
     (b) => { new DataView(b.buffer).setUint16(bossOffset + 4, 65535, true); },
