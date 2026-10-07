@@ -34,6 +34,7 @@ const SHELL = [
   './src/anim.js',
   './src/arena.js',
   './src/arena-online.js',
+  './src/room-social.js',
   './src/arena-room.js',
   './src/arena-ui.js',
   './src/race.js',

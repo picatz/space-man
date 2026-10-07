@@ -733,7 +733,8 @@
 
   /* Join prompt / blocked-host card */
   .stack-btn { display: flex; flex-direction: column; }
-  #btnJoinNotNow, #btnJoinAnyway { opacity: 0.75; }
+  #btnJoinNotNow, #btnJoinAnyway, #btnRejoinLast { opacity: 0.75; }
+  #btnRejoinLast[hidden] { display: none; }
   #joinState { font-size: 12px; letter-spacing: 1px; color: var(--ui); opacity: 0.75; margin: 6px 0; min-height: 16px; }
   #joinCustomDir { font-size: 11px; letter-spacing: 1px; color: var(--gold); opacity: 0.85; margin: 4px 0; display: none; }
   #joinCustomDir.show { display: block; }
@@ -999,6 +1000,7 @@
       aria-describedby="joinHint" />
     <div class="join-hint" id="joinHint" role="status" aria-live="polite">Type the code your friend sees, or paste their invite link.</div>
     <button class="btn ghost" id="btnJoinGo">Join</button>
+    <button class="btn ghost" id="btnRejoinLast" hidden>Rejoin last room</button>
     <button class="btn ghost" id="btnTogetherBack">Back</button>
   </div>
 </div>
@@ -1121,6 +1123,7 @@
 <script src="src/expedition.js"></script>
 <script src="src/arena.js"></script>
 <script src="src/arena-online.js"></script>
+<script src="src/room-social.js"></script>
 <script src="src/arena-room.js"></script>
 <script src="src/arena-ui.js"></script>
 <script src="src/race.js"></script>
@@ -7380,7 +7383,14 @@ let joinReq = 0;   // bumped whenever the screen is left or reopened, so a slow 
 function setTogetherHint(msg, isError) { const h = $('joinHint'); h.textContent = msg || ''; h.classList.toggle('err', !!isError); }
 function setTogetherBusy(on) {
   joinLookup = on;
-  for (const id of ['joinInput', 'btnJoinGo', 'btnCreateRoom']) $(id).disabled = on;
+  for (const id of ['joinInput', 'btnJoinGo', 'btnCreateRoom', 'btnRejoinLast']) $(id).disabled = on;
+}
+// SOC-03: offer the last room code for 20 minutes. The entry holds {region, code, mode, ts} only.
+function paintRejoinLast() {
+  const b = $('btnRejoinLast'); if (!b) return;
+  const r = lastRoomStore.load('runner');
+  b.hidden = !r;
+  if (r) { b.textContent = 'Rejoin ' + window.SpaceManRoomSocial.lastRoomText(r); b.dataset.code = window.SpaceManRoomSocial.lastRoomText(r); }
 }
 function openTogether() {
   if (!netEnabled()) return;
@@ -7391,6 +7401,7 @@ function openTogether() {
   setTogetherBusy(false);
   $('joinInput').value = '';
   setTogetherHint(BUILD.preview ? 'Paste the full invite link from this exact preview build.' : 'Type the code your friend sees, or paste their invite link.');
+  paintRejoinLast();
   showOverlay('ovTogether');
   syncOffline();
   // Desktop: land in the box so they can just type or paste. Phones keep the keyboard down until they tap it.
@@ -7430,6 +7441,7 @@ async function submitJoin() {
   try {
     const found = await NET.lookupCode(joinTarget.value);
     if (req !== joinReq) return;
+    try { const pk = NET.peekInvite(found.invite); if (pk && !pk.err && (pk.mode === 'runner' || !pk.mode)) lastRoomStore.save({ region: p.region || '', code: p.code, mode: 'runner' }); } catch (e) {}
     setTogetherBusy(false);
     beginJoin(found.invite);
   } catch (e) {
@@ -8660,9 +8672,11 @@ $('btnArena').onclick = () => {
   if (G.mode !== 'attract' || (raceUI && raceUI.active) || !window.SpaceManArenaUI) return;
   clearInput(); Audio.suspend(); getArenaUI().open();
 };
+// SOC-03: the last room code a join resolved, kept on this device for 20 minutes (public capability only).
+const lastRoomStore = window.SpaceManRoomSocial.createLastRoomStore({ key: BUILD.storageKey('sm2.lastroom.v1') });
 function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
-    storageKey: BUILD.storageKey('sm2.arena.v1'),
+    storageKey: BUILD.storageKey('sm2.arena.v1'), lastRoom: lastRoomStore,
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions: relayHostOptions,
@@ -8683,7 +8697,7 @@ $('btnRace').onclick = () => {
 };
 function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
-    storageKey: BUILD.storageKey('sm2.race.v1'),
+    storageKey: BUILD.storageKey('sm2.race.v1'), lastRoom: lastRoomStore,
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions: relayHostOptions,
@@ -8909,6 +8923,7 @@ $('btnInitialsOk').onclick = () => commitInitials();
 $('btnTogether').onclick = () => openTogether();
 $('btnCreateRoom').onclick = () => openRoomFlow();
 $('btnJoinGo').onclick = () => submitJoin();
+$('btnRejoinLast').onclick = () => { const c = $('btnRejoinLast').dataset.code; if (!c) return; $('joinInput').value = c; submitJoin(); };
 $('btnTogetherBack').onclick = () => { joinReq++; if (roomOpening) { roomOpening = false; try { NET.leave(); } catch (e) {} } setTogetherBusy(false); showAttract(); };
 $('joinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitJoin(); } });
 $('joinInput').addEventListener('input', () => { if ($('joinHint').classList.contains('err')) setTogetherHint(''); });
@@ -8988,7 +9003,7 @@ function netPeerToast(d, verb) {
 // them instead so a wave from the stands still lands. Positioned emoters already
 // bubble → skip to avoid doubling.
 function netEmoteToast(d) {
-  if (!d || !settings.netEmotes) return;
+  if (!d || !settings.netEmotes || !(d.id >= 0 && d.id < EMOTE_GLYPH.length)) return;   // ids 6-7 are lobby signals (AGAIN?/READY): never a toast
   if (ghosts.some((g) => g.active && g.p === d.p)) return;         // peer runner → bubble handles it
   if (d.p === NET.info().myP && !netSpectating()) return;          // your own bubble covers it while playing
   const row = (NET.roster() || []).find((r) => r.p === d.p);

@@ -107,6 +107,7 @@
 @media(max-width:760px){.race-grid{gap:22px;grid-template-columns:1fr}.race-intro{display:grid;grid-template-columns:1fr .8fr;column-gap:10px;align-items:center}.race-intro>.race-pill{grid-column:1;justify-self:start;font-size:8px;letter-spacing:.1em;padding:6px 9px}.race-title{font-size:34px;line-height:1;margin:13px 0;grid-column:1}.race-lede{font-size:12px;margin:0;grid-column:1/-1;max-width:none}.race-hero{grid-column:2;grid-row:1/4;width:100%;margin:0}.race-facts{display:none}.race-lobby-header{margin-bottom:8px}.race-setup{padding:17px}.race-track{min-height:68px}.race-track canvas{width:85px;height:50px;flex-basis:85px}.race-options{margin-bottom:15px}.race-modal{padding:calc(var(--race-top) + 12px) calc(var(--race-right) + 16px) calc(var(--race-bottom) + 14px) calc(var(--race-left) + 16px)}.race-hud{left:calc(var(--race-left) + 12px);right:calc(var(--race-right) + 12px);top:calc(var(--race-top) + 12px);gap:7px}.race-hud-box{gap:13px;padding:10px 12px}.race-position{font-size:32px}.race-metric strong{font-size:15px}.race-time{font-size:14px;padding:11px 10px}.race-pause{width:44px;height:44px;min-height:44px}.race-touch-group{gap:7px}.race-touch-button{width:59px;height:63px}.race-steering{left:calc(var(--race-left) + 13px)}.race-actions{right:calc(var(--race-right) + 13px)}.race-recover{font-size:8px;padding:7px;bottom:calc(var(--race-bottom) + 31px)}.race-hint{max-width:60%;white-space:normal;text-align:center}.race-warning{top:calc(var(--race-top) + 128px)}}
 @media(max-height:520px) and (min-width:600px){.race-hud-left{grid-template-columns:auto minmax(0,170px);align-items:center;max-width:360px}.race-warning{top:calc(var(--race-top) + 103px)}.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:11px}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:25%;font-size:44px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
 @media(max-width:350px){.race-touch-button{width:54px;height:60px}.race-root .race-recover{width:44px;font-size:0;padding:5px 2px}.race-recover:after{content:"↺";font-size:23px}.race-boostbar{width:100px}.race-root[data-touch=true] .race-minimap{width:100px;height:70px}.race-hud-box{padding:9px 10px;gap:10px}.race-hud{gap:5px}.race-time{padding:10px 8px}}
+.race-ready-row{display:grid;gap:8px;margin:10px 0}.race-ready-row[hidden],.race-ready-row>[hidden],.race-compact>.race-text[hidden]{display:none!important}.race-auto-label{display:flex;gap:8px;align-items:center;font-size:13px;min-height:44px}.race-auto-label input{width:22px;height:22px;flex:none}.race-vote-note{margin:6px 0;font-size:13px;line-height:1.5;color:#c7e2ef;min-height:0}.race-vote-note:empty{display:none}
 .race-online-panel{margin-top:18px;padding:13px 18px;border:1px solid #38536b;border-radius:16px;background:#10263be8}.race-online-panel>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750;color:#d6efbf}.race-online-entry{display:grid;gap:10px}.race-online-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.race-room-input{width:100%;min-height:46px;border:1px solid #547183;border-radius:10px;background:#071c2e;color:#e1f5ff;font:inherit;padding:10px;user-select:text;touch-action:auto}.race-room-members{padding-left:20px;color:#c7e2ef;font-size:12px}.race-room-code{font-size:18px;letter-spacing:.08em}.race-watch-tools{position:absolute;bottom:calc(var(--race-bottom) + 18px);left:50%;transform:translateX(-50%);z-index:4;background:#10263be8;border:1px solid #38536b;border-radius:12px;display:flex;align-items:center;gap:8px;max-width:95%;font-size:10px}.race-watch-tools>.race-button{width:44px;min-width:44px;height:44px;padding:8px;flex:0 0 44px}.race-watch-tools>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-root button:disabled{opacity:.5;cursor:default}.race-root[data-online=true] .race-hint{display:none}
 .race-audio-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.race-audio-volume{display:flex;gap:8px;align-items:center;font-size:11px;color:#a9bed0}.race-audio-volume input{max-width:140px;min-height:44px;touch-action:pan-x}.race-compact .race-audio-controls{border-top:1px solid #294054;padding-top:12px}
 
@@ -202,6 +203,17 @@
       roomPaused = false,
       localRoomMenu = false,
       roomClosing = false;
+    let roomReady, roomReadyRow, roomAutoLabel, roomAuto, roomVotes, roomAutoCancel, roomRejoin, againNote, againCancel,
+      lastVoteNote = "";
+    const social = () => root.SpaceManRoomSocial;
+    const lastRoomEntry = () => opts.lastRoom && opts.lastRoom.load("race");
+    function paintRejoin() {
+      if (!roomRejoin) return;
+      const r = social() && lastRoomEntry(),
+        idle = !(roomStatus && (roomStatus.active || roomStatus.busy));
+      roomRejoin.hidden = !(r && idle);
+      if (r) setText(roomRejoin, "Rejoin " + social().lastRoomText(r));
+    }
     let roomUtilities,
       roomDetails,
       roomEntry,
@@ -237,6 +249,7 @@
         !roomStatus?.connection);
     function syncRoomChoices() {
       if (!room) return;
+      paintRejoin();
       const online = onlineActive(),
         host = room.isHost,
         busy = room.busy;
@@ -247,18 +260,36 @@
         launch,
         busy || (online && (!host || !!roomStatus?.connection)),
       );
+      const votes = online && roomStatus?.active ? roomStatus.votes : null;
       setText(
         launch,
         online
           ? host
-            ? "Start together"
+            ? "Start together" + (votes && votes.ready.m > 1 ? " (" + votes.ready.n + "/" + votes.ready.m + " ready)" : "")
             : "Waiting for host…"
           : "Launch race",
       );
       for (const b of roomButtons) setDisabled(b, busy);
       setDisabled(roomInput, busy);
-      for (const id of ["raceRestart", "raceRematch", "raceNext"])
+      for (const id of ["raceRestart", "raceNext"])
         setDisabled(rootEl.querySelector("#" + id), online && !host);
+      {
+        const rematch = rootEl.querySelector("#raceRematch"),
+          seated = roomStatus?.info?.role === 0,
+          again = votes && votes.again;
+        if (!online) { setDisabled(rematch, false); setText(rematch, "Race again"); rematch.removeAttribute("aria-pressed"); }
+        else if (host) {
+          setDisabled(rematch, false);
+          setText(rematch, "Race again together" + (again && again.m > 1 ? " (" + again.n + "/" + again.m + " want one)" : ""));
+          rematch.removeAttribute("aria-pressed");
+        } else if (!seated || !again) { setDisabled(rematch, true); setText(rematch, "Waiting for host…"); rematch.removeAttribute("aria-pressed"); }
+        else {
+          setDisabled(rematch, !!roomStatus.connection || again.pending);
+          rematch.setAttribute("aria-pressed", String(again.mine));
+          setText(rematch, again.pending ? "Telling the host…" : again.mine ? "Waiting for host… · tap to undo" : "Race again?");
+        }
+      }
+      paintVotes(votes);
       const resume = rootEl.querySelector("#raceResume");
       setDisabled(
         resume,
@@ -285,6 +316,41 @@
       watchTools.hidden = !online || view !== "play" || paused || !!ownActor();
       if (!watchTools.hidden)
         setText(watchName, "WATCHING " + (followActor()?.name || "RACE"));
+    }
+    function paintVotes(votes) {
+      if (!roomReady) return;
+      const host = room.isHost,
+        seated = roomStatus?.info?.role === 0,
+        inLobby = roomStatus?.current?.status === "lobby",
+        names = new Map((roomStatus?.roster || []).map((r) => [r.p, r.callsign || "PLAYER " + r.p])),
+        who = (ps) => ps.map((p) => names.get(p) || "PLAYER " + p).join(", ");
+      roomReadyRow.hidden = !(votes && seated && inLobby);
+      let note = "", resultNote = "";
+      if (votes) {
+        const r = votes.ready, a = votes.again;
+        roomReady.setAttribute("aria-pressed", String(r.mine));
+        setDisabled(roomReady, !!roomStatus.connection || r.pending);
+        setText(roomReady, r.pending ? "Telling the host…" : r.mine ? "Ready ✓ · tap to undo" : "I’m ready");
+        roomAutoLabel.hidden = !host;
+        roomAuto.checked = votes.autoStart;
+        roomAutoCancel.hidden = votes.auto !== "ready";
+        if (host)
+          note = votes.auto === "ready" ? "Everyone is ready. Starting in a few seconds…"
+            : r.m > 1 ? r.n + " of " + r.m + " ready" + (r.missing.length && r.n ? " · waiting for " + who(r.missing) : "") : "";
+        else if (r.unconfirmed) note = "Sent. If the host runs an older version they will not see your ready signal.";
+        else if (r.mine) note = "You are ready. The host starts the race.";
+        againCancel.hidden = votes.auto !== "again";
+        if (host)
+          resultNote = votes.auto === "again" ? "Everyone wants another race. Starting in a few seconds…"
+            : a.m > 1 ? a.n + " of " + a.m + " want another race" + (a.missing.length ? " · waiting for " + who(a.missing) : "") : "";
+        else if (a.unconfirmed) resultNote = "Sent. If the host runs an older version they will not see your rematch request.";
+        else if (a.mine) resultNote = "You asked for another race. Waiting for the host.";
+      } else { roomAutoCancel.hidden = true; againCancel.hidden = true; }
+      setText(roomVotes, note);
+      setText(againNote, resultNote);
+      const spoken = (inLobby ? note : resultNote) || "";
+      if (spoken && spoken !== lastVoteNote) announce(spoken);
+      lastVoteNote = spoken;
     }
     function roomChanged(status) {
       if (!active || roomClosing) return;
@@ -320,7 +386,7 @@
       if (status.active) {
         const signature = JSON.stringify(
           status.roster.map((r) => [r.p, r.callsign, r.role]),
-        );
+        ) + (status.votes && status.current?.status === "lobby" ? "|" + status.votes.ready.missing : "");
         if (signature !== roomSignature) {
           roomSignature = signature;
           roomMembers.replaceChildren();
@@ -332,7 +398,8 @@
                 (r.callsign || "PLAYER " + r.p) +
                   (r.you ? " · YOU" : "") +
                   (r.host ? " · HOST" : "") +
-                  (r.spectator ? " · WATCHING" : " · RACER"),
+                  (r.spectator ? " · WATCHING" : " · RACER") +
+                  (status.votes && status.current?.status === "lobby" && !r.spectator && !status.votes.ready.missing.includes(r.p) ? " · READY ✓" : ""),
               ),
             );
         }
@@ -516,7 +583,16 @@
       roomButtons = [host, join, watch];
       const joins = el("div", "race-online-actions");
       joins.append(join, watch);
-      roomEntry.append(host, roomInput, joins);
+      roomRejoin = button("Rejoin last room", "race-text", () => {
+        const r = lastRoomEntry();
+        if (!r) return;
+        const text = social().lastRoomText(r);
+        roomInput.value = text;
+        room.join(text, 0);
+      });
+      roomRejoin.id = "raceRejoin";
+      roomRejoin.hidden = true;
+      roomEntry.append(host, roomInput, joins, roomRejoin);
       roomBox = el("div");
       roomBox.hidden = true;
       roomCode = el("strong", "race-room-code");
@@ -556,7 +632,25 @@
       roomRole.id = "raceRoomRole";
       const sharing = el("div", "race-online-actions");
       sharing.append(roomCopy, roomShare, roomRole);
-      roomBox.append(roomCode, roomMembers, roomInvite, sharing);
+      roomReadyRow = el("div", "race-ready-row");
+      roomReadyRow.hidden = true;
+      roomReady = button("I’m ready", "", () => room.vote("ready"));
+      roomReady.id = "raceReady";
+      roomReady.setAttribute("aria-pressed", "false");
+      roomAutoLabel = el("label", "race-auto-label");
+      roomAuto = el("input");
+      roomAuto.type = "checkbox";
+      roomAuto.checked = true;
+      roomAuto.id = "raceAutoStart";
+      roomAuto.addEventListener("change", () => room.setAutoStart(roomAuto.checked));
+      roomAutoLabel.append(roomAuto, document.createTextNode("Auto-start when everyone is ready"));
+      roomVotes = el("p", "race-vote-note");
+      roomVotes.id = "raceReadyNote";
+      roomAutoCancel = button("Cancel auto-start", "race-text", () => room.cancelAuto());
+      roomAutoCancel.id = "raceAutoCancel";
+      roomAutoCancel.hidden = true;
+      roomReadyRow.append(roomReady, roomVotes, roomAutoLabel, roomAutoCancel);
+      roomBox.append(roomCode, roomMembers, roomReadyRow, roomInvite, sharing);
       roomHint = el("p", "race-local-note");
       roomHint.id = "raceRoomHint";
       roomHint.setAttribute("role", "status");
@@ -564,6 +658,7 @@
       roomLeave.id = "raceRoomLeave";
       roomLeave.hidden = true;
       roomDetails.append(roomEntry, roomBox, roomHint, roomLeave);
+      roomDetails.addEventListener("toggle", paintRejoin);
       roomUtilities.prepend(roomDetails);
       watchTools = el("div", "race-watch-tools");
       watchTools.hidden = true;
@@ -583,6 +678,8 @@
         identity: opts.identity,
         hostOptions: opts.hostOptions,
         baseUrl: opts.baseUrl,
+        lastRoom: opts.lastRoom,
+        onAutoStart: () => { if (room?.isHost) start(); },
         onChange: roomChanged,
         onSnapshot: networkSnapshot,
       });
@@ -1325,7 +1422,10 @@
         el("span", "race-pill", "CIRCUIT COMPLETE"),
         resultTitle,
         resultRows,
-        button("Race again", "race-primary", start),
+        button("Race again", "race-primary", () => {
+          if (onlineActive() && !room.isHost) room.vote("again");
+          else start();
+        }),
         button("Next circuit  ↗", "", () => {
           selected.trackId =
             R.tracks[
@@ -1341,6 +1441,12 @@
       const resultActions = el("div", "race-menu-actions");
       for (const n of resultPanel.querySelectorAll("button")) resultActions.append(n);
       resultPanel.append(resultActions);
+      againNote = el("p", "race-vote-note");
+      againNote.id = "raceAgainNote";
+      againCancel = button("Cancel auto-start", "race-text", () => room.cancelAuto());
+      againCancel.id = "raceAgainCancel";
+      againCancel.hidden = true;
+      resultPanel.append(againNote, againCancel);
       pausePanel.querySelectorAll("button")[0].id = "raceResume";
       pausePanel.querySelectorAll("button")[1].id = "raceRestart";
       pausePanel.querySelectorAll("button")[2].id = "raceLobby";
