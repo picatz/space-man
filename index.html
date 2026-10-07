@@ -995,7 +995,7 @@
     <div class="together-or" aria-hidden="true">or join a friend</div>
     <label class="join-label" for="joinInput">Room code or link</label>
     <input class="join-input" id="joinInput" type="text" inputmode="text" enterkeyhint="go" autocomplete="off"
-      autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NYC-COMET-42"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NYC-COMET-ORBIT-42"
       aria-describedby="joinHint" />
     <div class="join-hint" id="joinHint" role="status" aria-live="polite">Type the code your friend sees, or paste their invite link.</div>
     <button class="btn ghost" id="btnJoinGo">Join</button>
@@ -2437,7 +2437,7 @@ function keyAction(k) {
 }
 // Is keyboard focus on a live overlay control? Then Enter/Space belong to it.
 function focusInOverlay() { const a = document.activeElement; return !!(a && a !== document.body && a.closest && a.closest('.overlay.show')); }
-// A text box (the room-code field) owns its keys: typing COMET-42 must not mute, pause or restart the game.
+// A text box (the room-code field) owns its keys: typing COMET-ORBIT-42 must not mute, pause or restart the game.
 function isTextField(t) {
   return !!t && (t.tagName === 'TEXTAREA' || t.isContentEditable || (t.tagName === 'INPUT' && /^(text|search|url|tel|email|password)$/i.test(t.type || 'text')));
 }
@@ -7370,7 +7370,7 @@ function linkLabelHtml(q, isHost) {
     (q.lossPct >= 2 ? ' · <span class="num">' + q.lossPct + '%</span> lost' : '');
 }
 /* ---- Run Together front door: Create a Room, or Join with a code / link ---------------------------
-   One box takes whatever a friend sends: the code ("NYC-COMET-42", however typed), the invite link, or a
+   One box takes whatever a friend sends: the code ("NYC-COMET-ORBIT-42", however typed; older WORD-NN codes still work), the invite link, or a
    whole chat message with a link in it. A code is looked up on its relay, then the usual Play/Watch
    prompt follows, exactly as if they had opened the link. */
 let joinLookup = false;
@@ -7396,13 +7396,14 @@ function openTogether() {
 }
 function badJoinMessage(p) {
   if (p.reason === 'word') return '"' + p.word + '" isn\'t one of our room words. Check the spelling, or paste the link.';
-  if (p.reason === 'region') return '"' + p.region.toUpperCase() + '" isn\'t a relay location we know. Codes start with a 3-letter place, like NYC-COMET-42.';
+  if (p.reason === 'region') return '"' + p.region.toUpperCase() + '" isn\'t a relay location we know. Codes start with a 3-letter place, like NYC-COMET-ORBIT-42.';
   if (p.reason === 'long') return 'That\'s too long. Paste just the link, or type the code.';
-  return 'That doesn\'t look like a room code. It looks like NYC-COMET-42, or paste the invite link.';
+  return 'That doesn\'t look like a room code. It looks like NYC-COMET-ORBIT-42 (two words and two digits), or paste the invite link.';
 }
 function lookupFailMessage(e, p) {
   const m = e && e.message ? e.message : '';
-  if (/no answer/i.test(m)) return 'No room answers to ' + p.display + '. Check the code, and that the host still has the room open.' + (p.region ? '' : ' Codes work best with their 3-letter place first, like NYC-COMET-42.');
+  if (/no answer/i.test(m)) return 'No room answers to ' + p.display + '. Check the code, and that the host still has the room open.' + (p.region ? '' : ' Codes work best with their 3-letter place first, like NYC-COMET-ORBIT-42.');
+  if (/too many/i.test(m)) return 'Too many tries in a row. Wait a few seconds, then try again.';
   if (/update/i.test(m)) return 'Update to play together.';
   return 'Couldn\'t reach the relay. Check your connection, or ask for the link instead.';
 }
@@ -8910,7 +8911,14 @@ $('btnTogetherBack').onclick = () => { joinReq++; if (roomOpening) { roomOpening
 $('joinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitJoin(); } });
 $('joinInput').addEventListener('input', () => { if ($('joinHint').classList.contains('err')) setTogetherHint(''); });
 // Pasting a link is the whole request: go straight to the join prompt, no extra tap.
-$('joinInput').addEventListener('paste', () => setTimeout(() => { if (NET.parseJoin($('joinInput').value).kind === 'invite') submitJoin(); }, 0));
+// A code is shown the way it is read aloud (NYC-COMET-ORBIT-42) once it is complete; a pasted invite still goes straight on.
+function tidyJoinInput() {
+  const el = $('joinInput'), p = NET.parseJoin(el.value);
+  if (p.kind === 'code' && el.value !== p.display) el.value = p.display;
+  return p;
+}
+$('joinInput').addEventListener('blur', () => { tidyJoinInput(); });
+$('joinInput').addEventListener('paste', () => setTimeout(() => { if (tidyJoinInput().kind === 'invite') submitJoin(); }, 0));
 $('roomCode').onclick = () => copyRoomCode();
 $('roomCode').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyRoomCode(); } });
 $('btnRoomCopy').onclick = () => copyRoomLink();

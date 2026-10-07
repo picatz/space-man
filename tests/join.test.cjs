@@ -48,7 +48,7 @@ test('anything else is refused with a reason, and never handed on', () => {
   assert.equal(reason('x'.repeat(5000)), 'long');
   for (const hostile of ['<script>alert(1)</script>', 'javascript:alert(1)', '"><img src=x onerror=alert(1)>', 'NYC-COMET-42<b>', '../../etc/passwd', '%00%0a']) {
     const r = parse(hostile);
-    assert.ok(r.kind === 'bad' || (r.kind === 'code' && /^[A-Z]{4,6}-\d\d$/.test(r.code)), hostile);   // never a payload, never echoing input
+    assert.ok(r.kind === 'bad' || (r.kind === 'code' && /^[A-Z]{4,6}(-[A-Z]{4,6})?-\d\d$/.test(r.code)), hostile);   // never a payload, never echoing input
   }
   // An invite is only ever a URL-safe base64 run: no other character can ride through.
   assert.equal(parse('#j=' + PAY + '<img src=x>').payload, PAY);
@@ -66,7 +66,7 @@ async function hostWithCode(t, opts = {}) {
 test('a typed code with its region finds the room and joins it', async (t) => {
   const { host, guest } = await hostWithCode(t);
   const code = host.net.info().joinCode;
-  assert.match(code, /^NYC-[A-Z]{4,6}-\d\d$/, 'the host shows the region with the code');
+  assert.match(code, /^NYC-[A-Z]{4,6}-[A-Z]{4,6}-\d\d$/, 'the host shows the region with the code');
   const { invite, region } = await guest.net.lookupCode(code.toLowerCase().replace(/-/g, ' '));
   assert.equal(region, 'nyc');
   assert.equal(guest.net.parseJoin(host.net.info().link).payload, invite, 'the code and the link carry the same invite');
@@ -88,7 +88,7 @@ test('a bare code (no region) asks the relays nearest this device', async (t) =>
   const near = probe.net._n1.map.nearRegions(5).map((r) => r.code);
   const { host, guest } = await hostWithCode(t, { region: near[2] });
   const bare = host.net.info().code;
-  assert.match(bare, /^[A-Z]{4,6}-\d\d$/);
+  assert.match(bare, /^[A-Z]{4,6}-[A-Z]{4,6}-\d\d$/);
   const found = await guest.net.lookupCode(bare);
   assert.equal(found.region, near[2]);
 });
@@ -259,7 +259,7 @@ test('the host card leads with the room code, and copying it copies the whole th
   await guest.run("openRoomFlow()");
   assert.equal(shown(guest, 'ovRoom'), true);
   const code = guest.net.info().joinCode;
-  assert.match(code, /^[A-Z]{3}-[A-Z]{4,6}-\d\d$/);
+  assert.match(code, /^[A-Z]{3}-[A-Z]{4,6}-[A-Z]{4,6}-\d\d$/);
   assert.equal(el(guest, 'roomCode').textContent, code);
   guest.run("$('roomCode').onclick()");
   assert.deepEqual(copied, [code]);
@@ -302,4 +302,138 @@ test('copying the code says so only when it worked, and otherwise offers a selec
   guest.context.navigator.clipboard = undefined;
   guest.run("$('roomCode').onclick()");
   assert.equal(prompts.length, 2, 'no clipboard at all: the prompt again');
+});
+
+/* ---- SEC-02: bigger code space, old codes still work, lookups are rate-limited ------------------- */
+
+test('new codes are WORD-WORD-NN from a 128-word list: ~1.6M codes, unambiguous to read aloud', () => {
+  const { invite } = probe.net._n1;
+  const words = invite.CODE_WORDS;
+  assert.equal(words.length, 128);
+  assert.equal(new Set(words).size, 128, 'no duplicate words');
+  for (const w of words) assert.match(w, /^[A-Z]{4,6}$/);
+  // No word is another word's prefix or a concatenation of two others: a compact "WORDWORD42" has one reading.
+  for (const a of words) for (const b of words) if (a !== b && b.startsWith(a)) assert.fail(a + ' prefixes ' + b);
+  assert.ok(words.length ** 2 * 100 >= 1.6e6);
+  const seen = new Set();
+  for (let i = 0; i < 2000; i++) {
+    const c = invite.randomCode();
+    assert.match(c, /^[A-Z]{4,6}-[A-Z]{4,6}-\d\d$/);
+    const [w1, w2] = c.split('-');
+    assert.ok(words.includes(w1) && words.includes(w2));
+    seen.add(c);
+  }
+  assert.ok(seen.size > 1990, 'codes are random, not a small cycle');
+  // Every generated code round-trips through the tolerant parser exactly.
+  for (const c of seen) assert.equal(parse(c.toLowerCase().replace(/-/g, ' ')).code, c);
+});
+
+test('two-word codes are read however they are written, and pick the right keypair', () => {
+  const want = { kind: 'code', code: 'COMET-ORBIT-42', region: 'nyc', display: 'NYC-COMET-ORBIT-42' };
+  for (const s of ['NYC-COMET-ORBIT-42', 'nyc comet orbit 42', 'nyccometorbit42', ' Nyc  Comet-Orbit-4 2 ', 'NYC_COMET.ORBIT.42', 'nyc\tcomet\norbit 42'])
+    assert.deepEqual(parse(s), want, JSON.stringify(s));
+  assert.deepEqual(parse('comet orbit 42'), { kind: 'code', code: 'COMET-ORBIT-42', region: null, display: 'COMET-ORBIT-42' });
+  assert.equal(parse('sfo-onyx-opal-07').code, 'ONYX-OPAL-07');
+  assert.equal(parse('onyxopal07').region, null, 'no region typed: the words are not mistaken for one');
+  assert.equal(parse('zzz-comet-orbit-42').reason, 'region');
+  assert.equal(parse('nyc-comet-orbitt-42').reason, 'word');
+  assert.equal(parse('nyc-comet-orbit-4').reason, 'shape');
+  const { codeKeypair } = probe.net._n1.invite, hx = probe.net._n1.bytes.hex;
+  const a = codeKeypair('nyc', 'COMET-ORBIT-42'), b = codeKeypair('nyc', 'comet-orbit-42'), c = codeKeypair('ord', 'COMET-ORBIT-42');
+  assert.equal(hx(a.pub), hx(b.pub), 'case-insensitive');
+  assert.notEqual(hx(a.pub), hx(c.pub), 'region-scoped');
+  assert.notEqual(hx(a.pub), hx(codeKeypair('nyc', 'ORBIT-COMET-42').pub), 'word order matters');
+  assert.equal(codeKeypair('nyc', 'COMET-ORBIT'), null);
+  assert.equal(codeKeypair('nyc', 'COMET-ORBIT-OTTER-42'), null);
+});
+
+test('old-format codes (WORD-NN) typed by people still parse, and an old host\'s listener still resolves', async (t) => {
+  assert.deepEqual(parse('NYC-COMET-42'), { kind: 'code', code: 'COMET-42', region: 'nyc', display: 'NYC-COMET-42' });
+  const { invite, bytes } = probe.net._n1;
+  // Legacy derivation is untouched: a fixed vector pins SHA-256("sm.code.v1|nyc|COMET-42") -> keypair.
+  const legacy = invite.codeKeypair('nyc', 'COMET-42');
+  const want = probe.net._n1.keys.keypairFromRaw(probe.net._n1.nacl.sha256(bytes.utf8('sm.code.v1|nyc|COMET-42')));
+  assert.equal(bytes.hex(legacy.pub), bytes.hex(want.pub));
+  // An old host: listens on the v1 key and answers CODEREQ with the invite, exactly as before.
+  const hub = relay(), oldHost = client(hub, { game: false }), guest = client(hub, { game: false });
+  t.after(() => { oldHost.close(); guest.close(); });
+  const n = oldHost.net._n1, FAKE = 'A'.repeat(90);
+  const ck = n.invite.codeKeypair('nyc', 'COMET-42');
+  const listener = n.RelayClient(n.RELAY_MAP.regions.find((r) => r.code === 'nyc').hosts[0], ck, {
+    onOpen: () => {}, onRtt: () => {}, onDown: () => {}, onPeerGone: () => {}, onLog: () => {},
+    onPacket: (src, wire) => {
+      const pt = n.env.openCode(wire, src, ck.priv);
+      if (!pt || pt[0] !== 1) return;
+      const body = new Uint8Array(3 + FAKE.length); body[0] = 2; new DataView(body.buffer).setUint16(1, FAKE.length, true); body.set(n.bytes.utf8(FAKE), 3);
+      listener.send(src, n.env.sealCode(body, src, ck.priv));
+    },
+  });
+  t.after(() => listener.close());
+  listener.connect();
+  await until(() => listener.state === 'established', 'old host listening');
+  const got = await guest.net.lookupCode('nyc comet 42', { timeoutMs: 3000 });
+  assert.equal(got.invite, FAKE);
+});
+
+test('a new host listens only on the new two-word key, never on a legacy WORD-NN key', async (t) => {
+  const { host, guest } = await hostWithCode(t);
+  const code = host.net.info().code, [w1, , nn] = code.split('-');
+  await assert.rejects(guest.net.lookupCode('nyc ' + w1 + ' ' + nn, { timeoutMs: 400 }), /no answer/);
+  const ok = await guest.net.lookupCode('nyc ' + code, { timeoutMs: 3000 });
+  assert.equal(ok.invite, guest.net.parseJoin(host.net.info().link).payload);
+});
+
+test('code lookups are rate-limited per client so a scan is slow, then recover with time', async (t) => {
+  const hub = relay(), guest = client(hub, { game: false });
+  t.after(() => guest.close());
+  const bucket = guest.net._n1.invite.lookupBucket;
+  const start = hub.packetCount;
+  let refused = 0, tried = 0;
+  for (let i = 0; i < 40; i++) {
+    tried++;
+    try { await guest.net.lookupCode('nyc comet orbit ' + String(i).padStart(2, '0'), { timeoutMs: 20 }); }
+    catch (e) { if (/too many lookups/.test(e.message)) refused++; else assert.match(e.message, /no answer|relay|network|cancel/i); }
+  }
+  assert.ok(refused >= 15, 'a burst past the allowance is refused locally (refused ' + refused + ' of ' + tried + ')');
+  assert.ok(hub.packetCount - start < 80, 'refused lookups put nothing on the wire');
+  assert.ok(bucket.tokens < 1);
+  await new Promise((r) => setTimeout(r, 2200));      // ~1 token per 2 s
+  await assert.rejects(guest.net.lookupCode('nyc comet orbit 99', { timeoutMs: 20 }), /no answer|relay/i);
+});
+
+test('a host answers a given requesting key once per 10 s and at most 6 times a minute', async (t) => {
+  const { hub, host, guest } = await hostWithCode(t);
+  const n = host.net._n1, code = host.net.info().code;
+  const ck = n.invite.codeKeypair('nyc', code);
+  let replies = 0;
+  host.net.onEvent((e) => { if (e === 'code-reply') replies++; });
+  const ask = async (tmp) => {
+    // Drive the listener directly (the harness seam), as a relay-delivered packet from `tmp`.
+    const body = n.bytes.cat(new Uint8Array([1]), tmp.pub);
+    host.net._n1.session()._onCodePacket(tmp.pub, n.env.sealCode(body, ck.pub, tmp.priv));
+  };
+  const tmp = await n.keys.genKeypair();
+  await ask(tmp); await ask(tmp); await ask(tmp);
+  assert.equal(replies, 1, 'same key, same instant: one answer');
+  hub.advance(10500);
+  await ask(tmp);
+  assert.equal(replies, 2, 'and again once the 10 s are up');
+  for (let i = 0; i < 10; i++) await ask(await n.keys.genKeypair());
+  assert.equal(replies, 6, 'fresh keys are capped at 6 replies a minute');
+});
+
+test('the join box shows a complete typed or pasted code the way it is read aloud, and hints the new shape', async (t) => {
+  const { guest } = await screen(t);
+  guest.run("$('btnTogether').onclick()");
+  type(guest, 'nyc comet orbit 42');
+  guest.run('tidyJoinInput()');
+  assert.equal(el(guest, 'joinInput').value, 'NYC-COMET-ORBIT-42');
+  type(guest, 'comet 42');                       // an older code stays as the person typed it, normalised
+  guest.run('tidyJoinInput()');
+  assert.equal(el(guest, 'joinInput').value, 'COMET-42');
+  type(guest, 'half a thought');
+  guest.run('tidyJoinInput()');
+  assert.equal(el(guest, 'joinInput').value, 'half a thought', 'never rewrites what is not a code');
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
+  assert.match(src.match(/<input[^>]*id="joinInput"[^>]*>/s)[0], /placeholder="NYC-COMET-ORBIT-42"/);
 });

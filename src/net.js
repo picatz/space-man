@@ -659,15 +659,33 @@
     'PICNIC PILOT PLAZA PLUTO PONCHO PRISM PUMA QUARTZ RADAR RAVEN RIVER ' +
     'ROBIN ROCKET SAFARI SALSA SIERRA SONNET SPRUCE SUNSET TANGO TEMPO TIGER ' +
     'TOPAZ TULIP TUNDRA TURBO VELVET VIOLET VOYAGE WAFFLE WALNUT WILLOW ZEBRA ZENITH'
-  ).split(' ');                                        // 128 words × 100 suffixes = 12,800 codes
+  ).split(' ');                                        // 128 words
+  // Codes: WORD-WORD-NN (128 x 128 x 100 = 1,638,400, ~20.6 bits). Old hosts still hand out WORD-NN
+  // (12,800); those stay valid to type and resolve (v1 derivation), but a host never mints one any more.
   function randomCode() {
-    const r = rand(3);
-    return CODE_WORDS[r[0] & 127] + '-' + String((r[1] % 10)) + String((r[2] % 10));
+    const r = rand(4);
+    return CODE_WORDS[r[0] & 127] + '-' + CODE_WORDS[r[1] & 127] + '-' + String((r[2] % 10)) + String((r[3] % 10));
   }
+  const CODE_KDF_ROUNDS = 2048;   // v2 only: makes an offline guess-the-code scan against a known codePub costly
   function codeKeypair(region, code) {
     const c = String(code || '').toUpperCase().trim();
-    if (!/^[A-Z]{4,6}-\d\d$/.test(c)) return null;
-    return keypairFromRaw(sha256(utf8('sm.code.v1|' + region + '|' + c)));
+    if (/^[A-Z]{4,6}-\d\d$/.test(c)) return keypairFromRaw(sha256(utf8('sm.code.v1|' + region + '|' + c)));   // legacy
+    if (!/^[A-Z]{4,6}-[A-Z]{4,6}-\d\d$/.test(c)) return null;
+    let h = sha256(utf8('sm.code.v2|' + region + '|' + c));
+    for (let i = 1; i < CODE_KDF_ROUNDS; i++) h = sha256(cat(h, utf8('sm.code.v2')));
+    return keypairFromRaw(h);
+  }
+  // A lookup is a request to a stranger's relay key: cap how fast one client can fire them so a scanner
+  // cannot sweep the code space (token bucket, one token per relay asked).
+  const LOOKUP_CAP = 20, LOOKUP_REFILL_PER_S = 0.5;
+  const lookupBucket = { tokens: LOOKUP_CAP, at: 0 };
+  function takeLookupTokens(n) {
+    const now = performance.now();
+    lookupBucket.tokens = Math.min(LOOKUP_CAP, lookupBucket.tokens + (now - lookupBucket.at) / 1000 * LOOKUP_REFILL_PER_S);
+    lookupBucket.at = now;
+    if (lookupBucket.tokens < n) return false;
+    lookupBucket.tokens -= n;
+    return true;
   }
   // What a person reads out or types: the relay region's 3-letter code in front of the room code
   // (NYC-COMET-42). A code only exists on the relay its host picked, so the region has to travel
@@ -688,7 +706,7 @@
   // Turn whatever was typed or pasted into a join target: a link/fragment/raw invite, or a room code.
   // Tolerant on purpose (case, spaces, dashes, dots, "comet 42", "COMET42", a link buried in a message),
   // strict about what it hands on: an invite is only ever a URL-safe base64 run, a code only ever
-  // [region-]WORD-NN with WORD from the list. `regions` is optional; when given a typed region must be known.
+  // [region-]WORD-WORD-NN (or the legacy [region-]WORD-NN) with WORDs from the list. `regions` is optional; when given a typed region must be known.
   function parseJoin(input, regions) {
     if (typeof input !== 'string') return { kind: 'empty' };
     const s = input.trim();
@@ -698,12 +716,47 @@
     if (link) return { kind: 'invite', payload: link[1] };
     if (/^[A-Za-z0-9_-]{80,700}$/.test(s)) return { kind: 'invite', payload: s };
     const compact = s.toUpperCase().replace(/[^A-Z0-9]+/g, '');
-    const m = /^([A-Z]{3})?([A-Z]{4,6})(\d\d)$/.exec(compact);
-    if (!m) return { kind: 'bad', reason: 'shape' };
-    if (CODE_WORDS.indexOf(m[2]) < 0) return { kind: 'bad', reason: 'word', word: m[2] };
-    const region = m[1] ? m[1].toLowerCase() : null;
-    if (region && regions && regions.indexOf(region) < 0) return { kind: 'bad', reason: 'region', region };
-    const code = m[2] + '-' + m[3];
+    const dm = /^([A-Z]+)(\d\d)$/.exec(compact);
+    if (dm) {
+      const letters = dm[1], num = dm[2], known = (r) => !regions || regions.indexOf(r.toLowerCase()) >= 0;
+      // Candidates in order: [region] WORD WORD, then legacy [region] WORD.
+      for (const hasRegion of [true, false]) {
+        const reg = hasRegion ? letters.slice(0, 3) : '', rest = hasRegion ? letters.slice(3) : letters;
+        if (hasRegion && (letters.length < 7 || !known(reg))) continue;
+        for (let i = 4; i <= 6; i++) {
+          const w1 = rest.slice(0, i), w2 = rest.slice(i);
+          if (CODE_WORDS.indexOf(w1) >= 0 && CODE_WORDS.indexOf(w2) >= 0) return codeResult(reg, w1 + '-' + w2 + '-' + num);
+        }
+      }
+      for (const hasRegion of [true, false]) {
+        const reg = hasRegion ? letters.slice(0, 3) : '', w = hasRegion ? letters.slice(3) : letters;
+        if (hasRegion && (letters.length < 7 || !known(reg))) continue;
+        if (CODE_WORDS.indexOf(w) >= 0) return codeResult(reg, w + '-' + num);
+      }
+    }
+    // Not a code: say why, reading the typo the most charitable way (never echoing more than one word).
+    if (!dm) return { kind: 'bad', reason: 'shape' };
+    let best = null;
+    for (const hasRegion of [true, false]) {
+      const reg = hasRegion ? dm[1].slice(0, 3) : '', rest = hasRegion ? dm[1].slice(3) : dm[1];
+      const regOk = hasRegion && (!regions || regions.indexOf(reg.toLowerCase()) >= 0);
+      const opts = [[rest]];
+      for (let i = 4; i <= 6; i++) opts.push([rest.slice(0, i), rest.slice(i)]);
+      for (const words of opts) {
+        if (words.some((w) => w.length < 4 || w.length > 6)) continue;
+        const good = words.filter((w) => CODE_WORDS.indexOf(w) >= 0).length;
+        const score = good * 2 + (regOk ? 1 : 0) - (words.length - good) * 0.01;
+        if (!best || score > best.score) best = { score, reg, hasRegion, regOk, words };
+      }
+    }
+    if (!best) return { kind: 'bad', reason: 'shape' };
+    const badWord = best.words.find((w) => CODE_WORDS.indexOf(w) < 0);
+    if (badWord) return { kind: 'bad', reason: 'word', word: badWord };
+    if (best.hasRegion && !best.regOk) return { kind: 'bad', reason: 'region', region: best.reg.toLowerCase() };
+    return { kind: 'bad', reason: 'shape' };
+  }
+  function codeResult(reg, code) {
+    const region = reg ? reg.toLowerCase() : null;
     return { kind: 'code', code, region, display: joinCodeText(region, code) };
   }
 
@@ -2219,6 +2272,11 @@
       if (!pt || pt.length < 33 || pt[0] !== C_REQ) return;
       const tmpPub = pt.subarray(1, 33);
       if (!ctEq(tmpPub, srcPub)) return;                         // sealed pub must match relay src
+      // One reply per requesting key per 10 s (a retry storm from one connection is answered once).
+      const sk = hex(srcPub), seen = S.codeSeen || (S.codeSeen = new Map());
+      if (t - (seen.get(sk) || -1e9) < 10000) return;
+      if (seen.size >= 256) seen.delete(seen.keys().next().value);
+      seen.set(sk, t);
       S.codeReplies++; S.codeRepliesMin++;
       const inv = utf8(S.invite);
       const body = new Uint8Array(3 + inv.length);
@@ -2994,6 +3052,7 @@
   // rest are cancelled; if none answers, the error says so. Never opens more than `regions.length` sockets.
   async function lookupInvite(regions, code, o) {
     if (!regions.length) throw new Error('unknown relay region — update to play together');
+    if (!takeLookupTokens(regions.length)) throw new Error('too many lookups — wait a few seconds');
     const ctls = regions.map(() => ({ timeoutMs: o.timeoutMs || 7000 }));
     return new Promise((resolve, reject) => {
       let left = regions.length, firstErr = null, won = false;
@@ -3324,7 +3383,7 @@
         roster: R,
         relayHostName: 'derp12d.tailscale.com',                            // → cityOfHost = "Chicago"
         relay: { rtt: 23 },
-        code: 'TANGO-42', region: 'ord', codeOk: true,                     // Chicago relay → "ORD-TANGO-42"
+        code: 'TANGO-ORBIT-42', region: 'ord', codeOk: true,                     // Chicago relay → "ORD-TANGO-ORBIT-42"
         link: DUMMY_LINK,
         caps: CAPS, hostEpoch: 0,
         counts() { let players = spectate ? 0 : 1, spectators = spectate ? 1 : 0; for (const r of R.values()) { if (r.role === ROLE_SPECTATOR) spectators++; else players++; } return { players, spectators }; },
@@ -3380,7 +3439,7 @@
       bytes: { hex, cat, b64uEnc, b64uDec, utf8, ctEq },
       keys: { detectX25519, genKeypair, keypairFromRaw, ecdh, derivePairKey, isWebX: () => webX, forceVendored: () => { webX = false; } },
       env: { makePair, sealApp, openApp, sealCode, openCode, DIR_G2H, DIR_H2G },
-      invite: { encodeInvite, decodeInvite, joinProof, rejoinToken, codeKeypair, randomCode, CODE_WORDS },
+      invite: { encodeInvite, decodeInvite, joinProof, rejoinToken, codeKeypair, randomCode, CODE_WORDS, lookupBucket },
       map: { regionOf, cityOfHost, probeHost, pickRegion, greatCircle, nearRegions },
       frames: { encHello, decHello, encWelcome, decWelcome, encPres, decPres, encSnap, decSnap, encPing, decPing, encPong, decPong, makeScratch, PRES_LEN, SNAP_ENTRY, SNAP_MAX },
       link: { linkLevel, makeLink, linkSample, linkExpire, replayCheck, markSeen, presStale, tDiff, A_PING, A_PONG, REPLAY_WIN },
