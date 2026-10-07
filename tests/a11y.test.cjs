@@ -327,6 +327,8 @@ test('a controller with no standard mapping is announced and still used best-eff
   d.context.navigator.getGamepads = () => [gamepad()];
   d.run('pollGamepad()');
   assert.match(d.run('toastQ[0].text'), /READY/);
+});
+
 
 // ---- UX-04 / UX-05 / UX-06 / IN-04 / A11Y-06 / A11Y-07 / A11Y-08 ----
 const fs = require('node:fs');
