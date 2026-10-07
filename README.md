@@ -84,6 +84,26 @@ edge of space. Double jump and dash to recover; each spacefarer has three lives.
   The visible movement pod matches its touch area. Controls mirror for left-handed
   play, clear safely on rotation/interruption and leave Pause directly accessible
 
+**2 Players (same device, offline).** In the arena setup pick **2 Players**, then
+P2 opts in with a join prompt (press `.` or `/`, or A on a controller). It works
+with all three formats: **2P Duel** (P1 vs P2), **free-for-all** (P1 + P2 + two CPUs)
+and **Team-up** (P1 + P2 against two CPUs, friendly fire off). P1 is cyan with a
+circle badge and P2 vermilion with a square badge, and the HUD shows each pilot's
+lives and damage. Results name the winner and Rematch keeps both pilots.
+
+| | P1 | P2 |
+| --- | --- | --- |
+| Move / aim | A D / W S | ← → / ↑ ↓ |
+| Jump | W or Space | ↑ |
+| Pulse | F | `.` or Numpad 1 |
+| Dash | G or Left Shift | `/`, Numpad 2 or Right Shift |
+
+Controllers: pad 1 drives P1 and pad 2 drives P2; with a single controller plus
+the keyboard, the controller goes to P2 and P1 keeps WASD. Couch play ignores
+remapped single-player keys. Touch-only devices don't offer 2 Players unless two
+controllers are connected. Couch matches are local-only: online rooms, expeditions
+and single-player are unchanged, and nothing about the room wire format changes.
+
 Play locally against CPUs, or open **Play with friends** to create, join or watch
 an arena room. Up to four players and four spectators share authoritative combat,
 lives and results. The host picks the stage, match format and team assignments;

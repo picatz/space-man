@@ -218,6 +218,10 @@
       if (!state.countdownTicks) state.phase = 'playing';
     }
     const count = bossEncounter ? (crewCount(encounter) + 1) : format === 'duel' ? 2 : 4;
+    // Same-device couch play: the second fighter is a second human controller.
+    // Online rooms and expedition encounters never pass this option; the
+    // default (1) leaves every existing roster, seed stream and snapshot as is.
+    const localPlayers = !encounter && opts.localPlayers === 2 ? 2 : 1;
     for (let index = 0; index < count; index++) {
       const isBoss = bossEncounter && index === count - 1;
       const profile = profiles[isBoss ? 2 : index];
@@ -225,7 +229,7 @@
         id: index + 1, profileId: profile.id, name: profile.name, color: profile.color,
         accent: profile.accent, suit: profile.suit,
         team: bossEncounter ? (isBoss ? 1 : 0) : format === 'teams' ? (index < 2 ? 0 : 1) : index,
-        controller: index === 0 ? 'human' : 'cpu',
+        controller: index === 0 || (index === 1 && localPlayers === 2) ? 'human' : 'cpu',
         w: constants.FIGHTER_W, h: constants.FIGHTER_H, facing: index % 2 ? -1 : 1,
         stocks: isBoss ? 1 : encounter ? encounter.stocks : constants.STOCKS, deaths: 0, kos: 0, attackSerial: 0,
         ai: {
@@ -240,6 +244,7 @@
       // A wingmate helps with navigation, pressure and tells, but leaves the
       // player room to fight instead of clearing a boss on their behalf.
       if (bossEncounter && index > 0 && !isBoss) actor.ai.aggression *= 0.30;
+      if (localPlayers === 2 && index < 2) actor.name = 'P' + (index + 1);
       if (isBoss) {
         actor.name = 'Sentinel'; actor.w = 56; actor.h = 74;
         actor.facing = -1; actor.color = '#FF856B'; actor.accent = '#FFE09C'; actor.suit = '#422C51';
