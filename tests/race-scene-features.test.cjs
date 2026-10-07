@@ -143,3 +143,21 @@ test('Cockpit eye motion reuses two bounded mesh variants and never changes ordi
   assert.equal(Scene.actorMeshes(state,options).find(m=>m.plumeActorId)?.vertices,chase);
   assert.equal(Scene.actorMeshes(state,{...options,cockpitEye:[NaN,0,0]}).find(m=>m.plumeActorId)?.vertices,chase);
 });
+test('a caller-owned models Map reuses each actor\'s matrices in place with identical values', () => {
+  const state = R.create(), options = { course: c, catalog, nearest: R.nearest }, models = new Map();
+  state.actors[0].boosting = true;
+  const plain = Scene.actorMeshes(state, options), reused = Scene.actorMeshes(state, { ...options, models });
+  assert.equal(plain.length, reused.length);
+  plain.forEach((m, i) => { assert.deepEqual(Array.from(reused[i].model), Array.from(m.model)); assert.deepEqual(reused[i].bounds, m.bounds); });
+  const hull = reused.find((m) => m.actorId === state.actors[0].id).model;
+  state.actors[0].x += 5; state.actors[0].heading += 0.5;
+  const again = Scene.actorMeshes(state, { ...options, models }), moved = Scene.actorMeshes(state, options);
+  assert.equal(again.find((m) => m.actorId === state.actors[0].id).model, hull, 'same Float32Array across frames');
+  assert.deepEqual(Array.from(hull), Array.from(moved.find((m) => m.actorId === state.actors[0].id).model));
+  const ground = again.find((m) => m.shadowActorId === state.actors[0].id).model;
+  assert.notEqual(ground, hull, 'ground shadow keeps its own matrix');
+  assert.equal(ground[13], 0);
+  assert.equal(models.size, state.actors.length);
+  // Without the Map every call hands back arrays the caller may keep.
+  assert.notEqual(plain[0].model, moved[0].model);
+});

@@ -5,13 +5,13 @@
       ? require("./race-track-mesh.js")
       : root.SpaceManRaceTrackMesh,
     typeof module === "object" && module.exports ? require("./art.js") : root.SpaceManArt,
+    typeof module === "object" && module.exports ? require("./math.js") : root.SpaceManMath,
   );
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.SpaceManRaceScene = api;
-})(typeof window !== "undefined" ? window : globalThis, function (TrackMesh, Art) {
+})(typeof window !== "undefined" ? window : globalThis, function (TrackMesh, Art, MathKit) {
   "use strict";
-  const rgb = (h) =>
-    [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+  const rgb = MathKit.hexRgb;
   const shade = (c, s) => c.map((v) => Math.min(1, v * s));
   function builder() {
     const v = [];
@@ -650,6 +650,31 @@
       y = Math.max(6 - up, 0, up - 12), z = Math.max(-21 - side, 0, side - 21);
     return x * x + y * y + z * z < 36 * 36;
   }
+  // Fixed local-space boxes: shared and read-only, so no per-actor-per-frame object literals.
+  const box = (min, max) => Object.freeze({ min: Object.freeze(min), max: Object.freeze(max) });
+  const HULL_BOUNDS = box([-72,0,-32], [32,46,32]), FACE_BOUNDS = box([-15,18,-11], [6,33,11]),
+    ENGINE_BOUNDS = box([-24,6,-20], [-23,10,20]), PLUME_BOUNDS = box([-35,5,-20], [-23,11,20]),
+    SLIDE_BOUNDS = box([-40,1,-32], [-13,1,32]);
+  // Heading + position as a column-major model matrix, written in place.
+  function writeActorModel(m, c, s, x, y, z) {
+    m[0] = c; m[1] = 0; m[2] = s; m[3] = 0; m[4] = 0; m[5] = 1; m[6] = 0; m[7] = 0;
+    m[8] = -s; m[9] = 0; m[10] = c; m[11] = 0; m[12] = x; m[13] = y; m[14] = z; m[15] = 1;
+    return m;
+  }
+  // options.models: an optional caller-owned Map reused across frames. Each actor id keeps one
+  // {model, groundModel} pair that is rewritten in place, so a render loop allocates no matrices;
+  // meshes returned for that Map are valid until the next call with it. Without it every call
+  // returns fresh arrays that callers may keep.
+  function actorModels(store, id) {
+    if (!store) return { model: new Float32Array(16), groundModel: new Float32Array(16) };
+    let pair = store.get(id);
+    if (!pair) {
+      if (store.size > 64) store.clear();   // actors that left the race
+      pair = { model: new Float32Array(16), groundModel: new Float32Array(16) };
+      store.set(id, pair);
+    }
+    return pair;
+  }
   function actorMeshes(snapshot, options = {}) {
     const out = [];
     for (const a of snapshot.actors) {
@@ -663,13 +688,14 @@
       const key = [style.accent, appearance.suit, appearance.helmet, appearance.hat, appearance.detail, appearance.ship].join(':');
       const vertices = cache(kartModels, key, () => actors({ tick: 0, actors: [{ ...a, x: 0, y: 0, z: 0, airRamp: 0, heading: 0, boosting: false, padTicks: 0 }] }, { calm: true, shadows: false }).vertices, 32);
       const c = Math.cos(a.heading), s = Math.sin(a.heading);
-      const model = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,height,a.y,1]);
-      const groundModel = new Float32Array([c,0,s,0,0,1,0,0,-s,0,c,0,a.x,0,a.y,1]);
-      out.push({ vertices, static: true, actorId: a.id, bounds: { min: [-72,0,-32], max: [32,46,32] }, model });
+      const pair = actorModels(options.models, a.id),
+        model = writeActorModel(pair.model, c, s, a.x, height, a.y),
+        groundModel = writeActorModel(pair.groundModel, c, s, a.x, 0, a.y);
+      out.push({ vertices, static: true, actorId: a.id, bounds: HULL_BOUNDS, model });
       const pose = Art.facePose({ eyes: appearance.eyes, tick: snapshot.tick, id: a.id, calm: options.calm, mood: a.recoveryTicks ? 2 : boosted ? 1 : 0 });
       const faceKey = [appearance.helmet, pose.happy,pose.determined,pose.height,pose.width,pose.closed].join(':');
       const faceVertices = cache(faceModels, faceKey, () => faceMesh(appearance,pose), 24);
-      out.push({ vertices: faceVertices, static: true, emissive: true, faceActorId: a.id, bounds: { min: [-15,18,-11], max:[6,33,11] }, model });
+      out.push({ vertices: faceVertices, static: true, emissive: true, faceActorId: a.id, bounds: FACE_BOUNDS, model });
       out.push({ ...shadowMesh(), opacity: .28, softShadow: true, shadowActorId: a.id, model: groundModel });
       const engines = cache(engineModels, 'core', () => {
         const b=builder(),core=rgb('#CBF7FF');
@@ -678,7 +704,7 @@
         return b.mesh().vertices;
       },32);
       out.push({ vertices: engines, static: true, emissive: true, engineActorId: a.id,
-        bounds:{min:[-24,6,-20],max:[-23,10,20]}, model });
+        bounds: ENGINE_BOUNDS, model });
       if(plume) {
         const wake=cache(engineModels,style.accent,()=>{
           const b=builder(),glow=rgb(style.accent).map(v=>.45+.55*v);
@@ -689,7 +715,7 @@
           return b.mesh().vertices;
         },32);
         out.push({vertices:wake,static:true,emissive:true,opacity:.32,tailFade:true,plumeActorId:a.id,
-          bounds:{min:[-35,5,-20],max:[-23,11,20]},model});
+          bounds: PLUME_BOUNDS, model });
       }
       const slip = a.speed > 3 ? Math.atan2(Math.sin(a.heading - Math.atan2(a.vy, a.vx)), Math.cos(a.heading - Math.atan2(a.vy, a.vx))) : 0;
       if (!a.offroad && !a.recoveryTicks && !a.airRamp && Math.abs(slip) > .18) {
@@ -701,12 +727,12 @@
           return b.mesh().vertices;
         }, 2);
         out.push({ vertices: streaks, static: true, emissive: true, effectActorId: a.id,
-          bounds:{min:[-40,1,-32],max:[-13,1,32]}, model: groundModel });
+          bounds: SLIDE_BOUNDS, model: groundModel });
       }
     }
     return out;
   }
-  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+  const clamp = MathKit.clamp;
   const CYAN = rgb('#8BEAF2'), GOLD = rgb('#FFDA72'), PULSE = rgb('#FFC08E');
   const featureModels = new Map(), featureCatalogs = new WeakMap();
   function boundedMesh(b, metadata = {}) {

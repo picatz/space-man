@@ -8,6 +8,8 @@ function solo(t, opts) {
   return { hub, c };
 }
 const key = (k) => ({ key: k, preventDefault() {} });
+const REST = { down: 's', dash: 'shift', rescue: 'r', camera: 'c', pause: 'p', mute: 'm' };   // the shared actions beyond the four runner keys
+const DEF = { left: 'a', right: 'd', jump: 'w', fire: 'f', ...REST };
 
 test('reduce motion gates screen shake and the hit-punch zoom live', (t) => {
   const { c } = solo(t);
@@ -34,28 +36,28 @@ test('reduce motion + key map persist, and garbage saves sanitize to defaults', 
   const storage = new Map();
   const { hub, c } = solo(t, { storage });
   assert.equal(c.run('settings.reduceMotion'), false, 'defaults to the OS query (false here)');
-  assert.deepEqual({ ...c.run('settings.keys') }, { left: 'a', right: 'd', jump: 'w', fire: 'f' });
+  assert.deepEqual({ ...c.run('settings.keys') }, DEF);
   c.run('toggleSetting("reduceMotion"); beginRebind("jump", "Jump"); rebindKey("e"); beginRebind("left", "Move left"); rebindKey("d");');
-  assert.deepEqual({ ...c.run('settings.keys') }, { left: 'd', right: 'a', jump: 'e', fire: 'f' }, 'a taken key swaps, never duplicates');
+  assert.deepEqual({ ...c.run('settings.keys') }, { left: 'd', right: 'a', jump: 'e', fire: 'f', ...REST }, 'a taken key swaps, never duplicates');
 
   const again = client(hub, { storage });
   t.after(() => again.close());
   assert.equal(again.run('settings.reduceMotion'), true);
-  assert.deepEqual({ ...again.run('settings.keys') }, { left: 'd', right: 'a', jump: 'e', fire: 'f' });
+  assert.deepEqual({ ...again.run('settings.keys') }, { left: 'd', right: 'a', jump: 'e', fire: 'f', ...REST });
   again.run('onKey({ key: "E", preventDefault() {} }, true)');
   assert.equal(again.run('input.jumpPressed'), true, 'rebound jump key drives the run');
   again.run('onKey({ key: "d", preventDefault() {} }, true)');
   assert.equal(again.run('input.left'), true);
   assert.equal(again.run('rebinding = "fire"; rebindKey("escape")'), false, 'reserved keys are refused');
   again.run('resetKeys()');
-  assert.deepEqual({ ...again.run('settings.keys') }, { left: 'a', right: 'd', jump: 'w', fire: 'f' });
+  assert.deepEqual({ ...again.run('settings.keys') }, DEF);
 
   for (const bad of [{ reduceMotion: 'yes', keys: { left: 'escape', right: 5 } }, { keys: { left: 'a', right: 'a' } }, { keys: 'wasd' }]) {
     const s = new Map([['sm2.settings', JSON.stringify(bad)]]);
     const g = client(hub, { storage: s });
     t.after(() => g.close());
     assert.equal(g.run('settings.reduceMotion'), false);
-    assert.deepEqual({ ...g.run('settings.keys') }, { left: 'a', right: 'd', jump: 'w', fire: 'f' });
+    assert.deepEqual({ ...g.run('settings.keys') }, DEF);
   }
   assert.equal(c.run('SpaceManSave.migrate({ settings: {} }, { reduceMotion: true }).settings.reduceMotion'), true, 'OS default flows through the schema');
   assert.equal(c.run('SpaceManSave.migrate({ settings: { reduceMotion: false } }, { reduceMotion: true }).settings.reduceMotion'), false, 'an explicit choice beats the OS');
@@ -156,7 +158,7 @@ test('Space is game-owned: never bindable, and a saved Space binding falls back'
   assert.equal(c.run('settings.keys.fire'), 'f', 'refused key leaves the map untouched');
   const g = client(hub, { storage: new Map([['sm2.settings', JSON.stringify({ keys: { left: 'a', right: 'd', jump: ' ', fire: 'f' } })]]) });
   t.after(() => g.close());
-  assert.deepEqual({ ...g.run('settings.keys') }, { left: 'a', right: 'd', jump: 'w', fire: 'f' });
+  assert.deepEqual({ ...g.run('settings.keys') }, DEF);
 });
 
 test('Start and Space never start a run from under a sub-menu', (t) => {
@@ -218,4 +220,111 @@ test('canvas toasts reach the live region (controller disconnect) and gold toast
   assert.equal(doc.getElementById('srAnnounce').textContent, 'CONTROLLER DISCONNECTED');
   c.run('G.toastT = 0; queueToast("HELLO OUT THERE", "gold"); __t += 16; frame(__t)');
   assert.equal(doc.getElementById('srAnnounce').textContent, 'CONTROLLER DISCONNECTED', 'a gold toast inside the 4s window does not chatter');
+});
+
+test('Text size cycles 1 / 1.15 / 1.3, drives --ui-scale and the canvas HUD scale, persists and sanitizes', (t) => {
+  const storage = new Map();
+  const { hub, c } = solo(t, { storage });
+  const calls = [];
+  c.context.document.documentElement.style.setProperty = (k, v) => calls.push([k, v]);
+  assert.equal(c.run('settings.uiScale'), 1);
+  assert.equal(c.run('SETTINGS_DEF.find((d) => d.key === "uiScale").noShot'), true, 'the row stays out of the #shot goldens');
+  c.run('view.w = 560');
+  const base = c.run('uiScale()');
+  c.run('cycleTextScale()');
+  assert.equal(c.run('settings.uiScale'), 1.15);
+  assert.deepEqual(calls.pop(), ['--ui-scale', '1.15']);
+  assert.match(c.elements.get('srAnnounce').textContent, /Text size Large/);
+  assert.ok(Math.abs(c.run('uiScale()') - base * 1.15) < 1e-9, 'the canvas HUD scale follows the setting');
+  c.run('cycleTextScale()');
+  assert.equal(c.run('settings.uiScale'), 1.3);
+  c.run('cycleTextScale()');
+  assert.equal(c.run('settings.uiScale'), 1, 'wraps back to normal');
+  c.run('cycleTextScale()');
+
+  const again = client(hub, { storage });
+  t.after(() => again.close());
+  assert.equal(again.run('settings.uiScale'), 1.15, 'persisted');
+  for (const bad of [0.2, 9, '1.3', null, 1.2]) {
+    assert.equal(c.run(`SpaceManSave.migrate({ settings: { uiScale: ${JSON.stringify(bad)} } }).settings.uiScale`), 1, 'invalid sizes fall back: ' + bad);
+  }
+  assert.equal(c.run('SpaceManSave.migrate({ settings: { uiScale: 1.3 } }).settings.uiScale'), 1.3);
+});
+
+test('pause, mute, drop, camera, dash and rescue are rebindable and drive the runner', (t) => {
+  const { c } = solo(t);
+  c.run('startRun(); hideAllOverlays(); G.mode = "play"; G.deathCardShown = false;');
+  c.run('beginRebind("pause", "Pause"); rebindKey("o"); beginRebind("mute", "Mute"); rebindKey("n"); beginRebind("down", "Drop"); rebindKey("z");');
+  assert.deepEqual({ ...c.run('settings.keys') }, { ...DEF, pause: 'o', mute: 'n', down: 'z' });
+  assert.equal(c.run('settings.muted'), false);
+  c.run('onKey({ key: "n", preventDefault() {} }, true)');
+  assert.equal(c.run('settings.muted'), true, 'the rebound mute key toggles audio');
+  c.run('onKey({ key: "m", preventDefault() {} }, true)');
+  assert.equal(c.run('settings.muted'), true, 'the old M key no longer mutes');
+  c.run('onKey({ key: "z", preventDefault() {} }, true)');
+  assert.equal(c.run('input.down'), true, 'the rebound drop key lets go of a ledge');
+  c.run('onKey({ key: "z", preventDefault() {} }, false)');
+  c.run('onKey({ key: "p", preventDefault() {} }, true)');
+  assert.equal(c.run('G.mode'), 'play', 'the old P key no longer pauses');
+  c.run('onKey({ key: "o", preventDefault() {} }, true)');
+  assert.equal(c.run('G.mode'), 'pause', 'the rebound pause key pauses');
+  c.run('onKey({ key: "escape", preventDefault() {} }, true)');
+  assert.equal(c.run('G.mode'), 'play', 'Escape stays an always-on pause toggle');
+
+  // Dash / rescue / camera take keys the runner never uses as moves; a swap never duplicates.
+  c.run('beginRebind("dash", "Dash"); rebindKey("x");');
+  assert.equal(c.run('settings.keys.dash'), 'x');
+  assert.equal(c.run('settings.keys.fire'), 'f');
+  c.run('input.shoot = false; onKey({ key: "x", preventDefault() {} }, true)');
+  assert.equal(c.run('input.shoot'), false, 'a key bound to dash is not the runner x-fire alternate');
+  c.run('beginRebind("camera", "Camera"); rebindKey("a");');
+  assert.equal(c.run('settings.keys.camera'), 'a');
+  assert.equal(c.run('settings.keys.left'), 'c', 'a taken key swaps');
+  // Rescue starts on R, which the runner owns for restart: it can be moved but nothing can swap onto R.
+  assert.equal(c.run('beginRebind("left", "Move left"); rebindKey("r")'), false, 'R stays reserved');
+  assert.equal(c.run('beginRebind("rescue", "Rescue"); rebindKey("c")'), false, 'a swap that would park R on another action is refused');
+  assert.equal(c.run('settings.keys.rescue'), 'r');
+  c.run('beginRebind("rescue", "Rescue"); rebindKey("q")');
+  assert.equal(c.run('settings.keys.rescue'), 'q');
+  c.run('beginRebind("rescue", "Rescue"); rebindKey("r")');
+  assert.equal(c.run('settings.keys.rescue'), 'r', 'rescue can always return to its own default, R');
+  const pause = c.run('settings.keys.pause');
+  assert.equal(c.run('beginRebind("pause", "Pause"); rebindKey("r")'), false);
+  assert.equal(c.run('settings.keys.pause'), pause, 'no other action may take R');
+});
+
+test('saves from before the new actions keep their four keys and get free defaults for the rest', (t) => {
+  const { c } = solo(t);
+  const mig = (keys) => JSON.parse(c.run(`JSON.stringify(SpaceManSave.migrate({ settings: { keys: ${JSON.stringify(keys)} } }).settings.keys)`));
+  assert.deepEqual(mig({ left: 'j', right: 'l', jump: 'i', fire: 'o' }), { left: 'j', right: 'l', jump: 'i', fire: 'o', ...REST });
+  const taken = mig({ left: 'a', right: 'd', jump: 'w', fire: 's' });   // s was the fixed drop alternate; the player's fire keeps it
+  assert.equal(taken.fire, 's');
+  assert.notEqual(taken.down, 's', 'the default drop key moves to a spare instead of duplicating');
+  assert.equal(new Set(Object.values(taken)).size, Object.keys(taken).length, 'no duplicates');
+  assert.deepEqual(mig({ left: 'a', right: 'd', jump: 'w', fire: 'f', pause: 'escape' }), DEF, 'a reserved key discards the whole map');
+  assert.equal(mig({ ...DEF, pause: 'q', mute: 'p' }).mute, 'p', 'P is an ordinary binding now');
+});
+
+test('a controller with no standard mapping is announced and still used best-effort', (t) => {
+  const { c } = solo(t);
+  const doc = c.context.document, pad = { ...gamepad(), mapping: '', id: 'Generic USB Joystick (Vendor: 0079)' };
+  c.run('var __t = 1000; frame(__t); startRun(); hideAllOverlays(); G.mode = "play"; G.deathCardShown = false; G.toastT = 0;');
+  c.context.navigator.getGamepads = () => [pad];   // plugged in after the game is running
+  c.run('toastQ.length = 0; pollGamepad()');
+  assert.equal(c.run('input.pad.connected'), true, 'a pad with mapping "" is still picked up');
+  assert.deepEqual([...c.run('toastQ.map((q) => q.text)')], ['CONTROLLER NOT STANDARD — BASIC BUTTONS ONLY'], 'one toast says why');
+  c.run('G.toastT = 0; __t += 16; frame(__t)');
+  assert.match(c.run('G.toast'), /NOT STANDARD/);
+  assert.match(doc.getElementById('srAnnounce').textContent, /not standard/i, 'and the screen reader hears it (announce, then the toast mirror)');
+  pad.buttons[0].pressed = true; c.run('pollGamepad()');
+  assert.equal(c.run('input.jumpPressed'), true, 'button 0 jumps');
+  pad.buttons[0].pressed = false; c.run('pollGamepad()');
+  c.run('toastQ.length = 0; pollGamepad(); pollGamepad()');
+  assert.equal(c.run('toastQ.length'), 0, 'the notice is once per pad, not every poll');
+  // A standard pad keeps the ordinary READY toast.
+  const { c: d } = solo(t);
+  d.run('frame(1000); startRun(); hideAllOverlays(); G.mode = "play"; G.deathCardShown = false; toastQ.length = 0;');
+  d.context.navigator.getGamepads = () => [gamepad()];
+  d.run('pollGamepad()');
+  assert.match(d.run('toastQ[0].text'), /READY/);
 });

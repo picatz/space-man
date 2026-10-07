@@ -75,7 +75,9 @@ function harness({
     status: "ready",
     draw(scene) {
       operations.push("draw");
-      frames.push(scene);
+      // The view reuses its scene descriptor, mesh list and per-actor model matrices between frames
+      // (the renderer reads them synchronously), so a recording renderer must copy what it keeps.
+      frames.push({ ...scene, meshes: scene.meshes.map((m) => ({ ...m, model: m.model && Float32Array.from(m.model) })) });
       hasPixels = true;
       return true;
     },

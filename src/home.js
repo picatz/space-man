@@ -39,7 +39,19 @@
       root.SpaceManArt.drawAvatar(c,132,59,165,appearance,{reduceMotion:true,ship:true});
     }
   }
-  root.SpaceManHome=Object.freeze({notice(text) {
+  // Pure helpers for the launcher's hero CTA and Daily card.
+  const MODES={run:'Endless Run',arena:'Orbital Arena',race:'Star Circuit'};
+  function heroLabel(mode,best) {
+    const m=MODES[mode]?mode:'run',b=Math.max(0,best|0);
+    return 'Play \u00b7 '+MODES[m]+(m==='run'&&b>0?' \u00b7 best '+b.toLocaleString('en-US'):'');
+  }
+  function resetsIn(nowMs) {
+    const d=new Date(nowMs),next=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()+1),mins=Math.max(1,Math.ceil((next-nowMs)/60000));
+    return mins>=60?'resets in '+Math.floor(mins/60)+'h':'resets in '+mins+'m';
+  }
+  const api={MODES,heroLabel,resetsIn};
+  if(typeof module!=='undefined'&&module.exports)module.exports=api;
+  root.SpaceManHome=Object.freeze({heroLabel,resetsIn,notice(text) {
     const el=root.document.getElementById('homeNotice');if(!el)return;
     if(el.textContent!==text)el.textContent=text;
     el.hidden=!text;

@@ -2023,7 +2023,8 @@
       if (arcadeMode(S) && S.roleLocked) h.role = ROLE_SPECTATOR;
       const c = counts(arcadeMode(S));
       if (h.role === ROLE_SPECTATOR ? c.spectators >= S.spectatorCap : c.players >= S.playerCap) {
-        if (arcadeMode(S)) S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));
+        S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));   // full: tell the guest now, not after its 30 s join timeout
+        bumpCtrFloor(key, pair);
         return;
       }
       // Approve-mode (Addendum G / §2.6): hold the proven join; the host UI shows
@@ -2058,7 +2059,8 @@
       if (arcadeMode(S) && S.roleLocked) h.role = ROLE_SPECTATOR;
       const c = counts(arcadeMode(S));
       if (h.role === ROLE_SPECTATOR ? c.spectators >= S.spectatorCap : c.players >= S.playerCap) {
-        if (arcadeMode(S)) S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));
+        S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));   // full: tell the guest now, not after its 30 s join timeout
+        bumpCtrFloor(key, pair);
         return false;
       }
       const t = performance.now();
@@ -2072,7 +2074,7 @@
       if (p > ROOM_CAP) {
         let oldest = null;
         for (const r of S.roster.values()) if (r.absent && (!oldest || r.absentAt < oldest.absentAt)) oldest = r;
-        if (!oldest) return false;
+        if (!oldest) { S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0))); bumpCtrFloor(key, pair); return false; }
         removeRow(oldest);
         p = oldest.p;
       }

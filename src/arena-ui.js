@@ -58,8 +58,8 @@
 .arena-primary:hover{background:#FFD793;border-color:#FFF0C1}
 .arena-text-button{background:transparent;border-color:transparent;box-shadow:none;color:#AFCCE7;font:600 12px/1.35 system-ui,sans-serif;min-height:44px;padding:10px 12px}
 .arena-text-button:hover{background:rgba(56,225,255,.08);border-color:rgba(56,225,255,.16);color:#ECF8FF}
-.arena-eyebrow{font-size:10px;letter-spacing:.17em;font-weight:800;color:#8EAAC5;line-height:1.5}
-.arena-pill{display:inline-flex;align-items:center;align-self:flex-start;gap:7px;border:1px solid rgba(56,225,255,.28);border-radius:999px;padding:6px 10px;font:700 9px/1.3 system-ui,sans-serif;letter-spacing:.15em;background:rgba(56,225,255,.06);color:#9FF1FF}
+.arena-eyebrow{font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.17em;font-weight:800;color:#8EAAC5;line-height:1.5}
+.arena-pill{display:inline-flex;align-items:center;align-self:flex-start;gap:7px;border:1px solid rgba(56,225,255,.28);border-radius:999px;padding:6px 10px;font:700 calc(9px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;letter-spacing:.15em;background:rgba(56,225,255,.06);color:#9FF1FF}
 .arena-pill:before{content:'';width:5px;height:5px;border-radius:50%;background:#38E1FF}
 .arena-modal{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;padding:calc(var(--arena-safe-top) + 22px) calc(var(--arena-safe-right) + 24px) calc(var(--arena-safe-bottom) + 22px) calc(var(--arena-safe-left) + 24px);background:rgba(4,8,20,.55);overflow:hidden}
 .arena-root[data-screen=lobby] .arena-modal{background:linear-gradient(100deg,rgba(4,8,20,.85),rgba(4,8,20,.27))}
@@ -72,17 +72,17 @@
 .arena-title span{color:#9FF1FF}
 .arena-lede{max-width:360px;font:400 15px/1.65 system-ui,sans-serif;color:#A8C1D8;margin:0}
 .arena-lobby-art{display:block;width:100%;max-width:430px;height:auto;margin:-1px -16px -7px;pointer-events:none}
-.arena-rules{display:flex;flex-wrap:wrap;gap:8px 16px;max-width:400px;font:500 11px/1.55 system-ui,sans-serif;color:#AAC3D8}
+.arena-rules{display:flex;flex-wrap:wrap;gap:8px 16px;max-width:400px;font:500 calc(11px * var(--ui-scale, 1))/1.55 system-ui,sans-serif;color:#AAC3D8}
 .arena-rules span:first-child{color:#9FF1FF}.arena-rules span:nth-child(2){color:#FFE59A}
 .arena-setup{min-width:0;background:linear-gradient(145deg,rgba(19,37,60,.66),rgba(9,18,34,.85));padding:24px;border:1px solid rgba(117,179,216,.19);border-radius:22px;box-shadow:0 20px 60px rgba(0,0,0,.24),inset 0 1px 0 rgba(214,244,255,.04)}
 .arena-choice-group+.arena-choice-group{margin-top:25px}
-.arena-section-label{font-size:10px;letter-spacing:.14em;font-weight:800;line-height:1.4;color:#A7C5DF;margin:0 0 11px;padding:0}
+.arena-section-label{font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.14em;font-weight:800;line-height:1.4;color:#A7C5DF;margin:0 0 11px;padding:0}
 .arena-formats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .arena-format-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left;padding:12px 10px;min-height:100px;border-radius:12px;background:rgba(9,20,37,.76);overflow:hidden}
 .arena-format-card[aria-pressed=true]{border-color:#38E1FF;background:rgba(56,225,255,.10);box-shadow:inset 0 0 0 1px rgba(56,225,255,.15)}
 .arena-format-copy{display:flex;flex-direction:column;gap:5px}
 .arena-format-copy strong{font-size:12px;font-weight:800;letter-spacing:-.02em;white-space:normal;overflow-wrap:anywhere}
-.arena-format-copy small{font:600 8px/1.3 system-ui,sans-serif;letter-spacing:.04em;color:#8CAAC5}
+.arena-format-copy small{font:600 calc(9px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;letter-spacing:.04em;color:#8CAAC5}
 .arena-format-icon{font:700 13px/1 system-ui,sans-serif;letter-spacing:.02em;color:#7696B4;white-space:nowrap}
 .arena-format-card[aria-pressed=true] .arena-format-icon{color:#9FF1FF}
 .arena-selected-dot{position:absolute;right:9px;top:10px;width:5px;height:5px;border-radius:50%;background:#38E1FF;opacity:0}
@@ -91,33 +91,33 @@
 .arena-stage-card{display:block;text-align:left;min-width:0;padding:0 0 10px;overflow:hidden;background:#0B1829;border-color:rgba(135,173,204,.18);min-height:114px;border-radius:10px}
 .arena-stage-card[aria-pressed=true]{border-color:#FFC66B;box-shadow:0 0 0 1px rgba(255,198,107,.18)}
 .arena-stage-preview{display:block;min-width:0;max-width:100%;width:100%;height:auto;aspect-ratio:288/150;min-height:55px;object-fit:cover;border-bottom:1px solid rgba(159,241,255,.08)}
-.arena-stage-name{display:block;font-size:9px;font-weight:800;line-height:1.5;padding:9px 8px 0;letter-spacing:-.01em;color:#BED5E9}
+.arena-stage-name{display:block;font-size:calc(9px * var(--ui-scale, 1));font-weight:800;line-height:1.5;padding:9px 8px 0;letter-spacing:-.01em;color:#BED5E9}
 .arena-stage-card[aria-pressed=true] .arena-stage-name{color:#FFE3AF}
-.arena-stage-number{position:absolute;top:5px;left:7px;font:700 8px/1.3 system-ui,sans-serif;color:#B8D5EA;opacity:.7}
-.arena-stage-description{font:400 11px/1.5 system-ui,sans-serif;color:#8EACC6;min-height:33px;margin:10px 0 0}
+.arena-stage-number{position:absolute;top:5px;left:7px;font:700 calc(9px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;color:#B8D5EA;opacity:.7}
+.arena-stage-description{font:400 calc(11px * var(--ui-scale, 1))/1.5 system-ui,sans-serif;color:#8EACC6;min-height:33px;margin:10px 0 0}
 .arena-setup-options{margin:13px 0 21px}.arena-difficulty{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.arena-options-label{font:700 9px/1.4 system-ui,sans-serif;letter-spacing:.1em;color:#92AEC7}
+.arena-options-label{font:700 calc(9px * var(--ui-scale, 1))/1.4 system-ui,sans-serif;letter-spacing:.1em;color:#92AEC7}
 .arena-segmented{display:flex;gap:3px;background:#091422;border:1px solid rgba(132,170,202,.14);border-radius:9px;padding:3px}
-.arena-segment{min-height:34px;border-color:transparent;border-radius:6px;background:transparent;font:600 11px/1.2 system-ui,sans-serif;padding:7px 13px;color:#7F9BB5}
+.arena-segment{min-height:34px;border-color:transparent;border-radius:6px;background:transparent;font:600 calc(11px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;padding:7px 13px;color:#7F9BB5}
 .arena-segment[aria-pressed=true]{background:#20354C;color:#DEF0FF;border-color:#3D5870}
 .arena-launch{width:100%;font-size:14px}
-.arena-local-note{font:400 10px/1.6 system-ui,sans-serif;color:#7F9BB5;text-align:center;margin:16px auto 0;max-width:300px}
-.arena-controls-help{font:400 11px/1.6 system-ui,sans-serif;color:#8DAAC5;margin-top:24px;border-top:1px solid rgba(122,166,205,.13);padding-top:12px}
+.arena-local-note{font:400 calc(10px * var(--ui-scale, 1))/1.6 system-ui,sans-serif;color:#7F9BB5;text-align:center;margin:16px auto 0;max-width:300px}
+.arena-controls-help{font:400 calc(11px * var(--ui-scale, 1))/1.6 system-ui,sans-serif;color:#8DAAC5;margin-top:24px;border-top:1px solid rgba(122,166,205,.13);padding-top:12px}
 .arena-controls-help summary{cursor:pointer;min-height:34px;width:fit-content;padding:5px 0;color:#B3CEE4}
 .arena-help-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px;padding-bottom:8px}
 .arena-help-grid p{margin:0}.arena-help-grid .arena-text-button{justify-self:start;min-height:44px;padding:9px 10px;border-color:#244561}
 .arena-hud{position:absolute;top:calc(var(--arena-safe-top) + 15px);left:calc(var(--arena-safe-left) + 22px);right:calc(var(--arena-safe-right) + 22px);z-index:3;pointer-events:none}
-.arena-hud-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px}.arena-match-brand{display:flex;flex-direction:column;gap:3px}.arena-match-name{font-size:11px;color:#B5D0E8;font-weight:700;letter-spacing:.015em}
+.arena-hud-top{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px}.arena-match-brand{display:flex;flex-direction:column;gap:3px}.arena-match-name{font-size:calc(11px * var(--ui-scale, 1));color:#B5D0E8;font-weight:700;letter-spacing:.015em}
 .arena-hud-tools{display:flex;align-items:center;gap:16px;pointer-events:auto}.arena-clock{font:700 20px/1.3 system-ui,sans-serif;font-variant-numeric:tabular-nums;color:#DAEDFF;letter-spacing:.04em}.arena-clock-urgent{color:#FFB454}
 .arena-icon-button{font:700 18px/1 system-ui,sans-serif;width:48px;height:48px;padding:10px;min-height:48px;border-radius:12px;background:rgba(11,26,45,.82)}
 .arena-roster{display:flex;justify-content:center;gap:10px;max-width:930px;margin:0 auto}.arena-player-card{display:flex;align-items:center;gap:9px;position:relative;padding:9px 12px;min-width:150px;max-width:205px;flex:1;background:rgba(8,17,32,.88);border:1px solid rgba(135,174,205,.2);border-top:2px solid var(--fighter);border-radius:11px;box-shadow:0 6px 18px rgba(0,0,0,.12)}
 .arena-player-helmet{position:relative;flex:0 0 25px;height:26px;border-radius:50% 50% 42% 42%;background:#E9F3FB;border:2px solid var(--fighter)}
 .arena-player-helmet:before{content:'';position:absolute;left:4px;right:2px;top:6px;height:9px;border-radius:4px;background:#132D46;border-top:2px solid var(--fighter)}
 .arena-player-helmet:after{content:'';position:absolute;left:8px;right:6px;bottom:-5px;height:5px;background:var(--fighter);border-radius:1px}
-.arena-player-info{display:grid;grid-template-columns:auto auto;gap:2px 5px;min-width:0;align-items:baseline;flex:1}.arena-player-name{font:700 11px/1.2 system-ui,sans-serif;color:#E4F0FB;overflow:hidden;text-overflow:ellipsis}.arena-player-tag{font:700 7px/1.2 system-ui,sans-serif;color:var(--fighter);white-space:nowrap}.arena-stocks{grid-column:1/-1;font:700 10px/1.2 system-ui,sans-serif;color:var(--fighter);letter-spacing:4px;margin-top:3px}.arena-damage{font:800 24px/1 system-ui,sans-serif;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:#EFF7FF;min-width:42px;text-align:right}.arena-player-out{opacity:.46}.arena-player-out .arena-damage{font-size:15px}
+.arena-player-info{display:grid;grid-template-columns:auto auto;gap:2px 5px;min-width:0;align-items:baseline;flex:1}.arena-player-name{font:700 calc(11px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;color:#E4F0FB;overflow:hidden;text-overflow:ellipsis}.arena-player-tag{font:700 calc(9px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;color:var(--fighter);white-space:nowrap}.arena-stocks{grid-column:1/-1;font:700 calc(10px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;color:var(--fighter);letter-spacing:4px;margin-top:3px}.arena-damage{font:800 24px/1 system-ui,sans-serif;letter-spacing:-.04em;font-variant-numeric:tabular-nums;color:#EFF7FF;min-width:42px;text-align:right}.arena-player-out{opacity:.46}.arena-player-out .arena-damage{font-size:15px}
 .arena-player-card[data-boss=true] .arena-player-helmet{display:none}.arena-player-card[data-boss=true] .arena-player-info{grid-template-columns:minmax(0,1fr);gap:4px}.arena-player-card[data-boss=true] .arena-player-name{white-space:nowrap}.arena-player-card[data-boss=true] .arena-player-tag{overflow:hidden;text-overflow:ellipsis}.arena-player-card[data-boss=true] .arena-stocks{display:none}.arena-root .arena-player-card[data-boss=true] .arena-damage{font-size:18px;min-width:0;white-space:nowrap}
-.arena-countdown{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);z-index:4;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;pointer-events:none}.arena-countdown-value{font-size:clamp(70px,14vw,140px);font-weight:900;line-height:1;color:#F4F7FF;text-shadow:0 6px 0 #183650,0 0 55px rgba(56,225,255,.18)}.arena-countdown-label{font:700 10px/1.5 system-ui,sans-serif;letter-spacing:.2em;color:#9FF1FF;white-space:nowrap;padding:6px 10px;background:rgba(6,13,28,.8);border-radius:20px}
-.arena-bottom-hud{position:absolute;left:calc(var(--arena-safe-left) + 24px);right:calc(var(--arena-safe-right) + 24px);bottom:calc(var(--arena-safe-bottom) + 18px);display:flex;align-items:center;justify-content:space-between;gap:16px;pointer-events:none;z-index:3}.arena-control-hint{font:500 10px/1.6 system-ui,sans-serif;word-spacing:4px;color:#7F9DB9}.arena-abilities{display:flex;gap:9px}.arena-ability{position:relative;overflow:hidden;display:flex;align-items:center;gap:7px;min-width:100px;padding:9px 11px 11px;border:1px solid rgba(133,184,220,.23);border-radius:9px;background:rgba(8,19,34,.85)}.arena-ability-key{font:700 9px/1.2 system-ui,sans-serif;color:#DCEEFF}.arena-ability-label{font:700 8px/1.2 system-ui,sans-serif;letter-spacing:.1em;color:#A8C7E0}.arena-ability-meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:#38E1FF;transform-origin:left}.arena-ability:last-child .arena-ability-meter{background:#FFC66B}
+.arena-countdown{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);z-index:4;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;pointer-events:none}.arena-countdown-value{font-size:clamp(70px,14vw,140px);font-weight:900;line-height:1;color:#F4F7FF;text-shadow:0 6px 0 #183650,0 0 55px rgba(56,225,255,.18)}.arena-countdown-label{font:700 calc(10px * var(--ui-scale, 1))/1.5 system-ui,sans-serif;letter-spacing:.2em;color:#9FF1FF;white-space:nowrap;padding:6px 10px;background:rgba(6,13,28,.8);border-radius:20px}
+.arena-bottom-hud{position:absolute;left:calc(var(--arena-safe-left) + 24px);right:calc(var(--arena-safe-right) + 24px);bottom:calc(var(--arena-safe-bottom) + 18px);display:flex;align-items:center;justify-content:space-between;gap:16px;pointer-events:none;z-index:3}.arena-control-hint{font:500 calc(10px * var(--ui-scale, 1))/1.6 system-ui,sans-serif;word-spacing:4px;color:#7F9DB9}.arena-abilities{display:flex;gap:9px}.arena-ability{position:relative;overflow:hidden;display:flex;align-items:center;gap:7px;min-width:100px;padding:9px 11px 11px;border:1px solid rgba(133,184,220,.23);border-radius:9px;background:rgba(8,19,34,.85)}.arena-ability-key{font:700 calc(9px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;color:#DCEEFF}.arena-ability-label{font:700 calc(9px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;letter-spacing:.1em;color:#A8C7E0}.arena-ability-meter{position:absolute;left:0;right:0;bottom:0;height:3px;background:#38E1FF;transform-origin:left}.arena-ability:last-child .arena-ability-meter{background:#FFC66B}
 /* Thumb-sized actions share a deliberate lower edge. The floating stick is
    bounded to its visible pod instead of stealing the bottom half of play. */
 .arena-touch{position:absolute;inset:0;z-index:5;pointer-events:none;display:none}
@@ -128,10 +128,10 @@
 .arena-stick-base:before{width:76%;height:1px}.arena-stick-base:after{height:76%;width:1px}
 .arena-stick-knob{position:absolute;left:50%;top:50%;width:44px;height:44px;border:1.5px solid #91D6EFA6;border-radius:50%;background:#38E1FF25;transform:translate(-50%,-50%)}
 .arena-stick-active{opacity:1;border-color:#BAEFFF}
-.arena-stick-label{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);font:700 10px/1.2 system-ui,sans-serif;letter-spacing:.13em;color:#9BBED1;pointer-events:none}
+.arena-stick-label{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);font:700 calc(10px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;letter-spacing:.13em;color:#9BBED1;pointer-events:none}
 .arena-touch-actions{position:absolute;right:calc(var(--arena-safe-right) + 12px);bottom:calc(var(--arena-safe-bottom) + 16px);width:176px;height:156px;pointer-events:none}
 .arena-touch-button{position:absolute;min-height:60px;min-width:60px;padding:8px;display:flex;flex-direction:column;gap:3px;border-radius:50%;pointer-events:auto;touch-action:none;box-shadow:0 4px 0 #02091580,inset 0 1px 0 #DCFAFF16;background:#102B43E8;border:1.5px solid #78ABC6;color:#DDF3FF}
-.arena-touch-symbol{font:700 24px/1 system-ui,sans-serif}.arena-touch-word{font:750 10px/1.3 system-ui,sans-serif;letter-spacing:.06em}
+.arena-touch-symbol{font:700 24px/1 system-ui,sans-serif}.arena-touch-word{font:750 calc(10px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;letter-spacing:.06em}
 .arena-touch-jump{width:78px;height:78px;right:0;bottom:0;color:#BFF5FF;border-color:#80E1EF;background:#103A4DEB}
 .arena-touch-attack{width:72px;height:72px;left:0;bottom:16px;color:#FFEAC4;border-color:#EFC37E;background:#463526EB}
 .arena-touch-dash{width:60px;height:60px;right:17px;top:0}
@@ -143,13 +143,13 @@
 .arena-root[data-lefty=true] .arena-touch-button{transform:scaleX(-1)}
 .arena-root[data-lefty=true] .arena-touch-button.arena-pressed{transform:scaleX(-1) translateY(2px) scale(.97)}
 .arena-root[data-touch=true] .arena-bottom-hud{display:none}
-.arena-pause-label{font:750 8px/1 system-ui,sans-serif;letter-spacing:.06em}.arena-pause-button{flex-direction:column;gap:4px}
+.arena-pause-label{font:750 calc(9px * var(--ui-scale, 1))/1 system-ui,sans-serif;letter-spacing:.06em}.arena-pause-button{flex-direction:column;gap:4px}
 .arena-root[data-screen=lobby] .arena-hud,.arena-root[data-screen=lobby] .arena-bottom-hud,.arena-root[data-screen=lobby] .arena-touch,.arena-root[data-screen=lobby] .arena-countdown,.arena-root[data-screen=pause] .arena-touch,.arena-root[data-screen=results] .arena-touch{display:none}
-.arena-small-panel{width:min(440px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:11px;text-align:center;padding:30px;border:1px solid rgba(115,197,230,.27);border-radius:22px;background:linear-gradient(160deg,#14293D,#0A1224 80%);box-shadow:0 22px 70px rgba(0,0,0,.55)}.arena-small-panel .arena-pill{align-self:center;margin-bottom:8px}.arena-panel-title{font-size:27px;font-weight:900;letter-spacing:-.025em;line-height:1.25;color:#F4F7FF;margin:0}.arena-panel-copy{font:400 14px/1.6 system-ui,sans-serif;color:#9FBBD2;margin:2px 0 14px}.arena-small-panel .arena-primary{margin-bottom:7px}.arena-small-panel>.arena-text-button{min-height:40px;padding:7px}.arena-result-roster{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}.arena-result-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:16px;align-items:center;text-align:left;padding:10px 12px;border-radius:8px;background:rgba(2,9,22,.45);border-left:2px solid var(--fighter);font:500 11px/1.4 system-ui,sans-serif;color:#8FAEC7}.arena-result-row strong{color:var(--fighter);font-weight:700}
+.arena-small-panel{width:min(440px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:11px;text-align:center;padding:30px;border:1px solid rgba(115,197,230,.27);border-radius:22px;background:linear-gradient(160deg,#14293D,#0A1224 80%);box-shadow:0 22px 70px rgba(0,0,0,.55)}.arena-small-panel .arena-pill{align-self:center;margin-bottom:8px}.arena-panel-title{font-size:27px;font-weight:900;letter-spacing:-.025em;line-height:1.25;color:#F4F7FF;margin:0}.arena-panel-copy{font:400 14px/1.6 system-ui,sans-serif;color:#9FBBD2;margin:2px 0 14px}.arena-small-panel .arena-primary{margin-bottom:7px}.arena-small-panel>.arena-text-button{min-height:40px;padding:7px}.arena-result-roster{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}.arena-result-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:16px;align-items:center;text-align:left;padding:10px 12px;border-radius:8px;background:rgba(2,9,22,.45);border-left:2px solid var(--fighter);font:500 calc(11px * var(--ui-scale, 1))/1.4 system-ui,sans-serif;color:#8FAEC7}.arena-result-row strong{color:var(--fighter);font-weight:700}
 .arena-root[data-calm=true] *, .arena-root[data-saver=true] *{transition:none!important;animation:none!important}.arena-root[data-saver=true] .arena-primary{box-shadow:none}
 .arena-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-@media(min-width:1400px) and (min-height:800px){.arena-setup{padding:30px}.arena-lobby-top{margin-bottom:32px}.arena-lobby-grid{gap:90px}.arena-formats{gap:10px}.arena-format-card{min-height:111px}.arena-stage-card{min-height:132px}.arena-title{font-size:55px}.arena-lobby-art{max-width:455px}.arena-stage-name{font-size:10px}}
-@media(max-width:850px){.arena-modal{padding:calc(var(--arena-safe-top) + 16px) calc(var(--arena-safe-right) + 16px) calc(var(--arena-safe-bottom) + 16px) calc(var(--arena-safe-left) + 16px)}.arena-lobby-grid{gap:25px;grid-template-columns:.8fr 1.2fr}.arena-title{font-size:35px}.arena-lede{font-size:13px}.arena-setup{padding:18px}.arena-format-card{padding:11px 8px}.arena-format-copy strong{font-size:10px}.arena-format-copy small{font-size:7px}.arena-stage-name{font-size:8px}.arena-roster{gap:6px}.arena-player-card{min-width:0;padding:8px;gap:7px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-damage{font-size:22px}.arena-player-info{grid-template-columns:1fr}.arena-player-tag{display:none}.arena-stocks{font-size:9px;letter-spacing:3px}}
+@media(min-width:1400px) and (min-height:800px){.arena-setup{padding:30px}.arena-lobby-top{margin-bottom:32px}.arena-lobby-grid{gap:90px}.arena-formats{gap:10px}.arena-format-card{min-height:111px}.arena-stage-card{min-height:132px}.arena-title{font-size:55px}.arena-lobby-art{max-width:455px}.arena-stage-name{font-size:calc(10px * var(--ui-scale, 1))}}
+@media(max-width:850px){.arena-modal{padding:calc(var(--arena-safe-top) + 16px) calc(var(--arena-safe-right) + 16px) calc(var(--arena-safe-bottom) + 16px) calc(var(--arena-safe-left) + 16px)}.arena-lobby-grid{gap:25px;grid-template-columns:.8fr 1.2fr}.arena-title{font-size:35px}.arena-lede{font-size:13px}.arena-setup{padding:18px}.arena-format-card{padding:11px 8px}.arena-format-copy strong{font-size:calc(10px * var(--ui-scale, 1))}.arena-format-copy small{font-size:calc(9px * var(--ui-scale, 1))}.arena-stage-name{font-size:calc(9px * var(--ui-scale, 1))}.arena-roster{gap:6px}.arena-player-card{min-width:0;padding:8px;gap:7px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-damage{font-size:22px}.arena-player-info{grid-template-columns:1fr}.arena-player-tag{display:none}.arena-stocks{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:3px}}
 /* A phone lobby is a content-sized vertical flow, not an auto-row grid.
    Decorative desktop copy yields to the three choices and launch action. */
 @media(max-width:650px){
@@ -157,12 +157,12 @@
 .arena-modal{padding-left:calc(var(--arena-safe-left) + 12px);padding-right:calc(var(--arena-safe-right) + 12px)}
 .arena-lobby{padding:0 2px 4px}
 .arena-lobby-top{margin-bottom:8px;gap:8px;min-height:44px}
-.arena-lobby-top>.arena-eyebrow{font:700 10px/1.4 system-ui,sans-serif;letter-spacing:.08em;max-width:47%}
+.arena-lobby-top>.arena-eyebrow{font:700 calc(10px * var(--ui-scale, 1))/1.4 system-ui,sans-serif;letter-spacing:.08em;max-width:47%}
 .arena-lobby-top .arena-text-button{font:600 12px/1.3 system-ui,sans-serif;padding:10px 6px;min-height:44px;flex-shrink:0}
 .arena-lobby-grid{display:block}
 .arena-intro{position:relative;padding:0 0 0 1px;min-height:0}
 .arena-title{font-size:25px;line-height:1.12;margin:8px 0 0;position:relative;z-index:1;max-width:280px}
-.arena-intro>.arena-pill{font-size:9px;padding:4px 8px}
+.arena-intro>.arena-pill{font-size:calc(9px * var(--ui-scale, 1));padding:4px 8px}
 .arena-lede,.arena-rules{display:none}
 .arena-lobby-art{position:absolute;width:138px;max-width:45%;right:0;top:0;margin:0;opacity:.35;pointer-events:none}
 .arena-setup{padding:12px;margin-top:14px;border-radius:17px}
@@ -170,27 +170,27 @@
 .arena-format-card{min-height:74px;padding:9px 7px;gap:7px;justify-content:flex-start}
 .arena-format-copy{gap:4px;width:100%}
 .arena-format-copy strong{font:750 12px/1.2 system-ui,sans-serif;letter-spacing:0;overflow-wrap:normal}
-.arena-format-copy small{font-size:9px;line-height:1.25;letter-spacing:0}
+.arena-format-copy small{font-size:calc(9px * var(--ui-scale, 1));line-height:1.25;letter-spacing:0}
 .arena-format-icon{font-size:12px}
 .arena-selected-dot{right:6px;top:7px;width:4px;height:4px}
 .arena-choice-group+.arena-choice-group{margin-top:14px}
 .arena-stage-card{min-height:80px;padding-bottom:8px}
 .arena-stage-preview{height:43px;min-height:0;object-fit:cover}
-.arena-stage-name{font:650 11px/1.25 system-ui,sans-serif;padding:7px 5px 0;overflow-wrap:normal}
-.arena-stage-number{font-size:9px}
-.arena-stage-description{font-size:11px;line-height:1.35;min-height:0;margin-top:7px}
-.arena-section-label{font-size:10px;letter-spacing:.1em;margin-bottom:8px}
+.arena-stage-name{font:650 calc(11px * var(--ui-scale, 1))/1.25 system-ui,sans-serif;padding:7px 5px 0;overflow-wrap:normal}
+.arena-stage-number{font-size:calc(9px * var(--ui-scale, 1))}
+.arena-stage-description{font-size:calc(11px * var(--ui-scale, 1));line-height:1.35;min-height:0;margin-top:7px}
+.arena-section-label{font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.1em;margin-bottom:8px}
 .arena-setup-options{margin:10px 0 12px}
 .arena-segmented{gap:2px;padding:2px}
 .arena-segment{font:650 12px/1.2 system-ui,sans-serif;padding:8px 11px;min-height:44px}
-.arena-options-label{font-size:10px;letter-spacing:.06em}
+.arena-options-label{font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.06em}
 .arena-local-note{display:none}
 .arena-launch{min-height:50px;font-size:13px}
 .arena-controls-help{margin-top:10px;font-size:12px;padding-top:0}
-.arena-controls-help summary{min-height:44px;padding:12px 0;font-size:11px}
+.arena-controls-help summary{min-height:44px;padding:12px 0;font-size:calc(11px * var(--ui-scale, 1))}
 .arena-help-grid{grid-template-columns:minmax(0,1fr);gap:10px}
-.arena-hud{top:calc(var(--arena-safe-top) + 10px);left:calc(var(--arena-safe-left) + 13px);right:calc(var(--arena-safe-right) + 13px)}.arena-hud-top{margin-bottom:9px}.arena-match-brand .arena-eyebrow{font-size:8px}.arena-match-name{font-size:9px;max-width:255px}.arena-hud-tools{gap:10px}.arena-clock{font-size:17px}.arena-icon-button{width:44px;height:44px;min-height:44px;border-radius:10px}.arena-roster{gap:7px}.arena-player-card{padding:9px 8px;gap:7px;border-radius:9px;max-width:210px}.arena-player-name{font-size:10px}.arena-player-tag{display:block;font-size:6px}.arena-player-info{grid-template-columns:auto auto;gap:2px 4px}.arena-damage{font-size:22px;min-width:36px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-stocks{font-size:9px;letter-spacing:3px}.arena-root[data-format=ffa] .arena-roster,.arena-root[data-format=teams] .arena-roster{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-width:430px}.arena-root[data-format=ffa] .arena-player-card,.arena-root[data-format=teams] .arena-player-card{max-width:none;padding:7px 9px}.arena-root[data-format=ffa] .arena-damage,.arena-root[data-format=teams] .arena-damage{font-size:20px}.arena-root[data-format=ffa] .arena-player-helmet,.arena-root[data-format=teams] .arena-player-helmet{flex-basis:21px;height:22px}.arena-bottom-hud{left:calc(var(--arena-safe-left) + 14px);right:calc(var(--arena-safe-right) + 14px)}.arena-control-hint{font-size:8px;max-width:140px}.arena-ability{min-width:70px;padding:8px 8px 10px;gap:5px}.arena-ability-key{font-size:7px}.arena-ability-label{font-size:7px}.arena-small-panel{padding:25px 22px;border-radius:19px}.arena-panel-title{font-size:24px}.arena-panel-copy{font-size:13px}.arena-countdown-value{font-size:104px}}
-@media(max-height:600px) and (min-width:651px){.arena-modal{padding-top:calc(var(--arena-safe-top) + 10px);padding-bottom:calc(var(--arena-safe-bottom) + 10px)}.arena-lobby-top{margin-bottom:12px}.arena-lobby-grid{align-items:start}.arena-title{font-size:34px;margin:14px 0}.arena-lobby-art{max-width:280px}.arena-setup{padding:17px}.arena-format-card{min-height:78px;gap:6px;padding:9px}.arena-choice-group+.arena-choice-group{margin-top:16px}.arena-stage-card{min-height:94px}.arena-stage-preview{max-height:66px}.arena-setup-options{margin:5px 0 13px}.arena-local-note{margin-top:12px}.arena-controls-help{margin-top:14px}.arena-hud{top:calc(var(--arena-safe-top) + 8px);left:calc(var(--arena-safe-left) + 20px);right:calc(var(--arena-safe-right) + 20px)}.arena-hud-top{margin-bottom:0}.arena-match-brand{position:absolute;top:6px;left:0}.arena-hud-tools{position:absolute;top:0;right:0}.arena-match-brand .arena-eyebrow{font-size:7px}.arena-match-name{font-size:8px;max-width:160px}.arena-roster{max-width:500px;padding:0 5px}.arena-player-card{padding:7px;max-width:124px;gap:5px}.arena-player-helmet{display:none}.arena-player-tag{display:none}.arena-player-name{font-size:9px}.arena-damage{font-size:20px;min-width:30px}.arena-clock{font-size:15px}.arena-hud-tools{gap:8px}.arena-icon-button{width:44px;height:44px;min-height:44px}.arena-countdown{top:48%}.arena-countdown-value{font-size:78px}.arena-countdown-label{font-size:8px}.arena-small-panel{max-width:420px;padding:20px;gap:8px}.arena-small-panel .arena-pill{margin-bottom:2px}.arena-panel-title{font-size:23px}.arena-panel-copy{font-size:12px;margin:0 0 6px}.arena-small-panel .arena-button{min-height:42px;padding:10px}.arena-small-panel>.arena-text-button{min-height:36px;padding:5px}.arena-result-row{padding:6px 10px;font-size:10px}}
+.arena-hud{top:calc(var(--arena-safe-top) + 10px);left:calc(var(--arena-safe-left) + 13px);right:calc(var(--arena-safe-right) + 13px)}.arena-hud-top{margin-bottom:9px}.arena-match-brand .arena-eyebrow{font-size:calc(9px * var(--ui-scale, 1))}.arena-match-name{font-size:calc(9px * var(--ui-scale, 1));max-width:255px}.arena-hud-tools{gap:10px}.arena-clock{font-size:17px}.arena-icon-button{width:44px;height:44px;min-height:44px;border-radius:10px}.arena-roster{gap:7px}.arena-player-card{padding:9px 8px;gap:7px;border-radius:9px;max-width:210px}.arena-player-name{font-size:calc(10px * var(--ui-scale, 1))}.arena-player-tag{display:block;font-size:calc(9px * var(--ui-scale, 1))}.arena-player-info{grid-template-columns:auto auto;gap:2px 4px}.arena-damage{font-size:22px;min-width:36px}.arena-player-helmet{flex-basis:22px;height:23px}.arena-stocks{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:3px}.arena-root[data-format=ffa] .arena-roster,.arena-root[data-format=teams] .arena-roster{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));max-width:430px}.arena-root[data-format=ffa] .arena-player-card,.arena-root[data-format=teams] .arena-player-card{max-width:none;padding:7px 9px}.arena-root[data-format=ffa] .arena-damage,.arena-root[data-format=teams] .arena-damage{font-size:20px}.arena-root[data-format=ffa] .arena-player-helmet,.arena-root[data-format=teams] .arena-player-helmet{flex-basis:21px;height:22px}.arena-bottom-hud{left:calc(var(--arena-safe-left) + 14px);right:calc(var(--arena-safe-right) + 14px)}.arena-control-hint{font-size:calc(9px * var(--ui-scale, 1));max-width:140px}.arena-ability{min-width:70px;padding:8px 8px 10px;gap:5px}.arena-ability-key{font-size:calc(9px * var(--ui-scale, 1))}.arena-ability-label{font-size:calc(9px * var(--ui-scale, 1))}.arena-small-panel{padding:25px 22px;border-radius:19px}.arena-panel-title{font-size:24px}.arena-panel-copy{font-size:13px}.arena-countdown-value{font-size:104px}}
+@media(max-height:600px) and (min-width:651px){.arena-modal{padding-top:calc(var(--arena-safe-top) + 10px);padding-bottom:calc(var(--arena-safe-bottom) + 10px)}.arena-lobby-top{margin-bottom:12px}.arena-lobby-grid{align-items:start}.arena-title{font-size:34px;margin:14px 0}.arena-lobby-art{max-width:280px}.arena-setup{padding:17px}.arena-format-card{min-height:78px;gap:6px;padding:9px}.arena-choice-group+.arena-choice-group{margin-top:16px}.arena-stage-card{min-height:94px}.arena-stage-preview{max-height:66px}.arena-setup-options{margin:5px 0 13px}.arena-local-note{margin-top:12px}.arena-controls-help{margin-top:14px}.arena-hud{top:calc(var(--arena-safe-top) + 8px);left:calc(var(--arena-safe-left) + 20px);right:calc(var(--arena-safe-right) + 20px)}.arena-hud-top{margin-bottom:0}.arena-match-brand{position:absolute;top:6px;left:0}.arena-hud-tools{position:absolute;top:0;right:0}.arena-match-brand .arena-eyebrow{font-size:calc(9px * var(--ui-scale, 1))}.arena-match-name{font-size:calc(9px * var(--ui-scale, 1));max-width:160px}.arena-roster{max-width:500px;padding:0 5px}.arena-player-card{padding:7px;max-width:124px;gap:5px}.arena-player-helmet{display:none}.arena-player-tag{display:none}.arena-player-name{font-size:calc(9px * var(--ui-scale, 1))}.arena-damage{font-size:20px;min-width:30px}.arena-clock{font-size:15px}.arena-hud-tools{gap:8px}.arena-icon-button{width:44px;height:44px;min-height:44px}.arena-countdown{top:48%}.arena-countdown-value{font-size:78px}.arena-countdown-label{font-size:calc(9px * var(--ui-scale, 1))}.arena-small-panel{max-width:420px;padding:20px;gap:8px}.arena-small-panel .arena-pill{margin-bottom:2px}.arena-panel-title{font-size:23px}.arena-panel-copy{font-size:12px;margin:0 0 6px}.arena-small-panel .arena-button{min-height:42px;padding:10px}.arena-small-panel>.arena-text-button{min-height:36px;padding:5px}.arena-result-row{padding:6px 10px;font-size:calc(10px * var(--ui-scale, 1))}}
 @media(max-width:360px){.arena-modal{padding-left:calc(var(--arena-safe-left) + 8px);padding-right:calc(var(--arena-safe-right) + 8px)}.arena-setup{padding:10px}.arena-format-card{padding:9px 6px}.arena-segment{padding:8px 9px}.arena-player-helmet{display:none}.arena-player-card{gap:6px}}
 `;
   const IDENTITY_STYLES = `
@@ -200,11 +200,11 @@
 .arena-player-info{grid-template-columns:minmax(0,1fr);gap:3px}
 .arena-player-name{display:flex;align-items:center;gap:4px;white-space:nowrap;min-width:0}
 .arena-player-name-text{overflow:hidden;text-overflow:ellipsis}
-.arena-player-tag{display:block!important;font-size:8px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arena-player-tag{display:block!important;font-size:calc(9px * var(--ui-scale, 1));line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .arena-stocks{margin-top:0}
-@media(max-width:650px){.arena-player-card{gap:5px}.arena-player-portrait{flex-basis:27px;width:27px;height:34px}.arena-player-name{font-size:10px}.arena-player-tag{font-size:8px}.arena-root[data-format=teams] .arena-player-card,.arena-root[data-format=ffa] .arena-player-card{padding:6px}.arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none!important;padding:6px 10px!important}.arena-player-card[data-boss=true] .arena-player-info{display:flex;gap:8px;align-items:center}.arena-player-card[data-boss=true] .arena-player-tag{font-size:8px}}
-@media(max-height:600px) and (min-width:651px){.arena-player-portrait{display:none}.arena-player-card{min-width:0}.arena-player-tag{font-size:7px}.arena-player-name{font-size:9px}.arena-player-card[data-you=true]{padding:6px}}
-@media(max-width:360px){.arena-player-portrait{display:none}.arena-player-tag{font-size:8px}}
+@media(max-width:650px){.arena-player-card{gap:5px}.arena-player-portrait{flex-basis:27px;width:27px;height:34px}.arena-player-name{font-size:calc(10px * var(--ui-scale, 1))}.arena-player-tag{font-size:calc(9px * var(--ui-scale, 1))}.arena-root[data-format=teams] .arena-player-card,.arena-root[data-format=ffa] .arena-player-card{padding:6px}.arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none!important;padding:6px 10px!important}.arena-player-card[data-boss=true] .arena-player-info{display:flex;gap:8px;align-items:center}.arena-player-card[data-boss=true] .arena-player-tag{font-size:calc(9px * var(--ui-scale, 1))}}
+@media(max-height:600px) and (min-width:651px){.arena-player-portrait{display:none}.arena-player-card{min-width:0}.arena-player-tag{font-size:calc(9px * var(--ui-scale, 1))}.arena-player-name{font-size:calc(9px * var(--ui-scale, 1))}.arena-player-card[data-you=true]{padding:6px}}
+@media(max-width:360px){.arena-player-portrait{display:none}.arena-player-tag{font-size:calc(9px * var(--ui-scale, 1))}}
 .arena-root[data-touch=true] .arena-player-card[data-you=true] .arena-player-portrait{display:block;flex-basis:22px;width:22px;height:30px}
 .arena-root[data-touch=true] .arena-player-card[data-you=true]{gap:4px}
 
@@ -222,7 +222,7 @@
 .arena-root[data-touch=true] .arena-pause-button{width:48px;height:48px;min-height:48px}
 .arena-root[data-touch=true] .arena-roster{display:flex;margin:0 116px 0 0;max-width:none;padding:0;gap:6px}
 .arena-root[data-touch=true] .arena-player-card{min-width:0;max-width:230px;padding:6px 8px;gap:6px;border-radius:9px}
-.arena-root[data-touch=true] .arena-player-name{font-size:10px}.arena-root[data-touch=true] .arena-player-tag{font-size:8px}
+.arena-root[data-touch=true] .arena-player-name{font-size:calc(10px * var(--ui-scale, 1))}.arena-root[data-touch=true] .arena-player-tag{font-size:calc(9px * var(--ui-scale, 1))}
 .arena-root[data-touch=true] .arena-player-portrait{display:none}.arena-root[data-touch=true] .arena-player-info{grid-template-columns:minmax(0,1fr)}
 .arena-root[data-touch=true] .arena-roster:has([data-boss=true]){display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
 .arena-root[data-touch=true] .arena-player-card[data-boss=true]{grid-column:1/-1;max-width:none;padding:4px 8px!important;min-height:26px}
@@ -240,10 +240,10 @@
 }
 `;
   const TWO_STYLES = `
-.arena-pcount{min-height:34px;border-color:transparent;border-radius:6px;background:transparent;font:600 11px/1.2 system-ui,sans-serif;padding:7px 13px;color:#7F9BB5}
+.arena-pcount{min-height:34px;border-color:transparent;border-radius:6px;background:transparent;font:600 calc(11px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;padding:7px 13px;color:#7F9BB5}
 .arena-pcount[aria-pressed=true]{background:#20354C;color:#DEF0FF;border-color:#3D5870}
 @media(max-width:650px){.arena-pcount{font:650 12px/1.2 system-ui,sans-serif;padding:8px 11px;min-height:44px}}
-.arena-players-note{font:500 11px/1.5 system-ui,sans-serif;color:#9FBBD2;margin:8px 0 0}
+.arena-players-note{font:500 calc(11px * var(--ui-scale, 1))/1.5 system-ui,sans-serif;color:#9FBBD2;margin:8px 0 0}
 .arena-players-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
 .arena-players-group[hidden]{display:none!important}
 .arena-join{min-height:44px;padding:8px 14px;font-size:12px}
@@ -263,7 +263,7 @@
 .arena-room-qr{width:200px;height:200px;margin-top:12px;border-radius:10px}.arena-room-qr-details summary{cursor:pointer;font:13px system-ui;min-height:36px;line-height:36px}
 .arena-ready-row{display:grid;gap:8px}.arena-ready-row[hidden],.arena-ready-row>[hidden]{display:none!important}.arena-auto-label{display:flex;gap:8px;align-items:center;font:13px system-ui;min-height:44px}.arena-auto-label input{width:22px;height:22px;flex:none}.arena-vote-note:empty{display:none}.arena-vote-note{margin:0;font:13px/1.5 system-ui;color:#bfd4e8}
 .arena-watch-tools{position:absolute;z-index:6;bottom:calc(var(--arena-safe-bottom) + 22px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px;background:#071527ed;border:1px solid #36526d;border-radius:14px;max-width:calc(100% - 24px)}
-.arena-watch-tools span{font:700 10px system-ui;text-align:center;min-width:110px}.arena-root button:disabled{opacity:.48;cursor:default}
+.arena-watch-tools span{font:700 calc(10px * var(--ui-scale, 1)) system-ui;text-align:center;min-width:110px}.arena-root button:disabled{opacity:.48;cursor:default}
 `;
   function create(options) {
     const opts = options || {};
@@ -301,7 +301,7 @@
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
     let audio = null, audioGain = null, lastSfx = -999, lastFar = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     let room = null, roomBox, roomEntry, roomMembers, roomHint, roomInput, roomInvite, roomCode, roomQR, roomRole, roomLeave, roomCopy, roomShare, roomQRDetails, roomHost, roomJoin, roomWatch, roomDetails;
-    let roomStatus = null, roomSignature = '', rosterSignature = '', roomPaused = false, localRoomMenu = false, roomClosing = false, networkReceived = 0, priorNetworkTick = -1, networkEventHigh = 0;
+    let roomStatus = null, roomSignature = '', rosterSignature = '', roomPaused = false, localRoomMenu = false, roomClosing = false, networkReceived = 0, playout = null, priorNetworkTick = -1, networkEventHigh = 0;
     let watchTools, watchName;
     const onlineActive = () => !!(room && room.active);
     const localActor = () => state && state.actors.find(a => a.controller === 'human');
@@ -362,7 +362,7 @@
       syncRoomChoices(); syncPlayers();
     }
     function padList() {
-      try { const g = root.navigator.getGamepads && root.navigator.getGamepads(); return g ? Array.from(g).filter(q => q && q.connected && q.mapping === 'standard') : []; } catch (_) { return []; }
+      try { const g = root.navigator.getGamepads && root.navigator.getGamepads(); return g ? Array.from(g).filter(q => q && q.connected) : []; } catch (_) { return []; }   // pads with mapping "" are tried with the standard indices; the page announces them
     }
     // Couch play is local only: an online room, an expedition fight or a
     // touch-only device without two controllers never offers it.
@@ -455,10 +455,13 @@
       const nodes = focusables(); if (!nodes.length) return;
       const i = nodes.indexOf(document.activeElement), next = i < 0 ? (direction < 0 ? nodes.length - 1 : 0) : (i + direction + nodes.length) % nodes.length; nodes[next].focus({ preventScroll: false });
     }
+    // Settings > Keyboard remaps these for the solo pilot (bound keys win over the fixed alternates).
+    // Couch play ignores remaps entirely so the two fixed sets can never collide.
     function actionForKey(e) {
-      if (local2) return LOCAL_KEYS[1][e.code] || null; // Couch play ignores remaps so the two sets can never collide.
+      if (local2) return LOCAL_KEYS[1][e.code] || null;
       const key = (e.key || '').toLowerCase(), bindings = currentPrefs.keys || {};
-      for (const action of ['left', 'right', 'jump', 'fire']) if (bindings[action] === key) return action;
+      for (const action of ['left', 'right', 'jump', 'fire', 'down', 'dash']) if (bindings[action] === key) return action;
+      if (Object.values(bindings).includes(key)) return null;   // a key bound to Pause, Mute, Camera… is never also a fixed move
       return ({ ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'jump', KeyW: 'jump', Space: 'jump', ArrowDown: 'down', KeyS: 'down', KeyF: 'fire', KeyJ: 'fire', ShiftLeft: 'dash', ShiftRight: 'dash', KeyK: 'dash' })[e.code] || null;
     }
     function actionHeld(action) { for (const value of held.values()) if (value === action) return true; return false; }
@@ -468,6 +471,7 @@
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return; escapeAction(); return; }
       if (e.code === 'Tab') { e.preventDefault(); if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; } if (!activeModal && isMatch()) return; /* Tab never pauses a live match (Esc does) */ focusStep(e.shiftKey ? -1 : 1); return; }
+      if (!local2 && currentPrefs.keys && currentPrefs.keys.pause === (e.key || '').toLowerCase() && (paused || isMatch()) && !(e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName))) { e.preventDefault(); if (!e.repeat) escapeAction(); return; }   // the bound Pause key pauses/resumes a live match like Esc (never leaves the lobby)
       if (activeModal) {
         if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) { if (e.key === 'Enter' && e.target === roomInput) { e.preventDefault(); roomJoin.click(); } return; }
         if (playerCount === 2 && !p2Joined && activeModal === lobby && P2_JOIN_KEYS.includes(e.code)) { e.preventDefault(); if (!e.repeat) joinP2(); return; }
@@ -563,11 +567,14 @@
       moveX = Math.abs(x) > .14 ? x : 0; moveY = Math.abs(y) > .2 ? y : 0;
       stickKnob.style.transform = 'translate(calc(-50% + ' + (x * 32).toFixed(1) + 'px),calc(-50% + ' + (y * 32).toFixed(1) + 'px))';
     }
+    // A guest's playout buffer belongs to one room; a rejoin must never interpolate from the last one.
+    function dropPlayout() { if (playout) { playout.reset(); playout = null; } }
     function pollGamepad() {
       if (!ownsInput()) return;
       let pads;
       try { pads = root.navigator.getGamepads && root.navigator.getGamepads(); } catch (_) { return; }
-      const list = pads ? Array.from(pads).filter(q => q && q.connected && q.mapping === 'standard') : [];
+      // Standard-mapped pads first: a wheel or HID with mapping "" at index 0 must not take the slot of a real controller.
+      const list = pads ? Array.from(pads).filter(q => q && q.connected).sort((a, b) => (b.mapping === 'standard') - (a.mapping === 'standard')) : [];
       if (local2 && !activeModal) { pollLocalPads(list); return; }
       const swallow = playerCount === 2 && lobbyJoinPoll(list);
       const p = list[0];
@@ -778,7 +785,7 @@
         roomRole.textContent = status.info.role === 1 ? 'Join next match' : 'Watch instead'; roomRole.disabled = !status.current || status.current.status !== 'lobby';
         if (status.connection || status.stale) resetInput();
         if (view === 'match') { const q = opts.net.quality(); matchTitle.textContent = selectedArena().name + ' · ' + (status.connection || (status.stale ? 'WAITING FOR HOST' : q.rttMs ? q.rttMs + ' ms · FRIEND ARENA' : 'FRIEND ARENA')); }
-      } else if (status.closedReason && view === 'match') { state = null; view = 'lobby'; paused = roomPaused = localRoomMenu = false; setModal(lobby); paintLobby(); announce(status.closedReason); }
+      } else if (status.closedReason && view === 'match') { state = null; dropPlayout(); view = 'lobby'; paused = roomPaused = localRoomMenu = false; setModal(lobby); paintLobby(); announce(status.closedReason); }
       if (!status.active) syncChoices(); else syncRoomChoices();
     }
     function networkSnapshot(snapshot) {
@@ -786,12 +793,13 @@
       const old = state, newRound = !old || priorNetworkTick < 0 || snapshot.epoch !== (rootEl.dataset.epoch | 0); rootEl.dataset.epoch = snapshot.epoch;
       selections.arenaId = snapshot.state.arenaId; selections.format = snapshot.state.format; selections.difficulty = snapshot.state.difficulty;
       if (snapshot.status === 'lobby') {
-        if (view !== 'lobby') { resetInput(); state = null; view = 'lobby'; paused = roomPaused = localRoomMenu = false; resultAt = 0; effects = []; resetFeel(); setModal(lobby); paintLobby(); }
+        if (view !== 'lobby') { resetInput(); state = null; dropPlayout(); view = 'lobby'; paused = roomPaused = localRoomMenu = false; resultAt = 0; effects = []; resetFeel(); setModal(lobby); paintLobby(); }
         priorNetworkTick = -1; syncChoices(); return;
       }
       state = snapshot.state; state.events = state.events.filter(e => { if (!e.serial || e.serial <= networkEventHigh) return false; networkEventHigh = e.serial; return true; });
       if (!snapshot.isHost && old && !newRound) for (const a of state.actors) { const p = old.actors.find(p => p.id === a.id); if (p && p.stocks === a.stocks && p.respawnTicks === a.respawnTicks && Math.hypot(p.x-a.x,p.y-a.y)<220) { a.px=p.x;a.py=p.y; } }
       networkReceived = performance.now(); priorNetworkTick = state.tick;
+      if (!snapshot.isHost && root.SpaceManRacePresentation) { playout = playout || root.SpaceManRacePresentation.createArenaPlayout(); playout.receive(state, snapshot.epoch, networkReceived); } else if (playout) { playout.reset(); playout = null; }
       if (view !== 'match' || newRound) {
         cosmeticRound++;
         resetInput(); view = 'match'; paused = false; localRoomMenu = false; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; resultAt = 0; effects = []; resetFeel(); spectatorId = null; camera.initialized = false;
@@ -940,7 +948,33 @@
         g.fillStyle = biome ? (layer ? biome.ridgeNear : biome.ridgeFar) : '#07131D'; g.globalAlpha = layer ? .65 : .36; g.beginPath(); g.moveTo(0, height);
         for (let x = 0; x <= width + 20; x += 20) { const y = height * (.87 + layer * .04) + Math.sin(x / (width * .21) + layer * 2) * height * .03 + Math.sin(x / 39 + layer) * 8; g.lineTo(x, y); } g.lineTo(width, height); g.closePath(); g.fill();
       }
+      stageSilhouette(g, a, t);
       g.globalAlpha = 1; return bg;
+    }
+    // Per-stage backdrop silhouette, cached with the background so it costs
+    // nothing per frame. Decor only: it sits below actors and platforms.
+    function stageSilhouette(g, a, t) {
+      const id = a.theme && a.theme.id, base = height * .9;
+      g.save();
+      if (id === 'bloom') {
+        const dome = g.createRadialGradient(width * .34, base, 4, width * .34, base, width * .2); dome.addColorStop(0, t.accent); dome.addColorStop(1, 'rgba(78,240,122,0)');
+        g.globalAlpha = .22; g.fillStyle = dome; g.beginPath(); g.arc(width * .34, base, width * .2, Math.PI, TAU); g.fill();
+        g.globalAlpha = .5; g.fillStyle = '#0B2A24'; g.beginPath(); g.arc(width * .34, base, width * .085, Math.PI, TAU); g.fill();
+        g.strokeStyle = '#0B2A24'; g.lineWidth = Math.max(2, width * .004); g.lineCap = 'round';
+        for (let i = 0; i < 9; i++) { const x = width * (.06 + i * .115) + hash(i + 40) * 20, h = height * (.14 + hash(i + 60) * .14), dir = i % 2 ? 1 : -1; g.beginPath(); g.moveTo(x, base); g.quadraticCurveTo(x + dir * 12, base - h * .6, x + dir * 30, base - h); g.stroke(); for (let k = 1; k < 4; k++) { const fy = base - h * k / 4, fx = x + dir * 30 * k / 4; g.beginPath(); g.moveTo(fx, fy); g.lineTo(fx - dir * 14, fy + 10); g.moveTo(fx, fy); g.lineTo(fx + dir * 12, fy + 12); g.stroke(); } }
+      } else if (id === 'ember') {
+        const band = g.createLinearGradient(0, height * .68, 0, height); band.addColorStop(0, 'rgba(255,180,84,0)'); band.addColorStop(.7, 'rgba(255,120,60,.34)'); band.addColorStop(1, 'rgba(255,229,154,.5)');
+        g.fillStyle = band; g.fillRect(0, height * .68, width, height * .32);
+        g.globalAlpha = .55; g.fillStyle = '#12060F';
+        for (let i = 0; i < 4; i++) { const x = width * (.1 + i * .27), w = width * .07, h = height * (.28 + hash(i + 70) * .14); g.fillRect(x, base - h, w, h); g.fillRect(x - w * .25, base - h, w * 1.5, 8); g.beginPath(); g.moveTo(x + w * .3, base - h - 4); g.lineTo(x + w * .3, base - h - 26); g.lineTo(x + w * .55, base - h - 26); g.lineTo(x + w * .55, base - h - 4); g.fill(); }
+        g.globalAlpha = .35; g.fillStyle = t.accent; for (let i = 0; i < 26; i++) g.fillRect(hash(i + 90) * width, height * (.55 + hash(i + 120) * .4), 2, 2);
+      } else {
+        g.globalAlpha = .55; g.fillStyle = '#081426'; g.strokeStyle = '#081426'; g.lineWidth = 1.5;
+        const mastX = [.14, .5, .86], tops = [];
+        for (const f of mastX) { const x = width * f, w = Math.max(10, width * .014), top = height * (.3 + hash(Math.round(f * 100)) * .06); tops.push([x, top]); g.fillRect(x - w / 2, top, w, base - top); g.fillRect(x - w * 2.2, top, w * 4.4, 6); g.fillRect(x - w * .2, top - 20, w * .4, 20); g.globalAlpha = .85; g.fillStyle = t.accent; g.fillRect(x - 1.5, top - 24, 3, 3); g.globalAlpha = .55; g.fillStyle = '#081426'; }
+        for (let i = 0; i < tops.length - 1; i++) { const [x0, y0] = tops[i], [x1, y1] = tops[i + 1]; g.beginPath(); g.moveTo(x0, y0 + 3); g.quadraticCurveTo((x0 + x1) / 2, Math.max(y0, y1) + height * .12, x1, y1 + 3); g.stroke(); }
+      }
+      g.restore();
     }
     function platform(g, p, a, preview) {
       const theme = a.theme || {}, accent = theme.platformTop || theme.accent || '#38E1FF';
@@ -1192,6 +1226,11 @@
       if (!active || !state || !ctx) return;
       const a = arena.getArena ? arena.getArena(state.arenaId) : selectedArena(), t = themeFor(a), key = a.id + width + height;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); if (!background || bgKey !== key) { background = makeBackground(a); bgKey = key; } ctx.drawImage(background, 0, 0, width, height);
+      if (a.theme && a.theme.id === 'ember' && !saver() && !calm()) { // decor-only rising embers
+        const sec = performance.now() / 1000; ctx.fillStyle = t.accent;
+        for (let i = 0; i < 18; i++) { const k = (sec * (.05 + hash(i + 5) * .06) + hash(i)) % 1; ctx.globalAlpha = .6 * (1 - k); ctx.fillRect(hash(i + 30) * width + Math.sin(sec + i) * 8, height * (1 - k * .5), 2, 2); }
+        ctx.globalAlpha = 1;
+      }
       const c = applyFeelCamera(updateCamera(a, alpha), a), art = root.SpaceManArt;
       ctx.save(); ctx.translate(width / 2, c.centerY); ctx.scale(c.scale, c.scale); ctx.translate(-c.x, -c.y);
       // Quiet orbital guide rings help the camera feel located in a larger world.
@@ -1460,7 +1499,7 @@
       } else accumulator = 0;
       if (isMatch() && (state.phase === 'over' || localRescue()) && !activeModal && resultAt && now >= resultAt) showResults();
       const renderGap = saver() ? 1000 / 30 : 1000 / 60;
-      if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { paint(paused || state.phase === 'over' ? 1 : feel.freezeLeft > 0 ? feel.holdAlpha : onlineActive() && !room.isHost ? clamp((now - networkReceived) / 50, 0, 1) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
+      if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { const buffered = onlineActive() && !room.isHost && playout && playout.apply(state, performance.now(), state.phase === 'over'); paint(paused || state.phase === 'over' ? 1 : feel.freezeLeft > 0 ? feel.holdAlpha : onlineActive() && !room.isHost ? (buffered ? 1 : clamp((now - networkReceived) / 50, 0, 1)) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
       if (!frameId && active && !document.hidden) frameId = root.requestAnimationFrame(frame);
     }
     function ensureFrame() { if (active && !document.hidden && !frameId) { lastTime = 0; frameId = root.requestAnimationFrame(frame); } }
@@ -1501,7 +1540,7 @@
       if (!active) return;
       if (localSession || sharedSession) { close(); return; }
       if (onlineActive()) { if (!room.isHost) { leaveArenaRoom(); return; } room.lobby(); }
-      resetInput(); local2 = null; rootEl.dataset.players = '1'; state = null; view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; resetFeel(); camera.initialized = false;
+      resetInput(); local2 = null; rootEl.dataset.players = '1'; state = null; dropPlayout(); view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; resetFeel(); camera.initialized = false;
       syncChoices(); setModal(lobby, formatButtons.find(b => b.dataset.format === selections.format)); paintLobby(); announce('Choose your arena match');
       if (audio && audio.state === 'running') audio.suspend().catch(() => {});
     }
@@ -1585,7 +1624,7 @@
       resetInput(); local2 = null; playerCount = 1; p2Joined = false; active = false; if (frameId) root.cancelAnimationFrame(frameId); frameId = 0; lastTime = 0; accumulator = 0;
       for (const [target, type, fn, settings] of listeners.splice(0)) target.removeEventListener(type, fn, settings);
       if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
-      rootEl.hidden = true; viewportBox = null; activeModal = null; state = null; view = 'lobby'; paused = false; effects = []; resetFeel();
+      rootEl.hidden = true; viewportBox = null; activeModal = null; state = null; dropPlayout(); view = 'lobby'; paused = false; effects = []; resetFeel();
       inertSiblings.forEach(s => { if (s.node.isConnected) s.node.inert = s.inert; }); inertSiblings = []; document.body.style.overflow = savedBodyOverflow;
       if (audio && audio.state === 'running') audio.suspend().catch(() => {});
       if (savedFocus && savedFocus.isConnected && typeof savedFocus.focus === 'function') savedFocus.focus({ preventScroll: true });

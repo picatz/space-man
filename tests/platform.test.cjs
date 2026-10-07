@@ -30,6 +30,8 @@ test('every src/ module is loaded by the page, precached, and run by the test ha
   assert.deepEqual([...onDisk].sort(), [...pageSrc].sort(), 'a module on disk that the page never loads (or the reverse)');
   for (const m of onDisk) assert.ok(SHELL.includes('./src/' + m + '.js'), m + '.js missing from the precache');
   assert.deepEqual(require('./harness.cjs').MODULES, pageSrc, 'tests/harness.cjs MODULES must follow index.html order');
+  assert.ok(pageSrc.indexOf('math') >= 0 && pageSrc.indexOf('math') < pageSrc.indexOf('art'), 'math.js loads before its consumers');
+  assert.deepEqual([...SHELL].filter((u) => /^\.\/src\/.*\.js$/.test(u)).map((u) => u.slice(6, -3)).sort(), [...pageSrc].sort(), 'service-worker SHELL lists exactly the page scripts');
 });
 
 // Minimal service-worker runtime: real service-worker.js, fake caches + network.

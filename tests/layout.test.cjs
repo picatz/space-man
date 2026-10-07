@@ -152,3 +152,21 @@ test('dimmed dependent settings rows keep readable text', () => {
   assert.ok(m && Number(m[1]) >= 0.7, 'row label opacity must keep >= 4.5:1 contrast');
   assert.match(css, /\.settings-list \.dim \.switch[^{]*\{[^}]*opacity/, 'the control itself carries the dimmed state');
 });
+
+test('text size: tokens and captions scale with --ui-scale and nothing renders below 9px', () => {
+  const root = rule(':root');
+  assert.match(root, /--ui-scale:\s*1\b/);
+  for (const t of ['--fs-cap', '--fs-sm', '--fs-md']) assert.match(root, new RegExp(t + ':\\s*calc\\(\\d+px \\* var\\(--ui-scale\\)\\)'), t + ' multiplies by the scale');
+  const files = ['index.html', 'src/home.css', 'src/space-theme.css', 'src/wardrobe.css', 'src/expedition.css', 'src/arena-ui.js', 'src/race-ui.js', 'src/race-view.js'];
+  for (const f of files) {
+    const src = f === 'index.html' ? css : fs.readFileSync(path.join(__dirname, '..', f), 'utf8');   // index.html: its stylesheet (inline style attributes are one-off)
+    const sizes = [...src.matchAll(/font-size:\s*(?:calc\()?(\d+(?:\.\d+)?)px/g), ...src.matchAll(/\bfont:\s*(?:[\w.]+\s+)*?(?:calc\()?(\d+(?:\.\d+)?)px/g)].map((m) => +m[1]);
+    assert.ok(sizes.length > 0, f + ' declares font sizes');
+    assert.ok(Math.min(...sizes) >= 9, f + ' has a ' + Math.min(...sizes) + 'px font');
+    for (const m of src.matchAll(/font(?:-size)?:\s*(?:[\w.]+\s+)*?(\d+(?:\.\d+)?)px/g)) {
+      assert.ok(+m[1] >= 12, f + ': ' + m[0] + ' is small type and must multiply by var(--ui-scale)');
+    }
+  }
+  assert.doesNotMatch(html, /ctx\.font = '[0-9]+ [78]px /, 'no 7-8px canvas fonts');
+  assert.match(html, /const hudPx = \(n\) => Math\.max\(9, n\)/);
+});

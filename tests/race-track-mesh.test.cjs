@@ -333,7 +333,7 @@ test("global clearance detects the other side of a switchback rather than only t
 });
 
 test("the mesh is deterministic across builds and exports the same browser API with the shared art kit", () => {
-  const course = tracks[1], browser = { window: { SpaceManArt: Art } };
+  const course = tracks[1], browser = { window: { SpaceManArt: Art, SpaceManMath: require("../src/math.js") } };
   vm.runInNewContext(fs.readFileSync(require.resolve("../src/race-track-mesh.js"), "utf8"), browser);
   assert.equal(typeof browser.window.SpaceManRaceTrackMesh.build, "function");
   assert.equal(typeof browser.window.SpaceManRaceTrackMesh.distance, "function");

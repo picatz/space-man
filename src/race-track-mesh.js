@@ -3,14 +3,15 @@
  * Every grid triangle is partitioned into disjoint scalar bands exactly once. */
 (function (root, factory) {
   const api = factory(typeof module === "object" && module.exports
-    ? require("./art.js") : root.SpaceManArt);
+    ? require("./art.js") : root.SpaceManArt,
+  typeof module === "object" && module.exports ? require("./math.js") : root.SpaceManMath);
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.SpaceManRaceTrackMesh = api;
-})(typeof window !== "undefined" ? window : globalThis, function (Art) {
+})(typeof window !== "undefined" ? window : globalThis, function (Art, MathKit) {
   "use strict";
   const segmentCache = new WeakMap(), meshCache = new WeakMap();
   const rgb = (hex, fallback) => /^#[0-9a-f]{6}$/i.test(hex || "")
-    ? [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    ? MathKit.hexRgb(hex)
     : fallback;
   const shade = (color, factor) => color.map((v) => Math.min(1, v * factor));
 

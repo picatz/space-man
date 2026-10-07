@@ -6,8 +6,7 @@
    caller-owned Float32Array: zero per-frame allocation. */
 (function (root) {
   'use strict';
-  const TAU = Math.PI * 2;
-  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const { TAU, clamp } = typeof module === 'object' && module.exports ? require('./math.js') : root.SpaceManMath;
 
   // Deterministic 0..1 hash (no Math.random: the same run blinks the same way).
   const hash01 = (n) => { const s = Math.sin(n * 12.9898 + 78.233) * 43758.5453; return s - Math.floor(s); };

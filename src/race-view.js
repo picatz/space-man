@@ -4,10 +4,10 @@
   const modes = ["chase", "cockpit", "topdown"],
     names = { chase: "Chase", cockpit: "Cockpit", topdown: "Top-down" };
   const CSS = `
-.race-world{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.race-speedlines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}.race-pilot-marker{position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-100%);width:20px;height:16px}.race-view-controls{position:absolute;right:calc(var(--race-right) + 18px);top:calc(var(--race-top) + 78px);z-index:4;text-align:right}.race-view-toggle{background:#0b2033ed;min-width:103px;font-size:11px;min-height:44px}.race-view-menu{display:grid;gap:4px;padding:8px;margin-top:6px;width:175px;border:1px solid #4b6b80;border-radius:15px;background:#091c2ff5;box-shadow:0 8px 25px #0006}.race-view-menu .race-button{width:100%;text-align:left;min-height:44px}.race-view-menu [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4;background:#28403c}.race-view-note{font-size:9px;color:#a6c7d8;padding:4px 7px}.race-root[data-screen=lobby] .race-view-controls,.race-root[data-screen=results] .race-view-controls,.race-root[data-screen=pause]>.race-view-controls{display:none}.race-root[data-camera=chase] .race-warning,.race-root[data-camera=cockpit] .race-warning{top:calc(var(--race-top) + 134px)}.race-camera-options{display:flex;flex-wrap:wrap;gap:5px;margin:13px 0}.race-camera-options .race-button{flex:1;min-width:80px;padding:8px;font-size:10px}.race-camera-options [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4}.race-cockpit{pointer-events:none;position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(670px,75%);height:17%;z-index:1;border-radius:60% 60% 0 0 / 50% 50% 0 0;background:linear-gradient(180deg,#719dae 0%,#d8eff1 4%,#274555 8%,#0a192a 14%,#07121f 100%);border-top:2px solid #92e5ea;box-shadow:0 -8px 25px #07172566}.race-cockpit:before{content:'STAR CIRCUIT • FLIGHT SYSTEMS';position:absolute;left:25%;right:25%;top:18%;padding:9px 0;border:1px solid #416d7a;border-radius:8px;color:#90dfdc;background:#122b37;text-align:center;font:8px/1.4 ui-monospace,monospace;letter-spacing:.15em}.race-root[data-touch=true] .race-cockpit{height:13%;width:48%}
-@media(max-width:600px){.race-view-controls{top:calc(var(--race-top) + 76px);right:calc(var(--race-right) + 12px)}.race-view-toggle{min-width:95px;padding:7px 10px}.race-view-menu{width:157px}.race-cockpit:before{font-size:6px;letter-spacing:0;left:15%;right:15%;padding:6px}}
+.race-world{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.race-speedlines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}.race-pilot-marker{position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-100%);width:20px;height:16px}.race-view-controls{position:absolute;right:calc(var(--race-right) + 18px);top:calc(var(--race-top) + 78px);z-index:4;text-align:right}.race-view-toggle{background:#0b2033ed;min-width:103px;font-size:calc(11px * var(--ui-scale, 1));min-height:44px}.race-view-menu{display:grid;gap:4px;padding:8px;margin-top:6px;width:175px;border:1px solid #4b6b80;border-radius:15px;background:#091c2ff5;box-shadow:0 8px 25px #0006}.race-view-menu .race-button{width:100%;text-align:left;min-height:44px}.race-view-menu [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4;background:#28403c}.race-view-note{font-size:calc(9px * var(--ui-scale, 1));color:#a6c7d8;padding:4px 7px}.race-root[data-screen=lobby] .race-view-controls,.race-root[data-screen=results] .race-view-controls,.race-root[data-screen=pause]>.race-view-controls{display:none}.race-root[data-camera=chase] .race-warning,.race-root[data-camera=cockpit] .race-warning{top:calc(var(--race-top) + 134px)}.race-camera-options{display:flex;flex-wrap:wrap;gap:5px;margin:13px 0}.race-camera-options .race-button{flex:1;min-width:80px;padding:8px;font-size:calc(10px * var(--ui-scale, 1))}.race-camera-options [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4}.race-cockpit{pointer-events:none;position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(670px,75%);height:17%;z-index:1;border-radius:60% 60% 0 0 / 50% 50% 0 0;background:linear-gradient(180deg,#719dae 0%,#d8eff1 4%,#274555 8%,#0a192a 14%,#07121f 100%);border-top:2px solid #92e5ea;box-shadow:0 -8px 25px #07172566}.race-cockpit:before{content:'STAR CIRCUIT • FLIGHT SYSTEMS';position:absolute;left:25%;right:25%;top:18%;padding:9px 0;border:1px solid #416d7a;border-radius:8px;color:#90dfdc;background:#122b37;text-align:center;font:calc(9px * var(--ui-scale, 1))/1.4 ui-monospace,monospace;letter-spacing:.15em}.race-root[data-touch=true] .race-cockpit{height:13%;width:48%}
+@media(max-width:600px){.race-view-controls{top:calc(var(--race-top) + 76px);right:calc(var(--race-right) + 12px)}.race-view-toggle{min-width:95px;padding:7px 10px}.race-view-menu{width:157px}.race-cockpit:before{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:0;left:15%;right:15%;padding:6px}}
 @media(max-height:520px){.race-view-controls{top:calc(var(--race-top) + 65px)}.race-view-menu{display:grid;grid-template-columns:1fr 1fr;width:245px}.race-view-note{grid-column:1/-1}.race-cockpit{height:20%}}
-@media(max-height:360px) and (min-width:480px){.race-view-menu{width:min(430px,calc(100vw - var(--race-left) - var(--race-right) - 24px));grid-template-columns:repeat(4,minmax(0,1fr))}.race-view-menu .race-button{font-size:10px;line-height:1.2;padding:6px;min-height:44px}}
+@media(max-height:360px) and (min-width:480px){.race-view-menu{width:min(430px,calc(100vw - var(--race-left) - var(--race-right) - 24px));grid-template-columns:repeat(4,minmax(0,1fr))}.race-view-menu .race-button{font-size:calc(10px * var(--ui-scale, 1));line-height:1.2;padding:6px;min-height:44px}}
 `;
   function create(options) {
     const parent = options.root,
@@ -20,6 +20,10 @@
       attempted = false,
       pendingQuality = 1,
       scene = null,
+      frameScene = null,
+      frameSource = null,
+      frameMeshes = [],
+      actorModels = new Map(),
       trackId = null,
       followedId = null,
       presentationEpoch = null,
@@ -285,6 +289,7 @@
       // Reuse immutable local-space craft meshes on the GPU. Only small model
       // transforms change each display frame, including interpolated frames.
       const moving = root.SpaceManRaceScene.actorMeshes(snapshot, {
+        models: actorModels,
         hideId: mode === "cockpit" ? a.id : null,
         calm: !!config.reduceMotion,
         chaseActor: mode === "chase" ? a : null,
@@ -297,11 +302,16 @@
         calm: !!config.reduceMotion, nearest: root.SpaceManRace.nearest,
       }) || [];
       const started = root.performance.now();
-      const ok = renderer.draw({
-        ...scene,
-        camera: view,
-        meshes: [...scene.meshes, ...(mode === "topdown" ? [] : scene.roofMeshes || []), ...features, ...moving],
-      });
+      // One reused scene descriptor and mesh list: the renderer reads them synchronously.
+      if (frameSource !== scene) {
+        frameScene = { ...scene, meshes: frameMeshes };
+        frameSource = scene;
+      }
+      frameMeshes.length = 0;
+      for (const list of [scene.meshes, mode === "topdown" ? null : scene.roofMeshes, features, moving])
+        if (list) for (let i = 0; i < list.length; i++) frameMeshes.push(list[i]);
+      frameScene.camera = view;
+      const ok = renderer.draw(frameScene);
       const cost = root.performance.now() - started;
       if (!ok) {
         fail();

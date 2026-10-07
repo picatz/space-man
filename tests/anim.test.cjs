@@ -11,7 +11,7 @@ const { client, relay } = require('./harness.cjs');
 
 function load() {
   const ctx = vm.createContext({ Math, Float32Array, Object, document: { createElement: () => ({ getContext: () => null }) } });
-  for (const f of ['art', 'anim']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f + '.js'), 'utf8'), ctx);
+  for (const f of ['math', 'art', 'anim']) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'src', f + '.js'), 'utf8'), ctx);
   return { A: ctx.SpaceManAnim, Art: ctx.SpaceManArt };
 }
 const { A, Art } = load();

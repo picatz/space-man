@@ -7,8 +7,7 @@
 (function (root) {
   'use strict';
   if (typeof module === 'object' && module.exports) require('./cosmetics.js');
-  const TAU = Math.PI * 2;
-  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const { TAU, clamp } = typeof module === 'object' && module.exports ? require('./math.js') : root.SpaceManMath;
 
   // The palette — mirrors the CSS custom properties on :root.
   const C = Object.freeze({
