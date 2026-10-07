@@ -144,7 +144,7 @@
   // touches fetch/localStorage; nothing here runs until the host calls it.
   async function load(opts) {
     var o = opts || {}, active = !!o.active;
-    if (o.mode === 'list') return { map: fromServerList(o.servers, o.label), source: 'list' };
+    if (o.mode === 'list') return { map: fromServerList(o.servers != null ? o.servers : o.list != null ? o.list : o.text, o.label), source: 'list' };
     // Custom directory endpoints are https-only: the app itself is served over
     // https (http would be mixed-content-blocked anyway), and rejecting other
     // schemes here kills javascript:/file:/ws: tricks before fetch sees them.

@@ -216,3 +216,29 @@ test('service worker: preview navigations/assets bypass production and unrelated
   assert.ok(!sw.stores.has('sm2-app-v3.19.1'), 'legacy game shell is migrated');
   assert.equal(sw.net.length, 0, 'bypass leaves requests to the browser network stack');
 });
+
+test('an update never reloads the run-over card; it offers an explicit button instead', (t) => {
+  const c = client(relay());
+  t.after(() => c.close());
+  const store = new Map();
+  let reloads = 0;
+  c.context.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
+  c.context.location.reload = () => { reloads++; };
+  c.run("G.mode = 'dead'; $('ovDead').classList.add('show'); G.deathCardShown = true; swu.reg = null; swUpdateReady(); swu.readyAt = G.time - 60;");
+  assert.equal(c.run("$('updateChip').classList.contains('show')"), true, 'explicit button is offered');
+  assert.equal(c.run('swSafeMoment()'), false);
+  c.run('tickUpdate()');
+  assert.equal(reloads, 0, 'no automatic reload under the result');
+  c.run("$('updateChip').onclick()");
+  assert.equal(reloads, 1, 'the player chooses when');
+  assert.equal(c.run("$('srAnnounce').textContent").startsWith('Update ready'), true);
+});
+
+test('the retry hint matches the last input device', (t) => {
+  const c = client(relay());
+  t.after(() => c.close());
+  const hint = () => c.run("$('deadTapHint').textContent");
+  c.run('input.usingGamepad = true; revealTapHint()'); assert.equal(hint(), 'PRESS A TO RETRY');
+  c.run('input.usingGamepad = false; input.usingTouch = true; revealTapHint()'); assert.equal(hint(), 'TAP TO RETRY');
+  c.run('input.usingTouch = false; input.usingKeys = true; revealTapHint()'); assert.equal(hint(), 'SPACE / ENTER TO RETRY');
+});

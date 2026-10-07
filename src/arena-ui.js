@@ -246,10 +246,15 @@
     let thumbBounds = null;
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
+    // Presentation-only game feel. Nothing here reaches the simulation or wire:
+    // hit-stop and KO slow-mo run in local matches only, shake/flash/squash
+    // everywhere, all through the pure helpers in SpaceManArena.feel.
+    const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, koPoint: null, flash: {}, land: {}, lastLand: -1 };
+    function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, koPoint: null, flash: {}, land: {} }); }
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
     let touchEdges = { jump: false, attack: false, dash: false }, recoveryTap = null, clearRecoveryClick = null;
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
-    let audio = null, audioGain = null, lastSfx = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
+    let audio = null, audioGain = null, lastSfx = -999, lastFar = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     let room = null, roomBox, roomEntry, roomMembers, roomHint, roomInput, roomInvite, roomCode, roomQR, roomRole, roomLeave, roomCopy, roomShare, roomQRDetails, roomHost, roomJoin, roomWatch, roomDetails;
     let roomStatus = null, roomSignature = '', rosterSignature = '', roomPaused = false, localRoomMenu = false, roomClosing = false, networkReceived = 0, priorNetworkTick = -1, networkEventHigh = 0;
     let watchTools, watchName;
@@ -333,14 +338,16 @@
     }
     function sfx(kind) {
       if (!audio || !audioGain || audio.state !== 'running' || currentPrefs.sfx === false || currentPrefs.muted) return;
-      const now = audio.currentTime;
-      if (now - lastSfx < 0.055 && kind !== 'win') return;
-      lastSfx = now;
-      const values = { attack: [540, 220, .11], hit: [190, 90, .09], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055] };
+      const now = audio.currentTime, far = kind === 'hitFar';
+      // Background hits use their own, slower limiter so they can never mask a
+      // sound that matters to the player.
+      if (far) { if (now - lastFar < .16) return; lastFar = now; }
+      else { if (now - lastSfx < 0.055 && kind !== 'win') return; lastSfx = now; }
+      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055] };
       const v = values[kind]; if (!v) return;
       const o = audio.createOscillator(), g = audio.createGain();
-      o.type = kind === 'hit' ? 'triangle' : 'sine'; o.frequency.setValueAtTime(v[0], now); o.frequency.exponentialRampToValueAtTime(v[1], now + v[2]);
-      g.gain.setValueAtTime(0.001, now); g.gain.exponentialRampToValueAtTime(kind === 'hit' ? .8 : .55, now + .012); g.gain.exponentialRampToValueAtTime(.001, now + v[2]);
+      o.type = kind === 'hit' || far ? 'triangle' : 'sine'; o.frequency.setValueAtTime(v[0], now); o.frequency.exponentialRampToValueAtTime(v[1], now + v[2]);
+      g.gain.setValueAtTime(0.001, now); g.gain.exponentialRampToValueAtTime(kind === 'hit' ? .8 : far ? .16 : kind === 'land' ? .3 : .55, now + .012); g.gain.exponentialRampToValueAtTime(.001, now + v[2]);
       o.connect(g); g.connect(audioGain); o.start(now); o.stop(now + v[2] + .015); o.onended = () => { o.disconnect(); g.disconnect(); };
     }
     function resetTouchInput(clearEdges = true) {
@@ -380,7 +387,7 @@
       e.stopImmediatePropagation();
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return; escapeAction(); return; }
-      if (e.code === 'Tab') { e.preventDefault(); if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; } if (!activeModal && isMatch()) pauseMatch('Match paused'); else focusStep(e.shiftKey ? -1 : 1); return; }
+      if (e.code === 'Tab') { e.preventDefault(); if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; } if (!activeModal && isMatch()) return; /* Tab never pauses a live match (Esc does) */ focusStep(e.shiftKey ? -1 : 1); return; }
       if (activeModal) {
         if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) { if (e.key === 'Enter' && e.target === roomInput) { e.preventDefault(); roomJoin.click(); } return; }
         if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); if (!e.repeat && document.activeElement && activeModal.contains(document.activeElement)) document.activeElement.click(); }
@@ -475,7 +482,7 @@
         if (edge('down') || edge('right')) focusStep(1); else if (edge('up') || edge('left')) focusStep(-1);
         if (edge('jump') && document.activeElement && activeModal.contains(document.activeElement)) document.activeElement.click();
         else if (edge('dash')) escapeAction();
-      } else { pad.moveX = x; pad.moveY = y; pad.jump = raw.jump; if (edge('jump')) jumpEdge = true; if (edge('attack')) attackEdge = true; if (edge('dash')) dashEdge = true; }
+      } else { pad.moveX = x; pad.moveY = y; pad.jump = raw.jump; pad.attack = raw.attack; if (edge('jump')) jumpEdge = true; if (edge('attack')) attackEdge = true; if (edge('dash')) dashEdge = true; }
       padPrevious = raw;
     }
     function command() {
@@ -483,7 +490,9 @@
       const keyboardX = (actionHeld('right') ? 1 : 0) - (actionHeld('left') ? 1 : 0);
       const keyboardY = (actionHeld('down') ? 1 : 0) - (actionHeld('jump') && (held.has('KeyW') || held.has('ArrowUp')) ? 1 : 0);
       const c = { moveX: clamp(keyboardX + moveX + pad.moveX, -1, 1), moveY: clamp(keyboardY + moveY + pad.moveY, -1, 1),
-        jumpPressed: jumpEdge || touchEdges.jump, jumpHeld: actionHeld('jump') || pad.jump || Array.from(touches.values()).some(t => t.action === 'jump'), attackPressed: attackEdge || touchEdges.attack, dashPressed: dashEdge || touchEdges.dash };
+        jumpPressed: jumpEdge || touchEdges.jump, jumpHeld: actionHeld('jump') || pad.jump || Array.from(touches.values()).some(t => t.action === 'jump'), attackPressed: attackEdge || touchEdges.attack, dashPressed: dashEdge || touchEdges.dash,
+        // Holding Pulse charges it; a quick tap releases as an ordinary pulse.
+        attackHeld: actionHeld('fire') || !!pad.attack || Array.from(touches.values()).some(t => t.action === 'attack') };
       jumpEdge = attackEdge = dashEdge = false; touchEdges = { jump: false, attack: false, dash: false };
       return actionBuffer.sample(c, localActor(), state?.tick, isRunning() && state.phase === 'playing' && canControl(), rootEl.dataset.epoch || matchSerial, { nowMs: performance.now(), authoritative: !onlineActive() || room.isHost });
     }
@@ -593,7 +602,7 @@
       const old = state, newRound = !old || priorNetworkTick < 0 || snapshot.epoch !== (rootEl.dataset.epoch | 0); rootEl.dataset.epoch = snapshot.epoch;
       selections.arenaId = snapshot.state.arenaId; selections.format = snapshot.state.format; selections.difficulty = snapshot.state.difficulty;
       if (snapshot.status === 'lobby') {
-        if (view !== 'lobby') { resetInput(); state = null; view = 'lobby'; paused = roomPaused = localRoomMenu = false; resultAt = 0; effects = []; setModal(lobby); paintLobby(); }
+        if (view !== 'lobby') { resetInput(); state = null; view = 'lobby'; paused = roomPaused = localRoomMenu = false; resultAt = 0; effects = []; resetFeel(); setModal(lobby); paintLobby(); }
         priorNetworkTick = -1; syncChoices(); return;
       }
       state = snapshot.state; state.events = state.events.filter(e => { if (!e.serial || e.serial <= networkEventHigh) return false; networkEventHigh = e.serial; return true; });
@@ -601,14 +610,14 @@
       networkReceived = performance.now(); priorNetworkTick = state.tick;
       if (view !== 'match' || newRound) {
         cosmeticRound++;
-        resetInput(); view = 'match'; paused = false; localRoomMenu = false; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; resultAt = 0; effects = []; spectatorId = null; camera.initialized = false;
+        resetInput(); view = 'match'; paused = false; localRoomMenu = false; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; resultAt = 0; effects = []; resetFeel(); spectatorId = null; camera.initialized = false;
         rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION · ' : '') + selectedArena().name + ' · FRIEND ARENA'; setModal(null); unlockAudio();
       }
       const wasPaused = roomPaused; roomPaused = snapshot.status === 'paused';
       if (roomPaused) { resetInput(); paused = true; pausePanel.querySelector('#arena-pause-reason').textContent = snapshot.isHost ? 'The whole arena is paused. Resume when you’re ready.' : 'The host paused the arena. Everyone’s match is safely frozen.'; if (activeModal !== pausePanel) setModal(pausePanel); }
       else if (wasPaused && !localRoomMenu) { paused = false; setModal(null); }
       const signature = state.actors.map(a => [a.id,a.name,a.controller,a.team,a.connected,JSON.stringify(a.appearance)].join(':')).join('|'); if (signature !== rosterSignature) { rosterSignature=signature;buildRoster(); }
-      effects.forEach(e => e.life--); effects=effects.filter(e=>e.life>0); consumeEvents(); updateHud(true); syncRoomChoices();
+      tickEffects(3); consumeEvents(); updateHud(true); syncRoomChoices();
       if (state.phase === 'over' && !resultAt) { resultAt=performance.now()+450;resetInput(); } ensureFrame();
     }
     function buildRoomControls() {
@@ -673,7 +682,7 @@
       const h1 = el('h1', 'arena-title'); h1.id = 'arena-lobby-title'; h1.append(document.createTextNode('Small suits.'), el('br'), el('span', '', 'Big knockouts.'));
       intro.append(h1, el('p', 'arena-lede', 'Bounce between orbiting islands. Land a pulse, build up damage, and send your rivals starward.'));
       const lobbyArt = el('canvas', 'arena-lobby-art'); lobbyArt.width = 660; lobbyArt.height = 370; lobbyArt.setAttribute('aria-hidden', 'true'); intro.append(lobbyArt);
-      const rules = el('div', 'arena-rules'); rules.append(el('span', '', '●  3 lives'), el('span', '', '↑↑  Double jump'), el('span', '', '✦  Bigger damage, bigger launch')); intro.append(rules);
+      const rules = el('div', 'arena-rules'); rules.append(el('span', '', '●  3 lives'), el('span', '', '↑↑  Double jump'), el('span', '', '✦  Bigger damage · hold Pulse to charge')); intro.append(rules);
       const setup = el('div', 'arena-setup');
       const formatGroup = el('section', 'arena-choice-group'); formatGroup.setAttribute('aria-labelledby', 'arena-format-label'); const modeLabel = el('h2', 'arena-section-label', '01 / PICK YOUR MATCH'); modeLabel.id = 'arena-format-label'; formatGroup.append(modeLabel);
       const formats = el('div', 'arena-formats');
@@ -763,7 +772,11 @@
       const bob = calm() ? 0 : Math.sin(phase * 2) * speed * .9;
       const facing = actor.facing || 1, attack = actor.attackTicks || 0;
       g.save(); g.translate(x + aw / 2, y + ah - h * scale / 2);
-      if (!calm()) g.rotate(clamp((actor.vx || 0) * .012, -.10, .10)); g.scale(facing * scale, scale);
+      if (!calm()) g.rotate(clamp((actor.vx || 0) * .012, -.10, .10));
+      const land = !hero && !calm() ? feel.land[actor.id] : null, squash = land ? arena.feel.landSquash(land.age, land.impact) : null;
+      // Squash and stretch pivot on the feet so a landing never sinks the sprite.
+      if (squash) { g.translate(0, h * scale / 2); g.scale(squash.x, squash.y); g.translate(0, -h * scale / 2); }
+      g.scale(facing * scale, scale);
       if (!saver()) { g.globalAlpha = actor.invulnerable ? .42 : .18; g.drawImage(art.glow(32, color, .03), -30, -31, 60, 60); g.globalAlpha = 1; }
       if (actor.invulnerable > 0) { g.strokeStyle = color; g.lineWidth = 1; g.globalAlpha = .6; g.beginPath(); g.ellipse(0, -1, w * .82, h * .7, 0, 0, TAU); g.stroke(); g.globalAlpha = 1; }
       if (actor.dashTicks > 0) {
@@ -789,6 +802,9 @@
       art.characterHelmet(g, 0, -9 + bob, helmetStyle, face);
       g.strokeStyle = P.arm; g.lineWidth = 4.5; g.beginPath(); g.moveTo(6, -1 + bob); g.lineTo(attack ? 14 : 10, attack ? -3 + bob : 5 + bob); g.stroke();
       g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
+      // Victim hit flash: a brief additive white silhouette over the body.
+      const flash = !hero && !calm() ? feel.flash[actor.id] : 0;
+      if (flash > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = .6 * Math.min(1, flash / 5); g.fillStyle = '#FFFFFF'; g.beginPath(); g.ellipse(0, 0, 11, 16, 0, 0, TAU); g.fill(); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; }
       g.restore();
     }
     function paintPreview(preview, a) {
@@ -886,14 +902,95 @@
     function thumbOccludes(box, c) {
       return c.pods.some(p => box.x < p.x+p.w && box.x+box.w > p.x && box.y < p.y+p.h && box.y+box.h > p.y);
     }
+    // Camera-space feel: shake shifts the framing, the KO punch zooms about the
+    // launch point. Applied to the per-frame camera copy, never the stored one,
+    // so labels and indicators stay locked to the world.
+    function applyFeelCamera(c, a) {
+      if (paused) return c;
+      const F = arena.feel, now = performance.now() / 1000;
+      if (feel.koLeft > 0 && feel.koPoint && !calm()) {
+        const p = 1 + F.KO_ZOOM * feel.koLeft / F.KO_SLOW_TICKS, wx = clamp(feel.koPoint.x, 0, a.width), wy = clamp(feel.koPoint.y, 0, a.height);
+        c.x = wx - (wx - c.x) / p; c.y = wy - (wy - c.y) / p; c.scale *= p;
+      }
+      if (shakeOn() && (feel.trauma > 0 || feel.kick)) {
+        if (feel.kick && now - feel.kick.at > .6) feel.kick = null;
+        const o = F.shakeOffset(feel.trauma, now, feel.kick);
+        c.x -= o.x / c.scale; c.y -= o.y / c.scale;
+      }
+      return c;
+    }
+    function drawBlastBounds(a, t, c) {
+      const b = a.bounds; if (!b) return;
+      let nearest = Infinity;
+      for (const actor of state.actors) {
+        if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
+        nearest = Math.min(nearest, actor.x - b.left, b.right - actor.x - actor.w, actor.y - b.top, b.bottom - actor.y - actor.h);
+      }
+      // A faint standing hint, brightening to a clear line as someone nears it.
+      const alpha = Math.max(.11, .6 * arena.feel.boundsGlow(nearest));
+      ctx.save(); ctx.strokeStyle = (a.theme && a.theme.hazard) || '#FF4F66'; ctx.globalAlpha = alpha; ctx.lineWidth = 2 / c.scale; ctx.lineCap = 'round';
+      ctx.setLineDash([12 / c.scale, 10 / c.scale]); ctx.strokeRect(b.left, b.top, b.right - b.left, b.bottom - b.top); ctx.setLineDash([]); ctx.restore();
+    }
+    function drawCharge(actor, x, y) {
+      const K = arena.constants, f = clamp(actor.charge / K.CHARGE_MAX, 0, 1), ready = actor.charge >= K.CHARGE_MIN, full = actor.charge >= K.CHARGE_MAX;
+      const cx = x + actor.w / 2, cy = y + actor.h / 2, pulse = !calm() && full ? .5 + .5 * Math.sin(state.tick * .9) : 0;
+      ctx.save(); ctx.strokeStyle = full ? '#FFFFFF' : actorColor(actor); ctx.lineCap = 'round';
+      ctx.globalAlpha = ready ? .9 : .35; ctx.lineWidth = ready ? 3 : 1.5;
+      ctx.beginPath(); ctx.arc(cx, cy, 15 + 20 * f + pulse * 3, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(.04, f)); ctx.stroke();
+      if (ready && !calm()) { ctx.globalAlpha = .22 + .2 * f; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, 15 + 20 * f + 6, 0, TAU); ctx.stroke(); }
+      ctx.restore();
+    }
+    function drawKoEffects(c) {
+      const top = c.top + 26, bottom = height - c.bottom - 26;
+      for (const e of effects) {
+        const k = 1 - e.life / e.max;
+        if (e.type === 'koflash') {
+          ctx.save(); ctx.globalAlpha = .34 * (1 - k) * (1 - k); ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, width, height); ctx.restore();
+        } else if (e.type === 'kotext') {
+          const sx = clamp((e.x - c.x) * c.scale + width / 2, 38, width - 38), sy = clamp((e.y - c.y) * c.scale + c.centerY, top, bottom);
+          ctx.save(); ctx.translate(sx, sy);
+          if (!calm() && k < .4) {
+            // Directional flash: a bright streak from the exit point back toward the stage.
+            const dx = width / 2 - sx, dy = c.centerY - sy, len = Math.hypot(dx, dy) || 1, reach = 150 * (1 - k / .4), grad = ctx.createLinearGradient(0, 0, dx / len * reach, dy / len * reach);
+            grad.addColorStop(0, '#FFFFFF'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.strokeStyle = grad; ctx.lineCap = 'round'; ctx.lineWidth = 7 * (1 - k / .4) + 1; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(dx / len * reach, dy / len * reach); ctx.stroke();
+          }
+          const pop = calm() ? 1 : 1 + .35 * Math.max(0, 1 - k * 5), fade = k < .7 ? 1 : 1 - (k - .7) / .3, lift = -28 * (1 - Math.min(1, k * 3)) - 14;
+          ctx.globalAlpha = clamp(fade, 0, 1); ctx.scale(pop, pop); ctx.font = '900 26px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.lineJoin = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = '#071522'; ctx.strokeText(e.text, 0, lift);
+          ctx.fillStyle = e.color; ctx.fillText(e.text, 0, lift); ctx.restore();
+        }
+      }
+    }
+    // Edge-danger vignette for the watched fighter: strongest on the side they
+    // are nearest, or being launched toward, with a calm static variant.
+    function drawEdgeDanger(a, t) {
+      const focus = state.phase === 'playing' ? watchedActor() : null;
+      if (!focus || focus.stocks <= 0 || focus.respawnTicks > 0 || !a.bounds) return;
+      const d = arena.feel.edgeDanger(focus, a.bounds);
+      if (d.max < .03) return;
+      const hazard = (a.theme && a.theme.hazard) || '#FF4F66', reach = Math.min(120, width * .24), beat = !calm() && d.max > .6 ? .85 + .15 * Math.sin(state.tick * .5) : 1;
+      ctx.save();
+      for (const side of ['left', 'right', 'top', 'bottom']) {
+        if (d[side] < .03) continue;
+        const horizontal = side === 'left' || side === 'right', span = horizontal ? reach : Math.min(reach, height * .24);
+        const x0 = side === 'right' ? width - span : 0, y0 = side === 'bottom' ? height - span : 0;
+        const g = horizontal ? ctx.createLinearGradient(side === 'left' ? 0 : width, 0, side === 'left' ? span : width - span, 0) : ctx.createLinearGradient(0, side === 'top' ? 0 : height, 0, side === 'top' ? span : height - span);
+        g.addColorStop(0, hazard); g.addColorStop(1, 'rgba(255,79,102,0)');
+        ctx.globalAlpha = .5 * d[side] * beat; ctx.fillStyle = g;
+        ctx.fillRect(x0, y0, horizontal ? span : width, horizontal ? height : span);
+      }
+      ctx.restore();
+    }
     function paint(alpha) {
       if (!active || !state || !ctx) return;
       const a = arena.getArena ? arena.getArena(state.arenaId) : selectedArena(), t = themeFor(a), key = a.id + width + height;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); if (!background || bgKey !== key) { background = makeBackground(a); bgKey = key; } ctx.drawImage(background, 0, 0, width, height);
-      const c = updateCamera(a, alpha), art = root.SpaceManArt;
+      const c = applyFeelCamera(updateCamera(a, alpha), a), art = root.SpaceManArt;
       ctx.save(); ctx.translate(width / 2, c.centerY); ctx.scale(c.scale, c.scale); ctx.translate(-c.x, -c.y);
       // Quiet orbital guide rings help the camera feel located in a larger world.
       ctx.strokeStyle = t.accent; ctx.globalAlpha = .055; ctx.lineWidth = 1 / c.scale; ctx.beginPath(); ctx.ellipse(a.width / 2, 420, 445, 130, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
+      drawBlastBounds(a, t, c);
       a.platforms.forEach(p => platform(ctx, p, a, false));
       for (const actor of state.actors) {
         const warning = actor.boss && arena.bossAttackBox && arena.bossAttackBox(actor);
@@ -912,12 +1009,20 @@
         const x = lerp(actor.px, actor.x, alpha), y = lerp(actor.py, actor.y, alpha);
         const under = a.platforms.filter(p => x + actor.w / 2 >= p.x && x + actor.w / 2 <= p.x + p.w && p.y >= y + actor.h - 3).sort((a, b) => a.y - b.y)[0];
         if (under && art) art.contactShadow(ctx, x + actor.w / 2, under.y, 33, clamp(1 - (under.y - y - actor.h) / 120, 0, 1) * .65);
+        if (!calm() && actor.stun > 0 && Math.hypot(actor.vx || 0, actor.vy || 0) > 4) {
+          // Three velocity-aligned afterimage strokes behind a launched victim.
+          const sx = x + actor.w / 2, sy = y + actor.h / 2, vx = actor.vx, vy = actor.vy;
+          ctx.save(); ctx.strokeStyle = actorColor(actor); ctx.lineCap = 'round';
+          for (let i = 1; i <= 3; i++) { ctx.globalAlpha = .34 / i; ctx.lineWidth = 13 - i * 3; ctx.beginPath(); ctx.moveTo(sx - vx * (i - 1) * 1.6, sy - vy * (i - 1) * 1.6); ctx.lineTo(sx - vx * i * 1.6, sy - vy * i * 1.6); ctx.stroke(); }
+          ctx.restore();
+        }
+        if (actor.charge > 0) drawCharge(actor, x, y);
         if (actor.attackTicks > 0 && arena.attackBox) {
           const box = arena.attackBox(actor);
           if (box) {
             const cx = x + actor.w / 2, cy = y + actor.h / 2, angle = Math.atan2(Number.isFinite(actor.attackDirY) ? actor.attackDirY : 0, Number.isFinite(actor.attackDirX) ? actor.attackDirX : actor.facing);
             ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle); ctx.strokeStyle = actorColor(actor); ctx.lineCap = 'round';
-            ctx.globalAlpha = box.active ? .86 : .26; ctx.lineWidth = box.active ? 4 : 1.5; ctx.beginPath(); ctx.arc(7, 0, box.active ? 34 : 23, -.82, .82); ctx.stroke();
+            const big = box.charged ? 1.28 : 1; ctx.globalAlpha = box.active ? .86 : box.charged ? .5 : .26; ctx.lineWidth = (box.active ? 4 : 1.5) * (box.charged ? 1.5 : 1); ctx.beginPath(); ctx.arc(7, 0, (box.active ? 34 : 23) * big, -.82, .82); ctx.stroke();
             if (box.active && !calm()) { ctx.globalAlpha = .27; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(8, 0, 45, -.67, .67); ctx.stroke(); }
             ctx.restore();
           }
@@ -926,6 +1031,8 @@
 
       }
       for (const e of effects) {
+        if (e.type === 'kotext' || e.type === 'koflash') continue; // screen-space, drawn after the world
+        if (e.type === 'dust') { ctx.globalAlpha = .55 * (e.life / e.max); ctx.fillStyle = e.color; const size = 2 + 2 * (1 - e.life / e.max); ctx.fillRect(e.x - size / 2, e.y - size / 2, size, size); continue; }
         const k = 1 - e.life / e.max, radius = e.type === 'ringout' ? 18 + k * 56 : 7 + k * 20;
         ctx.globalAlpha = (1 - k) * .85; ctx.strokeStyle = e.color; ctx.lineWidth = 2;
         if (calm()) { ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, 5, 0, TAU); ctx.fill(); }
@@ -935,6 +1042,8 @@
         }
       }
       ctx.globalAlpha = 1; ctx.restore();
+      drawKoEffects(c);
+      drawEdgeDanger(a, t);
       drawIdentity(c, alpha);
       drawIndicators(c, alpha);
       if (isMatch() && localActor() && localActor().stocks <= 0 && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText(localSession ? 'Rescue shuttle incoming' : 'You’re out · watching ' + watchedActor().name, width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
@@ -1034,9 +1143,10 @@
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
       if (watchTools) { watchTools.hidden = !onlineActive() || canControl(); if (!watchTools.hidden) watchName.textContent = 'WATCHING ' + watchedActor().name; }
       touchEl.hidden = onlineActive() && !canControl();
-      const attackReady = 1 - clamp(human.attackTicks / arena.constants.ATTACK_TICKS, 0, 1), dashReady = 1 - clamp(human.dashCooldown / arena.constants.DASH_COOLDOWN, 0, 1);
+      const K = arena.constants, remaining = human.attackTicks > 0 ? human.attackTicks + K.ATTACK_RECOVERY : (human.attackCooldown || 0);
+      const attackReady = human.charge > 0 ? clamp(human.charge / K.CHARGE_MAX, 0, 1) : 1 - clamp(remaining / (K.ATTACK_TICKS + K.ATTACK_RECOVERY), 0, 1), dashReady = 1 - clamp(human.dashCooldown / arena.constants.DASH_COOLDOWN, 0, 1);
       pulseMeter.style.transform = 'scaleX(' + attackReady + ')'; dashMeter.style.transform = 'scaleX(' + dashReady + ')';
-      pulseButton.classList.toggle('arena-cooling', human.attackTicks > 0); dashButton.classList.toggle('arena-cooling', human.dashCooldown > 0 || (!human.onGround && !human.airDashAvailable));
+      pulseButton.classList.toggle('arena-cooling', human.attackTicks > 0 || human.attackCooldown > 0); pulseButton.classList.toggle('arena-charging', human.charge > 0); dashButton.classList.toggle('arena-cooling', human.dashCooldown > 0 || (!human.onGround && !human.airDashAvailable));
       pulseButton.style.setProperty('--ready', attackReady); dashButton.style.setProperty('--ready', dashReady);
       let label = '', sub = '';
       if (state.phase === 'countdown') { label = String(Math.ceil(state.countdownTicks / 60)); sub = FORMATS.find(f => f.id === state.format).name.toUpperCase() + ' · GET READY'; }
@@ -1044,18 +1154,56 @@
       countdownEl.hidden = !label; statusEl.textContent = label; statusSub.textContent = sub;
       if (label && label !== lastCountdown) { announce(label === 'GO!' ? 'Go! Match started.' : 'Match starts in ' + label); sfx(label === 'GO!' ? 'start' : 'countdown'); lastCountdown = label; }
     }
+    const shakeOn = () => currentPrefs.shake !== false && !calm();
+    function tickEffects(ticks) {
+      for (const e of effects) { e.life -= 1; if (e.type === 'dust') { e.x += e.vx; e.y += e.vy; e.vy *= .9; } }
+      effects = effects.filter(e => e.life > 0);
+      feel.trauma = arena.feel.decayTrauma(feel.trauma, ticks);
+      for (const id of Object.keys(feel.flash)) if ((feel.flash[id] -= ticks) <= 0) delete feel.flash[id];
+      for (const id of Object.keys(feel.land)) if ((feel.land[id].age += ticks) >= arena.feel.LAND_SQUASH_TICKS) delete feel.land[id];
+    }
+    function hitFeel(event, victim, involved) {
+      const F = arena.feel;
+      if (victim && !calm()) feel.flash[victim.id] = 5;
+      if (shakeOn()) {
+        feel.trauma = F.addTrauma(feel.trauma, F.traumaFor(event, involved));
+        if (involved) { const k = F.kickFor(event, victim); feel.kick = { x: k.x, y: k.y, at: performance.now() / 1000 }; }
+      }
+      // A local sim can pause for a beat; an authoritative room never can.
+      if (involved && !onlineActive() && !paused) feel.freezeLeft = Math.max(feel.freezeLeft, F.hitstopTicksFor(event) / 60);
+    }
+    function koFeel(event, who, involved) {
+      const F = arena.feel, color = actorColor(who);
+      effects.push({ type: 'kotext', x: event.x, y: event.y, color, life: 36, max: 36, text: who.stocks > 0 ? 'KO' : 'OUT' });
+      if (calm()) return;
+      effects.push({ type: 'koflash', x: event.x, y: event.y, color, life: F.KO_FLASH_TICKS, max: F.KO_FLASH_TICKS });
+      if (involved) { feel.koLeft = F.KO_SLOW_TICKS; feel.koPoint = { x: event.x, y: event.y }; }
+      if (shakeOn()) feel.trauma = F.addTrauma(feel.trauma, involved ? .55 : .2);
+    }
     function consumeEvents() {
       for (const event of state.events || []) {
         const who = state.actors.find(a => a.id === event.actorId), type = event.type;
+        const focus = watchedActor(), focusId = focus ? focus.id : 0;
         if (['hit', 'ringout', 'respawn', 'jump'].includes(type)) effects.push({ type, x: event.x, y: event.y, color: who ? actorColor(who) : '#FFE59A', life: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14, max: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14 });
         if (type === 'boss-warning') { announce(event.move === 'shockwave' ? 'Guardian charging a ground wave. Jump!' : 'Guardian aiming. Dash out of the warning!'); sfx('countdown'); }
         else if (type === 'boss-exposed') announce('Guardian core exposed. Pulse now!');
         else if (type === 'boss-defeated') { announce('Guardian defeated!'); sfx('win'); }
-        if (type === 'ringout' && who) { announce(who.name + (who.stocks > 0 ? ' has ' + who.stocks + ' lives left.' : ' is out.')); sfx('ko'); }
-        else if (type === 'hit') sfx('hit');
-        else if (who && who.controller === 'human' && ['jump', 'attack', 'dash'].includes(type)) sfx(type);
+        if (type === 'ringout' && who) { announce(who.name + (who.stocks > 0 ? ' has ' + who.stocks + ' lives left.' : ' is out.')); sfx('ko'); koFeel(event, who, focusId === who.id || focusId === event.targetId); }
+        else if (type === 'hit') {
+          // Only hits the watched fighter deals or takes get the full sound and
+          // feel; a CPU brawl elsewhere stays a quiet, filtered murmur.
+          const involved = event.actorId === focusId || event.targetId === focusId;
+          sfx(involved ? 'hit' : 'hitFar');
+          hitFeel(event, state.actors.find(a => a.id === event.targetId), involved);
+        }
+        else if (type === 'land' && who) {
+          feel.land[who.id] = { age: 0, impact: event.impact };
+          if (!calm() && !saver()) for (let i = 0, n = arena.feel.dustCount(event.impact); i < n; i++) { const side = i - (n - 1) / 2; effects.push({ type: 'dust', x: event.x + side * 5, y: event.y + (who.h || 34) / 2 - 1, vx: side * .55, vy: -.5 - (i % 2) * .25, color: '#B7C7DA', life: 16, max: 16 }); }
+          if (who.id === focusId && event.impact > 6) sfx('land');
+        }
+        else if (who && who.controller === 'human' && ['jump', 'attack', 'dash'].includes(type)) sfx(type === 'attack' && event.charged ? 'charged' : type);
       }
-      if (effects.length > 50) effects.splice(0, effects.length - 50);
+      if (effects.length > 80) effects.splice(0, effects.length - 80);
     }
     function step() {
       if (onlineActive()) { room.step(canControl() ? command() : {}, performance.now()); return; }
@@ -1064,7 +1212,7 @@
       const human = state.actors.find(a => a.controller === 'human'), oldDash = human.dashTicks;
       arena.step(state, commands);
       if (!oldDash && human.dashTicks > 0) sfx('dash');
-      effects.forEach(e => e.life--); effects = effects.filter(e => e.life > 0); consumeEvents(); updateHud(false);
+      tickEffects(1); consumeEvents(); updateHud(false);
       if ((state.phase === 'over' || localRescue()) && !resultAt) { resultAt = performance.now() + 450; resetInput(); }
     }
     function frame(now) {
@@ -1079,14 +1227,23 @@
       if (!isRunning() || !canControl()) actionBuffer.reset();
       if (!active || document.hidden) return;
       const elapsed = lastTime ? Math.min(.1, Math.max(0, (now - lastTime) / 1000)) : 0; lastTime = now;
+      // Real-time feel timers run on wall clock even while the sim is held.
+      if (feel.koLeft > 0) feel.koLeft = Math.max(0, feel.koLeft - elapsed * 60);
       if (isRunning()) {
-        accumulator = Math.min(accumulator + elapsed, .1); let steps = 0;
-        while (accumulator >= 1 / 60 && steps < 6 && isRunning()) { step(); accumulator -= 1 / 60; steps++; }
-        if (steps === 6) accumulator = Math.min(accumulator, 1 / 60);
+        if (feel.freezeLeft > 0) feel.freezeLeft = Math.max(0, feel.freezeLeft - elapsed); // hit-stop: same frame, accumulator untouched
+        else {
+          const slow = !onlineActive() && !calm() && feel.koLeft > 0 ? arena.feel.koTimescale(feel.koLeft) : 1;
+          accumulator = Math.min(accumulator + elapsed * slow, .1); let steps = 0;
+          while (accumulator >= 1 / 60 && steps < 6 && isRunning()) {
+            step(); accumulator -= 1 / 60; steps++;
+            if (feel.freezeLeft > 0) { feel.holdAlpha = clamp(accumulator * 60, 0, 1); break; }
+          }
+          if (steps === 6) accumulator = Math.min(accumulator, 1 / 60);
+        }
       } else accumulator = 0;
       if (isMatch() && (state.phase === 'over' || localRescue()) && !activeModal && resultAt && now >= resultAt) showResults();
       const renderGap = saver() ? 1000 / 30 : 1000 / 60;
-      if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { paint(paused || state.phase === 'over' ? 1 : onlineActive() && !room.isHost ? clamp((now - networkReceived) / 50, 0, 1) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
+      if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { paint(paused || state.phase === 'over' ? 1 : feel.freezeLeft > 0 ? feel.holdAlpha : onlineActive() && !room.isHost ? clamp((now - networkReceived) / 50, 0, 1) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
       if (!frameId && active && !document.hidden) frameId = root.requestAnimationFrame(frame);
     }
     function ensureFrame() { if (active && !document.hidden && !frameId) { lastTime = 0; frameId = root.requestAnimationFrame(frame); } }
@@ -1100,7 +1257,7 @@
       state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty });
       cosmeticRound++;
       if (root.SpaceManCosmetics && typeof opts.appearance === 'function') { const human = state.actors.find(a => a.controller === 'human'); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
-      view = 'match'; paused = false; resultAt = 0; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; effects = []; spectatorId = null; camera.initialized = false;
+      view = 'match'; paused = false; resultAt = 0; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; effects = []; resetFeel(); spectatorId = null; camera.initialized = false;
       rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION · ' : '') + selectedArena().name + ' · ' + FORMATS.find(f => f.id === state.format).name;
       buildRoster(); setModal(null); updateHud(true); paint(1); ensureFrame();
       if (typeof opts.onStart === 'function') opts.onStart({ arenaId: selections.arenaId, format: selections.format });
@@ -1124,7 +1281,7 @@
       if (!active) return;
       if (localSession || sharedSession) { close(); return; }
       if (onlineActive()) { if (!room.isHost) { leaveArenaRoom(); return; } room.lobby(); }
-      resetInput(); state = null; view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; camera.initialized = false;
+      resetInput(); state = null; view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; resetFeel(); camera.initialized = false;
       syncChoices(); setModal(lobby, formatButtons.find(b => b.dataset.format === selections.format)); paintLobby(); announce('Choose your arena match');
       if (audio && audio.state === 'running') audio.suspend().catch(() => {});
     }
@@ -1202,7 +1359,7 @@
       resetInput(); active = false; if (frameId) root.cancelAnimationFrame(frameId); frameId = 0; lastTime = 0; accumulator = 0;
       for (const [target, type, fn, settings] of listeners.splice(0)) target.removeEventListener(type, fn, settings);
       if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
-      rootEl.hidden = true; viewportBox = null; activeModal = null; state = null; view = 'lobby'; paused = false; effects = [];
+      rootEl.hidden = true; viewportBox = null; activeModal = null; state = null; view = 'lobby'; paused = false; effects = []; resetFeel();
       inertSiblings.forEach(s => { if (s.node.isConnected) s.node.inert = s.inert; }); inertSiblings = []; document.body.style.overflow = savedBodyOverflow;
       if (audio && audio.state === 'running') audio.suspend().catch(() => {});
       if (savedFocus && savedFocus.isConnected && typeof savedFocus.focus === 'function') savedFocus.focus({ preventScroll: true });

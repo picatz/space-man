@@ -36,12 +36,17 @@
     const lane = Math.max(-52, Math.min(52, side));
     return heading + Math.max(-.34, Math.min(.34, Math.atan2(-lane, back + 160)));
   }
+  // Boost punch: a brief FOV widen on pad / exit boost (and a smaller one when
+  // the boost button engages). Peak degrees and decay seconds are exported.
+  const KICK = Object.freeze({ padFov: 9, boostFov: 4.5, seconds: 0.6 });
   function create() {
     let current = null,
       lastRecovery = null,
-      lastActor = null;
+      lastActor = null,
+      kick = 0, lastPad = 0, lastBoost = false;
     return {
       reset() {
+        kick = 0; lastPad = 0; lastBoost = false;
         current = null;
         lastRecovery = null;
         lastActor = null;
@@ -54,6 +59,16 @@
           0,
           Math.min(0.1, Number.isFinite(options.dt) ? options.dt : 1 / 60),
         );
+        // Edge-detect from authoritative fields so snapshots, interpolation and
+        // late joins need no event: padTicks rising means a fresh pad/exit boost.
+        const pad = Math.max(0, actor.padTicks || 0), boosting = !!actor.boosting;
+        if (calm || mode === "topdown" || lastActor !== actor.id) { kick = 0; }
+        else {
+          kick = Math.max(0, kick - dt / KICK.seconds);
+          if (pad > lastPad) kick = 1;
+          else if (boosting && !lastBoost) kick = Math.max(kick, KICK.boostFov / KICK.padFov);
+        }
+        lastPad = pad; lastBoost = boosting;
         const reset =
           !current ||
           current.mode !== mode ||
@@ -110,7 +125,8 @@
             cockpit ? 25 : 4,
             current.z + Math.sin(current.heading) * look,
           ],
-          fov: (current.fov * Math.PI) / 180,
+          fov: ((current.fov + KICK.padFov * kick) * Math.PI) / 180,
+          boostKick: kick,
           near: 2,
           far: 6500,
           mode,
@@ -148,5 +164,5 @@
     }
     return { update, reset };
   }
-  return Object.freeze({ MODES, create, createTopdown, wrap, travelHeading });
+  return Object.freeze({ MODES, create, createTopdown, wrap, travelHeading, KICK });
 });

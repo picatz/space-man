@@ -6,7 +6,7 @@ const source=fs.readFileSync(require.resolve('../src/arena-ui.js'),'utf8');
 function body(name,next){const start=source.indexOf('    function '+name+'('),end=source.indexOf('    function '+next+'(',start);assert.ok(start>=0&&end>start,name);return source.slice(start,end);}
 function ui(guest=false){
  const physical={index:0,connected:true,mapping:'standard',axes:[0,0],buttons:Array.from({length:17},()=>({pressed:false}))};
- const state=Arena.create();state.phase='playing';state.tick=100;state.actors[0].attackTicks=5;state.actors[0].invulnerable=0;
+ const state=Arena.create();state.phase='playing';state.tick=100;state.actors[0].attackCooldown=5;state.actors[0].dashCooldown=5;state.actors[0].invulnerable=0;
  const node={classList:{add(){},remove(){}},style:{removeProperty(){}},setPointerCapture(){},hasPointerCapture(){return false;},releasePointerCapture(){}};
  const c=vm.createContext({arena:Arena,actionBuffer:Arena.createActionBuffer(),state,held:new Map(),touches:new Map(),moveX:0,moveY:0,jumpEdge:false,attackEdge:false,dashEdge:false,touchEdges:{jump:false,attack:false,dash:false},stick:null,stickBase:node,stickKnob:{style:{}},recoveryTap:null,
   pad:{moveX:0,moveY:0,jump:false},padPrevious:{},padNeedsNeutral:true,lastPadId:null,currentPrefs:{},root:{navigator:{getGamepads:()=>[physical]}},rootEl:{dataset:{epoch:'1'},inert:false},inputSuspended:false,active:true,activeModal:null,paused:false,roomPaused:false,localRoomMenu:false,roomStatus:null,view:'match',matchSerial:1,usingTouch:false,thumbBounds:null,identityBoundsDirty:false,
@@ -25,7 +25,7 @@ function ui(guest=false){
   if(device==='gamepad'){physical.buttons[action==='attack'?2:1].pressed=false;c.pollGamepad();}
  }
  c.pollGamepad();
- return{c,physical,press,release,advance(){c.state.tick++;c.now+=1000/60;c.state.actors[0].attackTicks=Math.max(0,c.state.actors[0].attackTicks-1);}};
+ return{c,physical,press,release,advance(){c.state.tick++;c.now+=1000/60;for(const k of['attackCooldown','dashCooldown'])c.state.actors[0][k]=Math.max(0,c.state.actors[0][k]-1);}};
 }
 for(const role of ['offline','host'])for(const device of ['keyboard','touch','gamepad'])for(const action of ['attack','dash'])test(`${role} ${device} late ${action} tap is buffered once through actual input handler`,()=>{
  const x=ui();x.c.online=role==='host';const field=action==='attack'?'attackPressed':'dashPressed';x.press(device,action);

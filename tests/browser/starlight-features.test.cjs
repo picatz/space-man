@@ -91,9 +91,13 @@ test('Starlight desktop: real keyboard and controller item edges, full ordered r
  assert.equal(await page.locator('.race-warning-source').isVisible(),true);
  await shot(page,'track-desktop-pulse-warning');
  await page.waitForFunction(()=>!!raceUI.snapshot().actors[0].item,null,{timeout:30000});
+ const second=await page.evaluate(()=>raceUI.snapshot().actors[0].item);
  await page.evaluate(()=>{testPad.buttons[5].pressed=true;testPad.buttons[5].value=1;});await page.waitForFunction(()=>raceUI.snapshot().actors[0].item===null);await page.evaluate(()=>{testPad.buttons[5].pressed=false;testPad.buttons[5].value=0;autoItem=true;});
- await page.waitForFunction(()=>{const s=raceUI.snapshot();return s.effects.some(e=>e.ownerId===s.actors[0].id&&e.phase==='wave');},null,{timeout:5000});
- await shot(page,'track-desktop-pulse-wave');
+ // The route bot aims for the lane it still needs, but drafting and CPU pace can
+ // nudge which choice it actually crosses; check the outcome of the item held.
+ if(second==='pulse'){await page.waitForFunction(()=>{const s=raceUI.snapshot();return s.effects.some(e=>e.ownerId===s.actors[0].id&&e.phase==='wave');},null,{timeout:5000});
+ await shot(page,'track-desktop-pulse-wave');}
+ else await page.waitForFunction(()=>raceUI.snapshot().actors[0].shieldTicks>0,null,{timeout:5000});
  await page.waitForFunction(()=>raceUI.snapshot().phase==='finished',null,{timeout:80000});
  const result=await page.evaluate(()=>({state:raceUI.snapshot(),probe:trackProbe}));t.diagnostic(JSON.stringify(result.probe));
  assert.equal(result.state.actors[0].passed,60);assert.equal(result.state.actors[0].recoveries,0);

@@ -4,7 +4,7 @@
   const modes = ["chase", "cockpit", "topdown"],
     names = { chase: "Chase", cockpit: "Cockpit", topdown: "Top-down" };
   const CSS = `
-.race-world{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.race-pilot-marker{position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-100%);width:20px;height:16px}.race-view-controls{position:absolute;right:calc(var(--race-right) + 18px);top:calc(var(--race-top) + 78px);z-index:4;text-align:right}.race-view-toggle{background:#0b2033ed;min-width:103px;font-size:11px;min-height:44px}.race-view-menu{display:grid;gap:4px;padding:8px;margin-top:6px;width:175px;border:1px solid #4b6b80;border-radius:15px;background:#091c2ff5;box-shadow:0 8px 25px #0006}.race-view-menu .race-button{width:100%;text-align:left;min-height:44px}.race-view-menu [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4;background:#28403c}.race-view-note{font-size:9px;color:#a6c7d8;padding:4px 7px}.race-root[data-screen=lobby] .race-view-controls,.race-root[data-screen=results] .race-view-controls,.race-root[data-screen=pause]>.race-view-controls{display:none}.race-root[data-camera=chase] .race-warning,.race-root[data-camera=cockpit] .race-warning{top:calc(var(--race-top) + 134px)}.race-camera-options{display:flex;flex-wrap:wrap;gap:5px;margin:13px 0}.race-camera-options .race-button{flex:1;min-width:80px;padding:8px;font-size:10px}.race-camera-options [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4}.race-cockpit{pointer-events:none;position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(670px,75%);height:17%;z-index:1;border-radius:60% 60% 0 0 / 50% 50% 0 0;background:linear-gradient(180deg,#719dae 0%,#d8eff1 4%,#274555 8%,#0a192a 14%,#07121f 100%);border-top:2px solid #92e5ea;box-shadow:0 -8px 25px #07172566}.race-cockpit:before{content:'STAR CIRCUIT • FLIGHT SYSTEMS';position:absolute;left:25%;right:25%;top:18%;padding:9px 0;border:1px solid #416d7a;border-radius:8px;color:#90dfdc;background:#122b37;text-align:center;font:8px/1.4 ui-monospace,monospace;letter-spacing:.15em}.race-root[data-touch=true] .race-cockpit{height:13%;width:48%}
+.race-world{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.race-speedlines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1}.race-pilot-marker{position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-100%);width:20px;height:16px}.race-view-controls{position:absolute;right:calc(var(--race-right) + 18px);top:calc(var(--race-top) + 78px);z-index:4;text-align:right}.race-view-toggle{background:#0b2033ed;min-width:103px;font-size:11px;min-height:44px}.race-view-menu{display:grid;gap:4px;padding:8px;margin-top:6px;width:175px;border:1px solid #4b6b80;border-radius:15px;background:#091c2ff5;box-shadow:0 8px 25px #0006}.race-view-menu .race-button{width:100%;text-align:left;min-height:44px}.race-view-menu [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4;background:#28403c}.race-view-note{font-size:9px;color:#a6c7d8;padding:4px 7px}.race-root[data-screen=lobby] .race-view-controls,.race-root[data-screen=results] .race-view-controls,.race-root[data-screen=pause]>.race-view-controls{display:none}.race-root[data-camera=chase] .race-warning,.race-root[data-camera=cockpit] .race-warning{top:calc(var(--race-top) + 134px)}.race-camera-options{display:flex;flex-wrap:wrap;gap:5px;margin:13px 0}.race-camera-options .race-button{flex:1;min-width:80px;padding:8px;font-size:10px}.race-camera-options [aria-pressed=true]{border-color:#c7f47d;color:#d4ffa4}.race-cockpit{pointer-events:none;position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:min(670px,75%);height:17%;z-index:1;border-radius:60% 60% 0 0 / 50% 50% 0 0;background:linear-gradient(180deg,#719dae 0%,#d8eff1 4%,#274555 8%,#0a192a 14%,#07121f 100%);border-top:2px solid #92e5ea;box-shadow:0 -8px 25px #07172566}.race-cockpit:before{content:'STAR CIRCUIT • FLIGHT SYSTEMS';position:absolute;left:25%;right:25%;top:18%;padding:9px 0;border:1px solid #416d7a;border-radius:8px;color:#90dfdc;background:#122b37;text-align:center;font:8px/1.4 ui-monospace,monospace;letter-spacing:.15em}.race-root[data-touch=true] .race-cockpit{height:13%;width:48%}
 @media(max-width:600px){.race-view-controls{top:calc(var(--race-top) + 76px);right:calc(var(--race-right) + 12px)}.race-view-toggle{min-width:95px;padding:7px 10px}.race-view-menu{width:157px}.race-cockpit:before{font-size:6px;letter-spacing:0;left:15%;right:15%;padding:6px}}
 @media(max-height:520px){.race-view-controls{top:calc(var(--race-top) + 65px)}.race-view-menu{display:grid;grid-template-columns:1fr 1fr;width:245px}.race-view-note{grid-column:1/-1}.race-cockpit{height:20%}}
 @media(max-height:360px) and (min-width:480px){.race-view-menu{width:min(430px,calc(100vw - var(--race-left) - var(--race-right) - 24px));grid-template-columns:repeat(4,minmax(0,1fr))}.race-view-menu .race-button{font-size:10px;line-height:1.2;padding:6px;min-height:44px}}
@@ -41,6 +41,58 @@
     const style = document.createElement("style");
     style.textContent = CSS;
     parent.append(style, canvas);
+    // Presentation-only streak overlay: boost speed lines and slipstream wind.
+    const lines = document.createElement("canvas");
+    lines.className = "race-speedlines";
+    lines.setAttribute("aria-hidden", "true");
+    lines.hidden = true;
+    parent.append(lines);
+    let linesDirty = false;
+    function drawLines(view, config, tick) {
+      const calm = !!config.reduceMotion,
+        boost = calm ? 0 : Math.max(0, Math.min(1, view?.boostKick || 0)),
+        draft = calm ? 0 : Math.max(0, Math.min(1, +config.draft || 0));
+      if (!(boost > 0.02 || draft > 0.02)) {
+        if (linesDirty) { lines.getContext("2d")?.clearRect(0, 0, lines.width, lines.height); linesDirty = false; }
+        lines.hidden = true;
+        return;
+      }
+      const lw = Math.max(1, Math.round(w)), lh = Math.max(1, Math.round(h));
+      if (lines.width !== lw || lines.height !== lh) { lines.width = lw; lines.height = lh; }
+      const g = lines.getContext("2d");
+      if (!g) return;
+      g.clearRect(0, 0, lw, lh);
+      lines.hidden = false; linesDirty = true;
+      const cx = lw / 2, cy = lh * 0.46, reach = Math.hypot(lw, lh) / 2;
+      g.lineCap = "round";
+      // Boost: eight radial strokes from the frame edge toward the vanishing point.
+      if (boost > 0) {
+        g.strokeStyle = "rgba(214,255,150," + (0.55 * boost).toFixed(3) + ")";
+        g.lineWidth = Math.max(1.5, lw / 380);
+        for (let i = 0; i < 8; i++) {
+          const a = (i + 0.5) * Math.PI / 4 + 0.18 * Math.sin(i * 2.7),
+            inner = reach * (0.5 + 0.1 * boost), outer = reach * (0.92 + 0.08 * Math.sin(i * 1.9));
+          g.beginPath();
+          g.moveTo(cx + Math.cos(a) * inner * 1.2, cy + Math.sin(a) * inner * 0.9);
+          g.lineTo(cx + Math.cos(a) * outer * 1.2, cy + Math.sin(a) * outer * 0.9);
+          g.stroke();
+        }
+      }
+      // Slipstream: faint wind streaks hugging the screen edges.
+      if (draft > 0) {
+        g.strokeStyle = "rgba(190,236,255," + (0.3 * draft).toFixed(3) + ")";
+        g.lineWidth = Math.max(1, lw / 640);
+        for (let i = 0; i < 14; i++) {
+          const side = i % 2 ? 1 : -1, phase = ((tick * 0.045 + i * 0.37) % 1),
+            a = Math.PI / 2 - side * (0.3 + 0.9 * ((i * 0.618) % 1)) + (side > 0 ? 0 : 0),
+            r0 = reach * (0.55 + 0.35 * phase), r1 = r0 + reach * 0.12 * draft;
+          g.beginPath();
+          g.moveTo(cx + Math.cos(a) * r0 * 1.2, cy + Math.sin(a) * r0 * 0.9);
+          g.lineTo(cx + Math.cos(a) * r1 * 1.2, cy + Math.sin(a) * r1 * 0.9);
+          g.stroke();
+        }
+      }
+    }
     const marker = document.createElement("canvas");
     marker.width = 40; marker.height = 32;
     marker.className = "race-pilot-marker";
@@ -125,6 +177,7 @@
     }
     function fail(message) {
       fallback = true;
+      lines.hidden = true;
       canvas.hidden = true;
       marker.hidden = true;
       cockpit.hidden = true;
@@ -167,6 +220,7 @@
       // Never leave a stale YOU label behind during camera, seat or context changes.
       marker.hidden = true;
       if (disposed || !snapshot || mode === "topdown") {
+        lines.hidden = true;
         canvas.hidden = true;
         cockpit.hidden = true;
         base.hidden = false;
@@ -253,6 +307,7 @@
         fail();
         return false;
       }
+      drawLines(view, config, snapshot.tick || 0);
       if (mode === "chase") {
         const math = root.SpaceManRender3D;
         const matrix = math.multiply(
@@ -333,6 +388,7 @@
       },
       close() {
         canvas.hidden = true;
+        lines.hidden = true;
         marker.hidden = true;
         cockpit.hidden = true;
         menu.hidden = true;
@@ -347,6 +403,7 @@
         renderer?.dispose();
         controls.remove();
         canvas.remove();
+        lines.remove();
         marker.remove();
         cockpit.remove();
         style.remove();

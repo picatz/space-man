@@ -218,3 +218,75 @@ test('a rejoin gets the full snapshot; others only see an upsert', async (t) => 
   await until(() => ops.includes(1), 'others told of the return');
   assert.equal(ops.includes(0), false, 'the rest of the room is not re-sent a snapshot');
 });
+
+// ---- MP-01 / SEC-01 / MP-02 / MP-03 / SEC-03 regressions ----
+const nb = require('./netbench.cjs');
+async function absentRejoin(t, { heavy = 0 } = {}) {
+  const hub = nb.shape(relay()), host = client(hub), guest = client(hub, { width: 390, height: 844 });
+  t.after(() => { host.close(); guest.close(); });
+  await host.net.openRoom({ relayHost: 'relay.test', code: false, adjIdx: 0, nounIdx: 0 });
+  await guest.net.acceptJoin(host.net.info().link.split('#j=')[1], { adjIdx: 1, nounIdx: 1 });
+  await until(() => guest.net.roster().length === 2, 'roster');
+  const hs = host.net._n1.session(), gs = guest.net._n1.session(), row = [...hs.roster.values()][0];
+  let f = 0; const feed = setInterval(() => { f++; host.net.sendPresence(30 + f * 5, 250, 50, 9, 0, f, f, f, 0); }, 100);
+  await until(() => gs.pair.highSeen > 60, 'window past REPLAY_WIN', 20000); clearInterval(feed);
+  row.pair.sendCtr += heavy;
+  let welcomes = 0; guest.net.onEvent('welcomed', () => welcomes++);
+  guest.link.down = true; hs._onPeerGone(row.pub); hub.advance(301000); await hs._snapTick();
+  assert.equal(hs.roster.size, 0, 'row purged after grace');
+  guest.link.down = false; guest.link.deadBefore = Date.now();
+  await until(() => welcomes > 0, 're-welcomed after a long absence', 40000);
+  return { hs, row, nrow: [...hs.roster.values()][0] };
+}
+test('a guest absent longer than ABSENT_GRACE is re-welcomed on the same pair (counters never restart)', async (t) => {
+  const { row, nrow } = await absentRejoin(t);
+  assert.ok(nrow.pair.sendCtr > row.pair.sendCtr, 'new pair never reuses old counters');
+});
+test('purge + rejoin never reuses a host->guest counter under the same pair key', async (t) => {
+  const { hs, row, nrow } = await absentRejoin(t, { heavy: 1e13 });   // old pair ran far ahead of the wall clock
+  assert.ok(nrow.pair.sendCtr > row.pair.sendCtr, 'floor keeps counters monotonic per key');
+  assert.ok(hs.ctrFloor.get(hex0(row.pub)) >= 1e13);
+});
+const hex0 = (b) => [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+
+test('approve-mode: held guests\' HELLO retries do not burn the join budget', async (t) => {
+  const hub = relay(), host = client(hub), gs = [client(hub), client(hub), client(hub)];
+  t.after(() => { host.close(); gs.forEach((g) => g.close()); });
+  await host.net.openRoom({ relayHost: 'relay.test', code: false, approve: true });
+  const link = host.net.info().link.split('#j=')[1];
+  const hs = host.net._n1.session();
+  const waits = [];
+  host.net.onEvent((e, d) => { if (e === 'approve-wait') waits.push(d.pubHex); });
+  gs[0].net.acceptJoin(link, { adjIdx: 0, nounIdx: 0 }).catch(() => {});
+  gs[1].net.acceptJoin(link, { adjIdx: 1, nounIdx: 1 }).catch(() => {});
+  await until(() => waits.length === 2, 'two held');
+  for (let i = 0; i < 6; i++) { hub.advance(5600); await sleep(30); }   // ~34 s of HELLO retries
+  gs[2].net.acceptJoin(link, { adjIdx: 2, nounIdx: 2 }).catch(() => {});
+  await until(() => waits.length === 3, 'third guest is seen too');
+  assert.equal(hs.joinTimes.length, 0, 'held joins are not admissions');
+  assert.equal(new Set(waits).size, 3);
+});
+
+test('a known row\'s quick re-HELLO is limited to ~1 s, not 5 s', async (t) => {
+  const { hub, host, guest } = await room(t);
+  drop(guest);
+  await until(() => hostRows(host)[0].absent === false && guest.net._n1.session().relay.state === 'established', 'first rejoin');
+  const row = hostRows(host)[0];
+  hub.advance(1500);                                          // >1 s since the last HELLO, <5 s
+  const before = row.lastHello;
+  drop(guest);
+  await until(() => row.lastHello > before, 'second re-HELLO accepted after ~1.5 s');
+});
+
+test('pre-join token bucket: a key spray derives at most the burst', async (t) => {
+  const { host } = await room(t);
+  const hs = host.net._n1.session(), n0 = hs.preDerives || 0;
+  const junk = new Uint8Array(70).fill(7);
+  for (let i = 0; i < 200; i++) {
+    const pub = new Uint8Array(32); pub[0] = i + 1; pub[1] = 0xee; pub[31] = 9;
+    hs._onPacket(pub, junk);
+  }
+  await sleep(300);
+  const d = (hs.preDerives || 0) - n0;
+  assert.ok(d >= 1 && d <= 22, 'derivations bounded by burst (got ' + d + ')');
+});

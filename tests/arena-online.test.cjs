@@ -110,7 +110,7 @@ test('malformed input shapes, widths, versions, types, and flags are rejected wi
     assert.equal(Online.decodeInput(malformed), null);
     assert.equal(host.receive(1, 'key-1', malformed, 0), false);
   }
-  for (const [offset, val] of [[0, 0], [0, 2], [1, 2], [1, 255], [16, 2], [16, 255]]) {
+  for (const [offset, val] of [[0, 0], [0, 2], [1, 2], [1, 255], [16, 4], [16, 255]]) {
     const bad = clone(b); bad[offset] = val;
     assert.equal(Online.decodeInput(bad), null);
   }
@@ -329,7 +329,7 @@ test('snapshot decoder rejects invalid container types, every truncation, and tr
 
 test('snapshot decoder rejects malformed headers, actor identities, nonfinite positions and impossible gameplay ranges', () => {
   const { host } = setup('ffa'), b = host.packet(), size = actorBytes(b);
-  for (const [offset, value] of [[0, 0], [1, 1], [14, 255], [15, 255], [16, 255], [17, 3], [18, 3], [23, 3], [24, 16], [25, 255], [26, 13], [HEADER, 2], [HEADER + 1, 49], [HEADER + 2, 2], [HEADER + 33, 4], [HEADER + 38, C.ATTACK_TICKS + 1], [HEADER + 39, C.DASH_TICKS + 1], [HEADER + 42, 3], [HEADER + 47, 8], [HEADER + 52, 5]]) {
+  for (const [offset, value] of [[0, 0], [1, 1], [14, 255], [15, 255], [16, 255], [17, 3], [18, 3], [23, 3], [24, 16], [25, 255], [26, 13], [HEADER, 2], [HEADER + 1, 49], [HEADER + 2, 2], [HEADER + 33, 4], [HEADER + 38, C.CHARGED_TICKS + 1], [HEADER + 63, C.CHARGE_AUTO + 1], [HEADER + 39, C.DASH_TICKS + 1], [HEADER + 42, 3], [HEADER + 47, 16], [HEADER + 52, 5]]) {
     const bad = clone(b); bad[offset] = value; assert.equal(Online.decodeSnapshot(bad), null, `byte ${offset} = ${value}`);
   }
   let bad = clone(b); bad[HEADER + size + 1] = bad[HEADER + 1]; assert.equal(Online.decodeSnapshot(bad), null, 'duplicate player slot');
@@ -516,4 +516,56 @@ test('pausing before the next broadcast preserves an unseen presentation event e
   assert.equal(client.accept(host.packet()).state.events.filter(e=>e.type==='jump').length,1);
   assert.equal(client.accept(host.packet()).state.events.length,0);
   host.pause(false);assert.equal(client.accept(host.packet()).state.events.length,0);
+});
+
+test('charge state, the charged-swing flag and the attackHeld input bit cross the wire', () => {
+  const { host, client } = playing();
+  const [a, b] = host.state.actors;
+  place(a, 440, 420); place(b, 700, 420);
+  const held = Online.decodeInput(input(host, 1, { attackHeld: true, jumpHeld: true }));
+  assert.equal(held.command.attackHeld, true); assert.equal(held.command.jumpHeld, true);
+  assert.equal(Online.decodeInput(input(host, 2, { jumpHeld: true })).command.attackHeld, false);
+  assert.equal(Online.decodeInput(input(host, 3, { attackHeld: true })).command.jumpHeld, false);
+  // A guest holding attack charges the host actor through ordinary commands.
+  assert.equal(host.receive(1, 'key-1', input(host, 4, { attackHeld: true }, [0, 1, 0]), 0), true);
+  host.step(0);
+  assert.equal(host.state.actors[0].charge, 1);
+  for (let n = 0; n < 12; n++) {
+    assert.equal(host.receive(1, 'key-1', input(host, 5 + n, { attackHeld: true }, [0, 1, 0]), 20 + n * 17), true);
+    host.step(20 + n * 17);
+  }
+  assert.ok(host.state.actors[0].charge >= 12);
+  let copy = client.accept(host.packet());
+  assert.equal(copy.state.actors[0].charge, host.state.actors[0].charge);
+  assert.equal(copy.state.actors[0].attackCharge, 0);
+  host.state.actors[0].charge = 0; host.state.actors[0].attackCharge = C.CHARGE_MAX; host.state.actors[0].attackTicks = C.CHARGED_TICKS;
+  copy = client.accept(host.packet());
+  assert.equal(copy.state.actors[0].attackCharge > 0, true);
+  assert.equal(Arena.attackBox(copy.state.actors[0]).active, Arena.attackBox(host.state.actors[0]).active);
+});
+
+test('heavy landings travel as presentation events; light ones never crowd the bounded ring', () => {
+  const { host, client } = playing();
+  const [a, b] = host.state.actors;
+  place(a, 440, 300, { onGround: false, vy: 14 }); place(b, 700, 420);
+  for (let n = 0; n < 30; n++) host.step(n * 17);
+  const ring = host.events.filter((e) => e.type === 'land');
+  assert.equal(ring.length, 1);
+  const copy = client.accept(host.packet());
+  const land = copy.state.events.find((e) => e.type === 'land');
+  assert.ok(land && Math.abs(land.impact - ring[0].impact) < 0.11 && land.actorId === 1);
+  const light = playing();
+  place(light.host.state.actors[0], 440, 418, { onGround: false, vy: 3.5 });
+  for (let n = 0; n < 30; n++) light.host.step(n * 17);
+  assert.equal(light.host.events.filter((e) => e.type === 'land').length, 0);
+});
+
+test('snapshot sizes stay inside the documented 499-byte duel/four-fighter budget', () => {
+  const { host } = playing('ffa');
+  for (let n = 0; n < 12; n++) host.events.push({ serial: 1000 + n, type: 'hit', actorId: 1, targetId: 2, x: 1, y: 1, damage: 30 });
+  const b = host.packet();
+  assert.equal(b[0], Online.VERSION);
+  assert.equal(actorBytes(b), 64);
+  assert.equal(b.length, HEADER + 4 * 64 + 12 * EVENT);
+  assert.ok(b.length <= 499 && b.length <= Online.MAX_BYTES);
 });

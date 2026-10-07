@@ -287,7 +287,7 @@ offset  size  field
 0       1     0x53                 ('S')
 1       1     0x06                 envelope version = PROTO (currently 6)
 2       1     dir                  0x01 guest→host, 0x02 host→guest
-3       8     counter u64 LE       per (pairKey, dir), starts at 0, +1 per frame
+3       8     counter u64 LE       per (pairKey, dir), host→guest starts at wall-clock ms, +1 per frame
 11      ...   AES-GCM ciphertext   (plaintext frame + 16-byte tag appended)
 ```
 
@@ -298,7 +298,7 @@ Header overhead = **11 bytes**; AES-GCM tag = **16 bytes**. Total per-frame over
 - **Nonce (96-bit, counter-based, never random):**
   `nonce = dir(1) || counter(u64 LE, 8) || 0x00 0x00 0x00`.
 - **AAD (11 bytes):** `ver(1)=PROTO (currently 0x06) || roomId(8) || epoch(1) || dir(1)`.
-- Counter starts at 0 and increments by 1 per sent frame per (pairKey, dir). A side restored after a reload (same keys) instead starts at the wall clock in ms so the peer never sees a replay. At 2⁵³ frames
+- A host→guest pair starts its counter at the wall clock in ms (never below one past the highest counter already used for that key), so a purged-and-rejoined key never reuses a nonce and the guest's replay window never sees it as stale; it then increments by 1 per sent frame per (pairKey, dir). Receivers accept any counter above their window, so older peers that assumed 0 interoperate unchanged. A restored side starts at the wall clock likewise. At 2⁵³ frames
   the pair is exhausted and MUST be closed (unreachable in practice — assert anyway).
 
 ### 7.3 Replay rule (MUST)
@@ -417,12 +417,24 @@ Used for the 15-minute rejoin path (HELLO `rejoin8` field).
 A human-shareable alternative to the invite link. **The code *is* a keypair** — possession
 of the code is the capability (the same trust class as overhearing it spoken aloud).
 
-- **Format:** `WORD-NN` — `WORD` from a curated 128-entry word list (each 4–6 letters,
-  family-safe), `NN` two decimal digits. 128 × 100 = 12 800 combinations. A client
-  validates a code against `^[A-Z]{4,6}-\d\d$` (uppercased, trimmed).
+- **Format (new codes):** `WORD-WORD-NN` — each `WORD` from a curated 128-entry word list (4–6
+  letters, family-safe, no word a prefix of another so compact typing has one reading), `NN` two
+  decimal digits. 128 × 128 × 100 = 1 638 400 combinations (~20.6 bits). Hosts mint only this
+  format. A client validates `^[A-Z]{4,6}-[A-Z]{4,6}-\d\d$` (uppercased, trimmed). People type it
+  with any separators or none (`nyc comet orbit 42`, `nyccometorbit42`); the UI shows the canonical
+  `REGION-WORD-WORD-NN`.
+- **Legacy format:** `WORD-NN` (12 800 combinations, `^[A-Z]{4,6}-\d\d$`) is still accepted when
+  typed and still resolves against older hosts that listen on it. A guest picks the derivation by
+  shape. New hosts never listen on a legacy key, and older clients cannot type a two-word code
+  (they must use the link or QR).
 - **Derivation (region-scoped, so identical codes never collide across relays):**
-  `seed = SHA-256("sm.code.v1|" + region + "|" + CODE)`; clamp → `codePriv`;
-  `codePub = X25519(codePriv, 9)`. Both host and guest derive the full keypair.
+  - v2 (two words): `h0 = SHA-256("sm.code.v2|" + region + "|" + CODE)`;
+    `h_i = SHA-256(h_{i-1} || "sm.code.v2")` for `i = 1 … 2047` (2048 hashes total);
+    `seed = h_2047`.
+  - v1 (legacy `WORD-NN`): `seed = SHA-256("sm.code.v1|" + region + "|" + CODE)`.
+  - Then clamp → `codePriv`; `codePub = X25519(codePriv, 9)`. Both host and guest derive the full
+    keypair. The relay only ever sees `codePub`, never the code; the stretching makes an offline
+    guess-the-code scan against an observed `codePub` ~2048× more expensive.
 - **Host** opens a **second** relay connection authenticated as `codePub` and listens.
 - **Guest** connects with a throwaway keypair `tmp`, and sends a `CODEREQ` to `codePub`
   inside a `'C'` envelope ([§7.5](#75-code-channel-envelope-c--0x43)) sealed **to** `codePub`
@@ -438,10 +450,24 @@ of the code is the capability (the same trust class as overhearing it spoken alo
 | CODEREQ | `0x01` | `type(1) || tmpPub(32)` — 33 bytes. `tmpPub` MUST equal the relay `src` key. |
 | CODERESP | `0x02` | `type(1) || inviteLen(u16 LE) || inviteBytes` |
 
-Host obligations: verify the sealed `tmpPub` equals the relay source key; rate-limit replies
-to **≤ 6 per minute** and **≤ 64 per room lifetime**; anything else is silence (blind-scan
-posture). Guest obligations: accept a reply only from `srcPub == codePub`; reject
-`inviteLen > 200` or a truncated body; give up after a 10-second timeout.
+Host obligations: verify the sealed `tmpPub` equals the relay source key; answer a given
+requesting key **at most once per 10 s**; rate-limit replies to **≤ 6 per minute** and **≤ 64
+per room lifetime**; anything else is silence (blind-scan posture). Guest obligations: accept a
+reply only from `srcPub == codePub`; reject `inviteLen > 200` or a truncated body; give up after
+a 10-second timeout; **rate-limit own lookups** (token bucket: burst 20, refill 1 token / 2 s, one
+token per relay asked), so one client cannot sweep the code space.
+
+### 9.2 Threat model and residual risk
+
+A code lookup only succeeds for a requester that already knows the whole code (it must address
+`codePub`, which is a hash of the code), and the reply is sealed to the requester's throwaway key,
+so a relay or bystander learns neither the code nor the invite. What remains is online guessing by
+a client that does not respect the guest rate limit: with ~1.6 M codes per region, per-host reply
+caps (above) and the relay's own per-connection limits, a sweep needs millions of frames per
+region, which is slow and noisy enough to be impractical. A relay can still brute-force
+`codePub` offline; the v2 stretching raises the cost but does not make that impossible. A
+relay-side per-connection lookup limit (outside this repository) would close the remaining gap.
+Room admission is unchanged: joins still honour the host's approve-joins setting.
 
 ---
 

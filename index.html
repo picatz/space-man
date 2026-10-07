@@ -308,7 +308,8 @@
     border-bottom: 1px solid rgba(207, 227, 255, 0.08);
   }
   /* Dependent rows dim when their parent switch is off — still operable. */
-  .settings-list .dim { opacity: 0.45; }
+  .settings-list .dim { opacity: 0.8; }   /* label stays >= 4.5:1; the state reads through the dimmed control below */
+  .settings-list .dim .switch, .settings-list .dim input[type='range'] { opacity: 0.55; }
   /* On a narrow phone the slider gets its own line instead of being squeezed to a nub beside its label. */
   @media (max-width: 400px) {
     .slider-row { display: grid; grid-template-columns: 1fr auto; align-items: center; text-align: left; }
@@ -594,7 +595,11 @@
     border-radius: 12px;
     color: var(--gold);
     cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
   }
+  .install-chip:focus-visible { outline: 2px solid var(--cyan-lt); outline-offset: 2px; }
   .install-chip.show { display: block; }
 
   #errlog {
@@ -869,7 +874,7 @@
 
 <!-- Pause -->
 <div class="overlay" id="ovPause">
-  <div class="panel">
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
     <div class="title-lg" id="pauseTitle">Paused</div>
     <p id="pauseSessionNote" class="pause-session-note" hidden></p>
     <div class="dock top"><button class="btn" id="btnResume">Resume</button></div>
@@ -919,7 +924,8 @@
     <button class="btn ghost" id="btnSpectateRound" style="display:none;">Spectate This Round</button>
     <div class="sub" id="deadTapHint">TAP TO RETRY</div>
     </div>
-    <div class="install-chip" id="installChip">Add Space Man to your home screen</div>
+    <button type="button" class="install-chip" id="installChip">Add Space Man to your home screen</button>
+    <button type="button" class="install-chip" id="updateChip">Update ready — restart now</button>
     <div class="emote-row" id="deadEmotes" style="display:none;"></div>
     </div>
     </div>
@@ -989,7 +995,7 @@
     <div class="together-or" aria-hidden="true">or join a friend</div>
     <label class="join-label" for="joinInput">Room code or link</label>
     <input class="join-input" id="joinInput" type="text" inputmode="text" enterkeyhint="go" autocomplete="off"
-      autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NYC-COMET-42"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NYC-COMET-ORBIT-42"
       aria-describedby="joinHint" />
     <div class="join-hint" id="joinHint" role="status" aria-live="polite">Type the code your friend sees, or paste their invite link.</div>
     <button class="btn ghost" id="btnJoinGo">Join</button>
@@ -1256,7 +1262,7 @@ function rampStep(distM) { return clamp(Math.floor((distM - BANDS[BANDS.length -
 function bandParams(band, distM) { return band < BANDS.length - 1 ? BANDS[band] : RAMP[rampStep(distM)]; }
 const SECTORS = window.SpaceManContracts.sectors;
 const ENCOUNTER_CONTRACTS = window.SpaceManContracts.encounters;
-const BAND_HUE = [218, 232, 250, 268, 286, 312, 340, 356];
+const BAND_HUE = [218, 245, 270, 290, 305, 325, 345, 356];
 
 const MEDALS = [
   { name: 'PLATINUM', v: 10000, c: '#DCE9FF' },
@@ -1560,8 +1566,6 @@ flareGrad.addColorStop(0, 'rgba(255,79,102,0)');
 flareGrad.addColorStop(0.6, 'rgba(255,79,102,0.35)');
 flareGrad.addColorStop(0.85, 'rgba(255,140,90,0.75)');
 flareGrad.addColorStop(1, 'rgba(255,220,180,0.95)');
-const visorGrad = ctx.createLinearGradient(-8, -CFG.ph / 2 + 2, 8, -CFG.ph / 2 + 14);
-visorGrad.addColorStop(0, '#61D9FF'); visorGrad.addColorStop(1, '#1479FF');
 
 /* ---- suit palettes: wardrobe, not a form. Silhouette, gait, and hitboxes never
    change; 'classic' resolves to the exact original literals (goldens stay bytewise). ---- */
@@ -1582,16 +1586,6 @@ const palNow = () => PALETTES[G.cosmetics.suit] || PALETTES.classic;
 GLOW.suit = { classic: GLOW.white };
 function suitGlow(id) {
   return GLOW.suit[id] || (GLOW.suit[id] = glowSprite(40, 'rgba(' + hexRGB((PALETTES[id] || PALETTES.classic).suit) + ',0.5)', 0.2));
-}
-const suitVisors = { classic: visorGrad };
-function suitVisor(id) {
-  if (!suitVisors[id]) {
-    const P = PALETTES[id] || PALETTES.classic;
-    const g = ctx.createLinearGradient(-8, -CFG.ph / 2 + 2, 8, -CFG.ph / 2 + 14);
-    g.addColorStop(0, P.visTop); g.addColorStop(1, P.visBot);
-    suitVisors[id] = g;
-  }
-  return suitVisors[id];
 }
 // E12: light-pistol sprites, lazy per-suit pre-renders like suitGlow. The
 // lance glow rides every player bullet; the muzzle starburst (white core →
@@ -1903,6 +1897,11 @@ const Audio = (() => {
         if (golden) bell(f, 0.16, 0.14, t + i * gap, sfxGain);
         else tone('triangle', f, f, 0.15, 0.2, sfxGain, t + i * gap);
       }
+    },
+    heat(on) {   // GD-03: Hot Pursuit lights with a rising 5-8 bell pair on the sting bus; cooling is one soft falling note
+      const t = now();
+      if (on) { bell(degF(5), 0.22, 0.07, t, stingGain); bell(degF(8), 0.34, 0.07, t + 0.08, stingGain); }
+      else tone('sine', degF(3), degF(1), 0.18, 0.06, sfxGain, t);
     },
     chainBank() {   // the chain lands: 5 → 1 resolve, bell timbre, on the sting bus (E8.3)
       const t = now();
@@ -2250,8 +2249,13 @@ function buzz(kind) {
     const l = document.getElementById('hapLbl'), focused = document.activeElement;
     if (l) l.click();   // iOS 17.4+: a switch input's tick is the only web haptic
     // A programmatic label click can focus its hidden switch in WebKit. Tactile
-    // feedback must not steal the keyboard/controller cursor from a real control.
-    if (focused && focused.isConnected !== false && typeof focused.focus === 'function' && l && typeof l.contains === 'function' && l.contains(document.activeElement)) focused.focus({ preventScroll: true });
+    // feedback must not steal the keyboard/controller cursor from a real control,
+    // and with nothing real focused (body) the hidden switch must not keep it.
+    if (l && typeof l.contains === 'function' && l.contains(document.activeElement)) {
+      const hidden = document.activeElement, real = focused && focused !== document.body && focused.isConnected !== false && typeof focused.focus === 'function';
+      if (real) focused.focus({ preventScroll: true });
+      else if (hidden && typeof hidden.blur === 'function') hidden.blur();
+    }
   } catch (e) {}
 }
 
@@ -2412,6 +2416,7 @@ function pollGamepad() {
   } else if (!menuTook && just(0)) {
     if (G.mode === 'attract') startRun();
     else if (G.mode === 'dead') tryRestart();
+    else if (G.mode === 'play') tryEarlyRestart();
     else if (G.mode === 'pause') togglePause();
   }
   const btns = gp.buttons, prev = input.pad.prev;   // in place: no per-poll array allocation
@@ -2432,7 +2437,7 @@ function keyAction(k) {
 }
 // Is keyboard focus on a live overlay control? Then Enter/Space belong to it.
 function focusInOverlay() { const a = document.activeElement; return !!(a && a !== document.body && a.closest && a.closest('.overlay.show')); }
-// A text box (the room-code field) owns its keys: typing COMET-42 must not mute, pause or restart the game.
+// A text box (the room-code field) owns its keys: typing COMET-ORBIT-42 must not mute, pause or restart the game.
 function isTextField(t) {
   return !!t && (t.tagName === 'TEXTAREA' || t.isContentEditable || (t.tagName === 'INPUT' && /^(text|search|url|tel|email|password)$/i.test(t.type || 'text')));
 }
@@ -2443,7 +2448,7 @@ function onKey(e, down) {
   // runs for textareas before their ordinary text-key ownership shortcut.
   if (down && k === 'tab') {
     const overlayId = topOverlayId(), overlay = overlayId && document.getElementById(overlayId);
-    if (overlay && overlay.querySelector('.secondary-panel')) {
+    if (overlay && overlayId !== 'ovAttract') {
       const items = menuItems(overlayId), active = document.activeElement;
       if (items.length && ((e.shiftKey ? active === items[0] : active === items[items.length - 1]) || !items.includes(active))) {
         e.preventDefault(); (e.shiftKey ? items[items.length - 1] : items[0]).focus(); return;
@@ -2475,6 +2480,7 @@ function onKey(e, down) {
       if (k === 'enter') { startRun(); return; }
     }
     if (k === 'escape' && crew.open) { toggleCrew(false); return; }
+    if (!e.repeat && (act === 'jump' || k === 'enter' || k === 'r')) tryEarlyRestart(k === 'r');
     if (k === 'escape' || k === 'p') togglePause();
     if (k === 'm') toggleMute();
     if (G.mode === 'attract' && (k === ' ' || k === 'enter')) { if (!menuSubOpen()) startRun(); }
@@ -2537,6 +2543,7 @@ function onTapDown(e) {
   if (e.pointerType === 'mouse') {
     input.usingTouch = false;
     if (G.mode === 'play') {
+      if (tryEarlyRestart()) return;
       if (inMuteHit(pointerPos(e))) { input.muteHold = { id: e.pointerId, t: performance.now(), fired: false }; return; }
       input.shoot = true; input.fireMouse = true; flags.taughtShoot = true;
     }
@@ -2546,6 +2553,7 @@ function onTapDown(e) {
   Audio.ensure(); Audio.resume();
   if (G.mode === 'attract') { startRun(); return; }
   if (G.mode === 'dead') { tryRestart(); return; }
+  if (tryEarlyRestart()) return;
   // Countdown touches arm the stick/jump/fire zones so the player is already
   // moving at GO — the state sits armed until the first simulated tick.
   if (G.mode !== 'play' && G.mode !== 'resume') return;
@@ -2783,7 +2791,7 @@ const G = {
   // choreography timers ticked on sim STEPs (wall-clock G.time is frozen in
   // the #shot loop); pistol is the death-debris piece, settles like the helmet.
   fireT: 0, twirlT: 0, holsterT: 0, inspectIn: 7, pistol: null,
-  flareFlirtT: 0, flareFlirt: false, wardrobeOpen: false,
+  flareFlirtT: 0, flareFlirt: false, heatT: 0, hot: false, wardrobeOpen: false,
   // E4: the flare as a visible antagonist. threat is a slewed, render-only
   // read of the gap (never fed back into sim); glance* drives the astronaut's
   // fear-glance in both play (gap-triggered) and attract (time-triggered).
@@ -3055,7 +3063,7 @@ function resetRun(seed, replayable, world) {
   G.body = null; G.kickX = 0; G.kickY = 0; G.kickAt = -9; G.deathFocus = null;
   G.pistol = null; G.fireT = 0; G.twirlT = 0; G.holsterT = 0; G.inspectIn = 7;   // E12
   G.shards = 0; G.shardStreak = 0; G.bigAir = 0; G.companion = null; G.ufo = null; G.ufoTimer = rnd(18, 35); G.milestone = 0;
-  G.flareFlirtT = 0; G.flareFlirt = false;
+  G.flareFlirtT = 0; G.flareFlirt = false; G.heatT = 0; G.hot = false;
   // Decor stream: seeded apart from worldgen so sky guests can never fork a run.
   // Rolls are drawn here unconditionally (deterministic); DELIGHT gates behavior.
   G.decorRng = mulberry32(((seed >>> 0) ^ 0x5EED) >>> 0);
@@ -3263,10 +3271,25 @@ function startRun(options) {
   beginArrival();   // E13: render-side greeting; sim ticks under it from frame 1
   G.mode = 'play'; buzz('light');
 }
-function tryRestart() {
+// GF-05: the ragdoll is skippable. A FRESH explicit input (key press, tap, pad
+// jump — never a repeat or a hold carried from before death) from DEATH_SKIP s on
+// commits the run through showDeathCard (records persist) and brings the card up
+// at once, so a reflexive tap still shows the score; the card's own retry follows.
+// R is the one deliberate "restart now" key and skips the card too.
+// Passive path unchanged: the card still appears at 1.6 s on its own.
+const DEATH_SKIP = 0.8;
+function tryEarlyRestart(instant) {
+  const p = G.player;
+  if (G.mode !== 'play' || !p || !p.dead || G.deathCardShown || G.deathSeq < DEATH_SKIP) return false;
+  if (sharedRunnerActive() || expeditionRunnerActive()) return false;   // those hand the round to their own result flow
+  showDeathCard();
+  if (instant && G.mode === 'dead' && !$('ovInitials').classList.contains('show')) tryRestart(true);   // an initials picker still owns input
+  return true;
+}
+function tryRestart(skipGuard) {
   if (G.mode !== 'dead') return;
   if ($('ovInitials').classList.contains('show')) return;  // picker owns input until confirmed/skipped
-  if (G.time - G.deadShownAt < 0.4) return;      // guard so panic taps don't skip the card
+  if (!skipGuard && G.time - G.deadShownAt < 0.4) return;      // guard so panic taps don't skip the card
   cancelDeathAnim();                             // count-up/stamp/reveal timers never fight the next run
   Audio.killSting();                             // a ringing jingle never delays the next run
   startRun({ course: G.course ? refreshCourse(G.course) : null });   // retry the same fixed course
@@ -3810,7 +3833,7 @@ function killEnemy(e, method, interrupted) {
   G.killsRun++; stats.kills++;
   if (method === 'stomp') rigStomps++;   // presentation: the rig's stomp reaction reads only this
   const mult = 1 << G.chain;
-  const pts = (method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult * (e.type === 'brute' ? 3 : e.v2 ? 2 : 1);
+  const pts = Math.round((method === 'stomp' ? CFG.scoreStomp : CFG.scoreShoot) * mult * (e.type === 'brute' ? 3 : e.v2 ? 2 : 1) * heatMul());
   G.score += pts;
   missionProgress(method === 'slash' ? 'shoot' : method, 1);
   if (e.golden) {
@@ -3873,7 +3896,7 @@ function collisions() {
       k.grabbed = true;
       if (k.type === 'shard') {
         G.shards++; G.shardStreak++;
-        const bonus = CFG.scoreShard + Math.min(18, (G.shardStreak - 1) * 3);
+        const bonus = Math.round((CFG.scoreShard + Math.min(18, (G.shardStreak - 1) * 3)) * heatMul());
         G.score += bonus; popup(k.x, k.y, '+' + bonus + ' STAR', '#FFE59A');
         burst(k.x, k.y, 12, 2.6, 24, 2.4, 'rgba(159,241,255,.95)', 0, 3);
         Audio.sfx.ammo(false); buzz('select'); missionProgress('shard', 1);
@@ -3898,6 +3921,22 @@ function collisions() {
 /* ---------------------------------------------------------------------------
    18. FLARE + CAMERA + DISTANCE
    ------------------------------------------------------------------------- */
+// GD-03 Hot Pursuit: ride the flare inside HEAT_NEAR for HEAT_BUILD seconds and
+// kills + stars score x1.5 until the gap opens past HEAT_FAR and cools out over
+// HEAT_COOL seconds. Pure function of the gap and the sim step (no rng, no
+// worldgen), computed locally like all score. Between the two radii it holds.
+const HEAT_NEAR = 120, HEAT_FAR = 200, HEAT_BUILD = 2, HEAT_COOL = 1, HEAT_MULT = 1.5;
+function updateHeat(gap) {
+  if (gap < HEAT_NEAR) G.heatT = Math.min(HEAT_BUILD, G.heatT + STEP);
+  else if (G.hot) { if (gap > HEAT_FAR) G.heatT = Math.max(0, G.heatT - STEP * HEAT_BUILD / HEAT_COOL); }
+  else G.heatT = 0;                       // continuous: a gap back out resets the build
+  if (!G.hot && G.heatT >= HEAT_BUILD) {
+    G.hot = true;
+    popup(G.player.x + G.player.w / 2, G.player.y - 34, 'HOT PURSUIT ×' + HEAT_MULT, '#FFC93C');
+    Audio.sfx.heat(true); buzz('light');
+  } else if (G.hot && G.heatT <= 0) { G.hot = false; Audio.sfx.heat(false); }
+}
+const heatMul = () => G.hot ? HEAT_MULT : 1;
 function updateFlare() {
   const B = bandParams(G.band, G.dist);
   G.flare.prevX = G.flare.x;
@@ -3918,6 +3957,7 @@ function updateFlare() {
   // coral-suit flirt: living inside a 40px flare gap for 3 sustained seconds
   if (gap < 40) { G.flareFlirtT += STEP; if (G.flareFlirtT >= 3) G.flareFlirt = true; }
   else G.flareFlirtT = 0;
+  updateHeat(gap);
   // Rising coral embers below the platform line — falling should read as death.
   if (G.frameCount % 18 === 0)
     spawnP(G.player.x + rnd(-view.w * 0.5, view.w * 0.6), G.groundY + rnd(90, 280), rnd(-0.2, 0.2), -rnd(0.3, 0.9), 60, 2, 'rgba(255,110,90,0.5)', -0.005, false, 0);
@@ -3985,6 +4025,7 @@ function updateFlareShared() {
   if (gap < 300) G.trauma = Math.max(G.trauma, 0.1 * (1 - gap / 300));
   if (gap < 40) { G.flareFlirtT += STEP; if (G.flareFlirtT >= 3) G.flareFlirt = true; }
   else G.flareFlirtT = 0;
+  updateHeat(gap);
   if (G.frameCount % 18 === 0)
     spawnP(G.player.x + rnd(-view.w * 0.5, view.w * 0.6), G.groundY + rnd(90, 280), rnd(-0.2, 0.2), -rnd(0.3, 0.9), 60, 2, 'rgba(255,110,90,0.5)', -0.005, false, 0);
   if (G.frameCount % 2 === 0)
@@ -4480,6 +4521,7 @@ function frame(now) {
   // Nothing dequeues once the death card owns the screen — entries persist in the logbook.
   else if (toastQ.length && !G.deathCardShown && (toastQ[0].style !== 'gold' || G.mode === 'attract' || calm())) {
     const t = toastQ.shift();
+    announceMoment(t.text, t.style === 'sys');   // canvas toasts reach the live region too (sys always, gold throttled)
     G.toast = t.text; G.toastStyle = t.style; G.toastGlyph = t.glyph || null;
     G.toastT = G.toastMax = t.style === 'gold' ? 2.6 : 2.4;
   }
@@ -6004,12 +6046,23 @@ function drawHUD() {
   if (!dead && G.mode === 'play' && G.player) {
     const gapM = Math.max(0, Math.round((G.player.x - G.flare.x) / 10));
     const pulse = G.threat > 0.6 ? 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(G.time * TAU * 2)) : 0.6;
-    ctx.save(); ctx.globalAlpha *= pulse;
-    ctx.fillStyle = '#FF8A6B'; ctx.font = fontStr(700, 10 * us, FONT);
+    ctx.save(); ctx.globalAlpha *= G.hot ? 1 : pulse;
+    // Small labels use the body face at a legible floor (docs/interface-surfaces.md: display lettering is for titles).
+    const gs = Math.max(11, 10.5 * us);
+    ctx.fillStyle = G.hot ? '#FFC93C' : '#FF8A6B'; ctx.font = fontStr(700, gs, FONT_NUM);
     ctx.fillText('‹‹ ', ox, top + 27 * us);
     const cw = ctx.measureText('‹‹ ').width;
-    ctx.font = fontStr(700, 10 * us, FONT_NUM);
     ctx.fillText(gapM + 'm', ox + cw, top + 27 * us);
+    const gw = ctx.measureText(gapM + 'm').width;
+    if (G.hot) {   // Hot Pursuit: gold readout, a small flame, and the live multiplier
+      const fx = ox + cw + gw + 7 * us, fy = top + 27 * us, fh = gs * 0.95;
+      ctx.beginPath(); ctx.moveTo(fx, fy); ctx.bezierCurveTo(fx - fh * 0.42, fy - fh * 0.3, fx - fh * 0.2, fy - fh * 0.75, fx - fh * 0.02, fy - fh);
+      ctx.bezierCurveTo(fx + fh * 0.02, fy - fh * 0.6, fx + fh * 0.42, fy - fh * 0.45, fx + fh * 0.3, fy - fh * 0.12);
+      ctx.bezierCurveTo(fx + fh * 0.24, fy, fx + fh * 0.1, fy + fh * 0.04, fx, fy); ctx.fill();
+      ctx.fillText('×' + HEAT_MULT, fx + fh * 0.5 + 3 * us, fy);
+    } else if (G.heatT > 0.05 && G.heatT < HEAT_BUILD) {   // the build: a thin gold bar filling toward the multiplier
+      ctx.fillStyle = 'rgba(255,201,60,.8)'; ctx.fillRect(ox, top + 30 * us, (cw + gw) * G.heatT / HEAT_BUILD, 1.5 * us);
+    }
     ctx.restore();
   }
 
@@ -6027,13 +6080,13 @@ function drawHUD() {
 
   if (G.mission) {
     const m = expeditionRunnerActive() ? { done: false, kind: 'expedition', label: 'ROUTE ' + (expedition.snapshot().index + 1) + ' · REACH ' + expedition.snapshot().current.goal + 'm', progress: G.dist, target: expedition.snapshot().current.goal } : G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
-    ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 22 * us, 6 * us); ctx.fill();
-    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = fontStr(700, Math.max(9.5, 7.5 * us), FONT); ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 27 * us, 6 * us); ctx.fill();
+    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = fontStr(700, Math.max(11, 9 * us), FONT_NUM); ctx.textAlign = 'left';
     const label = m.done ? 'MISSION COMPLETE' : (view.w < 480 ? (MISSION_SHORT[m.kind] || m.label) : m.label);
-    ctx.fillText(label, ox + 6 * us, my + 9 * us);
-    ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(ox + 6 * us, my + 13 * us, mw - 12 * us, 3 * us, 2); ctx.fill();
+    ctx.fillText(label, ox + 6 * us, my + 12 * us);
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(ox + 6 * us, my + 18 * us, mw - 12 * us, 3 * us, 2); ctx.fill();
     ctx.fillStyle = m.done ? '#4EF07A' : '#38E1FF';
-    roundRect(ox + 6 * us, my + 13 * us, (mw - 12 * us) * clamp(m.progress / m.target, 0, 1), 3 * us, 2); ctx.fill();
+    roundRect(ox + 6 * us, my + 18 * us, (mw - 12 * us) * clamp(m.progress / m.target, 0, 1), 3 * us, 2); ctx.fill();
   }
   ctx.restore();
 
@@ -6057,11 +6110,11 @@ function drawHUD() {
       ctx.fillStyle = i < G.ammo ? '#FFC93C' : 'rgba(255,255,255,0.15)';
       ctx.fillRect(rx - i * sp - pw2, rTop + 2, pw2 - 1, 11 * us);
     }
-    ctx.fillStyle = '#CFE3FF'; ctx.font = fontStr(600, Math.max(9.5, 9 * us), FONT); ctx.textAlign = 'right';
+    ctx.fillStyle = '#CFE3FF'; ctx.font = fontStr(600, Math.max(11, 9.5 * us), FONT_NUM); ctx.textAlign = 'right';
     ctx.fillText('AMMO', rx, rTop + 24 * us);
   }
   if (G.shards > 0) {
-    ctx.fillStyle = '#9FF1FF'; ctx.font = fontStr(700, 9 * us, FONT); ctx.textAlign = 'right';
+    ctx.fillStyle = '#9FF1FF'; ctx.font = fontStr(700, Math.max(11, 10.5 * us), FONT_NUM); ctx.textAlign = 'right';
     ctx.fillText('✦ ' + G.shards, view.w - left, rTop + 42 * us);
   }
   POW.drawHUD(us, rTop, left);   // power-up gauges + headline slot
@@ -6313,7 +6366,16 @@ function drawTouchControls() {
    24. OVERLAYS / SCREENS
    ------------------------------------------------------------------------- */
 const $ = (id) => document.getElementById(id);
-function hideAllOverlays() { OVERLAY_IDS.forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; cancelRebind(); }
+// Focus return (UX-01): the control that opened an overlay gets focus back when
+// the overlay closes and the card beneath it is shown again.
+const swu = { ready: false, readyAt: 0, reg: null, reloading: false };   // service-worker update state (section 27); declared early so the run-over card can read it
+const overlayOpener = {};
+let focusReturn = null;
+function hideAllOverlays() {
+  const top = topOverlayId();
+  focusReturn = top && overlayOpener[top] || null;
+  OVERLAY_IDS.forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; cancelRebind();
+}
 function showOverlay(id) {
   if (id === 'ovPause') {
     const localMenu = netInRun() && !(sharedRunnerActive() && journeyUI.room.isHost);
@@ -6322,8 +6384,12 @@ function showOverlay(id) {
     $('pauseSessionNote').textContent = localMenu ? 'The session continues while this menu is open.' : '';
   }
   const el = $(id);
+  const opener = document.activeElement;
+  overlayOpener[id] = opener && opener !== document.body && opener.isConnected !== false && !(el.contains && el.contains(opener)) ? opener : null;
   el.classList.add('show');
-  if (input.pad.connected && !SHOT) menuFocusFirst(topOverlayId());   // controller players land on the first control
+  if ((input.pad.connected || (id === 'ovPause' && input.usingKeys)) && !SHOT) menuFocusFirst(topOverlayId());   // controller / keyboard players land on the first control
+  const back = focusReturn; focusReturn = null;   // controller players keep the first-control landing above (Play on home)
+  if (back && !SHOT && !input.pad.connected && el.contains && el.contains(back) && back.isConnected !== false && visibleEl(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
   // Double-rAF (E9.1): the 0-state must paint one frame before .in flips the
   // transition, or the browser collapses show+in into a single no-op frame.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -6427,7 +6493,11 @@ function stampMedal() {
   if (G.runMedal && !lessMotion() && !SHOT) { dm.classList.remove('stamp'); void dm.offsetWidth; dm.classList.add('stamp'); }
 }
 function revealDeathDelta() { $('deadDelta').classList.add('reveal'); }
-function revealTapHint() { $('deadTapHint').classList.add('show'); }
+function revealTapHint() {
+  const h = $('deadTapHint');
+  if (!SHOT) h.textContent = input.usingGamepad ? 'PRESS A TO RETRY' : (FORCE_TOUCH || input.usingTouch) ? 'TAP TO RETRY' : input.usingKeys ? 'SPACE / ENTER TO RETRY' : 'TAP TO RETRY';
+  h.classList.add('show');
+}
 // A target, not a period (E9.5): nearest of next medal / next sector / best-distance
 // gap, compared as a fraction of each one's own band so cross-unit "nearest" is fair.
 function deathTargetLine(fs, distM) {
@@ -6522,6 +6592,7 @@ function renderDeathCard() {
   renderRoomBoard();               // Run Together: ROOM column + spectate/emote controls (no-op solo)
   const chip = $('installChip');
   if (deferredPrompt && !flags.installDismissed && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
+  $('updateChip').classList.toggle('show', swu.ready && !swu.reloading);
   hideAllOverlays(); showOverlay('ovDead');
   // SHOT goldens are captured on the frozen first frame — reveal everything
   // now instead of waiting on the 300/550ms timers scheduled by showDeathCard
@@ -6667,16 +6738,6 @@ function checkUnlocks() {
 }
 function updateWardrobeBadge() {
   $('btnWardrobe').innerHTML = G.newCosmetics.length ? 'Suit Up <span style="color:var(--gold)">✦</span>' : 'Suit Up';
-}
-function hatThumb(id) {   // painted by drawHat itself — a thumbnail can never drift
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const c = makeCanvas(36 * dpr, 36 * dpr);
-  c.style.width = c.style.height = '36px';
-  const g = c.getContext('2d');
-  g.scale(dpr, dpr);
-  g.translate(18, id === 'phones' ? 20 : 35);   // phones wraps the helmet center; the rest sit above it
-  drawHat(id, id === 'phones' ? 1.2 : 1.6, g);
-  return c;
 }
 let wardrobeSlot = 'suit';
 const WARDROBE_LABELS = { suit: 'Color', hat: 'Hat', eyes: 'Eyes', helmet: 'Helmet', detail: 'Suit', ship: 'Ship' };
@@ -7267,10 +7328,7 @@ async function openRoomFlow() {
   roomOpening = true;
   setTogetherHint('Opening a room… finding the nearest relay.');
   try {
-    const relayDir = { mode: settings.netRelayMode };
-    if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
-    else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-    await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove, code: !BUILD.preview, baseUrl: appBaseUrl() });
+    await NET.openRoom({ ...netIdentity(), ...relayHostOptions(), approve: !!settings.netApprove, code: !BUILD.preview, baseUrl: appBaseUrl() });
     roomOpening = false;
     if (req !== joinReq) { try { NET.leave(); } catch (x) {} return; }   // they went Back meanwhile
     setTogetherBusy(false);
@@ -7314,7 +7372,7 @@ function linkLabelHtml(q, isHost) {
     (q.lossPct >= 2 ? ' · <span class="num">' + q.lossPct + '%</span> lost' : '');
 }
 /* ---- Run Together front door: Create a Room, or Join with a code / link ---------------------------
-   One box takes whatever a friend sends: the code ("NYC-COMET-42", however typed), the invite link, or a
+   One box takes whatever a friend sends: the code ("NYC-COMET-ORBIT-42", however typed; older WORD-NN codes still work), the invite link, or a
    whole chat message with a link in it. A code is looked up on its relay, then the usual Play/Watch
    prompt follows, exactly as if they had opened the link. */
 let joinLookup = false;
@@ -7340,13 +7398,14 @@ function openTogether() {
 }
 function badJoinMessage(p) {
   if (p.reason === 'word') return '"' + p.word + '" isn\'t one of our room words. Check the spelling, or paste the link.';
-  if (p.reason === 'region') return '"' + p.region.toUpperCase() + '" isn\'t a relay location we know. Codes start with a 3-letter place, like NYC-COMET-42.';
+  if (p.reason === 'region') return '"' + p.region.toUpperCase() + '" isn\'t a relay location we know. Codes start with a 3-letter place, like NYC-COMET-ORBIT-42.';
   if (p.reason === 'long') return 'That\'s too long. Paste just the link, or type the code.';
-  return 'That doesn\'t look like a room code. It looks like NYC-COMET-42, or paste the invite link.';
+  return 'That doesn\'t look like a room code. It looks like NYC-COMET-ORBIT-42 (two words and two digits), or paste the invite link.';
 }
 function lookupFailMessage(e, p) {
   const m = e && e.message ? e.message : '';
-  if (/no answer/i.test(m)) return 'No room answers to ' + p.display + '. Check the code, and that the host still has the room open.' + (p.region ? '' : ' Codes work best with their 3-letter place first, like NYC-COMET-42.');
+  if (/no answer/i.test(m)) return 'No room answers to ' + p.display + '. Check the code, and that the host still has the room open.' + (p.region ? '' : ' Codes work best with their 3-letter place first, like NYC-COMET-ORBIT-42.');
+  if (/too many/i.test(m)) return 'Too many tries in a row. Wait a few seconds, then try again.';
   if (/update/i.test(m)) return 'Update to play together.';
   return 'Couldn\'t reach the relay. Check your connection, or ask for the link instead.';
 }
@@ -7899,7 +7958,6 @@ function watchable(g) { return g && g.active && g.inRun && !g.dead && netClock()
 // Runners worth watching, in race order: furthest first (ties by seat), so NEXT walks down the field and PREV back up it.
 function spectateOrder() { return ghosts.filter(watchable).sort((a, b) => (b.dist - a.dist) || (a.p - b.p)); }
 function leaderGhost() { return spectateOrder()[0] || null; }
-function firstGhost() { return leaderGhost(); }
 // Who the camera follows. The runner you chose while they run; when they go down, their last moments get a beat before the
 // cut to the leader, so a death is seen instead of the view jumping away the instant it happens.
 const SPEC_LINGER_MS = 2200;
@@ -8607,12 +8665,7 @@ function getArenaUI() {
     storageKey: BUILD.storageKey('sm2.arena.v1'),
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
-    hostOptions() {
-      const relayDir = { mode: settings.netRelayMode };
-      if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
-      else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-      return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
-    },
+    hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
     onClose() { closeModeOverlay('btnArena'); },
   });
@@ -8633,12 +8686,7 @@ function getRaceUI() {
     storageKey: BUILD.storageKey('sm2.race.v1'),
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
-    hostOptions() {
-      const relayDir = { mode: settings.netRelayMode };
-      if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
-      else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-      return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
-    },
+    hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
     onAudioSettings(changes) {
       for (const key of ['muted', 'music', 'musicVol', 'sfxVol'])
@@ -8774,10 +8822,18 @@ function finishSharedRunner(reached) {
   cancelDeathAnim(); Audio.killSting(); G.deathCardShown = false; G.showPicker = false; G.mode = 'play'; clearInput();
   queueToast(reached ? 'Rendezvous reached · watching your crew' : 'Shuttle caught you · watching your crew', 'sys');
 }
+// One place that turns the player's relay settings into openRoom options. The
+// directory key for a pasted list is `servers` (relay-directory.js).
+function relayHostOptions() {
+  const relayDir = { mode: settings.netRelayMode };
+  if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
+  else if (settings.netRelayMode === 'list') relayDir.servers = settings.netRelayList;
+  return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
+}
 function getJourneyUI() {
   if (!journeyUI) journeyUI = SpaceManJourneyUI.create({
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
-    hostOptions() { return { relayDir: settings.netRelayList ? { mode: 'list', text: settings.netRelayList } : undefined, relayHost: settings.netRelay || undefined, approve: false }; },
+    hostOptions: relayHostOptions,
     onEncounter(leg, context, room) {
       bankSharedRunner();
       if (sharedEncounter && typeof earnCosmeticEvent === 'function' && context.index > sharedEncounter.index) {
@@ -8857,7 +8913,14 @@ $('btnTogetherBack').onclick = () => { joinReq++; if (roomOpening) { roomOpening
 $('joinInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); submitJoin(); } });
 $('joinInput').addEventListener('input', () => { if ($('joinHint').classList.contains('err')) setTogetherHint(''); });
 // Pasting a link is the whole request: go straight to the join prompt, no extra tap.
-$('joinInput').addEventListener('paste', () => setTimeout(() => { if (NET.parseJoin($('joinInput').value).kind === 'invite') submitJoin(); }, 0));
+// A code is shown the way it is read aloud (NYC-COMET-ORBIT-42) once it is complete; a pasted invite still goes straight on.
+function tidyJoinInput() {
+  const el = $('joinInput'), p = NET.parseJoin(el.value);
+  if (p.kind === 'code' && el.value !== p.display) el.value = p.display;
+  return p;
+}
+$('joinInput').addEventListener('blur', () => { tidyJoinInput(); });
+$('joinInput').addEventListener('paste', () => setTimeout(() => { if (tidyJoinInput().kind === 'invite') submitJoin(); }, 0));
 $('roomCode').onclick = () => copyRoomCode();
 $('roomCode').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyRoomCode(); } });
 $('btnRoomCopy').onclick = () => copyRoomLink();
@@ -8937,6 +9000,7 @@ $('btnReset').onclick = () => {
   try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, LS.daily, 'highScores'].forEach((k) => localStorage.removeItem(BUILD.storageKey(k))); } catch (e) {}
   location.reload();
 };
+$('updateChip').onclick = () => { $('updateChip').classList.remove('show'); applyUpdate(true); };
 $('installChip').onclick = () => {
   if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt = null; }
   flags.installDismissed = true; persistAll(); $('installChip').classList.remove('show');
@@ -8993,27 +9057,32 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); defe
 // and swaps only at a safe moment — title or death card, never mid-run and never
 // in a Run Together room (a reload drops the session). The worker is network-
 // first, so until then this page and its scripts stay one coherent build.
-const swu = { ready: false, readyAt: 0, reg: null, reloading: false };
 function swUpdateReady() {
   if (swu.ready) return;
   swu.ready = true; swu.readyAt = G.time;
   queueToast('UPDATE READY', 'sys');
+  // On the run-over card nothing dequeues the toast and nothing may reload under
+  // the player's result: offer an explicit, focusable button instead.
+  if (G.mode === 'dead' && $('ovDead').classList.contains('show')) { $('updateChip').classList.add('show'); announce('Update ready. Use the Update ready button to restart.'); }
 }
 function swSafeMoment() {
   if (modeOverlayActive() || expedition || (journeyUI && (journeyUI.room.active || journeyUI.room.busy))) return false;
   if (netLive()) return false;
   if (G.mode === 'attract') return $('ovAttract').classList.contains('show');
-  return G.mode === 'dead' && $('ovDead').classList.contains('show');
+  return false;   // the run-over card is never reloaded automatically: it offers #updateChip
 }
 function tickUpdate() {   // once per rAF; cheap until an update is actually waiting
   if (!swu.ready || swu.reloading || G.time - swu.readyAt < 2 || !swSafeMoment()) return;
+  applyUpdate(false);
+}
+function applyUpdate(explicit) {
   // Loop guard: one update reload per 30s per tab, even if a worker keeps
   // reporting itself waiting (a stuck install must not strobe the title). A
   // guarded attempt is deferred, not dropped — and only a real attempt stamps
   // the clock, or the 4s fallback reload could keep the update waiting forever.
   let last = 0;
   try { last = +sessionStorage.getItem(BUILD.storageKey('sm2.swReload')) || 0; } catch (e) {}
-  const wait = 30000 - (Date.now() - last);
+  const wait = explicit ? 0 : 30000 - (Date.now() - last);
   if (wait > 0) { swu.readyAt = G.time + wait / 1000; return; }
   try { sessionStorage.setItem(BUILD.storageKey('sm2.swReload'), String(Date.now())); } catch (e) {}
   swu.reloading = true;

@@ -75,8 +75,8 @@ test('options sanitize, fighter identities remain stable, and all formats have c
 });
 
 test('commands clamp invalid axes and booleans without mutating input', () => {
-  const input = { moveX: 1000, moveY: -1000, jumpPressed: 'false', attackPressed: {}, dashPressed: 1, jumpHeld: true };
-  assert.deepEqual(Arena.normalizeCommand(input), { moveX: 1, moveY: -1, jumpPressed: false, attackPressed: false, dashPressed: true, jumpHeld: true });
+  const input = { moveX: 1000, moveY: -1000, jumpPressed: 'false', attackPressed: {}, attackHeld: 1, dashPressed: 1, jumpHeld: true };
+  assert.deepEqual(Arena.normalizeCommand(input), { moveX: 1, moveY: -1, jumpPressed: false, attackPressed: false, attackHeld: true, dashPressed: true, jumpHeld: true });
   assert.equal(input.moveX, 1000);
   assert.equal(Arena.normalizeCommand({ moveX: Infinity, moveY: NaN }).moveX, 0);
   assert.equal(Arena.normalizeCommand(null).moveY, 0);
@@ -489,4 +489,257 @@ test('a final-tick ringout clears spent-stock damage before the timeout tiebreak
   afterRespawn.timeLeftTicks = 1;
   Arena.step(afterRespawn);
   assert.deepEqual(s.result, afterRespawn.result);
+});
+
+// ---- Pulse commitment: recovery, hit guard, charge tier, dash-cancel ----------
+const PULSE = { attackPressed: true };
+function attackEvents(state) { return state.events.filter((e) => e.type === 'attack'); }
+
+test('pulse mashing is gated by recovery: swings start at least ATTACK_TICKS + ATTACK_RECOVERY apart', () => {
+  const state = playing();
+  const [a, b] = state.actors;
+  place(a, 440, 420, { onGround: true, supportId: 'dock', facing: 1 });
+  place(b, 700, 420, { onGround: true, supportId: 'dock' });
+  const starts = [];
+  for (let n = 0; n < 150; n++) {
+    Arena.step(state, { 1: PULSE });
+    if (attackEvents(state).some((e) => e.actorId === 1)) starts.push(n);
+  }
+  const cycle = C.ATTACK_TICKS + C.ATTACK_RECOVERY;
+  assert.deepEqual(starts.slice(0, 3), [0, cycle, 2 * cycle]);
+});
+
+test('a victim cannot be hit by another pulse while its hit guard runs, and the guard is brief', () => {
+  const state = playing({ format: 'ffa' });
+  const [a, b, c] = state.actors;
+  place(a, 440, 420, { facing: 1, onGround: true, supportId: 'dock' });
+  place(b, 484, 420, { onGround: true, supportId: 'dock' });
+  place(c, 528, 420, { facing: -1, onGround: true, supportId: 'dock' });
+  const hit = firstHit(state, { 1: PULSE });
+  assert.equal(hit.targetId, 2);
+  assert.equal(b.hitGuard, C.HIT_GUARD);
+  assert.ok(b.stun > C.HIT_GUARD, 'guard is shorter than stun, so it only stops stacked pulses');
+  const damage = b.damage;
+  // A second pulse that is active while the guard still runs is ignored entirely.
+  Object.assign(c, { x: b.x + 40, y: b.y, attackTicks: C.ATTACK_TICKS - C.ATTACK_WINDUP, attackHitIds: [], attackDirX: -1, attackDirY: 0, facing: -1 });
+  Arena.step(state, {});
+  assert.equal(b.damage, damage, 'guarded victim takes no stacked pulse');
+  b.hitGuard = 0; Object.assign(c, { x: b.x + 40, y: b.y });
+  c.attackTicks = C.ATTACK_TICKS - C.ATTACK_WINDUP; c.attackHitIds = [];
+  Arena.step(state, {});
+  assert.ok(b.damage > damage, 'the same pulse connects once the guard has lapsed');
+});
+
+function holdThenRelease(state, ticks, release = {}) {
+  Arena.step(state, { 1: { attackPressed: true, attackHeld: true } });
+  for (let n = 1; n < ticks; n++) Arena.step(state, { 1: { attackHeld: true } });
+  Arena.step(state, { 1: release });
+}
+test('holding attack charges; release fires a stronger, slower, telegraphed pulse', () => {
+  const state = duelAtRange(0, 1);
+  const [a, b] = state.actors;
+  holdThenRelease(state, 30);
+  assert.equal(attackEvents(state).length, 1);
+  assert.equal(attackEvents(state)[0].charged, true);
+  assert.equal(a.attackCharge, 30);
+  assert.equal(a.attackTicks, C.CHARGED_TICKS, 'charged swing runs its own longer timeline');
+  assert.equal(Arena.attackBox(a).active, false, 'charged windup is longer than a tap, so it is telegraphed');
+  let hit = null;
+  for (let n = 0; n < C.CHARGED_TICKS && !hit; n++) { Arena.step(state, {}); hit = state.events.find((e) => e.type === 'hit'); }
+  assert.ok(hit, 'charged pulse connects');
+  assert.equal(hit.damage, C.ATTACK_DAMAGE + Math.round(30 * C.CHARGE_DAMAGE));
+  assert.equal(b.damage, hit.damage);
+  const tap = duelAtRange(0, 1);
+  const tapHit = firstHit(tap, { 1: PULSE });
+  assert.ok(hit.knockback > tapHit.knockback * 1.3 && hit.damage > tapHit.damage * 1.5);
+});
+
+test('a tap that only briefly holds the button is an ordinary pulse with its windup pre-spent', () => {
+  const state = duelAtRange(0, 1);
+  const [a] = state.actors;
+  holdThenRelease(state, 5);
+  assert.equal(a.attackCharge, 0);
+  assert.equal(attackEvents(state)[0].charged, false);
+  assert.ok(a.attackTicks < C.ATTACK_TICKS && a.attackTicks >= C.ATTACK_TICKS - C.ATTACK_WINDUP + 1);
+  const hit = firstHit(state, {});
+  assert.equal(hit.damage, C.ATTACK_DAMAGE);
+  // Without attackHeld a press is exactly the legacy immediate tap.
+  const legacy = duelAtRange(0, 1);
+  Arena.step(legacy, { 1: PULSE });
+  assert.equal(legacy.actors[0].attackTicks, C.ATTACK_TICKS);
+});
+
+test('charge caps at CHARGE_MAX power, auto-releases at CHARGE_AUTO, and slows movement while held', () => {
+  const state = duelAtRange(0, 1);
+  const [a] = state.actors;
+  Arena.step(state, { 1: { attackPressed: true, attackHeld: true } });
+  const x0 = a.x;
+  for (let n = 1; n < C.CHARGE_AUTO + 5 && !a.attackTicks; n++) Arena.step(state, { 1: { attackHeld: true, moveX: 1 } });
+  assert.ok(a.attackTicks > 0, 'held button eventually releases itself');
+  assert.equal(a.attackCharge, C.CHARGE_MAX);
+  assert.ok(a.x - x0 < C.CHARGE_AUTO * C.MAX_RUN * C.CHARGE_MOVE, 'charging walks, never sprints');
+});
+
+test('dash cancels a charge, a windup and a recovery, but not the active frames', () => {
+  const charging = duelAtRange(0, 1);
+  Arena.step(charging, { 1: { attackPressed: true, attackHeld: true } });
+  for (let n = 0; n < 8; n++) Arena.step(charging, { 1: { attackHeld: true } });
+  assert.ok(charging.actors[0].charge > 0);
+  Arena.step(charging, { 1: { attackHeld: true, dashPressed: true } });
+  assert.equal(charging.actors[0].charge, 0); assert.ok(charging.actors[0].dashTicks > 0);
+  Arena.step(charging, { 1: {} });
+  assert.equal(charging.actors[0].attackTicks, 0, 'a cancelled charge never fires');
+
+  const windup = duelAtRange(0, 1);
+  Arena.step(windup, { 1: PULSE });
+  assert.equal(Arena.attackBox(windup.actors[0]).active, false);
+  Arena.step(windup, { 1: { dashPressed: true } });
+  assert.ok(windup.actors[0].dashTicks > 0 && windup.actors[0].attackTicks === 0, 'feint: windup dash-cancel');
+  assert.equal(windup.actors[1].damage, 0);
+
+  const active = duelAtRange(0, 1);
+  Arena.step(active, { 1: PULSE });
+  for (let n = 0; n < C.ATTACK_WINDUP; n++) Arena.step(active, {});
+  assert.equal(Arena.attackBox(active.actors[0]).active, true);
+  const before = active.actors[0].attackTicks;
+  Arena.step(active, { 1: { dashPressed: true } });
+  assert.equal(active.actors[0].dashTicks, 0, 'active frames are committed');
+  assert.equal(active.actors[0].attackTicks, before - 1);
+
+  const recovery = duelAtRange(0, 1);
+  recovery.actors[1].x = 900;
+  Arena.step(recovery, { 1: PULSE });
+  for (let n = 0; n < C.ATTACK_TICKS; n++) Arena.step(recovery, {});
+  assert.ok(recovery.actors[0].attackCooldown > 0);
+  Arena.step(recovery, { 1: { dashPressed: true } });
+  assert.ok(recovery.actors[0].dashTicks > 0, 'dash cancels recovery');
+  assert.equal(recovery.actors[0].attackCooldown, 0);
+});
+
+test('being hit clears a charge and any recovery, and a ringout clears pulse state', () => {
+  const state = duelAtRange(0, 1);
+  const [a, b] = state.actors;
+  b.facing = -1;
+  Arena.step(state, { 2: { attackPressed: true, attackHeld: true } });
+  assert.equal(b.charge, 1);
+  Object.assign(a, { attackTicks: C.ATTACK_TICKS - C.ATTACK_WINDUP, attackHitIds: [], attackDirX: 1, attackDirY: 0 });
+  Arena.step(state, { 2: { attackHeld: true } });
+  assert.ok(b.stun > 0); assert.equal(b.charge, 0); assert.equal(b.attackCooldown, 0); assert.equal(b.hitGuard, C.HIT_GUARD);
+  b.attackCharge = 20; b.charge = 9; b.attackCooldown = 4;
+  b.x = -1000; Arena.step(state, {});
+  assert.equal(b.attackCharge + b.charge + b.attackCooldown, 0);
+});
+
+test('landing emits a deterministic land event with impact; walking and standing do not', () => {
+  const state = playing();
+  const [a] = state.actors;
+  place(a, 440, 300, { vy: 8 });
+  const impacts = [];
+  for (let n = 0; n < 40; n++) { Arena.step(state, {}); for (const e of state.events) if (e.type === 'land' && e.actorId === 1) impacts.push(e.impact); }
+  assert.equal(impacts.length, 1);
+  assert.ok(impacts[0] >= C.LAND_MIN_IMPACT);
+  const calm = playing();
+  for (let n = 0; n < 30; n++) { Arena.step(calm, { 1: { moveX: 1 } }); assert.ok(!calm.events.some((e) => e.type === 'land')); }
+});
+
+test('CPUs charge sensibly: deterministic, only some swings, always legal commands', () => {
+  const run = (difficulty) => {
+    const state = playing({ seed: 11, format: 'ffa', difficulty });
+    state.actors.forEach((a) => { a.controller = 'cpu'; });
+    let charged = 0, total = 0;
+    for (let n = 0; n < 5400 && state.phase === 'playing'; n++) {
+      allCpuStep(state);
+      for (const e of attackEvents(state)) { total++; if (e.charged) charged++; }
+    }
+    return { charged, total, tick: state.tick };
+  };
+  const first = run('hard'), second = run('hard');
+  assert.deepEqual(first, second);
+  assert.ok(first.charged > 0, 'bots do use the charge');
+  assert.ok(first.charged < first.total * 0.6, 'bots mostly tap');
+});
+
+test('restore accepts earlier snapshots without pulse-commitment fields and rejects bad ones', () => {
+  const state = playing();
+  const saved = Arena.snapshot(state);
+  for (const actor of saved.actors) for (const key of ['attackCooldown', 'attackCharge', 'charge', 'hitGuard']) delete actor[key];
+  const restored = Arena.restore(saved);
+  assert.ok(restored.actors.every((a) => a.charge === 0 && a.hitGuard === 0 && a.attackCooldown === 0 && a.attackCharge === 0));
+  const bad = Arena.snapshot(state); bad.actors[0].charge = -1;
+  assert.throws(() => Arena.restore(bad), TypeError);
+});
+
+// ---- Feel math ------------------------------------------------------------
+test('hit-stop scales with knockback within a bounded window', () => {
+  const F = Arena.feel;
+  const ticks = [6, 10, 16, 26].map((knockback) => F.hitstopTicksFor({ knockback, damage: 12 }));
+  assert.deepEqual(ticks, ticks.slice().sort((x, y) => x - y));
+  assert.ok(ticks[0] >= 2 && ticks[ticks.length - 1] <= 8);
+  assert.ok(ticks[3] > ticks[0]);
+  assert.ok(F.hitstopTicksFor({ knockback: 6, damage: 21 }) > F.hitstopTicksFor({ knockback: 6, damage: 12 }));
+  assert.equal(F.hitstopTicksFor(null), 2);
+  assert.equal(F.hitstopTicksFor({ knockback: NaN, damage: NaN }), 2);
+});
+
+test('trauma accumulates, clamps, decays, and attenuates for spectators', () => {
+  const F = Arena.feel;
+  const light = F.traumaFor({ knockback: 6, damage: 12 }, true), heavy = F.traumaFor({ knockback: 20, damage: 30 }, true);
+  assert.ok(heavy > light && heavy <= 0.62 && light >= 0.15);
+  assert.ok(F.traumaFor({ knockback: 6, damage: 12 }, false) < light * 0.5);
+  assert.equal(F.addTrauma(0.9, 0.5), 1);
+  assert.equal(F.decayTrauma(0.05, 10), 0);
+  assert.ok(Math.abs(F.decayTrauma(1, 10) - 0.7) < 1e-9);
+});
+
+test('shake offset is zero at rest, bounded by trauma squared, and the kick eases out', () => {
+  const F = Arena.feel;
+  assert.deepEqual(F.shakeOffset(0, 5), { x: 0, y: 0, rot: 0 });
+  const mag = (o) => Math.hypot(o.x, o.y);
+  let low = 0, high = 0;
+  for (let t = 0; t < 2; t += 0.01) { low = Math.max(low, mag(F.shakeOffset(0.3, t))); high = Math.max(high, mag(F.shakeOffset(1, t))); }
+  assert.ok(high > low * 4 && high <= F.SHAKE_PX * 1.5);
+  const kick = { x: 6, y: 0, at: 1 };
+  const k0 = F.shakeOffset(0, 1, kick), k1 = F.shakeOffset(0, 1.3, kick);
+  assert.equal(k0.x, 6); assert.ok(k1.x < 0.1);
+  assert.deepEqual(F.shakeOffset(0.6, 1.234, kick), F.shakeOffset(0.6, 1.234, kick));
+  const k = F.kickFor({ knockback: 14 }, { vx: 10, vy: 0 });
+  assert.ok(k.x > 2 && k.y === 0);
+  const up = F.kickFor({ knockback: 14 }, { vx: 0, vy: -10 });
+  assert.ok(up.y < 0 && up.x === 0);
+});
+
+test('KO slow-mo dips to the timescale floor and returns to real time', () => {
+  const F = Arena.feel;
+  assert.equal(F.koTimescale(0), 1);
+  assert.equal(F.koTimescale(F.KO_SLOW_TICKS), F.KO_TIMESCALE);
+  assert.ok(F.koTimescale(1) > F.KO_TIMESCALE && F.koTimescale(1) < 1);
+  let previous = 0;
+  for (let r = F.KO_SLOW_TICKS; r >= 0; r--) { const s = F.koTimescale(r); assert.ok(s >= previous - 1e-12); previous = s; }
+});
+
+test('landing squash recovers in LAND_SQUASH_TICKS and dust only appears for hard landings', () => {
+  const F = Arena.feel;
+  assert.deepEqual(F.landSquash(F.LAND_SQUASH_TICKS, 12), { x: 1, y: 1 });
+  assert.deepEqual(F.landSquash(-1, 12), { x: 1, y: 1 });
+  const first = F.landSquash(0, 12), soft = F.landSquash(0, 4);
+  assert.ok(first.x > 1 && first.y < 1 && first.x <= 1.16 && first.y >= 0.84);
+  assert.ok(soft.x < first.x);
+  assert.ok(F.landSquash(3, 12).x < first.x);
+  assert.equal(F.dustCount(5), 0);
+  assert.ok(F.dustCount(12) >= 4 && F.dustCount(12) <= 6);
+});
+
+test('edge danger rises toward each blast line and warns early for launches', () => {
+  const F = Arena.feel, bounds = Arena.arenas[0].bounds;
+  const at = (x, y, vx = 0, vy = 0) => F.edgeDanger({ x, y, w: 24, h: 34, vx, vy }, bounds);
+  assert.equal(at(480, 400).max, 0);
+  const near = at(bounds.left + 20, 400), far = at(bounds.left + 120, 400);
+  assert.ok(near.left > far.left && far.left > 0 && near.right === 0);
+  assert.ok(at(500, bounds.bottom - 60 - 34).bottom > 0.6);
+  assert.ok(at(500, bounds.top + 30).top > 0.7);
+  const still = at(bounds.right - 170 - 24, 400), launched = at(bounds.right - 170 - 24, 400, 14, 0);
+  assert.ok(launched.right > still.right);
+  assert.equal(at(bounds.left - 50, 400).left, 1);
+  assert.deepEqual(F.edgeDanger(null, bounds), { left: 0, right: 0, top: 0, bottom: 0, max: 0 });
+  assert.equal(F.boundsGlow(0), 1); assert.equal(F.boundsGlow(1e6), 0);
 });

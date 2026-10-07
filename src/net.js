@@ -659,15 +659,33 @@
     'PICNIC PILOT PLAZA PLUTO PONCHO PRISM PUMA QUARTZ RADAR RAVEN RIVER ' +
     'ROBIN ROCKET SAFARI SALSA SIERRA SONNET SPRUCE SUNSET TANGO TEMPO TIGER ' +
     'TOPAZ TULIP TUNDRA TURBO VELVET VIOLET VOYAGE WAFFLE WALNUT WILLOW ZEBRA ZENITH'
-  ).split(' ');                                        // 128 words × 100 suffixes = 12,800 codes
+  ).split(' ');                                        // 128 words
+  // Codes: WORD-WORD-NN (128 x 128 x 100 = 1,638,400, ~20.6 bits). Old hosts still hand out WORD-NN
+  // (12,800); those stay valid to type and resolve (v1 derivation), but a host never mints one any more.
   function randomCode() {
-    const r = rand(3);
-    return CODE_WORDS[r[0] & 127] + '-' + String((r[1] % 10)) + String((r[2] % 10));
+    const r = rand(4);
+    return CODE_WORDS[r[0] & 127] + '-' + CODE_WORDS[r[1] & 127] + '-' + String((r[2] % 10)) + String((r[3] % 10));
   }
+  const CODE_KDF_ROUNDS = 2048;   // v2 only: makes an offline guess-the-code scan against a known codePub costly
   function codeKeypair(region, code) {
     const c = String(code || '').toUpperCase().trim();
-    if (!/^[A-Z]{4,6}-\d\d$/.test(c)) return null;
-    return keypairFromRaw(sha256(utf8('sm.code.v1|' + region + '|' + c)));
+    if (/^[A-Z]{4,6}-\d\d$/.test(c)) return keypairFromRaw(sha256(utf8('sm.code.v1|' + region + '|' + c)));   // legacy
+    if (!/^[A-Z]{4,6}-[A-Z]{4,6}-\d\d$/.test(c)) return null;
+    let h = sha256(utf8('sm.code.v2|' + region + '|' + c));
+    for (let i = 1; i < CODE_KDF_ROUNDS; i++) h = sha256(cat(h, utf8('sm.code.v2')));
+    return keypairFromRaw(h);
+  }
+  // A lookup is a request to a stranger's relay key: cap how fast one client can fire them so a scanner
+  // cannot sweep the code space (token bucket, one token per relay asked).
+  const LOOKUP_CAP = 20, LOOKUP_REFILL_PER_S = 0.5;
+  const lookupBucket = { tokens: LOOKUP_CAP, at: 0 };
+  function takeLookupTokens(n) {
+    const now = performance.now();
+    lookupBucket.tokens = Math.min(LOOKUP_CAP, lookupBucket.tokens + (now - lookupBucket.at) / 1000 * LOOKUP_REFILL_PER_S);
+    lookupBucket.at = now;
+    if (lookupBucket.tokens < n) return false;
+    lookupBucket.tokens -= n;
+    return true;
   }
   // What a person reads out or types: the relay region's 3-letter code in front of the room code
   // (NYC-COMET-42). A code only exists on the relay its host picked, so the region has to travel
@@ -688,7 +706,7 @@
   // Turn whatever was typed or pasted into a join target: a link/fragment/raw invite, or a room code.
   // Tolerant on purpose (case, spaces, dashes, dots, "comet 42", "COMET42", a link buried in a message),
   // strict about what it hands on: an invite is only ever a URL-safe base64 run, a code only ever
-  // [region-]WORD-NN with WORD from the list. `regions` is optional; when given a typed region must be known.
+  // [region-]WORD-WORD-NN (or the legacy [region-]WORD-NN) with WORDs from the list. `regions` is optional; when given a typed region must be known.
   function parseJoin(input, regions) {
     if (typeof input !== 'string') return { kind: 'empty' };
     const s = input.trim();
@@ -698,12 +716,47 @@
     if (link) return { kind: 'invite', payload: link[1] };
     if (/^[A-Za-z0-9_-]{80,700}$/.test(s)) return { kind: 'invite', payload: s };
     const compact = s.toUpperCase().replace(/[^A-Z0-9]+/g, '');
-    const m = /^([A-Z]{3})?([A-Z]{4,6})(\d\d)$/.exec(compact);
-    if (!m) return { kind: 'bad', reason: 'shape' };
-    if (CODE_WORDS.indexOf(m[2]) < 0) return { kind: 'bad', reason: 'word', word: m[2] };
-    const region = m[1] ? m[1].toLowerCase() : null;
-    if (region && regions && regions.indexOf(region) < 0) return { kind: 'bad', reason: 'region', region };
-    const code = m[2] + '-' + m[3];
+    const dm = /^([A-Z]+)(\d\d)$/.exec(compact);
+    if (dm) {
+      const letters = dm[1], num = dm[2], known = (r) => !regions || regions.indexOf(r.toLowerCase()) >= 0;
+      // Candidates in order: [region] WORD WORD, then legacy [region] WORD.
+      for (const hasRegion of [true, false]) {
+        const reg = hasRegion ? letters.slice(0, 3) : '', rest = hasRegion ? letters.slice(3) : letters;
+        if (hasRegion && (letters.length < 7 || !known(reg))) continue;
+        for (let i = 4; i <= 6; i++) {
+          const w1 = rest.slice(0, i), w2 = rest.slice(i);
+          if (CODE_WORDS.indexOf(w1) >= 0 && CODE_WORDS.indexOf(w2) >= 0) return codeResult(reg, w1 + '-' + w2 + '-' + num);
+        }
+      }
+      for (const hasRegion of [true, false]) {
+        const reg = hasRegion ? letters.slice(0, 3) : '', w = hasRegion ? letters.slice(3) : letters;
+        if (hasRegion && (letters.length < 7 || !known(reg))) continue;
+        if (CODE_WORDS.indexOf(w) >= 0) return codeResult(reg, w + '-' + num);
+      }
+    }
+    // Not a code: say why, reading the typo the most charitable way (never echoing more than one word).
+    if (!dm) return { kind: 'bad', reason: 'shape' };
+    let best = null;
+    for (const hasRegion of [true, false]) {
+      const reg = hasRegion ? dm[1].slice(0, 3) : '', rest = hasRegion ? dm[1].slice(3) : dm[1];
+      const regOk = hasRegion && (!regions || regions.indexOf(reg.toLowerCase()) >= 0);
+      const opts = [[rest]];
+      for (let i = 4; i <= 6; i++) opts.push([rest.slice(0, i), rest.slice(i)]);
+      for (const words of opts) {
+        if (words.some((w) => w.length < 4 || w.length > 6)) continue;
+        const good = words.filter((w) => CODE_WORDS.indexOf(w) >= 0).length;
+        const score = good * 2 + (regOk ? 1 : 0) - (words.length - good) * 0.01;
+        if (!best || score > best.score) best = { score, reg, hasRegion, regOk, words };
+      }
+    }
+    if (!best) return { kind: 'bad', reason: 'shape' };
+    const badWord = best.words.find((w) => CODE_WORDS.indexOf(w) < 0);
+    if (badWord) return { kind: 'bad', reason: 'word', word: badWord };
+    if (best.hasRegion && !best.regOk) return { kind: 'bad', reason: 'region', region: best.reg.toLowerCase() };
+    return { kind: 'bad', reason: 'shape' };
+  }
+  function codeResult(reg, code) {
+    const region = reg ? reg.toLowerCase() : null;
     return { kind: 'code', code, region, display: joinCodeText(region, code) };
   }
 
@@ -1484,6 +1537,7 @@
      Strikes/bans: 3 protocol violations ban the key for the room lifetime.
      ------------------------------------------------------------------------- */
   const STRIKE_LIMIT = 3;
+  const KNOWN_REHELLO_MS = 1000;   // a known row's re-HELLO limiter (quick-blip reconnect); unknown keys keep 5 s
   const PRELIM_CAP = 1024;     // pre-join tracking rows; oldest evicted (key-rotation spray must not grow host memory)
   const ROUND_PREROLL = 3000;  // New-Round pre-roll (ms): a synchronized 3-2-1 so every screen starts together
   const ABSENT_GRACE = 300000; // ms an absent (transport-dropped) row keeps its P# for a reconnect: long enough for a phone call or a closed lid
@@ -1604,6 +1658,8 @@
 
       roster: new Map(),         // pubHex → {p, pub, tag, suit, hat, role, adjIdx, nounIdx, pair, pres, strikes, bucket, lastHello, helloN, unverified, lastRole, runT0}
       banned: new Set(), joinTimes: [], prelim: new Map(),
+      ctrFloor: new Map(),       // pubHex → highest host→guest counter ever used for that key (never reuse a nonce under a pair key)
+      preBucket: 20, preBucketT: -Infinity,   // room-wide pre-join budget (SEC-03): burst 20, refill 4/s
       approveJoins: opts.approve === true, pending: new Map(), selfEmoteSeq: 0,   // held joins (approve mode) + host self-emote seq
       appearance: appearanceValue(opts.appearance, opts),
       p: 1, tag: wTag(opts.tag || 'AAA'), suit: opts.suit | 0, hat: opts.hat | 0,
@@ -1647,8 +1703,17 @@
     // Drop a row for good: its P# becomes reusable, so its board bests go too
     // (a newcomer must never inherit someone else's score).
     function removeRow(row) {
+      bumpCtrFloor(hex(row.pub), row.pair);
       S.roster.delete(hex(row.pub));
       S._board.delete(row.p);
+    }
+    // Counters for a pair key only ever move forward: a purged-and-rejoined key must
+    // not restart its host nonce at (or below) a value already spent under that key.
+    function bumpCtrFloor(key, pair) {
+      const cur = S.ctrFloor.get(key) || 0;
+      const v = pair && pair.sendCtr > cur ? pair.sendCtr : cur;
+      if (!S.ctrFloor.has(key) && S.ctrFloor.size >= 4096) S.ctrFloor.delete(S.ctrFloor.keys().next().value);
+      S.ctrFloor.set(key, v);
     }
     function strike(row, why) {
       row.strikes++;
@@ -1862,7 +1927,7 @@
       }
       if (pt[0] === A_HELLO) {                                   // reconnect re-hello: verify proof, re-WELCOME
         const t2 = performance.now();
-        if (row.lastHello && t2 - row.lastHello < 5000) return;
+        if (row.lastHello && t2 - row.lastHello < KNOWN_REHELLO_MS) return;
         row.lastHello = t2;
         const h = decHello(pt);
         if (!h) return strike(row, 'short');
@@ -1903,18 +1968,27 @@
       let pre = S.prelim.get(key);
       if (!pre) { pre = { lastHello: -Infinity, helloN: 0, strikes: 0 }; prelimSet(key, pre); }   // first hello always eligible
       if (t - pre.lastHello < 5000 || pre.helloN >= 5) return;
-      pre.lastHello = t; pre.helloN++;
       S.joinTimes = S.joinTimes.filter((x) => t - x < 60000);
       if (S.joinTimes.length >= 10) return;
+      // Room-wide pre-join token bucket: key-rotation spray must not burn host CPU on
+      // ECDH + HKDF + AES import. Checked after the cheap per-key limiter, before any crypto.
+      S.preBucket = Math.min(20, S.preBucket + (Number.isFinite(S.preBucketT) ? (t - S.preBucketT) / 250 : 20));
+      S.preBucketT = t;
+      if (S.preBucket < 1) return;
+      S.preBucket -= 1;
+      // Spend this key's HELLO allowance only once room-wide budgets let it through,
+      // so someone else's spray can't exhaust a real guest's five tries.
+      pre.lastHello = t; pre.helloN++;
       // Arcade rooms retire absent rows quickly. Re-admitting the same key must never
       // restart its host nonce at zero. Disjoint per-admission counter ranges
       // avoid key/nonce reuse even if the wall clock moves backwards.
-      let startCtr = S.restored ? Date.now() : 0;
+      let startCtr = Math.max(Date.now(), (S.ctrFloor.get(key) || 0) + 1);
       if (arcadeMode(S)) {
         S.arenaCounterBase = (S.arenaCounterBase || 0) + 4294967296;
         if (S.arenaCounterBase + 4294967296 >= Number.MAX_SAFE_INTEGER) return;
         startCtr = S.arenaCounterBase;
       }
+      S.preDerives = (S.preDerives || 0) + 1;                        // observability: unauthenticated key derivations (SEC-03)
       const pair = makePair(await derivePairKey(S.keys, srcPub, S.roomId, S.epoch), S.roomId, S.epoch, DIR_H2G, startCtr);
       if (arcadeMode(S)) pair.sendEnd = startCtr + 4294967296;
       const res = await openApp(pair, wire);
@@ -1924,9 +1998,10 @@
       if (h.protoMin > PROTO || h.protoMax < PROTO) return;      // version gap → BYE(3) in N2; drop for now
       const want = joinProof(S.secret, S.roomId, S.epoch, srcPub, S.keys.pub);
       if (!ctEq(want, h.proof16)) { preStrike(key, pre); return; }   // silent: no oracle for secret-guessers
+      bumpCtrFloor(key, pair);                                       // any frame sent on this pair spent counters ≥ startCtr
       if (!modeMatches(S.mode, h)) {
         S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 3, modeRejection(S, h.mode))));
-        S.ev.emit('mode-rejected', { mode: S.mode }); return;
+        bumpCtrFloor(key, pair); S.ev.emit('mode-rejected', { mode: S.mode }); return;
       }
       // Separate caps (Addendum A): 32 players + 16 spectators, checked by role.
       if (arcadeMode(S) && S.roleLocked) h.role = ROLE_SPECTATOR;
@@ -1935,7 +2010,6 @@
         if (arcadeMode(S)) S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));
         return;
       }
-      S.joinTimes.push(t);
       // Approve-mode (Addendum G / §2.6): hold the proven join; the host UI shows
       // "X wants to join [✓][✕]" and calls approve(pubHex, ok). The join is fully
       // authenticated (proof verified) — approval gates ADMISSION, not identity.
@@ -1944,8 +2018,7 @@
           S.pending.set(key, { srcPub: srcPub.slice(), h, pair, t });
           S.ev.emit('approve-wait', { pubHex: key, tag: h.tag, role: h.role });
         }
-        S.prelim.delete(key);
-        return;
+        return;   // keep the prelim row: held guests' HELLO retries stay under the per-key limiter
       }
       await admitJoin(srcPub, key, h, pair);
     }
@@ -1953,6 +2026,7 @@
     // admitted later as a phantom row that holds a player slot forever.
     function dropPending(key) {
       if (!S.pending.delete(key)) return;
+      S.prelim.delete(key);
       S.ev.emit('reject', { pubHex: key });
     }
     // Roster insert + WELCOME + join-announce. Shared by the immediate join path
@@ -1995,6 +2069,7 @@
         absentAt: 0,
       };
       S.roster.set(key, row);
+      S.joinTimes.push(t);                                    // the join budget counts admissions, not proofs/retries
       S.prelim.delete(key);
       const w = encWelcome(S.out, {
         yourP: p, seed: S.seed, runId: S.runId, epoch: S.epoch, hostEpoch: S.hostEpoch, caps: S.caps, mode: modeByte(S), playerCap: S.playerCap, spectatorCap: S.spectatorCap,
@@ -2199,6 +2274,11 @@
       if (!pt || pt.length < 33 || pt[0] !== C_REQ) return;
       const tmpPub = pt.subarray(1, 33);
       if (!ctEq(tmpPub, srcPub)) return;                         // sealed pub must match relay src
+      // One reply per requesting key per 10 s (a retry storm from one connection is answered once).
+      const sk = hex(srcPub), seen = S.codeSeen || (S.codeSeen = new Map());
+      if (t - (seen.get(sk) || -1e9) < 10000) return;
+      if (seen.size >= 256) seen.delete(seen.keys().next().value);
+      seen.set(sk, t);
       S.codeReplies++; S.codeRepliesMin++;
       const inv = utf8(S.invite);
       const body = new Uint8Array(3 + inv.length);
@@ -2469,7 +2549,9 @@
       if (!pend) return false;
       S.pending.delete(key);
       if (ok === false) {
+        S.prelim.delete(key);
         try { S.relay.send(pend.srcPub, await sealApp(pend.pair, encBye(S.out, 6, 0).slice())); } catch (e) {}
+        bumpCtrFloor(key, pend.pair);
         S.ev.emit('reject', { pubHex: key });
         return true;
       }
@@ -2972,6 +3054,7 @@
   // rest are cancelled; if none answers, the error says so. Never opens more than `regions.length` sockets.
   async function lookupInvite(regions, code, o) {
     if (!regions.length) throw new Error('unknown relay region — update to play together');
+    if (!takeLookupTokens(regions.length)) throw new Error('too many lookups — wait a few seconds');
     const ctls = regions.map(() => ({ timeoutMs: o.timeoutMs || 7000 }));
     return new Promise((resolve, reject) => {
       let left = regions.length, firstErr = null, won = false;
@@ -3302,7 +3385,7 @@
         roster: R,
         relayHostName: 'derp12d.tailscale.com',                            // → cityOfHost = "Chicago"
         relay: { rtt: 23 },
-        code: 'TANGO-42', region: 'ord', codeOk: true,                     // Chicago relay → "ORD-TANGO-42"
+        code: 'TANGO-ORBIT-42', region: 'ord', codeOk: true,                     // Chicago relay → "ORD-TANGO-ORBIT-42"
         link: DUMMY_LINK,
         caps: CAPS, hostEpoch: 0,
         counts() { let players = spectate ? 0 : 1, spectators = spectate ? 1 : 0; for (const r of R.values()) { if (r.role === ROLE_SPECTATOR) spectators++; else players++; } return { players, spectators }; },
@@ -3358,7 +3441,7 @@
       bytes: { hex, cat, b64uEnc, b64uDec, utf8, ctEq },
       keys: { detectX25519, genKeypair, keypairFromRaw, ecdh, derivePairKey, isWebX: () => webX, forceVendored: () => { webX = false; } },
       env: { makePair, sealApp, openApp, sealCode, openCode, DIR_G2H, DIR_H2G },
-      invite: { encodeInvite, decodeInvite, joinProof, rejoinToken, codeKeypair, randomCode, CODE_WORDS },
+      invite: { encodeInvite, decodeInvite, joinProof, rejoinToken, codeKeypair, randomCode, CODE_WORDS, lookupBucket },
       map: { regionOf, cityOfHost, probeHost, pickRegion, greatCircle, nearRegions },
       frames: { encHello, decHello, encWelcome, decWelcome, encPres, decPres, encSnap, decSnap, encPing, decPing, encPong, decPong, makeScratch, PRES_LEN, SNAP_ENTRY, SNAP_MAX },
       link: { linkLevel, makeLink, linkSample, linkExpire, replayCheck, markSeen, presStale, tDiff, A_PING, A_PONG, REPLAY_WIN },

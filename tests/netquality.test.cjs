@@ -27,6 +27,7 @@ test('ghosts stay smooth on a café link: no teleports, no rubber-banding, bound
   const r = await running(t);
   const s = await nb.ghostTrace(r, { profile: 'cafe', ms: 5000 });
   t.diagnostic('cafe ' + JSON.stringify(s));
+  assert.ok(s.starvedFrac < 0.5 && s.frames > 100, 'the harness itself kept up (' + s.starved + ' starved frames, ' + s.frames + ' scored)');
   assert.equal(s.hidden, 0, 'the ghost never blinks out');
   assert.equal(s.teleports, 0);
   assert.equal(s.back, 0, 'never steps backwards');
@@ -38,6 +39,7 @@ test('ghosts degrade gracefully on a plane link (300 ms, heavy jitter, 5 % drops
   const r = await running(t);
   const s = await nb.ghostTrace(r, { profile: 'plane', ms: 6000, seed: 11 });
   t.diagnostic('plane ' + JSON.stringify(s));
+  assert.ok(s.starvedFrac < 0.5 && s.frames > 100, 'the harness itself kept up (' + s.starved + ' starved frames, ' + s.frames + ' scored)');
   assert.equal(s.hidden, 0, 'a lossy link never hides a live runner');
   assert.equal(s.teleports, 0, 'no teleports');
   assert.ok(s.maxStep < 30, 'largest single-frame step ' + s.maxStep + ' px');
