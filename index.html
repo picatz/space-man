@@ -2740,10 +2740,13 @@ function popup(x, y, text, color) {
   // Threshold is wide enough to cover typical popup text half-widths, not
   // just the spawn point, or two adjacent strings still visually collide.
   for (const q of popups) if (Math.abs(q.x - x) < 70 && Math.abs(q.y - y) <= 16) { y += 18 * uiScale(); break; }
-  popups.push({ x, y, text, color: color || '#fff', life: 42, max: 42 });
+  const mm = /\u00d7(\d+)/.exec(text), big = mm && +mm[1] >= 4 ? 1.25 : 1;   // x4+ multiplier popups read larger
+  popups.push({ x, y, y0: y, text, color: color || '#fff', life: 42, max: 42, big });
   if (popups.length > 24) popups.shift();
 }
-function updatePopups() { for (let i = popups.length - 1; i >= 0; i--) { const p = popups[i]; p.life--; p.y -= 0.6; if (p.life <= 0) popups.splice(i, 1); } }
+// Eased rise (fast launch, soft settle) over the same ~25px the old linear drift covered.
+const popupRise = (t) => { t = clamp(t, 0, 1); return 25 * (1 - (1 - t) * (1 - t)); };
+function updatePopups() { for (let i = popups.length - 1; i >= 0; i--) { const p = popups[i]; p.life--; p.y = p.y0 - popupRise(1 - p.life / p.max); if (p.life <= 0) popups.splice(i, 1); } }
 
 // One toast queue; the opaque home mirrors it in DOM, never a tap target. 'sys' keeps the
 // controller-toast look; 'gold' (discoveries, unlocks) waits for a calm beat
@@ -6058,9 +6061,9 @@ function drawPopups(camX, camY) {
   const us = uiScale(), ceilY = camY + 96 * us;   // odometer/mission block owns the top band
   ctx.save(); ctx.translate(G.shake.x, G.shake.y); ctx.translate(-camX, -camY);
   for (const p of popups) {
-    const t = 1 - p.life / p.max, sc = t < 0.3 ? easeOutBack(t / 0.3) * 1.2 : 1.2;
+    const t = 1 - p.life / p.max, sc = t < 0.3 ? easeOutBack(t / 0.3) * 1.2 * p.big : 1.2 * p.big;
     const py = Math.max(p.y, ceilY);
-    ctx.globalAlpha = clamp(p.life / 20, 0, 1);
+    ctx.globalAlpha = clamp(p.life / 14, 0, 1);
     ctx.font = fontStr(900, 11 * sc, FONT); ctx.textAlign = 'center';
     ctx.strokeStyle = 'rgba(6,8,24,0.9)'; ctx.lineWidth = 3 * us; ctx.strokeText(p.text, p.x, py);
     ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, py);

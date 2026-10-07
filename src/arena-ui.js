@@ -292,8 +292,8 @@
     // Presentation-only game feel. Nothing here reaches the simulation or wire:
     // hit-stop and KO slow-mo run in local matches only, shake/flash/squash
     // everywhere, all through the pure helpers in SpaceManArena.feel.
-    const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, koPoint: null, flash: {}, land: {}, lastLand: -1 };
-    function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, koPoint: null, flash: {}, land: {} }); }
+    const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {}, lastLand: -1 };
+    function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {} }); }
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
     // Couch play. local2 exists only while a same-device 2P match is loaded.
     let local2 = null, playerCount = 1, p2Joined = false, joinPadPrev = false, lobbyTick = 0, playersGroup, playerButtons = [], playersNote, joinButton, legendEl;
@@ -421,7 +421,7 @@
       // sound that matters to the player.
       if (far) { if (now - lastFar < .16) return; lastFar = now; }
       else { if (now - lastSfx < 0.055 && kind !== 'win') return; lastSfx = now; }
-      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055] };
+      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13] };
       const v = values[kind]; if (!v) return;
       const o = audio.createOscillator(), g = audio.createGain();
       o.type = kind === 'hit' || far ? 'triangle' : 'sine'; o.frequency.setValueAtTime(v[0], now); o.frequency.exponentialRampToValueAtTime(v[1], now + v[2]);
@@ -1278,7 +1278,7 @@
       for (const e of effects) {
         if (e.type === 'kotext' || e.type === 'koflash') continue; // screen-space, drawn after the world
         if (e.type === 'dust') { ctx.globalAlpha = .55 * (e.life / e.max); ctx.fillStyle = e.color; const size = 2 + 2 * (1 - e.life / e.max); ctx.fillRect(e.x - size / 2, e.y - size / 2, size, size); continue; }
-        const k = 1 - e.life / e.max, radius = e.type === 'ringout' ? 18 + k * 56 : 7 + k * 20;
+        const k = 1 - e.life / e.max, radius = e.type === 'ringout' ? 18 + k * 56 : e.type === 'dodge' ? 12 + k * 34 : 7 + k * 20;
         ctx.globalAlpha = (1 - k) * .85; ctx.strokeStyle = e.color; ctx.lineWidth = 2;
         if (calm()) { ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, 5, 0, TAU); ctx.fill(); }
         else {
@@ -1435,7 +1435,25 @@
       if (involved) { feel.koLeft = F.KO_SLOW_TICKS; feel.koPoint = { x: event.x, y: event.y }; }
       if (shakeOn()) feel.trauma = F.addTrauma(feel.trauma, involved ? .55 : .2);
     }
+    // Close-call beat (runner graze treatment): white ring, bent chirp and a
+    // 0.15 s local slow-mo when a dash i-frames through a live pulse.
+    function dodgeFeel() {
+      if (!state || state.phase !== 'playing') return;
+      const focus = watchedActor(), focusId = focus ? focus.id : 0;
+      for (const d of arena.feel.dodgeReads(state)) {
+        const key = d.actorId + ':' + d.attackerId;
+        if (feel.dodgeSeen[key] === d.swing) continue;   // once per swing
+        feel.dodgeSeen[key] = d.swing;
+        const involved = d.actorId === focusId || d.attackerId === focusId;
+        effects.push({ type: 'dodge', x: d.x, y: d.y, color: '#FFFFFF', life: 16, max: 16 });
+        if (involved) {
+          sfx('graze');
+          if (!onlineActive() && !calm() && !paused) feel.dodgeLeft = arena.feel.DODGE_SLOW_TICKS;
+        }
+      }
+    }
     function consumeEvents() {
+      dodgeFeel();
       for (const event of state.events || []) {
         const who = state.actors.find(a => a.id === event.actorId), type = event.type;
         const focus = watchedActor(), focusId = focus ? focus.id : 0;
@@ -1485,10 +1503,11 @@
       const elapsed = lastTime ? Math.min(.1, Math.max(0, (now - lastTime) / 1000)) : 0; lastTime = now;
       // Real-time feel timers run on wall clock even while the sim is held.
       if (feel.koLeft > 0) feel.koLeft = Math.max(0, feel.koLeft - elapsed * 60);
+      if (feel.dodgeLeft > 0) feel.dodgeLeft = Math.max(0, feel.dodgeLeft - elapsed * 60);
       if (isRunning()) {
         if (feel.freezeLeft > 0) feel.freezeLeft = Math.max(0, feel.freezeLeft - elapsed); // hit-stop: same frame, accumulator untouched
         else {
-          const slow = !onlineActive() && !calm() && feel.koLeft > 0 ? arena.feel.koTimescale(feel.koLeft) : 1;
+          const slow = !onlineActive() && !calm() ? Math.min(feel.koLeft > 0 ? arena.feel.koTimescale(feel.koLeft) : 1, feel.dodgeLeft > 0 ? arena.feel.DODGE_TIMESCALE : 1) : 1;
           accumulator = Math.min(accumulator + elapsed * slow, .1); let steps = 0;
           while (accumulator >= 1 / 60 && steps < 6 && isRunning()) {
             step(); accumulator -= 1 / 60; steps++;

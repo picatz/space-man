@@ -70,8 +70,9 @@
     return { d, dangerous, safe, direction,
       // Cover the full 54-tick charge + 28-tick wave, plus two paint frames.
       actionable: safe !== null || actor.item === "shield" || actor.shieldTicks > 84,
-      label: (effects.length > 1 ? effects.length + " PULSES" : names[0]?.toUpperCase() + " LANE PULSE") + " · " +
-        (direction === "left" ? "MOVE LEFT / SHIELD" : direction === "right" ? "MOVE RIGHT / SHIELD" : direction === "hold" ? "HOLD YOUR LANE" : "SHIELD IF READY"),
+      // One verb only: the lane diagram carries the geometry and the count.
+      label: direction === "left" ? "MOVE LEFT" : direction === "right" ? "MOVE RIGHT" : direction === "hold" ? "HOLD LANE" : "SHIELD IF READY",
+      count: effects.length,
       description: "Pulse danger in " + names.join(" and ") + " lane. " +
         (safe === null ? "No comfortably clear lane is visible." : "Clear lane: " + laneName(safe) + "."),
     };
@@ -2286,6 +2287,7 @@
           const mid=(danger+90)/180*140;threatG.beginPath();threatG.moveTo(mid-5,10);threatG.lineTo(mid,4);threatG.lineTo(mid+5,10);threatG.stroke();
         }
         if(guide.safe!==null){const x=(guide.safe+90)/180*140;threatG.strokeStyle="#9eeeb9";threatG.lineWidth=2;threatG.strokeRect(x-7,10,14,16);}
+        if(guide.count>1){threatG.font="700 10px system-ui,sans-serif";threatG.textAlign="right";threatG.textBaseline="top";threatG.fillStyle="#ffe5bd";threatG.fillText("\u00d7"+guide.count,137,2);}
         const x=clamp((guide.d+90)/180*140,5,135);
         threatG.fillStyle="#e8fbff";threatG.strokeStyle="#071524";threatG.lineWidth=2;threatG.beginPath();threatG.arc(x,22,4,0,TAU);threatG.fill();threatG.stroke();
       }
