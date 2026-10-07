@@ -387,18 +387,17 @@ test('code lookups are rate-limited per client so a scan is slow, then recover w
   const hub = relay(), guest = client(hub, { game: false });
   t.after(() => guest.close());
   const bucket = guest.net._n1.invite.lookupBucket;
-  const start = hub.packetCount;
-  let refused = 0, tried = 0;
-  for (let i = 0; i < 40; i++) {
-    tried++;
-    try { await guest.net.lookupCode('nyc comet orbit ' + String(i).padStart(2, '0'), { timeoutMs: 20 }); }
-    catch (e) { if (/too many lookups/.test(e.message)) refused++; else assert.match(e.message, /no answer|relay|network|cancel/i); }
-  }
-  assert.ok(refused >= 15, 'a burst past the allowance is refused locally (refused ' + refused + ' of ' + tried + ')');
-  assert.ok(hub.packetCount - start < 80, 'refused lookups put nothing on the wire');
-  assert.ok(bucket.tokens < 1);
-  await new Promise((r) => setTimeout(r, 2200));      // ~1 token per 2 s
-  await assert.rejects(guest.net.lookupCode('nyc comet orbit 99', { timeoutMs: 20 }), /no answer|relay/i);
+  const look = (n) => guest.net.lookupCode('nyc comet orbit ' + String(n).padStart(2, '0'), { timeoutMs: 30 });
+  bucket.tokens = 3; bucket.at = hub.now();             // a fresh allowance, whatever ran before
+  for (let i = 0; i < 3; i++) await assert.rejects(look(i), /no answer/, 'within the allowance: really asked');
+  const before = hub.packetCount;
+  for (let i = 0; i < 5; i++) await assert.rejects(look(10 + i), /too many lookups/);
+  assert.equal(hub.packetCount, before, 'refused lookups put nothing on the wire');
+  // A bare code asks the 5 nearest relays, so it costs 5 tokens.
+  bucket.tokens = 4; bucket.at = hub.now();
+  await assert.rejects(guest.net.lookupCode('comet orbit 42', { timeoutMs: 30 }), /too many lookups/);
+  hub.advance(2500);                                    // 1 token per 2 s: 4 -> 5
+  await assert.rejects(guest.net.lookupCode('comet orbit 42', { timeoutMs: 30 }), /no answer/);
 });
 
 test('a host answers a given requesting key once per 10 s and at most 6 times a minute', async (t) => {

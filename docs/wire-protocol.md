@@ -464,7 +464,7 @@ A code lookup only succeeds for a requester that already knows the whole code (i
 so a relay or bystander learns neither the code nor the invite. What remains is online guessing by
 a client that does not respect the guest rate limit: with ~1.6 M codes per region, per-host reply
 caps (above) and the relay's own per-connection limits, a sweep needs millions of frames per
-region and no longer yields a room per hit-rate worth the effort. A relay can still brute-force
+region, which is slow and noisy enough to be impractical. A relay can still brute-force
 `codePub` offline; the v2 stretching raises the cost but does not make that impossible. A
 relay-side per-connection lookup limit (outside this repository) would close the remaining gap.
 Room admission is unchanged: joins still honour the host's approve-joins setting.
