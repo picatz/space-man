@@ -3,8 +3,9 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 const ROOT = path.resolve(__dirname, '..');
-// Every src/ module, in index.html's <script> order.
-const MODULES = ['build', 'contracts', 'cosmetics', 'save-schema', 'input-snapshot', 'course', 'worldgen', 'enemies', 'powerups', 'art', 'home', 'anim', 'expedition', 'arena', 'arena-online', 'room-social', 'arena-room', 'arena-ui', 'race', 'race-online', 'race-room', 'render3d', 'race-camera', 'race-track-mesh', 'race-scene', 'race-presentation', 'race-view', 'race-audio', 'race-ui', 'callsigns', 'crew', 'relay-directory', 'qr', 'netsmooth', 'net', 'journey-online', 'journey-room', 'journey-ui'];
+// Every src/ module, in index.html's <script src> order: derived from the page itself so the
+// harness can never drift from the real load order (platform.test.cjs cross-checks the SW precache).
+const MODULES = [...fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').matchAll(/<script\s+src="src\/([^"]+)\.js"/g)].map((m) => m[1]);
 
 // No game/network behavior is mocked. Only browser APIs and the opaque relay
 // transport are replaced; clients exchange the real encrypted wire protocol.

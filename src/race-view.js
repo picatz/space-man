@@ -20,6 +20,10 @@
       attempted = false,
       pendingQuality = 1,
       scene = null,
+      frameScene = null,
+      frameSource = null,
+      frameMeshes = [],
+      actorModels = new Map(),
       trackId = null,
       followedId = null,
       presentationEpoch = null,
@@ -285,6 +289,7 @@
       // Reuse immutable local-space craft meshes on the GPU. Only small model
       // transforms change each display frame, including interpolated frames.
       const moving = root.SpaceManRaceScene.actorMeshes(snapshot, {
+        models: actorModels,
         hideId: mode === "cockpit" ? a.id : null,
         calm: !!config.reduceMotion,
         chaseActor: mode === "chase" ? a : null,
@@ -297,11 +302,16 @@
         calm: !!config.reduceMotion, nearest: root.SpaceManRace.nearest,
       }) || [];
       const started = root.performance.now();
-      const ok = renderer.draw({
-        ...scene,
-        camera: view,
-        meshes: [...scene.meshes, ...(mode === "topdown" ? [] : scene.roofMeshes || []), ...features, ...moving],
-      });
+      // One reused scene descriptor and mesh list: the renderer reads them synchronously.
+      if (frameSource !== scene) {
+        frameScene = { ...scene, meshes: frameMeshes };
+        frameSource = scene;
+      }
+      frameMeshes.length = 0;
+      for (const list of [scene.meshes, mode === "topdown" ? null : scene.roofMeshes, features, moving])
+        if (list) for (let i = 0; i < list.length; i++) frameMeshes.push(list[i]);
+      frameScene.camera = view;
+      const ok = renderer.draw(frameScene);
       const cost = root.performance.now() - started;
       if (!ok) {
         fail();

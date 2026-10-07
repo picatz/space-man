@@ -1,11 +1,11 @@
 /* Render-only pose sampling. Never predicts, advances or changes race rules. */
 (function (root, factory) {
-  const api = factory();
+  const api = factory(typeof module === "object" && module.exports ? require("./math.js") : root.SpaceManMath);
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.SpaceManRacePresentation = api;
-})(typeof window !== "undefined" ? window : globalThis, function () {
+})(typeof window !== "undefined" ? window : globalThis, function (MathKit) {
   "use strict";
-  const clamp = (x, a, b) => Math.max(a, Math.min(b, x)),
+  const clamp = MathKit.clamp,
     angle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
   function capture(snapshot) {
     if (!snapshot) return null;

@@ -61,9 +61,10 @@
     ]);
   }
 
-  // a * b: transform by b first, then a.
-  function multiply(a, b) {
-    const out = new Float32Array(16);
+  // a * b: transform by b first, then a. `out` (optional, must not alias a or b) lets
+  // a per-frame caller reuse one scratch matrix instead of allocating.
+  function multiply(a, b, out) {
+    out = out || new Float32Array(16);
     for (let c = 0; c < 4; c++) {
       for (let r = 0; r < 4; r++) {
         out[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] +
@@ -86,13 +87,26 @@
       visible: usable && w > 0 && Math.abs(x) <= edge && Math.abs(y) <= edge && Math.abs(z) <= edge };
   }
 
-  function normalMatrix(m) {
+  // Inverse-transpose of the model's upper 3x3. Writes into `out` when given
+  // (the identity fallback is a shared read-only constant).
+  function normalMatrix(m, out) {
     const a = [m[0], m[1], m[2]], b = [m[4], m[5], m[6]], c = [m[8], m[9], m[10]];
     const bc = cross(b, c), ca = cross(c, a), ab = cross(a, b), det = dot(a, bc);
     if (!Number.isFinite(det) || Math.abs(det) < EPS) return IDENTITY_NORMAL;
-    return new Float32Array([bc[0] / det, bc[1] / det, bc[2] / det,
-      ca[0] / det, ca[1] / det, ca[2] / det, ab[0] / det, ab[1] / det, ab[2] / det]);
+    out = out || new Float32Array(9);
+    out[0] = bc[0] / det; out[1] = bc[1] / det; out[2] = bc[2] / det;
+    out[3] = ca[0] / det; out[4] = ca[1] / det; out[5] = ca[2] / det;
+    out[6] = ab[0] / det; out[7] = ab[1] / det; out[8] = ab[2] / det;
+    return out;
   }
+
+  // Streamed (non-static) meshes rotate through a small ring of buffers so a
+  // re-upload never rewrites a buffer an earlier draw in flight is still reading.
+  const STREAM_RING = 4;
+  // Capacity for `bytes` of vertices: a power of two, at least 1 KiB.
+  const streamCapacity = bytes => Math.max(1024, 2 ** Math.ceil(Math.log2(bytes)));
+  // Next ring slot after `index`.
+  const nextStreamSlot = index => (index + 1) % STREAM_RING;
 
   const VERTEX_SHADER = [
     'attribute vec3 aPosition;', 'attribute vec3 aNormal;', 'attribute vec3 aColor;',
@@ -147,19 +161,23 @@
     } catch (_) { return null; }
     if (!gl) return null;
 
-    let state = 'ready', lastError = null, program = null, stream = null, locations = null;
-    let staticCache = new WeakMap(), records = new Set(), streamBytes = 0, frame = 0;
+    let state = 'ready', lastError = null, program = null, locations = null;
+    let staticCache = new WeakMap(), records = new Set(), frame = 0;
+    // Stream ring: ring[i] is a buffer (created on first use) holding ringBytes[i] bytes.
+    let ring = [], ringBytes = [], ringIndex = -1;
+    // Per-frame scratch: no allocation per bounded mesh / per model.
+    const mvpScratch = new Float32Array(16), normalScratch = new Float32Array(9), opaque = [], translucent = [], translucentPool = [];
     let width = Math.max(1, finite(canvas.width, 1)), height = Math.max(1, finite(canvas.height, 1));
     let pixelRatio = 1, maxSize = 4096;
 
     function release(contextLost) {
       if (!contextLost) {
         records.forEach(record => gl.deleteBuffer(record.buffer));
-        if (stream) gl.deleteBuffer(stream);
+        ring.forEach(buffer => { if (buffer) gl.deleteBuffer(buffer); });
         if (program) gl.deleteProgram(program);
       }
       records = new Set(); staticCache = new WeakMap();
-      program = null; stream = null; locations = null; streamBytes = 0;
+      program = null; locations = null; ring = []; ringBytes = []; ringIndex = -1;
     }
 
     function initialize() {
@@ -184,8 +202,12 @@
         ['uViewProjection', 'uModel', 'uNormal', 'uEye', 'uFogColor', 'uFogRange', 'uEmissive', 'uOpacity', 'uSoftShadow', 'uTailFade'].forEach(name => {
           locations[name] = gl.getUniformLocation(program, name);
         });
-        stream = gl.createBuffer();
-        if (!stream) throw new Error('WebGL buffer allocation failed');
+        const first = gl.createBuffer();
+        if (!first) throw new Error('WebGL buffer allocation failed');
+        ring = [first]; ringBytes = [0]; ringIndex = -1;
+        gl.useProgram(program);
+        // Attribute arrays stay enabled for the life of the context (no VAOs, one program).
+        for (const name of ['aPosition', 'aNormal', 'aColor']) gl.enableVertexAttribArray(locations[name]);
         maxSize = Math.max(1, finite(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), 4096));
         gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
         gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
@@ -255,12 +277,12 @@
         gl.uniformMatrix4fv(locations.uViewProjection, false, vp);
         gl.uniform3fv(locations.uEye, eye); gl.uniform3fv(locations.uFogColor, fogColor);
         gl.uniform2f(locations.uFogRange, fogNear, fogFar);
-        for (const name of ['aPosition', 'aNormal', 'aColor']) gl.enableVertexAttribArray(locations[name]);
         frame++;
         // Opaque actors must establish depth before any wake/shadow blends.
         // Sort the small effects list far-to-near in view space so roster order
         // cannot make a farther hull erase a nearer translucent effect.
-        const opaque=[], translucent=[], forward=normalize(target.map((n,i)=>n-eye[i]),[0,0,-1]);
+        opaque.length = 0; translucent.length = 0;
+        const forward=normalize(target.map((n,i)=>n-eye[i]),[0,0,-1]);
         const isTransparent=mesh=>clamp(finite(mesh.opacity,1),0,1)<1 || mesh.softShadow===true || mesh.tailFade===true;
         const depth=mesh=>{
           const lo=mesh.bounds?.min,hi=mesh.bounds?.max,
@@ -273,7 +295,10 @@
             (m[2]*x+m[6]*y+m[10]*z+m[14]-eye[2])*forward[2],0);
         };
         for(const mesh of scene.meshes||[]) if(mesh) {
-          if(isTransparent(mesh))translucent.push({mesh,depth:depth(mesh)});else opaque.push(mesh);
+          if(isTransparent(mesh)) {
+            const entry = translucentPool[translucent.length] || (translucentPool[translucent.length] = { mesh: null, depth: 0 });
+            entry.mesh = mesh; entry.depth = depth(mesh); translucent.push(entry);
+          } else opaque.push(mesh);
         }
         translucent.sort((a,b)=>b.depth-a.depth);
         for(const entry of translucent)opaque.push(entry.mesh);
@@ -284,7 +309,7 @@
           if (!ArrayBuffer.isView(vertices) || vertices.BYTES_PER_ELEMENT !== 4 ||
               Object.prototype.toString.call(vertices) !== '[object Float32Array]' || vertices.length < 27) continue;
           const model = mesh.model && mesh.model.length === 16 ? mesh.model : IDENTITY;
-          if (mesh.bounds && !boxVisible(mesh.bounds, model === IDENTITY ? vp : multiply(vp,model))) continue;
+          if (mesh.bounds && !boxVisible(mesh.bounds, model === IDENTITY ? vp : multiply(vp, model, mvpScratch))) continue;
           let buffer;
           if (mesh.static) {
             let record = staticCache.get(vertices);
@@ -298,10 +323,16 @@
             record.lastUsed = frame; buffer = record.buffer;
             gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
           } else {
-            buffer = stream; gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-            if (vertices.byteLength > streamBytes) {
-              streamBytes = Math.max(1024, 2 ** Math.ceil(Math.log2(vertices.byteLength)));
-              gl.bufferData(gl.ARRAY_BUFFER, streamBytes, gl.DYNAMIC_DRAW);
+            ringIndex = nextStreamSlot(ringIndex);
+            if (!ring[ringIndex]) {
+              ring[ringIndex] = gl.createBuffer();
+              if (!ring[ringIndex]) ringIndex = 0;   // allocation refused: share the first slot
+              else ringBytes[ringIndex] = 0;
+            }
+            buffer = ring[ringIndex]; gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            if (vertices.byteLength > ringBytes[ringIndex]) {
+              ringBytes[ringIndex] = streamCapacity(vertices.byteLength);
+              gl.bufferData(gl.ARRAY_BUFFER, ringBytes[ringIndex], gl.DYNAMIC_DRAW);
             }
             gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
           }
@@ -320,7 +351,7 @@
           if (transparent) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); }
           else { gl.disable(gl.BLEND); gl.depthMask(true); }
           gl.uniformMatrix4fv(locations.uModel, false, model);
-          gl.uniformMatrix3fv(locations.uNormal, false, model === IDENTITY ? IDENTITY_NORMAL : normalMatrix(model));
+          gl.uniformMatrix3fv(locations.uNormal, false, model === IDENTITY ? IDENTITY_NORMAL : normalMatrix(model, normalScratch));
           gl.drawArrays(gl.TRIANGLES, 0, Math.floor(vertices.length / 27) * 3);
         }
         gl.disable(gl.BLEND); gl.depthMask(true);
@@ -361,5 +392,5 @@
     return renderer;
   }
 
-  return { perspective, lookAt, multiply, project, cameraFrame, boxVisible, create };
+  return { perspective, lookAt, multiply, project, cameraFrame, boxVisible, create, STREAM_RING, streamCapacity, nextStreamSlot };
 });

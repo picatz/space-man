@@ -233,15 +233,50 @@ test('static geometry caches by vertex-array identity while mutable geometry str
   assert.equal(h.count('bufferData'), 1, 'new descriptors reuse the immutable GPU buffer');
   assert.equal(h.count('bufferSubData'), 0);
   renderer.draw({ meshes: [{ vertices }] }); vertices[0] = -2;
+  assert.equal(h.count('bufferData'), 2, 'first stream slot allocated once');
   renderer.draw({ meshes: [{ vertices }] });
-  assert.equal(h.count('bufferData'), 2, 'one streaming allocation reused');
   assert.equal(h.count('bufferSubData'), 2, 'each mutable draw uploads current vertices');
   renderer.draw({ meshes: [{ vertices: new Float32Array(27 * 100) }] });
-  assert.equal(h.count('bufferData'), 3, 'stream grows to fit larger geometry');
   assert.equal(h.count('bufferSubData'), 3);
-  assert.equal(h.gl.buffers.length, 2, 'only one streaming and one static buffer');
+  assert.ok(h.gl.buffers.length <= 1 + Render3D.STREAM_RING, 'static buffer plus at most one ring of stream buffers');
   renderer.dispose();
-  assert.equal(h.count('deleteBuffer'), 2);
+  assert.equal(h.count('deleteBuffer'), h.gl.buffers.length, 'every buffer is released');
+});
+
+test('streamed meshes rotate through a ring so one frame never re-specifies a buffer it already drew from', () => {
+  const h = harness(), renderer = Render3D.create(h.canvas), v = () => triangle();
+  const meshes = [{ vertices: v() }, { vertices: v() }, { vertices: v() }];
+  renderer.draw({ meshes });
+  const uploads = h.calls.filter(c => c[0] === 'bufferSubData').map(c => c[4]);
+  assert.equal(new Set(uploads).size, 3, 'three dynamic meshes use three different stream buffers');
+  for (let i = 0; i < 12; i++) renderer.draw({ meshes });
+  assert.equal(h.gl.buffers.length, Render3D.STREAM_RING, 'rotation settles on exactly one ring');
+  const allocations = h.count('bufferData');
+  for (let i = 0; i < 12; i++) renderer.draw({ meshes });
+  assert.equal(h.count('bufferData'), allocations, 'steady state re-allocates nothing');
+  const many = Array.from({ length: 9 }, () => ({ vertices: v() }));
+  renderer.draw({ meshes: many });
+  assert.equal(h.gl.buffers.length, Render3D.STREAM_RING, 'the ring is capped');
+  renderer.dispose();
+  assert.equal(h.count('deleteBuffer'), Render3D.STREAM_RING);
+});
+
+test('ring helpers: slots wrap and capacity is a power of two of at least 1 KiB', () => {
+  const seen = []; let i = -1;
+  for (let n = 0; n < Render3D.STREAM_RING * 2; n++) { i = Render3D.nextStreamSlot(i); seen.push(i); }
+  assert.deepEqual(seen, [0, 1, 2, 3, 0, 1, 2, 3]);
+  assert.equal(Render3D.streamCapacity(1), 1024);
+  assert.equal(Render3D.streamCapacity(1024), 1024);
+  assert.equal(Render3D.streamCapacity(1025), 2048);
+  assert.equal(Render3D.streamCapacity(27 * 4 * 100), 16384);
+});
+
+test('multiply and normal matrices can be computed into caller-owned scratch without changing the result', () => {
+  const a = Render3D.perspective(1, 1.5, 0.5, 400), b = Render3D.lookAt([3, 4, 5], [0, 0, 0]);
+  const scratch = new Float32Array(16).fill(7);
+  assert.equal(Render3D.multiply(a, b, scratch), scratch);
+  closeArray(scratch, Render3D.multiply(a, b));
+  assert.equal(Render3D.multiply(a, b, scratch), scratch, 'reusable');
 });
 
 test('unused static geometry is reclaimed and can be uploaded again', () => {

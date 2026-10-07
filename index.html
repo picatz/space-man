@@ -1107,6 +1107,7 @@
 <div id="srAnnounce" aria-live="polite"></div>
 
 <script src="src/build.js"></script>
+<script src="src/math.js"></script>
 <script src="src/contracts.js"></script>
 <script src="src/cosmetics.js"></script>
 <script src="src/save-schema.js"></script>
@@ -1206,7 +1207,7 @@ if (SHOT && typeof WebSocket !== 'undefined') {
    ------------------------------------------------------------------------- */
 const STEP = 1 / 60;
 const CFG = {
-  logicalH: 360, tabletH: 400, portraitW: 420, dprCap: 2, dprMax: 3,   // dprCap: the golden/#shot size; dprMax: where a live screen starts (3× phones), stepping down only if it cannot keep up
+  logicalH: 360, tabletH: 400, portraitW: 420, dprCap: 2, dprMax: 3, dprUnplugged: 2,   // dprCap: the golden/#shot size; dprMax: where a live screen starts (3× phones), stepping down only if it cannot keep up; dprUnplugged: the ceiling while the battery is discharging (Sharp Rendering opts out)
   accelGround: 0.85, accelAir: 0.5, maxRun: 6.8,
   fricGround: 0.8, fricAir: 0.95, turnMult: 2,
   jumpVel: -13.2, gravRise: 0.5, gravFall: 0.8, varJumpCut: 0.45, maxFall: 14,
@@ -1277,23 +1278,12 @@ const MEDALS = [
 /* ---------------------------------------------------------------------------
    3. MATH / UTIL
    ------------------------------------------------------------------------- */
-const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-const lerp = (a, b, t) => a + (b - a) * t;
+const { clamp, lerp, TAU, mulberry32 } = SpaceManMath;   // src/math.js
 const easeOutBack = (t) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
 const easeOutQuad = (t) => 1 - (1 - t) * (1 - t);
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 const easeInCubic = (t) => t * t * t;
-const TAU = Math.PI * 2;
 
-// mulberry32 seeded PRNG for all worldgen/spawn randomness when a seed is given.
-function mulberry32(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 let rng = Math.random;
 const rnd = (a, b) => a + (b - a) * rng();
 
@@ -1458,10 +1448,16 @@ function measureViewport() {
   try { const r = canvas.getBoundingClientRect(); w = Math.round(r.width); h = Math.round(r.height); } catch (e) {}
   _vpW = w >= 100 ? w : 0; _vpH = h >= 100 ? h : 0;
 }
+// The backing-store ratio this device gets right now: #shot is pinned, the saver is 1×, Sharp Rendering is the full
+// ceiling, and otherwise the adaptive cap, held to 2× while the phone is running on its battery (a 3× canvas is ~2.2×
+// the fill-rate and charge for a difference no one sees in motion).
+function targetDpr() {
+  return Math.min(window.devicePixelRatio || 1, SHOT ? CFG.dprCap : powerSaving() ? 1 : settings.sharp ? CFG.dprMax : Math.min(perf.cap, batteryCharging ? CFG.dprMax : CFG.dprUnplugged));
+}
 function resize() {
   measureViewport();
   const cssW = vpW(), cssH = vpH();
-  const dpr = Math.min(window.devicePixelRatio || 1, SHOT ? CFG.dprCap : powerSaving() ? 1 : settings.sharp ? CFG.dprMax : perf.cap);
+  const dpr = targetDpr();
   perf.slowT = 0; perf.warm = 0;
   view.dpr = dpr;
   view.isTablet = Math.min(cssW, cssH) >= 700;
@@ -2196,7 +2192,7 @@ let batteryLow = false, batteryCritical = false, batteryReady = false;   // low 
 let _bl = 0;   // batteryReady: the browser actually handed us battery data (it can refuse)
 try {
   if (navigator.getBattery) navigator.getBattery().then((b) => {
-    const sync = () => { batteryCharging = !!b.charging; batteryLow = !b.charging && b.level < 0.2; batteryCritical = !b.charging && b.level < 0.1; if (typeof applyPower === 'function') applyPower(); };   // the frame loop's saver follows too
+    const sync = () => { const wasCharging = batteryCharging; batteryCharging = !!b.charging; batteryLow = !b.charging && b.level < 0.2; batteryCritical = !b.charging && b.level < 0.1; if (typeof applyPower === 'function') applyPower(); if (wasCharging !== batteryCharging) chargeChanged(); };   // the frame loop's saver follows too
     batteryReady = true;
     sync(); b.addEventListener('levelchange', sync); b.addEventListener('chargingchange', sync);
     syncHapticRows();
@@ -4611,6 +4607,11 @@ function frameGapMs() {
   if (G.mode === 'attract') return attractGapMs();
   return settings.smooth ? 0 : 1000 / 60;   // smooth = every refresh the screen offers; the sim steps at 60 and the render interpolates
 }
+// Plugging in or unplugging moves the DPR ceiling (targetDpr); apply it at a calm moment, never mid-jump.
+function chargeChanged() {
+  if (SHOT || !booted || G.mode === 'play' || G.mode === 'resume' || targetDpr() === view.dpr) return;
+  resize();
+}
 var powerWas = null;
 function applyPower() {
   const on = powerSaving();
@@ -4936,6 +4937,33 @@ function buildNebula(hue) {
 }
 const starfield = { far: [], mid: [], near: [] };
 let starsBuilt = false;
+/* The far and mid layers (180 stars) are baked once into 1600-wide tiles and scrolled with a couple of drawImage calls,
+   not a fillRect each per frame. Twinkle used to be a per-star phase; a tile twinkles as a unit, so the stars are
+   split into STAR_PHASES groups by phase and each group's tile pulses on its own (the shimmer stays uneven). The
+   near layer (40 stars with streaks and sparkles) stays live. Tiles are logical-resolution and drawn unsmoothed. */
+const STAR_W = 1600, STAR_PHASES = 2;
+const starTiles = { far: [], mid: [], midHue: -1 };
+const starGroup = (ph) => Math.min(STAR_PHASES - 1, Math.floor(((ph % TAU) + TAU) % TAU / TAU * STAR_PHASES));
+const starGroupPhase = (g) => (g + 0.5) * TAU / STAR_PHASES;   // the phase a whole group pulses at
+// Where a layer's tile starts so a star at tile x lands on screen at ((x - cam * f) mod W): in [0, W).
+const starScroll = (camX, f) => ((-camX * f) % STAR_W + STAR_W) % STAR_W;
+function bakeStarTiles(list, size, color) {
+  const h = Math.ceil(list.reduce((m, s) => Math.max(m, s.y), 0)) + size + 1;
+  const tiles = [];
+  for (let g = 0; g < STAR_PHASES; g++) {
+    const c = makeCanvas(STAR_W, h), t = c.getContext('2d');
+    t.fillStyle = color;
+    for (const s of list) if (starGroup(s.ph) === g) t.fillRect(Math.round(s.x) % STAR_W, Math.round(s.y), size, size);
+    tiles.push(c);
+  }
+  return tiles;
+}
+// Blit one tile across the view, wrapping at STAR_W, snapped to device pixels so scrolling never shimmers.
+function blitStarTile(tile, start) {
+  const sc = view.scale, x = Math.round(start * sc) / sc;
+  if (x > 0) ctx.drawImage(tile, x - STAR_W, 0);
+  if (x < view.w) ctx.drawImage(tile, x, 0);
+}
 function buildStars() {
   const sr = mulberry32(9999);
   starfield.far = []; starfield.mid = []; starfield.near = [];
@@ -4943,6 +4971,8 @@ function buildStars() {
   for (let i = 0; i < 120; i++) starfield.far.push({ x: sr() * W, y: sr() * view.h * 0.85, ph: sr() * TAU });
   for (let i = 0; i < 60; i++) starfield.mid.push({ x: sr() * W, y: sr() * view.h * 0.8, ph: sr() * TAU });
   for (let i = 0; i < 40; i++) starfield.near.push({ x: sr() * W, y: sr() * view.h * 0.75, ph: sr() * TAU });
+  starTiles.far = bakeStarTiles(starfield.far, 1, '#E8F4FF');
+  starTiles.mid = []; starTiles.midHue = -1;   // tinted per sector, baked when first drawn
   starsBuilt = true;
 }
 /* ---- skyline ridges: two cached silhouette tiles per sector hue (far, near),
@@ -5055,19 +5085,20 @@ function drawBackground(camX, camY) {
   if (fwList.length) drawFireworks();   // E13 seasonal: far-layer blooms, new year only
 
   if (!starsBuilt) buildStars();
-  const W = 1600;
-  ctx.fillStyle = '#E8F4FF';
-  for (const s of starfield.far) {
-    const x = ((s.x - camX * 0.15 * px) % W + W) % W;
-    ctx.globalAlpha = 0.5 * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(G.time * 2 + s.ph)));
-    ctx.fillRect(x, s.y, 1, 1);
+  const W = STAR_W;
+  if (starTiles.midHue !== hue) { starTiles.mid = bakeStarTiles(starfield.mid, 2, `hsl(${hue} 60% 88%)`); starTiles.midHue = hue; }   // E6: mid layer tints toward the sector hue
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  const farStart = starScroll(camX, 0.15 * px), midStart = starScroll(camX, 0.3 * px);
+  for (let g = 0; g < STAR_PHASES; g++) {
+    ctx.globalAlpha = 0.5 * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(G.time * 2 + starGroupPhase(g))));
+    blitStarTile(starTiles.far[g], farStart);
   }
-  ctx.fillStyle = `hsl(${hue} 60% 88%)`;   // E6: mid layer tints toward the sector hue
-  for (const s of starfield.mid) {
-    const x = ((s.x - camX * 0.3 * px) % W + W) % W;
-    ctx.globalAlpha = 0.7 * (0.6 + 0.4 * Math.sin(G.time * 1.5 + s.ph));
-    ctx.fillRect(x, s.y, 2, 2);
+  for (let g = 0; g < STAR_PHASES; g++) {
+    ctx.globalAlpha = 0.7 * (0.6 + 0.4 * Math.sin(G.time * 1.5 + starGroupPhase(g)));
+    blitStarTile(starTiles.mid[g], midStart);
   }
+  ctx.imageSmoothingEnabled = smooth;
   ctx.globalAlpha = 1;
   if (G.whale) drawWhale(camX, hue);
   drawPlanet(camX);
