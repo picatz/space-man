@@ -169,7 +169,7 @@ body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: no
 #ovAttract #btnHero:hover, #ovAttract #btnHero:focus-visible { background: linear-gradient(180deg, #fff0b8, #ffcd5c); }
 #ovAttract #btnHero #heroLabel { flex: 1; min-width: 0; }
 #ovAttract #btnDaily { margin: 14px 0 0; padding: 11px 14px; border: 1px solid #ffce7a55; border-radius: 14px; background: #ffce7a14; }
-#ovAttract #btnDaily .daily-info { display: flex; flex-direction: column; font-size: 10px; }
+#ovAttract #btnDaily .daily-info { display: flex; flex-direction: column; font-size: calc(10px * var(--ui-scale, 1)); }
 #ovAttract #btnDaily .daily-reset { color: #9dbace; font-weight: 500; }
 @media (max-width: 480px) { #ovAttract #btnHero { max-width: none; min-height: 54px; font-size: 14px; } }
 /* Short viewports keep the original order so Endless Run stays above the fold. */
