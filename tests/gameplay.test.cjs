@@ -376,7 +376,7 @@ test('save migration never throws on garbage and always returns sane settings', 
 
 test('Hot Pursuit: 2 s inside 12 m lights x1.5 on kills and stars, holds to 20 m, cools over 1 s', (t) => {
   const c = solo(t);
-  c.run(`startRun(); G.mode = 'play';
+  c.run(`startRun(); G.mode = 'play'; G.mission = null;   // a rolled stomp/shard mission would add its reward
     globalThis.__ticks = (m, s) => { for (let i = 0; i < Math.round(s / STEP); i++) { G.flare.x = G.player.x - m * 10; updateHeat(m * 10); } };
     globalThis.__stomp = () => { const s = G.score; killEnemy({ x: 0, y: 0, type: 'grunt', dead: false }, 'stomp', false); return G.score - s; };`);
   assert.equal(c.run('__stomp()'), 30);
