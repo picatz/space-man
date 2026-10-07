@@ -1560,8 +1560,6 @@ flareGrad.addColorStop(0, 'rgba(255,79,102,0)');
 flareGrad.addColorStop(0.6, 'rgba(255,79,102,0.35)');
 flareGrad.addColorStop(0.85, 'rgba(255,140,90,0.75)');
 flareGrad.addColorStop(1, 'rgba(255,220,180,0.95)');
-const visorGrad = ctx.createLinearGradient(-8, -CFG.ph / 2 + 2, 8, -CFG.ph / 2 + 14);
-visorGrad.addColorStop(0, '#61D9FF'); visorGrad.addColorStop(1, '#1479FF');
 
 /* ---- suit palettes: wardrobe, not a form. Silhouette, gait, and hitboxes never
    change; 'classic' resolves to the exact original literals (goldens stay bytewise). ---- */
@@ -1582,16 +1580,6 @@ const palNow = () => PALETTES[G.cosmetics.suit] || PALETTES.classic;
 GLOW.suit = { classic: GLOW.white };
 function suitGlow(id) {
   return GLOW.suit[id] || (GLOW.suit[id] = glowSprite(40, 'rgba(' + hexRGB((PALETTES[id] || PALETTES.classic).suit) + ',0.5)', 0.2));
-}
-const suitVisors = { classic: visorGrad };
-function suitVisor(id) {
-  if (!suitVisors[id]) {
-    const P = PALETTES[id] || PALETTES.classic;
-    const g = ctx.createLinearGradient(-8, -CFG.ph / 2 + 2, 8, -CFG.ph / 2 + 14);
-    g.addColorStop(0, P.visTop); g.addColorStop(1, P.visBot);
-    suitVisors[id] = g;
-  }
-  return suitVisors[id];
 }
 // E12: light-pistol sprites, lazy per-suit pre-renders like suitGlow. The
 // lance glow rides every player bullet; the muzzle starburst (white core →
@@ -6668,16 +6656,6 @@ function checkUnlocks() {
 function updateWardrobeBadge() {
   $('btnWardrobe').innerHTML = G.newCosmetics.length ? 'Suit Up <span style="color:var(--gold)">✦</span>' : 'Suit Up';
 }
-function hatThumb(id) {   // painted by drawHat itself — a thumbnail can never drift
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const c = makeCanvas(36 * dpr, 36 * dpr);
-  c.style.width = c.style.height = '36px';
-  const g = c.getContext('2d');
-  g.scale(dpr, dpr);
-  g.translate(18, id === 'phones' ? 20 : 35);   // phones wraps the helmet center; the rest sit above it
-  drawHat(id, id === 'phones' ? 1.2 : 1.6, g);
-  return c;
-}
 let wardrobeSlot = 'suit';
 const WARDROBE_LABELS = { suit: 'Color', hat: 'Hat', eyes: 'Eyes', helmet: 'Helmet', detail: 'Suit', ship: 'Ship' };
 let wardrobeInspect = null, wardrobeReactionAt = -10;
@@ -7267,10 +7245,7 @@ async function openRoomFlow() {
   roomOpening = true;
   setTogetherHint('Opening a room… finding the nearest relay.');
   try {
-    const relayDir = { mode: settings.netRelayMode };
-    if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
-    else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-    await NET.openRoom({ ...netIdentity(), relayDir, relayHost: settings.netRelay || undefined, approve: !!settings.netApprove, code: !BUILD.preview, baseUrl: appBaseUrl() });
+    await NET.openRoom({ ...netIdentity(), ...relayHostOptions(), approve: !!settings.netApprove, code: !BUILD.preview, baseUrl: appBaseUrl() });
     roomOpening = false;
     if (req !== joinReq) { try { NET.leave(); } catch (x) {} return; }   // they went Back meanwhile
     setTogetherBusy(false);
@@ -7899,7 +7874,6 @@ function watchable(g) { return g && g.active && g.inRun && !g.dead && netClock()
 // Runners worth watching, in race order: furthest first (ties by seat), so NEXT walks down the field and PREV back up it.
 function spectateOrder() { return ghosts.filter(watchable).sort((a, b) => (b.dist - a.dist) || (a.p - b.p)); }
 function leaderGhost() { return spectateOrder()[0] || null; }
-function firstGhost() { return leaderGhost(); }
 // Who the camera follows. The runner you chose while they run; when they go down, their last moments get a beat before the
 // cut to the leader, so a death is seen instead of the view jumping away the instant it happens.
 const SPEC_LINGER_MS = 2200;
@@ -8607,12 +8581,7 @@ function getArenaUI() {
     storageKey: BUILD.storageKey('sm2.arena.v1'),
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
-    hostOptions() {
-      const relayDir = { mode: settings.netRelayMode };
-      if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
-      else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-      return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
-    },
+    hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
     onClose() { closeModeOverlay('btnArena'); },
   });
@@ -8633,12 +8602,7 @@ function getRaceUI() {
     storageKey: BUILD.storageKey('sm2.race.v1'),
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
-    hostOptions() {
-      const relayDir = { mode: settings.netRelayMode };
-      if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
-      else if (settings.netRelayMode === 'list') relayDir.list = settings.netRelayList;
-      return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
-    },
+    hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
     onAudioSettings(changes) {
       for (const key of ['muted', 'music', 'musicVol', 'sfxVol'])
@@ -8774,10 +8738,18 @@ function finishSharedRunner(reached) {
   cancelDeathAnim(); Audio.killSting(); G.deathCardShown = false; G.showPicker = false; G.mode = 'play'; clearInput();
   queueToast(reached ? 'Rendezvous reached · watching your crew' : 'Shuttle caught you · watching your crew', 'sys');
 }
+// One place that turns the player's relay settings into openRoom options. The
+// directory key for a pasted list is `servers` (relay-directory.js).
+function relayHostOptions() {
+  const relayDir = { mode: settings.netRelayMode };
+  if (settings.netRelayMode === 'custom') relayDir.url = settings.netRelayUrl;
+  else if (settings.netRelayMode === 'list') relayDir.servers = settings.netRelayList;
+  return { relayDir, relayHost: settings.netRelay || undefined, approve: false };
+}
 function getJourneyUI() {
   if (!journeyUI) journeyUI = SpaceManJourneyUI.create({
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
-    hostOptions() { return { relayDir: settings.netRelayList ? { mode: 'list', text: settings.netRelayList } : undefined, relayHost: settings.netRelay || undefined, approve: false }; },
+    hostOptions: relayHostOptions,
     onEncounter(leg, context, room) {
       bankSharedRunner();
       if (sharedEncounter && typeof earnCosmeticEvent === 'function' && context.index > sharedEncounter.index) {
