@@ -7,6 +7,9 @@
       net = opts.net,
       online = root.SpaceManRaceOnline,
       sim = root.SpaceManRace;
+    const social = root.SpaceManRoomSocial,
+      lastRoom = opts.lastRoom || null;
+    let votes = null;
     let host = null,
       client = online.createClient(),
       active = false,
@@ -33,6 +36,18 @@
           }),
         );
     }
+    const overNow = (c) => !!(c && c.state && c.state.phase === "finished"),
+      lobbyNow = (c) => !!(c && c.status === "lobby");
+    function ensureVotes() {
+      if (!votes && social)
+        votes = social.createRoomVotes({
+          net, host: () => !!host, roster, myP: () => info().myP, myRole: () => info().role,
+          isLobby: () => lobbyNow(client.current), isOver: () => overNow(client.current),
+          blocked: () => !active || !!connection, changed, delay: opts.autoStartDelayMs,
+          autoStart: (kind) => { if (opts.onAutoStart) opts.onAutoStart(kind); },
+        });
+      return votes;
+    }
     function status() {
       return {
         active,
@@ -45,6 +60,7 @@
         roster: roster(),
         current: client.current,
         stale: active && !host && now() - lastReceived > 1500,
+        votes: active && votes ? votes.status() : null,
       };
     }
     function changed() {
@@ -71,6 +87,7 @@
           const actor = s.actors.find((a) => a.id === r.id);
           if (actor) r.name = actor.name;
         }
+      if (votes) votes.observe();
       if (opts.onSnapshot)
         opts.onSnapshot(
           Object.assign({}, snapshot, {
@@ -107,9 +124,11 @@
         host.syncRoster(roster(), now());
         publish(true);
       }
+      if (votes) votes.evaluate();
       changed();
     }
     function cleanup(leave = true) {
+      if (votes) votes.reset();
       serial++;
       active = false;
       busy = false;
@@ -128,8 +147,14 @@
       if (leave) net.leave();
     }
     function subscribe() {
+      ensureVotes();
       off = net.onEvent((event, data) => {
         if (!active && !busy) return;
+        if (event === "emote") {
+          if (votes && data && social.kindOf(data.id)) votes.onSignal(data.p, data.id);
+          return;
+        }
+        if (votes && data && (event === "leave" || event === "kick" || event === "banned" || event === "join")) votes.drop(data.p);
         if (event === "race-data") {
           if (host)
             host.receive(
@@ -249,6 +274,7 @@
       client = online.createClient();
       subscribe();
       changed();
+      let codeRoom = null;
       try {
         let payload;
         if (trustedPayload) payload = target;
@@ -259,8 +285,10 @@
           if (resolved.error) throw new Error(resolved.error);
           const parsed = net.parseJoin(resolved.value);
           if (parsed.kind === "invite") payload = parsed.payload;
-          else if (parsed.kind === "code")
+          else if (parsed.kind === "code") {
             payload = (await net.lookupCode(resolved.value)).invite;
+            codeRoom = { region: parsed.region || "", code: parsed.code, mode: "race" };
+          }
           else
             throw new Error(
               "Paste your friend’s race invite link or room code.",
@@ -293,6 +321,7 @@
           ),
         );
         if (mine !== serial) return false;
+        if (codeRoom && lastRoom) lastRoom.save(codeRoom);
         active = true;
         busy = false;
         lastReceived = now();
@@ -361,6 +390,7 @@
       const ok = host.start(seed);
       if (ok) {
         net.setRaceRoleLock(true);
+        if (votes) votes.reset();
         publish(true);
       }
       return ok;
@@ -395,9 +425,15 @@
       connection = "";
       changed();
     }
+    const vote = (kind) => (votes ? votes.vote(kind) : false),
+      cancelAuto = () => (votes ? votes.cancelAuto() : false),
+      setAutoStart = (on) => { if (votes) votes.setAutoStart(on); };
     return Object.freeze({
       hosting,
       join,
+      vote,
+      cancelAuto,
+      setAutoStart,
       configure,
       start,
       pause,

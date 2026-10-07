@@ -728,10 +728,10 @@ client SHOULD handle them; all are core-range and are validated (not ignored).
 
 | Name | Type | Dir | Layout |
 |---|---|---|---|
-| EMOTE | `0x06` | G→H | `emoteId u8 (0–5) || seq u8` |
+| EMOTE | `0x06` | G→H | `emoteId u8 (0–5 bubbles, 6–7 lobby signals) || seq u8` |
 | BYE | `0x09` | H→G | `reason u8 (0 kicked…6 not-approved) || detail u8` |
 | ROUND | `0x0a` | H→all | `seed u32 || runId u8 || countdown u8 || flags u8` (rides the control envelope: room id, host epoch, seq) |
-| EMOTEB | `0x16` | H→all | `P u8 || emoteId u8 || seq u8` |
+| EMOTEB | `0x16` | H→all | `P u8 || emoteId u8 (0–7) || seq u8` |
 | KILL | `0x0d` | G→H | `runId u8 || id u32 LE` — the reporter killed the alien whose spawn x is `id / 8` px |
 | KILLB | `0x18` | H→all but the reporter | `P u8 || runId u8 || id u32 LE` |
 | KILLS | `0x19` | H→G | `runId u8 || count u8 (≤ 48) || id u32 LE × count` — the round's kills so far |
@@ -772,8 +772,32 @@ admits or re-welcomes it, so a player who joins or reconnects mid-round sees the
 a client remembers a round's dead aliens across a restart within that round and clears them on a new one. Kill *results* (score, mission
 progress, chain) stay with the killer.
 
-Receipt rules a conforming host/guest MUST honor: `emoteId` is clamped to `0–5` **at receipt**
-(out-of-range is dropped, not just unrendered); EMOTE is per-key rate-limited; the broadcast
+Emote ids (`emoteId`):
+
+| id | Meaning | Kind |
+|---|---|---|
+| 0 | 👋 wave | bubble |
+| 1 | 😂 laugh | bubble |
+| 2 | 💀 skull | bubble |
+| 3 | ❤ heart | bubble |
+| 4 | GG | bubble |
+| 5 | 😱 panic | bubble |
+| 6 | AGAIN? (rematch vote) | lobby signal |
+| 7 | READY (lobby ready) | lobby signal |
+
+Ids 6 and 7 are **lobby signals** used by the online Arena and Star Circuit rooms. They are forward
+compatible with no protocol bump: a build that predates them clamps `emoteId` at its own ceiling of 5
+**at receipt** and drops 6 and 7 silently, with no strike, so mixed rooms interoperate and an older host
+simply never shows a tally. The frame has no on/off byte, so each signal **toggles** the sender's vote;
+the host's tally is authoritative and its `EMOTEB` echo (which also reaches the sender) confirms the
+toggle to every client. A signal never draws a bubble and never touches `emoteId`/`emoteSeq` in
+presence. Signals have their own host-side token bucket (burst 3, refill 1 per second) so bubble
+spam cannot eat a vote and vote spam cannot eat a bubble; over-rate is dropped without a strike. A
+receiver treats ids above 7 exactly as before: dropped at receipt, no strike. Ids 8 and up remain
+reserved for further forward-compatible signals or phrases.
+
+Receipt rules a conforming host/guest MUST honor: `emoteId` is clamped to `0–7` **at receipt**
+(out-of-range is dropped, not just unrendered; an older build's ceiling is 5); EMOTE is per-key rate-limited; the broadcast
 `P` is taken from the sender's authenticated roster row, never from the payload; ROUND is
 rejected unless it passes the control-envelope gate (matching room id + current host epoch,
 non-replayed seq); a guest that emits any host→all opcode (`EMOTEB`/`ROUND`/roster/snap/`BYE`)

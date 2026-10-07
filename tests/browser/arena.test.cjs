@@ -569,3 +569,96 @@ test('arena thumb layout keeps comfortable targets and the pilot clear across ph
   }
   await capture(page,'arena-thumbs-safe-areas');
 });
+
+test('arena 2 players: join prompt, split keyboard, P1/P2 HUD, results credit and rematch', { timeout: 120000 }, async t => {
+  const { page } = await launch(t);
+  await page.locator('#btnArena').click(); await screen(page, 'lobby');
+  assert.equal(await page.locator('#arenaPlayers1').getAttribute('aria-pressed'), 'true', 'single player is the default');
+  await page.locator('#arenaPlayers2').click();
+  assert.equal(await page.locator('.arena-launch').isDisabled(), true, 'launch waits for P2');
+  assert.match(await page.locator('#arenaPlayersNote').innerText(), /P2: press/);
+  await page.keyboard.press('ArrowDown'); // arrows still navigate focus and never join
+  assert.equal(await page.locator('.arena-launch').isDisabled(), true);
+  await page.keyboard.press('Period');
+  assert.equal(await page.locator('.arena-launch').isEnabled(), true, 'P2 joined');
+  assert.match(await page.locator('#arenaPlayersNote').innerText(), /P1 WASD.*P2 arrows/);
+  await capture(page, 'arena-lobby-2p');
+  await page.locator('.arena-launch').click(); await playing(page);
+  const start = await page.evaluate(() => arenaUI.snapshot());
+  assert.deepEqual(start.actors.map(a => a.controller), ['human', 'human']);
+  assert.equal(await page.locator('.arena-root').getAttribute('data-players'), '2');
+  assert.deepEqual(await page.locator('.arena-player-name-text').allInnerTexts(), ['● P1', '■ P2']);
+  assert.match(await page.locator('.arena-player-tag').first().innerText(), /PLAYER 1/);
+  assert.notEqual(await page.locator('.arena-player-card').nth(0).evaluate(n => n.style.getPropertyValue('--fighter')), await page.locator('.arena-player-card').nth(1).evaluate(n => n.style.getPropertyValue('--fighter')));
+  // P1 keys move only P1; P2 arrows move only P2.
+  await page.keyboard.down('d'); await page.waitForTimeout(200); await page.keyboard.up('d');
+  let now = await page.evaluate(() => arenaUI.snapshot());
+  assert.ok(now.actors[0].x > start.actors[0].x + 5, 'D moves P1'); assert.ok(Math.abs(now.actors[1].x - start.actors[1].x) < 1, 'D leaves P2');
+  await page.waitForTimeout(500); const before = await page.evaluate(() => arenaUI.snapshot()); await page.keyboard.down('ArrowLeft'); await page.waitForTimeout(200); await page.keyboard.up('ArrowLeft');
+  now = await page.evaluate(() => arenaUI.snapshot());
+  assert.ok(now.actors[1].x < before.actors[1].x - 5, 'Left moves P2'); assert.ok(Math.abs(now.actors[0].x - before.actors[0].x) < 1, 'Left leaves P1');
+  await page.keyboard.press('ArrowUp'); await page.waitForFunction(() => arenaUI.snapshot().actors[1].vy < -2);
+  await page.keyboard.press('Period'); await page.waitForFunction(() => arenaUI.snapshot().actors[1].attackSerial > 0);
+  assert.equal((await page.evaluate(() => arenaUI.snapshot())).actors[0].attackSerial, 0, 'P2 pulse is not P1');
+  await capture(page, 'arena-match-2p');
+  // Pause, restart (rematch path) keeps both humans.
+  await pause(page);
+  await page.getByRole('button', { name: 'Restart match', exact: true }).click(); await playing(page);
+  assert.deepEqual((await page.evaluate(() => arenaUI.snapshot())).actors.map(a => a.controller), ['human', 'human']);
+  // P1 walks off the stage until out, so P2 wins a real match.
+  await page.keyboard.down('a');
+  await page.locator('.arena-root[data-screen="results"]').waitFor({ timeout: 90000 });
+  await page.keyboard.up('a');
+  assert.equal(await page.locator('#arena-result-title').innerText(), 'P2 wins!');
+  assert.deepEqual(await page.locator('.arena-result-row strong').allInnerTexts(), ['● P1', '■ P2']);
+  await page.getByRole('button', { name: 'Rematch', exact: true }).click();
+  assert.equal(await page.evaluate(() => arenaUI.snapshot().phase), 'countdown');
+  assert.deepEqual((await page.evaluate(() => arenaUI.snapshot())).actors.map(a => a.controller), ['human', 'human'], 'rematch keeps 2P');
+  // Back to one player: a normal CPU duel.
+  await pause(page); await page.getByRole('button', { name: 'Choose a match', exact: true }).click(); await screen(page, 'lobby');
+  await page.locator('#arenaPlayers1').click();
+  assert.equal(await page.locator('.arena-launch').isEnabled(), true);
+  await page.locator('.arena-launch').click(); await playing(page);
+  assert.deepEqual((await page.evaluate(() => arenaUI.snapshot())).actors.map(a => a.controller), ['human', 'cpu']);
+  assert.equal(await page.locator('.arena-root').getAttribute('data-players'), '1');
+});
+
+test('arena 2 players: team-up pairs P1+P2, and a lone controller joins as P2', { timeout: 60000 }, async t => {
+  const { page } = await launch(t);
+  await page.evaluate(() => {
+    window.testPad = { connected: true, mapping: 'standard', index: 0, id: 'Standard test controller', axes: [0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [window.testPad] });
+  });
+  await page.locator('#btnArena').click(); await screen(page, 'lobby');
+  await page.locator('.arena-format-card[data-format="teams"]').click();
+  await page.locator('#arenaPlayers2').click();
+  assert.match(await page.locator('.arena-format-card[data-format="teams"] small').innerText(), /P1 \+ P2 vs 2 CPU/);
+  await page.waitForTimeout(100);
+  await page.evaluate(() => { window.testPad.buttons[0].pressed = true; });
+  await page.waitForFunction(() => !document.querySelector('.arena-launch').disabled);
+  await page.evaluate(() => { window.testPad.buttons[0].pressed = false; });
+  assert.match(await page.locator('#arenaPlayersNote').innerText(), /P2 your controller/);
+  await page.locator('.arena-launch').click(); await playing(page);
+  const snap = await page.evaluate(() => arenaUI.snapshot());
+  assert.deepEqual(snap.actors.map(a => [a.controller, a.team]), [['human', 0], ['human', 0], ['cpu', 1], ['cpu', 1]]);
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { window.testPad.axes[0] = .9; });
+  await page.waitForFunction(x => arenaUI.snapshot().actors[1].x > x + 5, snap.actors[1].x);
+  assert.ok(Math.abs((await page.evaluate(() => arenaUI.snapshot().actors[0].x)) - snap.actors[0].x) < 8, 'the lone pad does not move P1');
+});
+
+test('arena 2 players is not offered on a touch-only phone without two controllers', { timeout: 40000 }, async t => {
+  const { page } = await launch(t, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  await page.locator('#btnArena').tap(); await screen(page, 'lobby');
+  assert.equal(await page.locator('.arena-players-group').isHidden(), true, 'no 2 Players option on touch alone');
+  await page.locator('.arena-controls-help summary').tap();
+  assert.match(await page.locator('.arena-help-grid').innerText(), /2 PLAYERS[^]*hidden on touch-only devices/);
+  await page.evaluate(() => {
+    const pad = i => ({ connected: true, mapping: 'standard', index: i, id: 'Standard test controller', axes: [0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) });
+    Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad(0), pad(1)] });
+  });
+  await page.waitForFunction(() => !document.querySelector('.arena-players-group').hidden);
+  assert.match(await page.locator('#arenaPlayersNote').innerText(), /keyboard, or controllers/);
+  await page.locator('#arenaPlayers2').tap();
+  assert.match(await page.locator('#arenaPlayersNote').innerText(), /P2: press/);
+});

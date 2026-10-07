@@ -41,7 +41,11 @@
   // keepalive that spots a dead socket in seconds instead of the relay's 90 s liveness.
   const A_PING = 0x1a, A_PONG = 0x1b;
   const KILL_REACH = 1800;   // px: a kill is only believed within this of the reporter's own last position
-  const EMOTE_MAX = 5;                     // shipped emote id ceiling (clamp 0..5 at RECEIPT)
+  const EMOTE_MAX = 5;                     // shipped bubble-emote ceiling (ids 0..5 draw a glyph)
+  // Lobby signals ride the same EMOTE/EMOTEB frames as forward-compatible ids: 6 = AGAIN? (rematch vote),
+  // 7 = READY. A build that predates them clamps at its own EMOTE_MAX = 5 AT RECEIPT and drops these
+  // silently (no strike), so mixed rooms interoperate; they just never see tallies. Signals never draw a bubble.
+  const SIGNAL_AGAIN = 6, SIGNAL_READY = 7, SIGNAL_MAX = 7;
   // Frame-type space partition (Addendum D headroom): 0x00-0x3F core (specced),
   // 0x40-0x7F reserved for future standard extensions (records/social, and the
   // M2 mobility move/handoff/migrate frames), 0x80-0xFF experimental/private.
@@ -1286,7 +1290,7 @@
   // EMOTE (0x06 G→H) — body {emoteId u8, seq u8}. EMOTEB (0x16 H→all) — body
   // {P u8, emoteId u8, seq u8}. The guest's seq is advisory; the host stamps a
   // monotonic per-sender seq into EMOTEB so the renderer detects a fresh bubble
-  // without any clear-state handshake. emoteId is validated (clamp 0..5) by the
+  // without any clear-state handshake. emoteId is validated (clamp 0..7; 6-7 are lobby signals) by the
   // host at RECEIPT, not merely at render.
   function encEmote(s, emoteId, seq) { const u = s.u8; u[0] = A_EMOTE; u[1] = emoteId & 0xff; u[2] = seq & 0xff; return u.subarray(0, 3); }
   function decEmote(pt) { return pt.length < 3 ? null : { emoteId: pt[1], seq: pt[2] }; }
@@ -1813,10 +1817,22 @@
       if (pt[0] === A_EMOTE) {                                   // guest emote (spectators MAY emote, §4.6/Addendum A)
         const em = decEmote(pt);
         if (!em) return;
-        if (em.emoteId > EMOTE_MAX) return;                     // clamp 0..5 AT RECEIPT: out-of-range dropped (no strike)
+        if (em.emoteId > SIGNAL_MAX) return;                    // clamp 0..7 AT RECEIPT: out-of-range dropped (no strike)
+        const te = performance.now();
+        if (em.emoteId > EMOTE_MAX) {
+          // Lobby signal (6 AGAIN?, 7 READY): its own bucket (burst 3, refill 1 per s) so bubble spam
+          // never eats a vote. Over-rate → drop, no strike. Never touches the bubble state.
+          row.sigBucket = Math.min(3, (row.sigBucket === undefined ? 3 : row.sigBucket) + (te - (row.sigBucketT || te)) / 1000);
+          row.sigBucketT = te;
+          if (row.sigBucket < 1) return;
+          row.sigBucket -= 1;
+          row.sigSeq = (row.sigSeq | 0) + 1;
+          broadcastEmoteB(row.p, em.emoteId, row.sigSeq).catch(() => {});
+          S.ev.emit('emote', { p: row.p, id: em.emoteId, seq: row.sigSeq });
+          return;
+        }
         // EMOTE token bucket: burst 3, refill 1 per 2s. Over-rate → drop, NO
         // strike (mashing is human, §3.4). Bucket seeded full at admit.
-        const te = performance.now();
         row.emoteBucket = Math.min(3, row.emoteBucket + (te - row.emoteBucketT) / 2000);
         row.emoteBucketT = te;
         if (row.emoteBucket < 1) return;
@@ -2447,7 +2463,7 @@
     S.sendKill = (id) => { if (arcadeMode(S)) return; acceptKill(1, S.runId, id >>> 0, null); };
     S.sendEmote = (id) => {
       const e = id | 0;
-      if (e < 0 || e > EMOTE_MAX) return;
+      if (e < 0 || e > SIGNAL_MAX) return;
       S.selfEmoteSeq = (S.selfEmoteSeq + 1) & 0xffff;
       broadcastEmoteB(1, e, S.selfEmoteSeq).catch(() => {});
     };
@@ -2816,7 +2832,8 @@
       }
       if (pt[0] === A_EMOTEB) {                                  // host emote fan-out → this peer's bubble
         const eb = decEmoteB(pt);
-        if (!eb || eb.emoteId > EMOTE_MAX) return;               // ignore out-of-range (defense in depth; host already clamped)
+        if (!eb || eb.emoteId > SIGNAL_MAX) return;              // ignore out-of-range (defense in depth; host already clamped)
+        if (eb.emoteId > EMOTE_MAX) { S.ev.emit('emote', { p: eb.p, id: eb.emoteId, seq: eb.seq }); return; }   // lobby signal: event only, no bubble
         let peer = S.peers.get(eb.p);
         if (!peer) { peer = { p: eb.p }; S.peers.set(eb.p, peer); }
         peer.emoteId = eb.emoteId; peer.emoteSeq = eb.seq;       // presence() surfaces {emoteId,emoteSeq} to the renderer
@@ -2937,7 +2954,7 @@
     S.sendEmote = async (id) => {
       if (!S.welcomed || !S.relay || S.relay.state !== 'established' || S.byed != null) return;
       const e = id | 0;
-      if (e < 0 || e > EMOTE_MAX) return;
+      if (e < 0 || e > SIGNAL_MAX) return;
       S.emoteSeq = (S.emoteSeq + 1) & 0xff;
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, encEmote(S.out, e, S.emoteSeq)));
     };
@@ -3222,6 +3239,14 @@
       if (session && session.sendEmote) { try { session.sendEmote(e); } catch (x) {} }
       return e;
     },
+    // Lobby signal (6 AGAIN?, 7 READY): same frames as emote(), no bubble and no local echo — callers
+    // tally their own vote. Returns the id sent, or undefined when it is not a signal id.
+    signal(id) {
+      const e = id | 0;
+      if (e !== SIGNAL_AGAIN && e !== SIGNAL_READY) return;
+      if (session && session.sendEmote) { try { const r = session.sendEmote(e); if (r && r.catch) r.catch(() => {}); } catch (x) {} }
+      return e;
+    },
 
     // Roles (Addendum A). Host sits out via setRole; a guest requests via the
     // rate-limited role frame. spectator=1, player=0.
@@ -3463,7 +3488,7 @@
       block: { hideKey, unhideKey, blockKey, unblockKey, droppedKeys, blocklist, BLOCK_CAP },
       roster: { encRoster, decRoster, ROSTER_ENTRY, ROSTER_MAX },
       role: { encRole, decRole },
-      emote: { encEmote, decEmote, encEmoteB, decEmoteB, EMOTE_MAX, A_EMOTE, A_EMOTEB },
+      emote: { encEmote, decEmote, encEmoteB, decEmoteB, EMOTE_MAX, SIGNAL_MAX, SIGNAL_AGAIN, SIGNAL_READY, A_EMOTE, A_EMOTEB },
       kill: { encKill, decKill, encKillB, decKillB, encKills, decKills, A_KILL, A_KILLB, A_KILLS, KILL_REACH, KILLS_MAX },
       bye: { encBye, decBye, A_BYE },
       round: { encRoundBody, decRoundBody, A_ROUND },

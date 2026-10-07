@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const source=fs.readFileSync(require.resolve('../src/arena-ui.js'),'utf8');
 function view(actors,{format='free',local=null,id=1}={}){
- const context=vm.createContext({state:{actors,format},onlineActive:()=>true,localActor:()=>local,spectatorId:id,camera:{initialized:true},watchName:{textContent:''}});
+ const context=vm.createContext({local2:null,state:{actors,format},onlineActive:()=>true,localActor:()=>local,spectatorId:id,camera:{initialized:true},watchName:{textContent:''}});
  vm.runInContext(source.slice(source.indexOf('    function watchCandidates()'),source.indexOf('    function resetRoomPresentation()'))+source.slice(source.indexOf('    function watchedActor()'),source.indexOf('    function updateCamera(')),context);
  return context;
 }

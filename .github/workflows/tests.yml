@@ -64,6 +64,10 @@ jobs:
         run: npm run test:arena-online
         env:
           SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/arena-screenshots
+      - name: Check online lobby Ready, Rematch votes and last-room rejoin with simulated relay
+        run: node --test arena-social.test.cjs
+        env:
+          SPACE_MAN_ARENA_SCREENSHOTS: ${{ runner.temp }}/arena-screenshots
       - name: Keep arena browser screenshots for review
         if: always()
         uses: actions/upload-artifact@v4

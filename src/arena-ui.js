@@ -13,6 +13,26 @@
     { id: 'teams', name: 'Team up', tag: '2 vs 2 · CPU ALLY', detail: 'You and a wingmate take on two.', icon: '◉◉ : ◉◉' },
   ];
   const PLAYER_COLORS = ['#38E1FF', '#FFB454', '#B99AFF', '#8AECAB'];
+  // Same-device couch play. Keys are KeyboardEvent.code values, so a layout or
+  // IME never moves a binding. The two sets share no key, so both pilots can
+  // play on one keyboard. Left Shift / Right Shift keep dash on each pilot's own side.
+  const LOCAL_KEYS = Object.freeze({
+    1: Object.freeze({ KeyA: 'left', KeyD: 'right', KeyW: 'jump', Space: 'jump', KeyS: 'down', KeyF: 'fire', KeyG: 'dash', ShiftLeft: 'dash' }),
+    2: Object.freeze({ ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'jump', ArrowDown: 'down', Period: 'fire', Numpad1: 'fire', Slash: 'dash', Numpad2: 'dash', ShiftRight: 'dash' }),
+  });
+  // Joining uses P2's action keys only: arrows keep moving menu focus.
+  // Right Shift stays a P2 dash key but never joins: Shift+Tab must keep moving focus.
+  const P2_JOIN_KEYS = Object.freeze(['Period', 'Numpad1', 'Slash', 'Numpad2']);
+  // Colour-blind safe pair (cyan / vermilion) plus a distinct shape per fighter.
+  const LOCAL_COLORS = Object.freeze(['#38E1FF', '#FF7A45', '#B99AFF', '#8AECAB']);
+  const LOCAL_GLYPHS = Object.freeze(['●', '■', '▲', '◆']);
+  const TWO_TAGS = Object.freeze(['P1 vs P2', 'P1 + P2 + 2 CPU', 'P1 + P2 vs 2 CPU']);
+  // Pad 1 drives P1 and pad 2 drives P2. A single pad goes to P2 so that P1
+  // keeps the keyboard. Input is the indices of connected standard pads.
+  function assignPads(indices) {
+    const list = Array.from(indices).sort((a, b) => a - b);
+    return list.length >= 2 ? { p1: list[0], p2: list[1] } : list.length === 1 ? { p1: null, p2: list[0] } : { p1: null, p2: null };
+  }
   function rounded(ctx, x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
     ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
@@ -219,6 +239,19 @@
 .arena-root[data-lefty=true] .arena-touch-actions{left:calc(var(--arena-safe-left) + 24px)}
 }
 `;
+  const TWO_STYLES = `
+.arena-pcount{min-height:34px;border-color:transparent;border-radius:6px;background:transparent;font:600 11px/1.2 system-ui,sans-serif;padding:7px 13px;color:#7F9BB5}
+.arena-pcount[aria-pressed=true]{background:#20354C;color:#DEF0FF;border-color:#3D5870}
+@media(max-width:650px){.arena-pcount{font:650 12px/1.2 system-ui,sans-serif;padding:8px 11px;min-height:44px}}
+.arena-players-note{font:500 11px/1.5 system-ui,sans-serif;color:#9FBBD2;margin:8px 0 0}
+.arena-players-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.arena-players-group[hidden]{display:none!important}
+.arena-join{min-height:44px;padding:8px 14px;font-size:12px}
+.arena-join[hidden]{display:none!important}
+.arena-root[data-players="2"] .arena-abilities{display:none}
+.arena-root[data-players="2"] .arena-control-hint{word-spacing:0;white-space:pre-line;max-width:none}
+.arena-player-card[data-local=true] .arena-player-name-text{font-weight:800}
+`;
   const ONLINE_STYLES = `
 .arena-online-panel{margin:18px 0 0;padding:18px;border:1px solid #36526d;border-radius:18px;background:#071527cc;color:#dcefff}
 .arena-online-panel .arena-local-note{display:block;max-width:none;text-align:left}
@@ -228,11 +261,21 @@
 .arena-room-input{box-sizing:border-box;min-width:0;width:100%;padding:14px;border:1px solid #36526d;border-radius:10px;background:#050b1a;color:#e8f5ff;font:16px system-ui}
 .arena-room-code{font:700 18px system-ui;letter-spacing:.08em;color:#9ff1ff}.arena-room-members{margin:0;padding-left:22px;font:12px/1.8 system-ui;color:#bfd4e8}
 .arena-room-qr{width:200px;height:200px;margin-top:12px;border-radius:10px}.arena-room-qr-details summary{cursor:pointer;font:13px system-ui;min-height:36px;line-height:36px}
+.arena-ready-row{display:grid;gap:8px}.arena-ready-row[hidden],.arena-ready-row>[hidden]{display:none!important}.arena-auto-label{display:flex;gap:8px;align-items:center;font:13px system-ui;min-height:44px}.arena-auto-label input{width:22px;height:22px;flex:none}.arena-vote-note:empty{display:none}.arena-vote-note{margin:0;font:13px/1.5 system-ui;color:#bfd4e8}
 .arena-watch-tools{position:absolute;z-index:6;bottom:calc(var(--arena-safe-bottom) + 22px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px;background:#071527ed;border:1px solid #36526d;border-radius:14px;max-width:calc(100% - 24px)}
 .arena-watch-tools span{font:700 10px system-ui;text-align:center;min-width:110px}.arena-root button:disabled{opacity:.48;cursor:default}
 `;
   function create(options) {
     const opts = options || {};
+    let roomReady, roomReadyRow, roomAutoLabel, roomAuto, roomVotes, roomAutoCancel, roomRejoin, againNote, againCancel, lastVoteNote = '';
+    const social = () => root.SpaceManRoomSocial;
+    const lastRoomEntry = () => opts.lastRoom && opts.lastRoom.load('arena');
+    function paintRejoin() {
+      if (!roomRejoin) return;
+      const r = social() && lastRoomEntry(), idle = !(roomStatus && (roomStatus.active || roomStatus.busy));
+      roomRejoin.hidden = !(r && idle);
+      if (r) roomRejoin.textContent = 'Rejoin ' + social().lastRoomText(r);
+    }
     let active = false, built = false, destroyed = false, rootEl, canvas, ctx, modal, lobby, pausePanel, resultPanel;
     let live, timerEl, rosterEl, statusEl, statusSub, matchTitle, touchEl, stickZone, stickBase, stickKnob, pulseButton, dashButton;
     let pulseMeter, dashMeter, countdownEl, pauseButton, launchButton, resultTitle, resultText, resultRoster;
@@ -252,6 +295,8 @@
     const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, koPoint: null, flash: {}, land: {}, lastLand: -1 };
     function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, koPoint: null, flash: {}, land: {} }); }
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
+    // Couch play. local2 exists only while a same-device 2P match is loaded.
+    let local2 = null, playerCount = 1, p2Joined = false, joinPadPrev = false, lobbyTick = 0, playersGroup, playerButtons = [], playersNote, joinButton, legendEl;
     let touchEdges = { jump: false, attack: false, dash: false }, recoveryTap = null, clearRecoveryClick = null;
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
     let audio = null, audioGain = null, lastSfx = -999, lastFar = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
@@ -314,7 +359,40 @@
       const a = selectedArena();
       if (stageDescription) stageDescription.textContent = a.description;
       if (launchButton) launchButton.textContent = 'Launch ' + (selections.format === 'teams' ? 'team match' : selections.format === 'ffa' ? 'free-for-all' : 'duel') + '  ↗';
-      syncRoomChoices();
+      syncRoomChoices(); syncPlayers();
+    }
+    function padList() {
+      try { const g = root.navigator.getGamepads && root.navigator.getGamepads(); return g ? Array.from(g).filter(q => q && q.connected && q.mapping === 'standard') : []; } catch (_) { return []; }
+    }
+    // Couch play is local only: an online room, an expedition fight or a
+    // touch-only device without two controllers never offers it.
+    // syncPlayers polls while the lobby is open; only touch the DOM on change so the
+    // polite live region and the focused launch button are not re-announced.
+    function setText(node, value) { if (node.textContent !== value) node.textContent = value; }
+    function setAttr(node, name, value) { if (node.getAttribute(name) !== value) node.setAttribute(name, value); }
+    function syncPlayers() {
+      if (!playersGroup) return;
+      const standalone = !onlineActive() && !localSession && !sharedSession, pads = padList(), ok = !usingTouch || pads.length >= 2;
+      // A touch-only device with fewer than two controllers cannot seat two
+      // pilots, so the option stays out of the compact setup (see How to play).
+      playersGroup.hidden = !standalone || !ok;
+      if (!standalone || !ok) { playerCount = 1; p2Joined = false; return; }
+      const two = playerCount === 2, assign = assignPads(pads.map(q => q.index));
+      playerButtons.forEach(b => setAttr(b, 'aria-pressed', String(Number(b.dataset.players) === playerCount)));
+      joinButton.hidden = !two || p2Joined;
+      const p1Device = assign.p1 !== null ? 'controller 1' : 'WASD · F pulse · G dash', p2Device = assign.p2 !== null ? (pads.length >= 2 ? 'controller 2' : 'your controller') + ' or arrows · . pulse · / dash' : 'arrows · . pulse · / dash';
+      setText(playersNote, !two ? 'Share one screen: versus, free-for-all or team-up. Uses the keyboard, or controllers.'
+        : !p2Joined ? 'P2: press . or / on the keyboard (or A on a controller) to join.'
+        : 'P1 ' + p1Device + '  ·  P2 ' + p2Device);
+      if (!onlineActive()) formatButtons.forEach((b, i) => { const tag = b.querySelector('small'); if (tag) setText(tag, two ? TWO_TAGS[i] : FORMATS[i].tag); });
+      if (!launchButton || onlineActive()) return;
+      if (two) { launchButton.disabled = !p2Joined || !!(room && room.busy); setText(launchButton, !p2Joined ? 'Waiting for P2 to join…' : 'Launch 2P ' + (selections.format === 'teams' ? 'team-up' : selections.format === 'ffa' ? 'free-for-all' : 'duel') + '  ↗'); }
+      else launchButton.disabled = !!(room && room.busy);
+    }
+    function setPlayers(n) { playerCount = n; if (n === 1) p2Joined = false; joinPadPrev = true; syncChoices(); }
+    function joinP2() {
+      if (playerCount !== 2 || p2Joined) return;
+      p2Joined = true; syncChoices(); announce('Player 2 joined.'); if (launchButton) launchButton.focus({ preventScroll: true });
     }
     function updatePrefs() {
       currentPrefs = getSettings();
@@ -363,6 +441,7 @@
       actionBuffer?.reset();
       if (onlineActive()) room.release();
       held.clear(); jumpEdge = attackEdge = dashEdge = false; pad = { moveX: 0, moveY: 0, jump: false }; padNeedsNeutral = true;
+      if (local2) resetLocal2();
       resetTouchInput();
     }
     function ownsInput() {
@@ -377,6 +456,7 @@
       const i = nodes.indexOf(document.activeElement), next = i < 0 ? (direction < 0 ? nodes.length - 1 : 0) : (i + direction + nodes.length) % nodes.length; nodes[next].focus({ preventScroll: false });
     }
     function actionForKey(e) {
+      if (local2) return LOCAL_KEYS[1][e.code] || null; // Couch play ignores remaps so the two sets can never collide.
       const key = (e.key || '').toLowerCase(), bindings = currentPrefs.keys || {};
       for (const action of ['left', 'right', 'jump', 'fire']) if (bindings[action] === key) return action;
       return ({ ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'jump', KeyW: 'jump', Space: 'jump', ArrowDown: 'down', KeyS: 'down', KeyF: 'fire', KeyJ: 'fire', ShiftLeft: 'dash', ShiftRight: 'dash', KeyK: 'dash' })[e.code] || null;
@@ -390,11 +470,26 @@
       if (e.code === 'Tab') { e.preventDefault(); if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; } if (!activeModal && isMatch()) return; /* Tab never pauses a live match (Esc does) */ focusStep(e.shiftKey ? -1 : 1); return; }
       if (activeModal) {
         if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) { if (e.key === 'Enter' && e.target === roomInput) { e.preventDefault(); roomJoin.click(); } return; }
+        if (playerCount === 2 && !p2Joined && activeModal === lobby && P2_JOIN_KEYS.includes(e.code)) { e.preventDefault(); if (!e.repeat) joinP2(); return; }
         if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); if (!e.repeat && document.activeElement && activeModal.contains(document.activeElement)) document.activeElement.click(); }
         else if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.code)) { e.preventDefault(); focusStep(e.code === 'ArrowDown' || e.code === 'ArrowRight' ? 1 : -1); }
         return;
       }
       if (onlineActive() && !canControl() && ['ArrowLeft','ArrowRight'].includes(e.code)) { e.preventDefault(); if (!e.repeat) cycleWatch(e.code === 'ArrowLeft' ? -1 : 1); return; }
+      if (local2) {
+        const action2 = LOCAL_KEYS[2][e.code];
+        if (action2) {
+          e.preventDefault();
+          if (e.repeat && !local2.held.has(e.code)) return;
+          if (!local2.held.has(e.code) && !e.repeat) {
+            if (action2 === 'jump') local2.jumpEdge = true;
+            if (action2 === 'fire') local2.attackEdge = true;
+            if (action2 === 'dash') local2.dashEdge = true;
+          }
+          local2.held.set(e.code, action2);
+          return;
+        }
+      }
       const action = actionForKey(e);
       if (action) {
         e.preventDefault();
@@ -407,7 +502,11 @@
         held.set(e.code, action);
       }
     }
-    function onKeyUp(e) { if (!ownsInput()) return; e.stopImmediatePropagation(); if (actionForKey(e)) e.preventDefault(); held.delete(e.code); }
+    function onKeyUp(e) {
+      if (!ownsInput()) return; e.stopImmediatePropagation();
+      if (local2 && LOCAL_KEYS[2][e.code]) { e.preventDefault(); local2.held.delete(e.code); return; }
+      if (actionForKey(e)) e.preventDefault(); held.delete(e.code);
+    }
     function escapeAction() {
       if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; }
       resetInput();
@@ -468,7 +567,10 @@
       if (!ownsInput()) return;
       let pads;
       try { pads = root.navigator.getGamepads && root.navigator.getGamepads(); } catch (_) { return; }
-      const p = pads && Array.from(pads).find(p => p && p.connected && p.mapping === 'standard');
+      const list = pads ? Array.from(pads).filter(q => q && q.connected && q.mapping === 'standard') : [];
+      if (local2 && !activeModal) { pollLocalPads(list); return; }
+      const swallow = playerCount === 2 && lobbyJoinPoll(list);
+      const p = list[0];
       if (!p) { if (lastPadId !== null) { pad = { moveX: 0, moveY: 0, jump: false }; padPrevious = {}; padNeedsNeutral = true; lastPadId = null; } return; }
       if (p.index !== lastPadId) { padNeedsNeutral = true; padPrevious = {}; lastPadId = p.index; }
       const b = i => !!(p.buttons[i] && (p.buttons[i].pressed || p.buttons[i].value > .55));
@@ -480,10 +582,56 @@
       if (edge('pause')) { escapeAction(); padPrevious = raw; return; }
       if (activeModal) {
         if (edge('down') || edge('right')) focusStep(1); else if (edge('up') || edge('left')) focusStep(-1);
-        if (edge('jump') && document.activeElement && activeModal.contains(document.activeElement)) document.activeElement.click();
+        if (edge('jump') && document.activeElement && activeModal.contains(document.activeElement)) { if (!swallow) document.activeElement.click(); }
         else if (edge('dash')) escapeAction();
       } else { pad.moveX = x; pad.moveY = y; pad.jump = raw.jump; pad.attack = raw.attack; if (edge('jump')) jumpEdge = true; if (edge('attack')) attackEdge = true; if (edge('dash')) dashEdge = true; }
       padPrevious = raw;
+    }
+    function readPad(p) {
+      const b = i => !!(p.buttons[i] && (p.buttons[i].pressed || p.buttons[i].value > .55));
+      const raw = { jump: b(0), attack: b(2), dash: b(1) || b(6) || b(7), pause: b(9), up: b(12) || p.axes[1] < -.65, down: b(13) || p.axes[1] > .65, left: b(14) || p.axes[0] < -.65, right: b(15) || p.axes[0] > .65 };
+      return { raw, x: b(14) ? -1 : b(15) ? 1 : (Math.abs(p.axes[0] || 0) > .19 ? p.axes[0] : 0), y: b(12) ? -1 : b(13) ? 1 : (Math.abs(p.axes[1] || 0) > .19 ? p.axes[1] : 0), a: b(0) };
+    }
+    const emptyPad = () => ({ moveX: 0, moveY: 0, jump: false, attack: false });
+    const makeSlot = () => ({ pad: emptyPad(), prev: {}, neutral: true, id: null });
+    function makeLocal2() { return { held: new Map(), jumpEdge: false, attackEdge: false, dashEdge: false, buffer: arena.createActionBuffer(), slots: [makeSlot(), makeSlot()] }; }
+    function resetLocal2() {
+      local2.held.clear(); local2.jumpEdge = local2.attackEdge = local2.dashEdge = false; local2.buffer.reset();
+      for (const slot of local2.slots) { slot.pad = emptyPad(); slot.prev = {}; slot.neutral = true; }
+    }
+    // One pad slot per pilot. Returns true when that pad pressed Menu.
+    function padSlot(p, slot, edges) {
+      if (!p) { if (slot.id !== null) { slot.pad = emptyPad(); slot.prev = {}; slot.neutral = true; slot.id = null; } return false; }
+      if (p.index !== slot.id) { slot.neutral = true; slot.prev = {}; slot.id = p.index; }
+      const r = readPad(p);
+      if (slot.neutral) { slot.prev = r.raw; if (!Object.values(r.raw).some(Boolean) && !r.x && !r.y) slot.neutral = false; return false; }
+      const edge = key => r.raw[key] && !slot.prev[key];
+      slot.pad = { moveX: r.x, moveY: r.y, jump: r.raw.jump, attack: r.raw.attack };
+      if (edge('jump')) edges.jump(); if (edge('attack')) edges.attack(); if (edge('dash')) edges.dash();
+      const pause = edge('pause'); slot.prev = r.raw; return pause;
+    }
+    function pollLocalPads(list) {
+      const map = assignPads(list.map(q => q.index)), byIndex = i => i === null ? null : list.find(q => q.index === i) || null;
+      const pause1 = padSlot(byIndex(map.p1), local2.slots[0], { jump() { jumpEdge = true; }, attack() { attackEdge = true; }, dash() { dashEdge = true; } });
+      const pause2 = padSlot(byIndex(map.p2), local2.slots[1], { jump() { local2.jumpEdge = true; }, attack() { local2.attackEdge = true; }, dash() { local2.dashEdge = true; } });
+      pad = local2.slots[0].pad;
+      if (pause1 || pause2) escapeAction();
+    }
+    function lobbyJoinPoll(list) {
+      if (activeModal !== lobby || p2Joined) { joinPadPrev = false; return false; }
+      const target = assignPads(list.map(q => q.index)).p2, p = target === null ? null : list.find(q => q.index === target);
+      const down = !!p && readPad(p).a, edge = down && !joinPadPrev; joinPadPrev = down;
+      if (edge) { joinP2(); return true; }
+      return false;
+    }
+    function command2() {
+      if (!ownsInput()) return arena.normalizeCommand();
+      const L = local2, heldAction = action => { for (const value of L.held.values()) if (value === action) return true; return false; }, slot = L.slots[1].pad;
+      const c = { moveX: clamp((heldAction('right') ? 1 : 0) - (heldAction('left') ? 1 : 0) + slot.moveX, -1, 1), moveY: clamp((heldAction('down') ? 1 : 0) - (heldAction('jump') ? 1 : 0) + slot.moveY, -1, 1),
+        jumpPressed: L.jumpEdge, jumpHeld: heldAction('jump') || slot.jump, attackPressed: L.attackEdge, dashPressed: L.dashEdge, attackHeld: heldAction('fire') || !!slot.attack };
+      L.jumpEdge = L.attackEdge = L.dashEdge = false;
+      const actor = state && state.actors.filter(a => a.controller === 'human')[1];
+      return L.buffer.sample(c, actor, state?.tick, isRunning() && state.phase === 'playing', rootEl.dataset.epoch || matchSerial, { nowMs: performance.now(), authoritative: true });
     }
     function command() {
       if (!ownsInput()) return arena.normalizeCommand();
@@ -533,21 +681,57 @@
     }
     function syncRoomChoices() {
       if (!room) return;
-      const online = onlineActive(), busy = room.busy, host = room.isHost;
+      paintRejoin(); const online = onlineActive(), busy = room.busy, host = room.isHost;
       for (const b of [...formatButtons, ...stageButtons, ...difficultyButtons]) b.disabled = busy || (online && !host);
       formatButtons.forEach((b,i) => { const tag = b.querySelector('small'); if (tag) tag.textContent = online ? (i === 0 ? 'UP TO 2 FRIENDS' : i === 1 ? 'UP TO 4 FRIENDS' : '2 vs 2 · PICK TEAMS') : FORMATS[i].tag; });
-      if (online) { const players = roomStatus ? roomStatus.info.players : 1; launchButton.disabled = !host || !!(roomStatus && roomStatus.connection) || (selections.format === 'duel' && players > 2); launchButton.textContent = !host ? 'Waiting for host…' : roomStatus && roomStatus.connection ? 'Reconnecting…' : launchButton.disabled ? 'Choose a four-player match' : 'Start together  ↗'; }
+      const votes = online && roomStatus && roomStatus.active ? roomStatus.votes : null;
+      if (online) { const players = roomStatus ? roomStatus.info.players : 1; launchButton.disabled = !host || !!(roomStatus && roomStatus.connection) || (selections.format === 'duel' && players > 2); launchButton.textContent = !host ? 'Waiting for host…' : roomStatus && roomStatus.connection ? 'Reconnecting…' : launchButton.disabled ? 'Choose a four-player match' : 'Start together  ↗' + (votes && votes.ready.m > 1 ? ' (' + votes.ready.n + '/' + votes.ready.m + ' ready)' : ''); }
       else launchButton.disabled = busy;
       for (const b of [roomHost,roomJoin,roomWatch]) if (b) b.disabled = busy;
       if (roomInput) roomInput.disabled = busy;
+      syncPlayers();
       const note = rootEl.querySelector('.arena-setup > .arena-local-note');
-      if (note) note.textContent = online ? 'Friends share the same hits, lives and result. Empty slots get CPUs.' : 'Just you and the CPUs. Your sound, motion & power settings carry over.';
+      if (note) note.textContent = online ? 'Friends share the same hits, lives and result. Empty slots get CPUs.' : playerCount === 2 ? 'Two pilots, one screen. Rewards are for solo flights. Sound, motion & power settings carry over.' : 'Just you and the CPUs. Your sound, motion & power settings carry over.';
       const rematch = rootEl.querySelector('#arenaRematch'), next = rootEl.querySelector('#arenaNext');
-      if (rematch) { rematch.disabled = online && !host; rematch.textContent = online ? (host ? 'Rematch together' : 'Waiting for host…') : 'Rematch'; }
+      if (rematch) {
+        const seated = !!(roomStatus && roomStatus.info.role === 0), again = votes && votes.again;
+        if (!online) { rematch.disabled = false; rematch.textContent = 'Rematch'; rematch.removeAttribute('aria-pressed'); }
+        else if (host) { rematch.disabled = false; rematch.textContent = 'Rematch together' + (again && again.m > 1 ? ' (' + again.n + '/' + again.m + ' want one)' : ''); rematch.removeAttribute('aria-pressed'); }
+        else if (!seated || !again) { rematch.disabled = true; rematch.textContent = 'Waiting for host…'; rematch.removeAttribute('aria-pressed'); }
+        else { rematch.disabled = !!roomStatus.connection; rematch.setAttribute('aria-disabled', String(again.pending)); rematch.setAttribute('aria-pressed', String(again.mine)); rematch.textContent = again.pending ? 'Telling the host…' : again.mine ? 'Waiting for host… · tap to undo' : 'Rematch?'; }
+      }
+      paintVotes(votes);
       if (next) next.disabled = online && !host;
       const restart = pausePanel && pausePanel.querySelectorAll('button')[1]; if (restart) { restart.disabled = !!sharedSession || (online && !host); restart.hidden = !!sharedSession; }
       const back = rootEl.querySelector('#arenaLobby'); if (back) { back.hidden = !!(localSession || sharedSession); back.textContent = (localSession || sharedSession) ? 'Finish expedition' : online ? (host ? 'Back to room lobby' : 'Leave arena room') : 'Choose a match'; }
       const resume = rootEl.querySelector('#arenaResume'); if (resume) { resume.disabled = (roomPaused && !host) || !!(roomStatus && roomStatus.connection); resume.textContent = roomStatus && roomStatus.connection ? 'Reconnecting…' : roomPaused && !host ? 'Waiting for host…' : 'Resume match'; }
+    }
+    // Ready and rematch surfaces: the lobby ready button + tally, and the results note + countdown cancel.
+    function paintVotes(votes) {
+      if (!roomReady) return;
+      const host = room.isHost, seated = !!(roomStatus && roomStatus.info.role === 0), inLobby = !!(roomStatus && roomStatus.current && roomStatus.current.status === 'lobby');
+      const names = new Map(roomStatus ? roomStatus.roster.map(r => [r.p, r.callsign || 'PLAYER ' + r.p]) : []);
+      const who = ps => ps.map(p => names.get(p) || 'PLAYER ' + p).join(', ');
+      roomReadyRow.hidden = !(votes && seated && inLobby);
+      let note = '', resultNote = '';
+      if (votes) {
+        const r = votes.ready, a = votes.again;
+        roomReady.setAttribute('aria-pressed', String(r.mine)); roomReady.disabled = !!roomStatus.connection; roomReady.setAttribute('aria-disabled', String(r.pending));
+        roomReady.textContent = r.pending ? 'Telling the host…' : r.mine ? 'Ready ✓ · tap to undo' : 'I’m ready';
+        roomAutoLabel.hidden = !host; roomAuto.checked = votes.autoStart;
+        roomAutoCancel.hidden = votes.auto !== 'ready';
+        if (host) note = votes.auto === 'ready' ? 'Everyone is ready. Starting in a few seconds…' : r.m > 1 ? r.n + ' of ' + r.m + ' ready' + (r.missing.length && r.n ? ' · waiting for ' + who(r.missing) : '') : '';
+        else if (r.unconfirmed) note = 'Sent. If the host runs an older version they will not see your ready signal.';
+        else if (r.mine) note = 'You are ready. The host starts the match.';
+        againCancel.hidden = votes.auto !== 'again';
+        if (host) resultNote = votes.auto === 'again' ? 'Everyone wants a rematch. Starting in a few seconds…' : a.m > 1 ? a.n + ' of ' + a.m + ' want a rematch' + (a.missing.length ? ' · waiting for ' + who(a.missing) : '') : '';
+        else if (a.unconfirmed) resultNote = 'Sent. If the host runs an older version they will not see your rematch request.';
+        else if (a.mine) resultNote = 'You asked for a rematch. Waiting for the host.';
+      } else { roomAutoCancel.hidden = true; againCancel.hidden = true; }
+      roomVotes.textContent = note; againNote.textContent = resultNote;
+      const spoken = (inLobby ? note : resultNote) || '';
+      if (spoken && spoken !== lastVoteNote) announce(spoken);
+      lastVoteNote = spoken;
     }
     // Cycling and automatic following share one eligible roster. A respawning
     // fighter must not bounce Next back to the first fighter on the next frame.
@@ -577,12 +761,12 @@
       roomLeave.textContent = status.busy ? 'Cancel connecting' : status.host ? 'Close arena room' : 'Leave arena room';
       roomHint.textContent = status.error || status.closedReason || (status.busy ? 'Connecting to your arena… You can cancel below.' : status.connection || (status.stale ? 'Waiting for host · controls released' : status.active ? (status.host ? 'You host the match. Keep this tab open; stepping away pauses everyone.' : 'The host sets the match. Join during a round to watch until the next lobby.') : 'Up to 4 friends + 4 spectators. Empty fighter slots get CPUs.'));
       if (status.active) {
-        const signature = JSON.stringify([status.roster.map(r => [r.p,r.role,r.callsign]),status.info.role,selections.format,status.current && status.current.status,status.current && status.current.seats.map(s => [s.p,s.actorId])]);
+        const signature = JSON.stringify([status.roster.map(r => [r.p,r.role,r.callsign]),status.info.role,selections.format,status.current && status.current.status,status.current && status.current.seats.map(s => [s.p,s.actorId]),status.votes && status.current && status.current.status === 'lobby' ? status.votes.ready.missing : null]);
         if (signature !== roomSignature) {
           roomSignature = signature; roomMembers.replaceChildren(); const players = status.roster.filter(r => !r.spectator), numbers = players.map(r => r.p);
           for (const r of status.roster) {
             const seat = status.current && status.current.seats.find(s => s.p === r.p), actor = seat && status.current.state.actors.find(a => a.id === seat.actorId), team = actor ? actor.team : numbers.indexOf(r.p) % 2;
-            const row = el('li','',(r.callsign || 'PLAYER ' + r.p) + (r.you ? ' · YOU' : '') + (r.host ? ' · HOST' : '') + (r.spectator ? ' · WATCHING' : selections.format === 'teams' ? (team === 1 ? ' · GOLD △' : ' · BLUE ◇') : ' · PLAYER'));
+            const row = el('li','',(r.callsign || 'PLAYER ' + r.p) + (r.you ? ' · YOU' : '') + (r.host ? ' · HOST' : '') + (r.spectator ? ' · WATCHING' : selections.format === 'teams' ? (team === 1 ? ' · GOLD △' : ' · BLUE ◇') : ' · PLAYER') + (status.votes && status.current && status.current.status === 'lobby' && !r.spectator && !status.votes.ready.missing.includes(r.p) ? ' · READY ✓' : ''));
             if (status.host && !r.spectator && selections.format === 'teams' && status.current && status.current.status === 'lobby') { const b = button('Switch team','arena-text-button',() => room.setTeam(r.p,team === 0 ? 1 : 0)); b.dataset.teamPeer = r.p; row.append(b); }
             roomMembers.append(row);
           }
@@ -625,17 +809,24 @@
       roomDetails = el('details','arena-online-panel'); roomDetails.append(el('summary','','Play with friends · Create, join or watch'));
       roomEntry=el('div','arena-online-entry'); roomHost=button('Create arena room','arena-primary',async()=>{await room.hosting(selections);roomDetails.open=true;});roomHost.id='arenaHost';
       roomInput=el('input','arena-room-input');roomInput.id='arenaRoomInput';roomInput.type='text';roomInput.placeholder=opts.build&&opts.build.preview?'Full invite link from this preview':'Room code or invite link';roomInput.setAttribute('aria-label','Arena room code or invite link');roomInput.autocomplete='off';
-      const joinRow=el('div','arena-online-actions');roomJoin=button('Join arena','',()=>room.join(roomInput.value,0));roomJoin.id='arenaJoin';roomWatch=button('Watch arena','arena-text-button',()=>room.join(roomInput.value,1));roomWatch.id='arenaWatch';joinRow.append(roomJoin,roomWatch);roomEntry.append(roomHost,roomInput,joinRow);
+      const joinRow=el('div','arena-online-actions');roomJoin=button('Join arena','',()=>room.join(roomInput.value,0));roomJoin.id='arenaJoin';roomWatch=button('Watch arena','arena-text-button',()=>room.join(roomInput.value,1));roomWatch.id='arenaWatch';joinRow.append(roomJoin,roomWatch);roomRejoin=button('Rejoin last room','arena-text-button',()=>{const r=lastRoomEntry();if(!r)return;const text=social().lastRoomText(r);roomInput.value=text;room.join(text,0);});roomRejoin.id='arenaRejoin';roomRejoin.hidden=true;roomEntry.append(roomHost,roomInput,joinRow,roomRejoin);
       roomBox=el('div','arena-room-box');roomBox.hidden=true;roomCode=el('strong','arena-room-code');roomMembers=el('ul','arena-room-members');roomMembers.id='arenaRoomMembers';
       roomInvite=el('input','arena-room-input');roomInvite.id='arenaInvite';roomInvite.readOnly=true;roomInvite.setAttribute('aria-label','Arena invite link');
       roomCopy=button('Copy invite link','',async()=>{try{await root.navigator.clipboard.writeText(roomInvite.value);roomHint.textContent='Invite copied. Send it to your friends.';}catch(_){roomInvite.focus();roomInvite.select();roomHint.textContent='Select and copy this invite link.';}});
       roomShare=button('Share','arena-text-button',async()=>{if(root.navigator.share){try{await root.navigator.share({title:'Space Man · Friend Arena',url:roomInvite.value});}catch(_){}}else roomCopy.click();});
       roomQR=el('canvas','arena-room-qr');roomQR.width=roomQR.height=240;roomQR.setAttribute('aria-label','Arena invitation QR code');roomQRDetails=el('details','arena-room-qr-details');roomQRDetails.append(el('summary','','Show invite QR'),roomQR);
       roomRole=button('Watch instead','arena-text-button',async()=>{roomRole.disabled=true;const ok=await room.role(roomStatus.info.role===1?0:1);if(!ok)roomHint.textContent='No seat available yet. Try again from the next lobby.';});roomRole.id='arenaRoomRole';
-      const shareRow=el('div','arena-online-actions');shareRow.append(roomCopy,roomShare,roomRole);roomBox.append(roomCode,roomMembers,roomInvite,shareRow,roomQRDetails);
-      roomHint=el('p','arena-local-note');roomHint.id='arenaRoomHint';roomHint.setAttribute('role','status');roomLeave=button('Leave arena room','arena-text-button',leaveArenaRoom);roomLeave.id='arenaRoomLeave';roomLeave.hidden=true;roomDetails.append(roomEntry,roomBox,roomHint,roomLeave);lobby.append(roomDetails);
+      const shareRow=el('div','arena-online-actions');shareRow.append(roomCopy,roomShare,roomRole);
+      roomReadyRow=el('div','arena-ready-row');roomReadyRow.hidden=true;
+      roomReady=button('I’m ready','',()=>room.vote('ready'));roomReady.id='arenaReady';roomReady.setAttribute('aria-pressed','false');
+      roomAutoLabel=el('label','arena-auto-label');roomAuto=el('input');roomAuto.type='checkbox';roomAuto.checked=true;roomAuto.id='arenaAutoStart';roomAuto.addEventListener('change',()=>room.setAutoStart(roomAuto.checked));roomAutoLabel.append(roomAuto,document.createTextNode('Auto-start when everyone is ready'));
+      roomVotes=el('p','arena-vote-note');roomVotes.id='arenaReadyNote';
+      roomAutoCancel=button('Cancel auto-start','arena-text-button',()=>room.cancelAuto());roomAutoCancel.id='arenaAutoCancel';roomAutoCancel.hidden=true;
+      roomReadyRow.append(roomReady,roomVotes,roomAutoLabel,roomAutoCancel);
+      roomBox.append(roomCode,roomMembers,roomReadyRow,roomInvite,shareRow,roomQRDetails);
+      roomHint=el('p','arena-local-note');roomHint.id='arenaRoomHint';roomHint.setAttribute('role','status');roomLeave=button('Leave arena room','arena-text-button',leaveArenaRoom);roomLeave.id='arenaRoomLeave';roomLeave.hidden=true;roomDetails.append(roomEntry,roomBox,roomHint,roomLeave);roomDetails.addEventListener('toggle',paintRejoin);lobby.append(roomDetails);
       watchTools=el('div','arena-watch-tools');watchTools.hidden=true;const prev=button('←','arena-icon-button',()=>cycleWatch(-1));prev.id='arenaWatchPrevious';prev.setAttribute('aria-label','Watch previous fighter');const next=button('→','arena-icon-button',()=>cycleWatch(1));next.id='arenaWatchNext';next.setAttribute('aria-label','Watch next fighter');watchName=el('span','','WATCHING');watchTools.append(prev,watchName,next);rootEl.append(watchTools);
-      room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,onChange:roomChanged,onSnapshot:networkSnapshot});
+      room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,lastRoom:opts.lastRoom,onAutoStart:()=>{if(room&&room.isHost)startMatch();},canStart:()=>!(selections.format==='duel'&&roomStatus&&roomStatus.info.players>2),onChange:roomChanged,onSnapshot:networkSnapshot});
     }
     function leaveArenaRoom() {
       if (!room) return true;
@@ -648,7 +839,7 @@
       actionBuffer = arena.createActionBuffer();
       if (!arena || !Array.isArray(arena.arenas) || !arena.arenas.length) throw new Error('Arena simulation is not available.');
       loadSelection();
-      rootEl = el('section', 'arena-root'); rootEl.id = 'arenaRoot'; const scopedStyle = el('style'); scopedStyle.textContent = STYLES + ONLINE_STYLES + IDENTITY_STYLES + THUMB_STYLES; rootEl.append(scopedStyle); rootEl.hidden = true; rootEl.setAttribute('aria-label', 'Space Man Orbital Arena'); rootEl.dataset.touch = 'false';
+      rootEl = el('section', 'arena-root'); rootEl.id = 'arenaRoot'; const scopedStyle = el('style'); scopedStyle.textContent = STYLES + TWO_STYLES + ONLINE_STYLES + IDENTITY_STYLES + THUMB_STYLES; rootEl.append(scopedStyle); rootEl.hidden = true; rootEl.setAttribute('aria-label', 'Space Man Orbital Arena'); rootEl.dataset.touch = 'false';
       canvas = el('canvas', 'arena-canvas'); canvas.tabIndex = -1; canvas.setAttribute('aria-label', 'Orbital Arena match. Move with A and D or arrows. Space jumps twice. F pulses. Shift dashes. Escape pauses.');
       ctx = canvas.getContext('2d', { alpha: false }); rootEl.append(canvas);
       const header = el('header', 'arena-hud');
@@ -662,7 +853,7 @@
       const abilities = el('div', 'arena-abilities');
       function ability(name, key) { const n = el('div', 'arena-ability'); n.append(el('span', 'arena-ability-key', key), el('span', 'arena-ability-label', name)); const meter = el('span', 'arena-ability-meter'); n.append(meter); abilities.append(n); return meter; }
       pulseMeter = ability('PULSE', 'F / J'); dashMeter = ability('DASH', '⇧ / K');
-      const legend = el('p', 'arena-control-hint', 'A / D  move    SPACE  double jump'); bottom.append(legend, abilities); rootEl.append(bottom);
+      const legend = el('p', 'arena-control-hint', 'A / D  move    SPACE  double jump'); legendEl = legend; bottom.append(legend, abilities); rootEl.append(bottom);
       touchEl = el('div', 'arena-touch');
       stickZone = el('div', 'arena-stick-zone'); stickZone.dataset.action = 'stick'; stickZone.setAttribute('aria-label', 'Move joystick'); stickBase = el('div', 'arena-stick-base'); stickKnob = el('div', 'arena-stick-knob'); stickBase.append(stickKnob); stickZone.append(stickBase, el('span', 'arena-stick-label', 'MOVE'));
       stickZone.addEventListener('pointerdown', stickDown); stickZone.addEventListener('pointermove', stickMove); stickZone.addEventListener('pointerup', releaseTouch); stickZone.addEventListener('pointercancel', releaseTouch); stickZone.addEventListener('lostpointercapture', releaseTouch);
@@ -692,6 +883,13 @@
         b.append(el('span', 'arena-format-icon', f.icon), label, el('span', 'arena-selected-dot')); b.title = f.detail; formats.append(b); formatButtons.push(b);
       }
       formatGroup.append(formats); setup.append(formatGroup);
+      playersGroup = el('section', 'arena-choice-group arena-players-group'); playersGroup.setAttribute('aria-labelledby', 'arena-players-label');
+      const playersLabel = el('h2', 'arena-section-label', 'PLAYERS'); playersLabel.id = 'arena-players-label';
+      const playersRow = el('div', 'arena-players-row'), playersSeg = el('div', 'arena-segmented'); playersSeg.setAttribute('role', 'group'); playersSeg.setAttribute('aria-label', 'Number of players');
+      for (const n of [1, 2]) { const b = button(n === 1 ? '1 Player' : '2 Players', 'arena-pcount', () => setPlayers(n)); b.dataset.players = String(n); b.id = 'arenaPlayers' + n; playerButtons.push(b); playersSeg.append(b); }
+      joinButton = button('Join as P2', 'arena-join', joinP2); joinButton.id = 'arenaJoinP2'; joinButton.hidden = true;
+      playersNote = el('p', 'arena-players-note'); playersNote.id = 'arenaPlayersNote'; playersNote.setAttribute('aria-live', 'polite');
+      playersRow.append(playersSeg, joinButton); playersGroup.append(playersLabel, playersRow, playersNote); setup.append(playersGroup);
       const stageGroup = el('section', 'arena-choice-group'); stageGroup.setAttribute('aria-labelledby', 'arena-stage-label'); const stageLabel = el('h2', 'arena-section-label', '02 / CHOOSE YOUR ORBIT'); stageLabel.id = 'arena-stage-label'; stageGroup.append(stageLabel);
       const stages = el('div', 'arena-stage-cards');
       for (let i = 0; i < arena.arenas.length; i++) {
@@ -709,7 +907,7 @@
       setup.append(el('p', 'arena-local-note', 'Just you and the CPUs. Your sound, motion & power settings carry over.'));
       lobbyGrid.append(intro, setup);
       const controls = el('details', 'arena-controls-help'); const summary = el('summary', '', 'How to play · keyboard, controller & touch'); const help = el('div', 'arena-help-grid');
-      help.append(el('p', '', 'KEYBOARD · A/D or ←/→ move. Space/W/↑ jumps twice. F/J pulses. Shift/K dashes. Esc pauses.'), el('p', '', 'CONTROLLER · Stick or D-pad moves. A jumps. X pulses. B or either trigger dashes. Menu pauses.'), el('p', '', 'TOUCH · Drag the floating stick to move. Use JUMP, PULSE and DASH. Aim a pulse with the stick. Land to restore your jumps.'));
+      help.append(el('p', '', 'KEYBOARD · A/D or ←/→ move. Space/W/↑ jumps twice. F/J pulses. Shift/K dashes. Esc pauses.'), el('p', '', 'CONTROLLER · Stick or D-pad moves. A jumps. X pulses. B or either trigger dashes. Menu pauses.'), el('p', '', 'TOUCH · Drag the floating stick to move. Use JUMP, PULSE and DASH. Aim a pulse with the stick. Land to restore your jumps.'), el('p', '', '2 PLAYERS · One screen, offline. P1 uses A/D/W/S, F pulse, G dash; P2 uses the arrows, . pulse, / dash; pad 1 and pad 2 drive P1 and P2. It needs a keyboard or two controllers, so it is hidden on touch-only devices until two controllers connect.'));
       mirrorButton = button('Mirror touch controls', 'arena-text-button', () => { leftyOverride = !(rootEl.dataset.lefty === 'true'); updatePrefs(); }); mirrorButton.setAttribute('aria-pressed', 'false'); help.append(mirrorButton); controls.append(summary, help);
       lobby.append(lobbyTop, lobbyGrid, controls); modal.append(lobby);
       pausePanel = el('div', 'arena-small-panel arena-dialog'); pausePanel.setAttribute('role', 'dialog'); pausePanel.setAttribute('aria-labelledby', 'arena-pause-title');
@@ -717,14 +915,15 @@
       const pauseReason = el('p', 'arena-panel-copy', 'Your match is paused.'); pauseReason.id = 'arena-pause-reason';
       const resumeButton = recoveryButton('Resume match', 'arena-primary', resumeMatch);
       pausePanel.append(el('span', 'arena-pill', 'MISSION ON HOLD'), ph, pauseReason, resumeButton, button('Restart match', '', startMatch), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('All games', 'arena-text-button', close)); modal.append(pausePanel);
+      againNote = el('p', 'arena-vote-note'); againNote.id = 'arenaAgainNote'; againCancel = button('Cancel auto-start', 'arena-text-button', () => room.cancelAuto()); againCancel.id = 'arenaAgainCancel'; againCancel.hidden = true;
       resultPanel = el('div', 'arena-small-panel arena-result-panel arena-dialog'); resultPanel.setAttribute('role', 'dialog'); resultPanel.setAttribute('aria-labelledby', 'arena-result-title');
       resultTitle = el('h2', 'arena-panel-title'); resultTitle.id = 'arena-result-title'; resultText = el('p', 'arena-panel-copy'); resultRoster = el('div', 'arena-result-roster');
-      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', startMatch), button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('All games', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
+      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', () => { if (onlineActive() && !room.isHost) room.vote('again'); else startMatch(); }), againNote, againCancel, button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('All games', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
       live = el('div', 'arena-sr-only'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true'); rootEl.append(live);
       // Events stop at this overlay, before the runner's window-level handlers.
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel']) rootEl.addEventListener(type, e => e.stopPropagation(), { passive: type.startsWith('touch') || type === 'wheel' });
       rootEl.addEventListener('contextmenu', e => e.preventDefault());
-      lobby.querySelector('.arena-lobby-top button').id = 'arenaBack'; pausePanel.querySelector('.arena-primary').id = 'arenaResume'; resultPanel.querySelector('.arena-primary').id = 'arenaRematch'; resultPanel.querySelectorAll('button')[1].id = 'arenaNext'; pausePanel.querySelectorAll('button')[2].id = 'arenaLobby'; pausePanel.querySelectorAll('button')[3].id = 'arenaExit'; resultPanel.querySelectorAll('button')[3].id = 'arenaResultExit'; buildRoomControls(); document.body.append(rootEl); built = true; syncChoices(); paintHero(lobbyArt);
+      lobby.querySelector('.arena-lobby-top button').id = 'arenaBack'; pausePanel.querySelector('.arena-primary').id = 'arenaResume'; resultPanel.querySelector('.arena-primary').id = 'arenaRematch'; resultPanel.querySelectorAll('button')[2].id = 'arenaNext'; pausePanel.querySelectorAll('button')[2].id = 'arenaLobby'; pausePanel.querySelectorAll('button')[3].id = 'arenaExit'; resultPanel.querySelectorAll('button')[4].id = 'arenaResultExit'; buildRoomControls(); document.body.append(rootEl); built = true; syncChoices(); paintHero(lobbyArt);
     }
     function makeBackground(a) {
       const bg = document.createElement('canvas'); bg.width = Math.ceil(width); bg.height = Math.ceil(height); const g = bg.getContext('2d'), t = themeFor(a), art = root.SpaceManArt;
@@ -761,7 +960,7 @@
         g.strokeStyle = '#254A67'; g.lineWidth = 3; for (let x = p.x + 18; x < p.x + p.w - 35; x += 64) { g.beginPath(); g.moveTo(x, p.y + p.h); g.lineTo(x + 19, p.y + p.h + 16); g.lineTo(x + 38, p.y + p.h); g.stroke(); }
       }
     }
-    function actorColor(actor) { return state && state.format === 'teams' ? (actor.team === 0 ? '#38E1FF' : '#FFB454') : (actor.color || PLAYER_COLORS[(actor.id - 1) % 4]); }
+    function actorColor(actor) { if (local2 && !actor.boss) return LOCAL_COLORS[(actor.id - 1) % 4]; return state && state.format === 'teams' ? (actor.team === 0 ? '#38E1FF' : '#FFB454') : (actor.color || PLAYER_COLORS[(actor.id - 1) % 4]); }
     function astronaut(g, actor, x, y, tick, hero) {
       const art = root.SpaceManArt, color = hero ? (actor.color || '#38E1FF') : actorColor(actor);
       const appearance = actor.appearance || ((hero || actor.id === localActor()?.id) && typeof opts.appearance === 'function' ? opts.appearance() : null);
@@ -852,11 +1051,17 @@
     }
     function watchedActor() {
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
+      if (local2) { const alive = state.actors.filter(a => a.controller === 'human' && a.stocks > 0); if (alive.length) { spectatorId = null; return alive[0]; } }
       if ((!onlineActive() || localActor()) && human.stocks > 0) { spectatorId = null; return human; }
       const candidates = watchCandidates();
       const target = candidates.find(a => a.id === spectatorId) || candidates[0] || state.actors.find(a => a.stocks > 0) || human;
       spectatorId = target.id;
       return target;
+    }
+    function pairFocus() {
+      const people = state.actors.filter(a => a.controller === 'human' && a.stocks > 0 && !(a.respawnTicks > 0)), list = people.length ? people : [watchedActor()];
+      const mean = key => list.reduce((sum, a) => sum + a[key], 0) / list.length;
+      return { px: mean('px'), x: mean('x'), py: mean('py'), y: mean('y'), w: mean('w'), h: mean('h'), facing: 0, stocks: 1 };
     }
     function updateCamera(a, alpha) {
       // Measure only after roster/viewport changes, once the populated HUD is
@@ -866,7 +1071,8 @@
         identityHudBottom = hud.height ? hud.bottom - (viewportBox?.top || 0) + 8 : 0;
         identityBoundsDirty = false;
       }
-      const portrait = width < height * 1.15, human = watchedActor();
+      // Couch play frames the pair: follow their midpoint wherever the camera follows.
+      const portrait = width < height * 1.15, human = local2 ? pairFocus() : watchedActor();
       const touch = (usingTouch || rootEl.dataset.touch === 'true') && !touchEl.hidden;
       const top = touch && !portrait && identityHudBottom ? identityHudBottom : Math.max(identityHudBottom, (portrait ? (state.actors.length > 2 && width < 600 ? (state.actors.some(a => a.boss) ? 198 : 178) : 125) : 95) + identitySafeTop);
       if (touch && !thumbBounds) {
@@ -1049,12 +1255,21 @@
       if (isMatch() && localActor() && localActor().stocks <= 0 && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText(localSession ? 'Rescue shuttle incoming' : 'You’re out · watching ' + watchedActor().name, width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
     }
     function actorIdentity(actor) {
+      if (local2 && actor.controller === 'human' && !actor.boss) return { role: 'local', text: 'P' + actor.id, tag: 'PLAYER ' + actor.id };
       const you = localActor(), watching = !you || you.stocks <= 0;
       if (actor.id === you?.id) return { role: 'you', text: 'YOU', tag: state.format === 'teams' ? 'YOU · ' + (actor.team === 0 ? '◇ BLUE' : '△ GOLD') : 'YOUR PILOT' };
       const relation = actor.boss ? 'BOSS' : state.format === 'teams' ? (you ? (actor.team === you.team ? 'ALLY' : 'RIVAL') : (actor.team === 0 ? 'BLUE' : 'GOLD')) : 'RIVAL';
       const control = actor.controller === 'remote' ? (actor.connected ? 'FRIEND' : 'RECONNECTING') : 'CPU';
       const followed = watching && watchedActor().id === actor.id;
       return { role: followed ? 'watching' : 'other', text: followed ? 'WATCHING' : (state.format === 'teams' ? (actor.team === 0 ? '◇ ' : '△ ') : '') + relation + ' · ' + actor.name.toUpperCase(), tag: control + ' · ' + relation };
+    }
+    // P1 is a circle, P2 a square: the number and shape both survive any colour vision.
+    function drawPilotBadge(b) {
+      const actor = state.actors.find(a => a.id === b.id), color = actorColor(actor), cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.fillStyle = '#071522'; ctx.beginPath();
+      if (actor.id === 1) ctx.arc(cx, cy, 10, 0, TAU); else rounded(ctx, cx - 10, cy - 10, 20, 20, 3);
+      ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx, cy + 10); ctx.lineTo(b.targetX, b.targetY); ctx.stroke();
+      ctx.fillStyle = color; ctx.font = '900 11px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(actor.id), cx, cy + .5); ctx.restore();
     }
     function drawIdentity(c, alpha) {
       const art = root.SpaceManArt, labels = [], bodies = [];
@@ -1075,7 +1290,8 @@
       // A small diagnostic describes the actual painted labels for browser QA.
       rootEl.dataset.identity = layout.filter(b => b.primary).map(b => b.text + ':' + b.id).join(',');
       for (const b of layout.slice().reverse()) {
-        if (b.primary) art.identityCue(ctx, b.x + b.w / 2, b.y + b.h / 2, b.role, b.targetX, b.targetY);
+        if (b.role === 'local') drawPilotBadge(b);
+        else if (b.primary) art.identityCue(ctx, b.x + b.w / 2, b.y + b.h / 2, b.role, b.targetX, b.targetY);
         else {
           // Crew/rival names stay secondary to the astronaut, without signposts.
           ctx.save(); ctx.font = '650 9px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1094,14 +1310,14 @@
         const blocked = thumbOccludes({x:x-actor.w*c.scale/2-5,y:y-actor.h*c.scale/2-8,w:actor.w*c.scale+10,h:actor.h*c.scale+8},c);
         if (!blocked && x > 16 && x < width - 16 && y > c.top && y < height - c.bottom) continue;
         let ix = clamp(x, 32, width - 32);
-        const iy = clamp(y, c.top + 20, height - c.bottom - 20), color = actorIdentity(actor).role !== 'other' ? '#FFF3CE' : actorColor(actor);
+        const iy = clamp(y, c.top + 20, height - c.bottom - 20), color = ['you', 'watching'].includes(actorIdentity(actor).role) ? '#FFF3CE' : actorColor(actor);
         if (blocked || thumbOccludes({x:ix-25,y:iy-20,w:50,h:40},c)) {
           // A rival behind either hand is effectively offscreen. Keep the
           // existing directional cue in the clear corridor, including lefty.
           ix = clamp(ix,c.pods[0].x+c.pods[0].w+26,c.pods[1].x-26); controlCues.push(actor.id);
         }
         ctx.save(); ctx.translate(ix, iy); ctx.fillStyle = '#091329'; ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 15, 0, TAU); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = color; ctx.font = '700 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(actorIdentity(actor).role === 'you' ? 'YOU' : actorIdentity(actor).role === 'watching' ? 'EYE' : actor.name.slice(0, 1), 0, 0);
+        ctx.fillStyle = color; ctx.font = '700 10px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(actorIdentity(actor).role === 'local' ? actorIdentity(actor).text : actorIdentity(actor).role === 'you' ? 'YOU' : actorIdentity(actor).role === 'watching' ? 'EYE' : actor.name.slice(0, 1), 0, 0);
         ctx.rotate(Math.atan2(y - iy, x - ix)); ctx.beginPath(); ctx.moveTo(19, -4); ctx.lineTo(25, 0); ctx.lineTo(19, 4); ctx.fill(); ctx.restore();
       }
       rootEl.dataset.controlCues = controlCues.join(' ');
@@ -1110,12 +1326,12 @@
       identityBoundsDirty = true;
       rosterEl.replaceChildren();
       for (const actor of state.actors) {
-        const identity = actorIdentity(actor), card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.dataset.boss = String(!!actor.boss); card.dataset.you = String(identity.role === 'you'); card.dataset.watching = String(identity.role === 'watching'); card.style.setProperty('--fighter', actorColor(actor));
+        const identity = actorIdentity(actor), card = el('div', 'arena-player-card'); card.dataset.actor = actor.id; card.dataset.boss = String(!!actor.boss); card.dataset.you = String(identity.role === 'you'); card.dataset.local = String(identity.role === 'local'); card.dataset.watching = String(identity.role === 'watching'); card.style.setProperty('--fighter', actorColor(actor));
         const icon = el('canvas', 'arena-player-portrait'); icon.width = 72; icon.height = 88; icon.setAttribute('aria-hidden', 'true');
         if (!actor.boss) root.SpaceManArt.drawAvatar(icon.getContext('2d'), 36, 40, 78, actor.appearance, { reduceMotion: true });
         else icon.hidden = true;
         const info = el('div', 'arena-player-info'), name = el('strong', 'arena-player-name');
-        name.append(el('span', 'arena-player-name-text', (state.format === 'teams' && !actor.boss ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name));
+        name.append(el('span', 'arena-player-name-text', (local2 && !actor.boss ? LOCAL_GLYPHS[(actor.id - 1) % 4] + ' ' : state.format === 'teams' && !actor.boss ? (actor.team === 0 ? '◇ ' : '△ ') : '') + actor.name));
         const tag = el('span', 'arena-player-tag', identity.tag), lives = el('span', 'arena-stocks'); info.append(name, tag, lives);
         const damage = el('strong', 'arena-damage', '0%'); card.append(icon, info, damage); rosterEl.append(card);
       }
@@ -1138,11 +1354,11 @@
         card.classList.toggle('arena-player-out', actor.stocks <= 0); card.querySelector('.arena-damage').textContent = actor.stocks <= 0 ? 'OUT' : Math.round(actor.damage) + '%';
         card.querySelector('.arena-damage').style.color = actor.damage >= 100 ? '#FF8E9A' : actor.damage >= 60 ? '#FFD180' : '';
         card.querySelector('.arena-stocks').textContent = '●'.repeat(Math.max(0, actor.stocks)) + '○'.repeat(Math.max(0, (state.encounter ? state.encounter.stocks : arena.constants.STOCKS || 3) - actor.stocks));
-        card.setAttribute('aria-label', actor.name + (actor.controller === 'human' ? ', you' : '') + (state.format === 'teams' ? (actor.team === 0 ? ', blue team' : ', gold team') : '') + ', ' + actor.stocks + ' lives, ' + Math.round(actor.damage) + ' percent damage');
+        card.setAttribute('aria-label', actor.name + (local2 && actor.controller === 'human' ? ', player ' + actor.id : actor.controller === 'human' ? ', you' : '') + (state.format === 'teams' ? (actor.team === 0 ? ', blue team' : ', gold team') : '') + ', ' + actor.stocks + ' lives, ' + Math.round(actor.damage) + ' percent damage');
       }
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
       if (watchTools) { watchTools.hidden = !onlineActive() || canControl(); if (!watchTools.hidden) watchName.textContent = 'WATCHING ' + watchedActor().name; }
-      touchEl.hidden = onlineActive() && !canControl();
+      touchEl.hidden = (onlineActive() && !canControl()) || !!local2;
       const K = arena.constants, remaining = human.attackTicks > 0 ? human.attackTicks + K.ATTACK_RECOVERY : (human.attackCooldown || 0);
       const attackReady = human.charge > 0 ? clamp(human.charge / K.CHARGE_MAX, 0, 1) : 1 - clamp(remaining / (K.ATTACK_TICKS + K.ATTACK_RECOVERY), 0, 1), dashReady = 1 - clamp(human.dashCooldown / arena.constants.DASH_COOLDOWN, 0, 1);
       pulseMeter.style.transform = 'scaleX(' + attackReady + ')'; dashMeter.style.transform = 'scaleX(' + dashReady + ')';
@@ -1207,8 +1423,8 @@
     }
     function step() {
       if (onlineActive()) { room.step(canControl() ? command() : {}, performance.now()); return; }
-      const commands = {}, input = command();
-      for (const actor of state.actors) commands[actor.id] = actor.controller === 'human' ? input : arena.cpuInput(state, actor.id);
+      const commands = {}, input = command(), second = local2 ? state.actors.filter(a => a.controller === 'human')[1] : null, input2 = second ? command2() : null;
+      for (const actor of state.actors) commands[actor.id] = actor === second ? input2 : actor.controller === 'human' ? input : arena.cpuInput(state, actor.id);
       const human = state.actors.find(a => a.controller === 'human'), oldDash = human.dashTicks;
       arena.step(state, commands);
       if (!oldDash && human.dashTicks > 0) sfx('dash');
@@ -1224,7 +1440,8 @@
       const vv = root.visualViewport;
       if (vv && viewportBox && (Math.abs(vv.width - viewportBox.width) > 1 || Math.abs(vv.height - viewportBox.height) > 1 || Math.abs(vv.offsetLeft - viewportBox.left) > 1 || Math.abs(vv.offsetTop - viewportBox.top) > 1)) resize();
       updatePrefs(); pollGamepad();
-      if (!isRunning() || !canControl()) actionBuffer.reset();
+      if (!isRunning() || !canControl()) { actionBuffer.reset(); if (local2) local2.buffer.reset(); }
+      if (view === 'lobby' && activeModal === lobby && ++lobbyTick % 20 === 0) syncPlayers();
       if (!active || document.hidden) return;
       const elapsed = lastTime ? Math.min(.1, Math.max(0, (now - lastTime) / 1000)) : 0; lastTime = now;
       // Real-time feel timers run on wall clock even while the sim is held.
@@ -1254,7 +1471,10 @@
       // Seed ownership belongs to the pure simulation. No gameplay randomness
       // comes from frame time or presentation effects.
       matchSerial++; const seed = localSession ? localSession.seed : ((Date.now() >>> 0) ^ Math.imul(matchSerial, 2654435761)) >>> 0;
-      state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty });
+      state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty, ...(!localSession && playerCount === 2 && p2Joined ? { localPlayers: 2 } : {}) });
+      local2 = state.actors.filter(a => a.controller === 'human').length === 2 ? makeLocal2() : null;
+      rootEl.dataset.players = local2 ? '2' : '1';
+      if (legendEl) legendEl.textContent = local2 ? 'P1  A/D move · W jump · F pulse · G or L-Shift dash\nP2  ←/→ move · ↑ jump · . pulse · / or R-Shift dash' : 'A / D  move    SPACE  double jump';
       cosmeticRound++;
       if (root.SpaceManCosmetics && typeof opts.appearance === 'function') { const human = state.actors.find(a => a.controller === 'human'); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       view = 'match'; paused = false; resultAt = 0; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; effects = []; resetFeel(); spectatorId = null; camera.initialized = false;
@@ -1281,7 +1501,7 @@
       if (!active) return;
       if (localSession || sharedSession) { close(); return; }
       if (onlineActive()) { if (!room.isHost) { leaveArenaRoom(); return; } room.lobby(); }
-      resetInput(); state = null; view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; resetFeel(); camera.initialized = false;
+      resetInput(); local2 = null; rootEl.dataset.players = '1'; state = null; view = 'lobby'; paused = false; resultAt = 0; accumulator = 0; effects = []; resetFeel(); camera.initialized = false;
       syncChoices(); setModal(lobby, formatButtons.find(b => b.dataset.format === selections.format)); paintLobby(); announce('Choose your arena match');
       if (audio && audio.state === 'running') audio.suspend().catch(() => {});
     }
@@ -1302,10 +1522,16 @@
       resultTitle.textContent = result.tie ? 'A cosmic stalemate' : won ? (state.format === 'teams' ? 'Your crew wins!' : 'You held your orbit!') : 'One more orbit?';
       const winners = state.actors.filter(a => result.winnerIds.includes(a.id)).map(a => a.name).join(' & ');
       resultText.textContent = result.tie ? 'An even match among the stars. Ready for a tiebreaker?' : won ? 'Nice flying. The last launch belongs to you.' : (winners || 'The other crew') + ' took this round. A fresh launch is one tap away.';
+      if (local2) {
+        // Couch play names the winning pilots instead of speaking to one "you".
+        const pilots = state.actors.filter(a => a.controller === 'human' && (result.winnerIds.includes(a.id) || (state.format === 'teams' && result.winnerTeam === a.team))).map(a => a.name);
+        resultTitle.textContent = result.tie ? 'A cosmic stalemate' : pilots.length === 2 ? 'P1 + P2 win together!' : pilots.length === 1 ? pilots[0] + ' wins!' : 'The CPUs win this one';
+        resultText.textContent = result.tie ? 'An even match among the stars. Ready for a tiebreaker?' : pilots.length ? 'Nice flying. Rematch to keep the score going.' : (winners || 'The CPU crew') + ' took this round. Rematch?';
+      }
       resultRoster.replaceChildren();
-      for (const actor of state.actors) { const row = el('div', 'arena-result-row'); row.style.setProperty('--fighter', actorColor(actor)); row.append(el('strong', '', actor.name + (actor.controller === 'human' ? ' · YOU' : '')), el('span', '', (actor.kos || 0) + ' KO' + ((actor.kos || 0) === 1 ? '' : 's')), el('span', '', actor.stocks + ' lives')); resultRoster.append(row); }
+      for (const actor of state.actors) { const row = el('div', 'arena-result-row'); row.style.setProperty('--fighter', actorColor(actor)); row.append(el('strong', '', (local2 ? LOCAL_GLYPHS[(actor.id - 1) % 4] + ' ' : '') + actor.name + (actor.controller === 'human' && !local2 ? ' · YOU' : '')), el('span', '', (actor.kos || 0) + ' KO' + ((actor.kos || 0) === 1 ? '' : 's')), el('span', '', actor.stocks + ' lives')); resultRoster.append(row); }
       if (onlineActive() && !human && !result.tie) { resultTitle.textContent = winners + ' win!'; resultText.textContent = 'Shared match complete. The host can launch another round.'; }
-      if (human && typeof opts.onReward === 'function') {
+      if (human && !local2 && typeof opts.onReward === 'function') {
         const receipt = onlineActive() ? root.SpaceManCosmetics.roundReceipt('arena', opts.net.info().roomId, Number(rootEl.dataset.epoch)) : cosmeticSession + ':' + cosmeticRound;
         const found = receipt ? opts.onReward({ type: 'arena', id: receipt }) || [] : [];
         if (found.length) resultText.textContent += ' Found: ' + found.map(id => root.SpaceManCosmetics.item(id)?.name || '').join(', ') + '.';
@@ -1356,7 +1582,7 @@
         room.release(); room = shared.previousRoom; selections = shared.previous;
       }
       if (room && (room.active || room.busy) && !leaveArenaRoom()) return;
-      resetInput(); active = false; if (frameId) root.cancelAnimationFrame(frameId); frameId = 0; lastTime = 0; accumulator = 0;
+      resetInput(); local2 = null; playerCount = 1; p2Joined = false; active = false; if (frameId) root.cancelAnimationFrame(frameId); frameId = 0; lastTime = 0; accumulator = 0;
       for (const [target, type, fn, settings] of listeners.splice(0)) target.removeEventListener(type, fn, settings);
       if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
       rootEl.hidden = true; viewportBox = null; activeModal = null; state = null; view = 'lobby'; paused = false; effects = []; resetFeel();
@@ -1400,5 +1626,5 @@
     function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
     return Object.freeze({ open, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true); }, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
   }
-  root.SpaceManArenaUI = Object.freeze({ create });
+  root.SpaceManArenaUI = Object.freeze({ create, localKeys: LOCAL_KEYS, assignPads });
 })(typeof window !== 'undefined' ? window : globalThis);
