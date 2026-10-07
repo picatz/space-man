@@ -2778,7 +2778,7 @@ const G = {
   platIdx: 0, lastGenBand: 0, easeUntilM: -1, genStartM: 0, crumbleRun: 0, rampStep: 0, trailGot: 0, trailId: -1,
   body: null, kickX: 0, kickY: 0, kickAt: -9, deathFocus: null,
   crackle: 0, deadShownAt: 0, runMedal: null, qualifies: false,
-  mission: null, shards: 0, shardStreak: 0, bigAir: 0, companion: null,
+  mission: null, missionNextIn: 0, missionsRun: 0, shards: 0, shardStreak: 0, bigAir: 0, companion: null,
   ufo: null, ufoTimer: 0, milestone: 0,
   toast: '', toastT: 0, toastMax: 2.4, toastStyle: 'sys', toastGlyph: null,
   cosmetics: migratedSave.cosmetics, newCosmetics: [],
@@ -2831,6 +2831,30 @@ function endLeap() {
   const m = G.mission;
   if (m && m.kind === 'airchain' && !m.done) m.progress = 0;
 }
+// Mission chaining (GD-05): finishing a mission rolls the next one from the full
+// veteran pool, paying more each tier. Pure and seed-free: the successor is a
+// function of the finished mission and tier, so it never touches an RNG stream.
+const MISSION_REWARDS = [250, 400, 600], MISSION_CHAIN_TICKS = 100;
+function missionRewardFor(tier) { return MISSION_REWARDS[clamp(tier | 0, 0, MISSION_REWARDS.length - 1)]; }
+function missionNext(prev, dist) {
+  const tier = (prev.tier | 0) + 1;
+  if (tier >= MISSION_REWARDS.length) return null;
+  let i = MISSIONS.findIndex((x) => x.kind === prev.kind);
+  i = (Math.max(0, i) * 3 + 2 + tier) % MISSIONS.length;
+  if (MISSIONS[i].kind === prev.kind) i = (i + 1) % MISSIONS.length;
+  const base = MISSIONS[i], m = { kind: base.kind, target: base.target, label: base.label, progress: 0, done: false, tier };
+  if (base.kind === 'distance') { m.target = (dist | 0) + 300; m.label = 'REACH ' + m.target + 'm'; m.progress = dist | 0; }
+  return m;
+}
+function updateMissionChain() {
+  if (!G.missionNextIn || --G.missionNextIn > 0) return;
+  G.missionNextIn = 0;
+  const next = G.mission && G.mission.done ? missionNext(G.mission, G.dist) : null;
+  if (!next) return;
+  G.mission = next;
+  popup(G.player.x, G.player.y - 52, 'MISSION ' + (next.tier + 1) + '/3', '#9FF1FF');
+  announceMoment('New mission ' + (next.tier + 1) + ' of 3: ' + next.label.toLowerCase() + '. Reward ' + missionRewardFor(next.tier) + ' points.');
+}
 function missionProgress(kind, amount) {
   const m = G.mission;
   if (!m || m.done || m.kind !== kind) return;
@@ -2838,14 +2862,17 @@ function missionProgress(kind, amount) {
   if (m.progress < m.target) return;
   m.done = true;
   stats.missionsDone = (stats.missionsDone || 0) + 1;   // aurora-suit counter
-  G.score += CFG.missionReward;
+  const reward = missionRewardFor(m.tier);
+  G.missionsRun = (G.missionsRun | 0) + 1;
+  if ((m.tier | 0) < MISSION_REWARDS.length - 1) G.missionNextIn = MISSION_CHAIN_TICKS;
+  G.score += reward;
   G.ammo = CFG.ammoCap; G.ammoPulse = 1;
   G.flare.x -= 180;
   G.companion = { x: G.player.x - 30, y: G.player.y - 10, phase: 0 };
-  popup(G.player.x, G.player.y - 34, '+' + CFG.missionReward + ' MISSION', '#FFE59A');
+  popup(G.player.x, G.player.y - 34, '+' + reward + ' MISSION', '#FFE59A');
   burst(G.player.x + G.player.w / 2, G.player.y, 30, 4, 46, 3, 'rgba(159,241,255,.95)', 0.04, 2);
   celebrate('MISSION COMPLETE!'); buzz('celebrate');
-  announceMoment('Mission complete: ' + m.label.toLowerCase() + '. Plus ' + CFG.missionReward + ' points.');
+  announceMoment('Mission complete: ' + m.label.toLowerCase() + '. Plus ' + reward + ' points.');
 }
 
 /* ---------------------------------------------------------------------------
@@ -3078,7 +3105,8 @@ function resetRun(seed, replayable, world) {
   G.wave = 0; G.waveIn = 14 + G.decorRng() * 8;
   toastQ.length = 0; G.toastT = 0;
   const missionSeed = MISSIONS[(rng() * missionPool()) | 0];
-  G.mission = { kind: missionSeed.kind, target: missionSeed.target, label: missionSeed.label, progress: 0, done: false };
+  G.mission = { kind: missionSeed.kind, target: missionSeed.target, label: missionSeed.label, progress: 0, done: false, tier: 0 };
+  G.missionNextIn = 0; G.missionsRun = 0;
   G.attractBase = undefined; G.attractAlienPlat = G.platforms[0];
   G.threat = 0; G.glanceT = 0; G.glanceActive = false; G.glanceTimer = 0; G.glanceCooldown = 0;
   G.glanceIn = 4; G.glanceAlt = false;
@@ -3889,7 +3917,7 @@ function collisions() {
   for (let i = G.pickups.length - 1; i >= 0; i--) {
     const k = G.pickups[i]; if (k.grabbed) continue;
     const dx = pcx - k.x, dy = (p.y + p.h / 2) - k.y, d = Math.hypot(dx, dy);
-    const magnet = G.companion && k.type === 'shard' ? 100 : 60;
+    const magnet = G.companion && k.type === 'shard' ? 100 + 20 * ((G.mission && G.mission.tier) | 0) : 60;
     if (d < magnet) { k.x += dx * (G.companion ? 0.2 : 0.15); k.y += dy * (G.companion ? 0.2 : 0.15); }
     if (d < 18) {
       k.grabbed = true;
@@ -4310,6 +4338,7 @@ function update() {
     updatePlayer();
     updateCrumble();
     updateHints();
+    updateMissionChain();
     if (G.companion) {
       const c = G.companion, p = G.player;
       c.phase += .07;
@@ -6116,7 +6145,8 @@ function drawHUD() {
     const m = expeditionRunnerActive() ? { done: false, kind: 'expedition', label: 'ROUTE ' + (expedition.snapshot().index + 1) + ' · REACH ' + expedition.snapshot().current.goal + 'm', progress: G.dist, target: expedition.snapshot().current.goal } : G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
     ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 27 * us, 6 * us); ctx.fill();
     ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = fontStr(700, Math.max(11, 9 * us), FONT_NUM); ctx.textAlign = 'left';
-    const label = m.done ? 'MISSION COMPLETE' : (view.w < 480 ? (MISSION_SHORT[m.kind] || m.label) : m.label);
+    const tierTag = !expeditionRunnerActive() && (G.mission.tier | 0) > 0 ? (G.mission.tier + 1) + '/3 · ' : '';
+    const label = m.done ? 'MISSION COMPLETE' : tierTag + (view.w < 480 ? (m.kind === 'distance' ? 'REACH ' + m.target + 'm' : (MISSION_SHORT[m.kind] || m.label)) : m.label);
     ctx.fillText(label, ox + 6 * us, my + 12 * us);
     ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(ox + 6 * us, my + 18 * us, mw - 12 * us, 3 * us, 2); ctx.fill();
     ctx.fillStyle = m.done ? '#4EF07A' : '#38E1FF';
@@ -6598,10 +6628,10 @@ function renderDeathCard() {
   // Stat tiles: value over label, one glance per number (numbers only — no markup from state).
   const tile = (v, k, cls) => `<div class="stat${cls ? ' ' + cls : ''}"><b>${v}</b><span>${k}</span></div>`;
   $('deadStats').innerHTML = tile((G.dist | 0) + 'm', 'DIST') + tile(G.killsRun | 0, 'KILLS') + tile(G.shards | 0, 'STARS') + tile('×' + (G.bestChainRun | 0), 'CHAIN')
-    + (G.mission && G.mission.done ? tile('✓', 'MISSION', 'done') : '');
+    + (G.missionsRun > 0 ? tile('✓' + (G.missionsRun > 1 ? ' ×' + G.missionsRun : ''), 'MISSION', 'done') : '');
   const powBits = POW.deathStats().replace(/^ · /, '');   // POWER-UPS n · PARRIES n, a full-width line under the tiles
   if (powBits) $('deadStats').innerHTML += `<div style="grid-column:1/-1;text-align:center;font-size:11px;letter-spacing:.08em;opacity:.8">${powBits}</div>`;
-  $('deadStats').style.gridTemplateColumns = G.mission && G.mission.done ? 'repeat(5, minmax(0, 1fr))' : '';
+  $('deadStats').style.gridTemplateColumns = G.missionsRun > 0 ? 'repeat(5, minmax(0, 1fr))' : '';
   const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
   if (target) { dt.textContent = target; dt.style.display = 'block'; } else dt.style.display = 'none';
   const dc = $('deadCourse'), courseText = deathCourseLine(fs);

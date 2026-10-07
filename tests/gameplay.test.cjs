@@ -191,6 +191,28 @@ test('completing a mission pays the full reward package', (t) => {
   }
 });
 
+test('mission chaining: finishing a mission surfaces a deterministic, better-paid successor', (t) => {
+  const c = solo(t);
+  const run = () => json(c, `
+    resetRun(3); G.mode = 'play'; G.mission = { kind: 'stomp', target: 3, label: '', progress: 0, done: false, tier: 0 };
+    const log = []; const score0 = G.score;
+    for (let tier = 0; tier < 3; tier++) {
+      const m = G.mission; const s0 = G.score;
+      for (let i = 0; i < m.target; i++) missionProgress(m.kind, 1);
+      log.push({ kind: m.kind, tier: m.tier, paid: G.score - s0, done: G.mission.done });
+      for (let i = 0; i < MISSION_CHAIN_TICKS + 1; i++) updateMissionChain();
+      log.push({ next: G.mission.done ? null : G.mission.kind + ':' + G.mission.tier });
+    }
+    return { log, run: G.missionsRun, still: G.mission.done };`);
+  const a = run(), b = run();
+  assert.deepEqual(a, b, 'same inputs, same chain');
+  assert.deepEqual(a.log.filter((x) => 'paid' in x).map((x) => x.paid), [250, 400, 600]);
+  assert.equal(a.log[1].next && a.log[1].next.endsWith(':1'), true, 'mission 2 appears after the beat');
+  assert.notEqual(a.log[1].next.split(':')[0], 'stomp', 'successor differs from the finished mission');
+  assert.equal(a.log[5].next, null, 'chain stops after the third mission');
+  assert.equal(a.run, 3);
+});
+
 test('veteran missions complete through the real stomp, shard and landing paths', (t) => {
   const c = solo(t);
   const r = json(c, `

@@ -940,7 +940,33 @@
         g.fillStyle = biome ? (layer ? biome.ridgeNear : biome.ridgeFar) : '#07131D'; g.globalAlpha = layer ? .65 : .36; g.beginPath(); g.moveTo(0, height);
         for (let x = 0; x <= width + 20; x += 20) { const y = height * (.87 + layer * .04) + Math.sin(x / (width * .21) + layer * 2) * height * .03 + Math.sin(x / 39 + layer) * 8; g.lineTo(x, y); } g.lineTo(width, height); g.closePath(); g.fill();
       }
+      stageSilhouette(g, a, t);
       g.globalAlpha = 1; return bg;
+    }
+    // Per-stage backdrop silhouette, cached with the background so it costs
+    // nothing per frame. Decor only: it sits below actors and platforms.
+    function stageSilhouette(g, a, t) {
+      const id = a.theme && a.theme.id, base = height * .9;
+      g.save();
+      if (id === 'bloom') {
+        const dome = g.createRadialGradient(width * .34, base, 4, width * .34, base, width * .2); dome.addColorStop(0, t.accent); dome.addColorStop(1, 'rgba(78,240,122,0)');
+        g.globalAlpha = .22; g.fillStyle = dome; g.beginPath(); g.arc(width * .34, base, width * .2, Math.PI, TAU); g.fill();
+        g.globalAlpha = .5; g.fillStyle = '#0B2A24'; g.beginPath(); g.arc(width * .34, base, width * .085, Math.PI, TAU); g.fill();
+        g.strokeStyle = '#0B2A24'; g.lineWidth = Math.max(2, width * .004); g.lineCap = 'round';
+        for (let i = 0; i < 9; i++) { const x = width * (.06 + i * .115) + hash(i + 40) * 20, h = height * (.14 + hash(i + 60) * .14), dir = i % 2 ? 1 : -1; g.beginPath(); g.moveTo(x, base); g.quadraticCurveTo(x + dir * 12, base - h * .6, x + dir * 30, base - h); g.stroke(); for (let k = 1; k < 4; k++) { const fy = base - h * k / 4, fx = x + dir * 30 * k / 4; g.beginPath(); g.moveTo(fx, fy); g.lineTo(fx - dir * 14, fy + 10); g.moveTo(fx, fy); g.lineTo(fx + dir * 12, fy + 12); g.stroke(); } }
+      } else if (id === 'ember') {
+        const band = g.createLinearGradient(0, height * .68, 0, height); band.addColorStop(0, 'rgba(255,180,84,0)'); band.addColorStop(.7, 'rgba(255,120,60,.34)'); band.addColorStop(1, 'rgba(255,229,154,.5)');
+        g.fillStyle = band; g.fillRect(0, height * .68, width, height * .32);
+        g.globalAlpha = .55; g.fillStyle = '#12060F';
+        for (let i = 0; i < 4; i++) { const x = width * (.1 + i * .27), w = width * .07, h = height * (.28 + hash(i + 70) * .14); g.fillRect(x, base - h, w, h); g.fillRect(x - w * .25, base - h, w * 1.5, 8); g.beginPath(); g.moveTo(x + w * .3, base - h - 4); g.lineTo(x + w * .3, base - h - 26); g.lineTo(x + w * .55, base - h - 26); g.lineTo(x + w * .55, base - h - 4); g.fill(); }
+        g.globalAlpha = .35; g.fillStyle = t.accent; for (let i = 0; i < 26; i++) g.fillRect(hash(i + 90) * width, height * (.55 + hash(i + 120) * .4), 2, 2);
+      } else {
+        g.globalAlpha = .55; g.fillStyle = '#081426'; g.strokeStyle = '#081426'; g.lineWidth = 1.5;
+        const mastX = [.14, .5, .86], tops = [];
+        for (const f of mastX) { const x = width * f, w = Math.max(10, width * .014), top = height * (.3 + hash(Math.round(f * 100)) * .06); tops.push([x, top]); g.fillRect(x - w / 2, top, w, base - top); g.fillRect(x - w * 2.2, top, w * 4.4, 6); g.fillRect(x - w * .2, top - 20, w * .4, 20); g.globalAlpha = .85; g.fillStyle = t.accent; g.fillRect(x - 1.5, top - 24, 3, 3); g.globalAlpha = .55; g.fillStyle = '#081426'; }
+        for (let i = 0; i < tops.length - 1; i++) { const [x0, y0] = tops[i], [x1, y1] = tops[i + 1]; g.beginPath(); g.moveTo(x0, y0 + 3); g.quadraticCurveTo((x0 + x1) / 2, Math.max(y0, y1) + height * .12, x1, y1 + 3); g.stroke(); }
+      }
+      g.restore();
     }
     function platform(g, p, a, preview) {
       const theme = a.theme || {}, accent = theme.platformTop || theme.accent || '#38E1FF';
@@ -1192,6 +1218,11 @@
       if (!active || !state || !ctx) return;
       const a = arena.getArena ? arena.getArena(state.arenaId) : selectedArena(), t = themeFor(a), key = a.id + width + height;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); if (!background || bgKey !== key) { background = makeBackground(a); bgKey = key; } ctx.drawImage(background, 0, 0, width, height);
+      if (a.theme && a.theme.id === 'ember' && !saver() && !calm()) { // decor-only rising embers
+        const sec = performance.now() / 1000; ctx.fillStyle = t.accent;
+        for (let i = 0; i < 18; i++) { const k = (sec * (.05 + hash(i + 5) * .06) + hash(i)) % 1; ctx.globalAlpha = .6 * (1 - k); ctx.fillRect(hash(i + 30) * width + Math.sin(sec + i) * 8, height * (1 - k * .5), 2, 2); }
+        ctx.globalAlpha = 1;
+      }
       const c = applyFeelCamera(updateCamera(a, alpha), a), art = root.SpaceManArt;
       ctx.save(); ctx.translate(width / 2, c.centerY); ctx.scale(c.scale, c.scale); ctx.translate(-c.x, -c.y);
       // Quiet orbital guide rings help the camera feel located in a larger world.
