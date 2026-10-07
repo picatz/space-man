@@ -205,3 +205,17 @@ test('touch-only (not hybrid) hides key rows; the motion switch owns the CSS cla
   c.run('toggleSetting("reduceMotion")');
   assert.equal(c.run('document.body.classList.contains("reduce-motion")'), false, 'switching off restores motion');
 });
+
+test('canvas toasts reach the live region (controller disconnect) and gold toasts are throttled', (t) => {
+  const { c } = solo(t);
+  const doc = c.context.document, pad = gamepad();
+  c.context.navigator.getGamepads = () => [pad];
+  c.run('var __t = 1000; frame(__t); startRun(); hideAllOverlays(); G.mode = "play"; G.deathCardShown = false;');
+  c.run('pollGamepad()');   // connect
+  c.context.navigator.getGamepads = () => [];
+  c.run('pollGamepad()');   // vanishes
+  c.run('G.toastT = 0; __t += 16; frame(__t)');
+  assert.equal(doc.getElementById('srAnnounce').textContent, 'CONTROLLER DISCONNECTED');
+  c.run('G.toastT = 0; queueToast("HELLO OUT THERE", "gold"); __t += 16; frame(__t)');
+  assert.equal(doc.getElementById('srAnnounce').textContent, 'CONTROLLER DISCONNECTED', 'a gold toast inside the 4s window does not chatter');
+});

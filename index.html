@@ -308,7 +308,8 @@
     border-bottom: 1px solid rgba(207, 227, 255, 0.08);
   }
   /* Dependent rows dim when their parent switch is off — still operable. */
-  .settings-list .dim { opacity: 0.45; }
+  .settings-list .dim { opacity: 0.8; }   /* label stays >= 4.5:1; the state reads through the dimmed control below */
+  .settings-list .dim .switch, .settings-list .dim input[type='range'] { opacity: 0.55; }
   /* On a narrow phone the slider gets its own line instead of being squeezed to a nub beside its label. */
   @media (max-width: 400px) {
     .slider-row { display: grid; grid-template-columns: 1fr auto; align-items: center; text-align: left; }
@@ -594,7 +595,11 @@
     border-radius: 12px;
     color: var(--gold);
     cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
   }
+  .install-chip:focus-visible { outline: 2px solid var(--cyan-lt); outline-offset: 2px; }
   .install-chip.show { display: block; }
 
   #errlog {
@@ -869,7 +874,7 @@
 
 <!-- Pause -->
 <div class="overlay" id="ovPause">
-  <div class="panel">
+  <div class="panel" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
     <div class="title-lg" id="pauseTitle">Paused</div>
     <p id="pauseSessionNote" class="pause-session-note" hidden></p>
     <div class="dock top"><button class="btn" id="btnResume">Resume</button></div>
@@ -919,7 +924,8 @@
     <button class="btn ghost" id="btnSpectateRound" style="display:none;">Spectate This Round</button>
     <div class="sub" id="deadTapHint">TAP TO RETRY</div>
     </div>
-    <div class="install-chip" id="installChip">Add Space Man to your home screen</div>
+    <button type="button" class="install-chip" id="installChip">Add Space Man to your home screen</button>
+    <button type="button" class="install-chip" id="updateChip">Update ready — restart now</button>
     <div class="emote-row" id="deadEmotes" style="display:none;"></div>
     </div>
     </div>
@@ -2243,8 +2249,13 @@ function buzz(kind) {
     const l = document.getElementById('hapLbl'), focused = document.activeElement;
     if (l) l.click();   // iOS 17.4+: a switch input's tick is the only web haptic
     // A programmatic label click can focus its hidden switch in WebKit. Tactile
-    // feedback must not steal the keyboard/controller cursor from a real control.
-    if (focused && focused.isConnected !== false && typeof focused.focus === 'function' && l && typeof l.contains === 'function' && l.contains(document.activeElement)) focused.focus({ preventScroll: true });
+    // feedback must not steal the keyboard/controller cursor from a real control,
+    // and with nothing real focused (body) the hidden switch must not keep it.
+    if (l && typeof l.contains === 'function' && l.contains(document.activeElement)) {
+      const hidden = document.activeElement, real = focused && focused !== document.body && focused.isConnected !== false && typeof focused.focus === 'function';
+      if (real) focused.focus({ preventScroll: true });
+      else if (hidden && typeof hidden.blur === 'function') hidden.blur();
+    }
   } catch (e) {}
 }
 
@@ -2437,7 +2448,7 @@ function onKey(e, down) {
   // runs for textareas before their ordinary text-key ownership shortcut.
   if (down && k === 'tab') {
     const overlayId = topOverlayId(), overlay = overlayId && document.getElementById(overlayId);
-    if (overlay && overlay.querySelector('.secondary-panel')) {
+    if (overlay && overlayId !== 'ovAttract') {
       const items = menuItems(overlayId), active = document.activeElement;
       if (items.length && ((e.shiftKey ? active === items[0] : active === items[items.length - 1]) || !items.includes(active))) {
         e.preventDefault(); (e.shiftKey ? items[items.length - 1] : items[0]).focus(); return;
@@ -4508,6 +4519,7 @@ function frame(now) {
   // Nothing dequeues once the death card owns the screen — entries persist in the logbook.
   else if (toastQ.length && !G.deathCardShown && (toastQ[0].style !== 'gold' || G.mode === 'attract' || calm())) {
     const t = toastQ.shift();
+    announceMoment(t.text, t.style === 'sys');   // canvas toasts reach the live region too (sys always, gold throttled)
     G.toast = t.text; G.toastStyle = t.style; G.toastGlyph = t.glyph || null;
     G.toastT = G.toastMax = t.style === 'gold' ? 2.6 : 2.4;
   }
@@ -6352,7 +6364,16 @@ function drawTouchControls() {
    24. OVERLAYS / SCREENS
    ------------------------------------------------------------------------- */
 const $ = (id) => document.getElementById(id);
-function hideAllOverlays() { OVERLAY_IDS.forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; cancelRebind(); }
+// Focus return (UX-01): the control that opened an overlay gets focus back when
+// the overlay closes and the card beneath it is shown again.
+const swu = { ready: false, readyAt: 0, reg: null, reloading: false };   // service-worker update state (section 27); declared early so the run-over card can read it
+const overlayOpener = {};
+let focusReturn = null;
+function hideAllOverlays() {
+  const top = topOverlayId();
+  focusReturn = top && overlayOpener[top] || null;
+  OVERLAY_IDS.forEach((id) => $(id).classList.remove('show', 'in')); G.wardrobeOpen = false; cancelRebind();
+}
 function showOverlay(id) {
   if (id === 'ovPause') {
     const localMenu = netInRun() && !(sharedRunnerActive() && journeyUI.room.isHost);
@@ -6361,8 +6382,12 @@ function showOverlay(id) {
     $('pauseSessionNote').textContent = localMenu ? 'The session continues while this menu is open.' : '';
   }
   const el = $(id);
+  const opener = document.activeElement;
+  overlayOpener[id] = opener && opener !== document.body && opener.isConnected !== false && !(el.contains && el.contains(opener)) ? opener : null;
   el.classList.add('show');
-  if (input.pad.connected && !SHOT) menuFocusFirst(topOverlayId());   // controller players land on the first control
+  if ((input.pad.connected || (id === 'ovPause' && input.usingKeys)) && !SHOT) menuFocusFirst(topOverlayId());   // controller / keyboard players land on the first control
+  const back = focusReturn; focusReturn = null;   // controller players keep the first-control landing above (Play on home)
+  if (back && !SHOT && !input.pad.connected && el.contains && el.contains(back) && back.isConnected !== false && visibleEl(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
   // Double-rAF (E9.1): the 0-state must paint one frame before .in flips the
   // transition, or the browser collapses show+in into a single no-op frame.
   requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -6466,7 +6491,11 @@ function stampMedal() {
   if (G.runMedal && !lessMotion() && !SHOT) { dm.classList.remove('stamp'); void dm.offsetWidth; dm.classList.add('stamp'); }
 }
 function revealDeathDelta() { $('deadDelta').classList.add('reveal'); }
-function revealTapHint() { $('deadTapHint').classList.add('show'); }
+function revealTapHint() {
+  const h = $('deadTapHint');
+  if (!SHOT) h.textContent = input.usingGamepad ? 'PRESS A TO RETRY' : (FORCE_TOUCH || input.usingTouch) ? 'TAP TO RETRY' : input.usingKeys ? 'SPACE / ENTER TO RETRY' : 'TAP TO RETRY';
+  h.classList.add('show');
+}
 // A target, not a period (E9.5): nearest of next medal / next sector / best-distance
 // gap, compared as a fraction of each one's own band so cross-unit "nearest" is fair.
 function deathTargetLine(fs, distM) {
@@ -6561,6 +6590,7 @@ function renderDeathCard() {
   renderRoomBoard();               // Run Together: ROOM column + spectate/emote controls (no-op solo)
   const chip = $('installChip');
   if (deferredPrompt && !flags.installDismissed && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
+  $('updateChip').classList.toggle('show', swu.ready && !swu.reloading);
   hideAllOverlays(); showOverlay('ovDead');
   // SHOT goldens are captured on the frozen first frame — reveal everything
   // now instead of waiting on the 300/550ms timers scheduled by showDeathCard
@@ -8960,6 +8990,7 @@ $('btnReset').onclick = () => {
   try { [LS.best, LS.stats, LS.settings, LS.top5, LS.flags, LS.schema, LS.cosmetics, LS.discoveries, LS.daily, 'highScores'].forEach((k) => localStorage.removeItem(BUILD.storageKey(k))); } catch (e) {}
   location.reload();
 };
+$('updateChip').onclick = () => { $('updateChip').classList.remove('show'); applyUpdate(true); };
 $('installChip').onclick = () => {
   if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt = null; }
   flags.installDismissed = true; persistAll(); $('installChip').classList.remove('show');
@@ -9016,27 +9047,32 @@ window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); defe
 // and swaps only at a safe moment — title or death card, never mid-run and never
 // in a Run Together room (a reload drops the session). The worker is network-
 // first, so until then this page and its scripts stay one coherent build.
-const swu = { ready: false, readyAt: 0, reg: null, reloading: false };
 function swUpdateReady() {
   if (swu.ready) return;
   swu.ready = true; swu.readyAt = G.time;
   queueToast('UPDATE READY', 'sys');
+  // On the run-over card nothing dequeues the toast and nothing may reload under
+  // the player's result: offer an explicit, focusable button instead.
+  if (G.mode === 'dead' && $('ovDead').classList.contains('show')) { $('updateChip').classList.add('show'); announce('Update ready. Use the Update ready button to restart.'); }
 }
 function swSafeMoment() {
   if (modeOverlayActive() || expedition || (journeyUI && (journeyUI.room.active || journeyUI.room.busy))) return false;
   if (netLive()) return false;
   if (G.mode === 'attract') return $('ovAttract').classList.contains('show');
-  return G.mode === 'dead' && $('ovDead').classList.contains('show');
+  return false;   // the run-over card is never reloaded automatically: it offers #updateChip
 }
 function tickUpdate() {   // once per rAF; cheap until an update is actually waiting
   if (!swu.ready || swu.reloading || G.time - swu.readyAt < 2 || !swSafeMoment()) return;
+  applyUpdate(false);
+}
+function applyUpdate(explicit) {
   // Loop guard: one update reload per 30s per tab, even if a worker keeps
   // reporting itself waiting (a stuck install must not strobe the title). A
   // guarded attempt is deferred, not dropped — and only a real attempt stamps
   // the clock, or the 4s fallback reload could keep the update waiting forever.
   let last = 0;
   try { last = +sessionStorage.getItem(BUILD.storageKey('sm2.swReload')) || 0; } catch (e) {}
-  const wait = 30000 - (Date.now() - last);
+  const wait = explicit ? 0 : 30000 - (Date.now() - last);
   if (wait > 0) { swu.readyAt = G.time + wait / 1000; return; }
   try { sessionStorage.setItem(BUILD.storageKey('sm2.swReload'), String(Date.now())); } catch (e) {}
   swu.reloading = true;

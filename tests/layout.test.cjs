@@ -146,3 +146,9 @@ test('safe-area insets are remembered per orientation, so an app resume that rep
     } finally { again.close(); }
   } finally { c.close(); }
 });
+
+test('dimmed dependent settings rows keep readable text', () => {
+  const m = rule('.settings-list .dim').match(/opacity:\s*([\d.]+)/);
+  assert.ok(m && Number(m[1]) >= 0.7, 'row label opacity must keep >= 4.5:1 contrast');
+  assert.match(css, /\.settings-list \.dim \.switch[^{]*\{[^}]*opacity/, 'the control itself carries the dimmed state');
+});

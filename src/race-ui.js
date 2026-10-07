@@ -800,8 +800,7 @@
       if (e.code === "Tab") {
         e.preventDefault();
         if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; }
-        if (isRunning()) pause();
-        else focusStep(e.shiftKey ? -1 : 1);
+        if (!isRunning()) focusStep(e.shiftKey ? -1 : 1);   // Tab never pauses a live race (Esc does)
         return;
       }
       if (!modal.hidden) {

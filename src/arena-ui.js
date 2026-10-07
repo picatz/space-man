@@ -380,7 +380,7 @@
       e.stopImmediatePropagation();
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.code === 'Escape') { e.preventDefault(); if (e.repeat) return; escapeAction(); return; }
-      if (e.code === 'Tab') { e.preventDefault(); if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; } if (!activeModal && isMatch()) pauseMatch('Match paused'); else focusStep(e.shiftKey ? -1 : 1); return; }
+      if (e.code === 'Tab') { e.preventDefault(); if (sharedSession && !state) { sharedSession.adapter.openCrew?.(); return; } if (!activeModal && isMatch()) return; /* Tab never pauses a live match (Esc does) */ focusStep(e.shiftKey ? -1 : 1); return; }
       if (activeModal) {
         if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) { if (e.key === 'Enter' && e.target === roomInput) { e.preventDefault(); roomJoin.click(); } return; }
         if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); if (!e.repeat && document.activeElement && activeModal.contains(document.activeElement)) document.activeElement.click(); }
