@@ -301,7 +301,7 @@
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
     let audio = null, audioGain = null, lastSfx = -999, lastFar = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     let room = null, roomBox, roomEntry, roomMembers, roomHint, roomInput, roomInvite, roomCode, roomQR, roomRole, roomLeave, roomCopy, roomShare, roomQRDetails, roomHost, roomJoin, roomWatch, roomDetails;
-    let roomStatus = null, roomSignature = '', rosterSignature = '', roomPaused = false, localRoomMenu = false, roomClosing = false, networkReceived = 0, priorNetworkTick = -1, networkEventHigh = 0;
+    let roomStatus = null, roomSignature = '', rosterSignature = '', roomPaused = false, localRoomMenu = false, roomClosing = false, networkReceived = 0, playout = null, priorNetworkTick = -1, networkEventHigh = 0;
     let watchTools, watchName;
     const onlineActive = () => !!(room && room.active);
     const localActor = () => state && state.actors.find(a => a.controller === 'human');
@@ -796,6 +796,7 @@
       state = snapshot.state; state.events = state.events.filter(e => { if (!e.serial || e.serial <= networkEventHigh) return false; networkEventHigh = e.serial; return true; });
       if (!snapshot.isHost && old && !newRound) for (const a of state.actors) { const p = old.actors.find(p => p.id === a.id); if (p && p.stocks === a.stocks && p.respawnTicks === a.respawnTicks && Math.hypot(p.x-a.x,p.y-a.y)<220) { a.px=p.x;a.py=p.y; } }
       networkReceived = performance.now(); priorNetworkTick = state.tick;
+      if (!snapshot.isHost && root.SpaceManRacePresentation) { playout = playout || root.SpaceManRacePresentation.createArenaPlayout(); playout.receive(state, snapshot.epoch, networkReceived); } else if (playout) { playout.reset(); playout = null; }
       if (view !== 'match' || newRound) {
         cosmeticRound++;
         resetInput(); view = 'match'; paused = false; localRoomMenu = false; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; resultAt = 0; effects = []; resetFeel(); spectatorId = null; camera.initialized = false;
@@ -1495,7 +1496,7 @@
       } else accumulator = 0;
       if (isMatch() && (state.phase === 'over' || localRescue()) && !activeModal && resultAt && now >= resultAt) showResults();
       const renderGap = saver() ? 1000 / 30 : 1000 / 60;
-      if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { paint(paused || state.phase === 'over' ? 1 : feel.freezeLeft > 0 ? feel.holdAlpha : onlineActive() && !room.isHost ? clamp((now - networkReceived) / 50, 0, 1) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
+      if (isMatch() && !paused && activeModal !== resultPanel && now - lastDraw >= renderGap - 1) { const buffered = onlineActive() && !room.isHost && playout && playout.apply(state, now, state.phase === 'over'); paint(paused || state.phase === 'over' ? 1 : feel.freezeLeft > 0 ? feel.holdAlpha : onlineActive() && !room.isHost ? (buffered ? 1 : clamp((now - networkReceived) / 50, 0, 1)) : clamp(accumulator * 60, 0, 1)); lastDraw = now; }
       if (!frameId && active && !document.hidden) frameId = root.requestAnimationFrame(frame);
     }
     function ensureFrame() { if (active && !document.hidden && !frameId) { lastTime = 0; frameId = root.requestAnimationFrame(frame); } }

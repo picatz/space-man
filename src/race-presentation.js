@@ -176,5 +176,36 @@
     }
     return { sample, reset };
   }
-  return Object.freeze({ capture, between, createTimeline, createSampler });
+  // Arena guests: the same playout buffer (3-tick delay, 1.1x catch-up, never
+  // extrapolates) over fighter x/y. receive() records raw authority once per
+  // snapshot; apply() samples it each frame and overwrites x/y (and px/py, so a
+  // draw alpha of any value lands on the sampled pose) on the live state.
+  function createArenaPlayout({ delayTicks = 3 } = {}) {
+    const timeline = createTimeline({ delayTicks });
+    let raw = null;
+    const frame = (state, epoch) => ({
+      tick: state.tick, trackId: state.arenaId, epoch,
+      phase: state.phase === "over" ? "finished" : state.phase,
+      actors: state.actors.map((a) => ({ id: a.id, x: a.x, y: a.y, heading: 0, recoveries: a.stocks })),
+    });
+    function reset() { raw = null; timeline.reset(); }
+    function receive(state, epoch, now) {
+      if (!state) { reset(); return; }
+      raw = frame(state, epoch);
+      timeline.sample(raw, now);
+    }
+    function apply(state, now, paused = false) {
+      if (!state || !raw || raw.tick !== state.tick) return false;
+      const pose = timeline.sample(raw, now, { paused });
+      if (!pose) return false;
+      const byId = new Map(pose.actors.map((a) => [a.id, a]));
+      for (const a of state.actors) {
+        const p = byId.get(a.id);
+        if (p) { a.x = a.px = p.x; a.y = a.py = p.y; }
+      }
+      return true;
+    }
+    return { receive, apply, reset };
+  }
+  return Object.freeze({ capture, between, createTimeline, createSampler, createArenaPlayout });
 });

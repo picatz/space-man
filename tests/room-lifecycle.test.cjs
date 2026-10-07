@@ -157,6 +157,20 @@ test('a full P# range reclaims the longest-absent slot instead of admitting an i
   await until(() => g.net.roster().some((e) => e.you), 'the newcomer sees itself');
 });
 
+test('a guest refused because the runner room is full gets BYE(4) at once, not a 30 s join timeout', async (t) => {
+  const hub = relay(), host = client(hub), g = client(hub, { game: false });
+  t.after(() => { host.close(); g.close(); });
+  await host.net.openRoom({ relayHost: 'relay.test', code: false, adjIdx: 0, nounIdx: 0 });
+  const link = host.net.info().link.split('#j=')[1], hs = host.net._n1.session();
+  hs.playerCap = 1;                                         // the host alone fills the room
+  const before = hs.roster.size, started = Date.now(), events = [];
+  g.net.onEvent((e, d) => { if (e === 'bye') events.push(d); });
+  await assert.rejects(g.net.acceptJoin(link, { adjIdx: 2, nounIdx: 2 }), /room is full/i);
+  assert.ok(Date.now() - started < 5000, 'refusal arrives immediately, not after the 30 s admission clock');
+  assert.equal(events[0]?.reason, 4);
+  assert.equal(hs.roster.size, before, 'the refused guest never took a seat');
+});
+
 test('the hello loop keeps retrying past five attempts until a WELCOME arrives', async (t) => {
   const { host, guest } = await room(t);
   const gs = guest.net._n1.session();

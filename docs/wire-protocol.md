@@ -872,10 +872,11 @@ byte layouts are intended shapes and may change before they ship.
 | LEAVE | `0x08` | G→H | `reason u8` |
 | MIGRATE | `0x0b` | new-host→all | `newHostP u8 || epoch u8 || oldHostPub 32 || proof 16 || reserved u8` |
 
-In this snapshot, the host still expresses "full room", "version mismatch", and "not approved"
-by **silently dropping** the HELLO rather than sending a `BYE` with those reason codes. A
-joining client MUST therefore treat "no WELCOME after retries" as a soft failure, not wait for
-an explicit rejection. (`BYE` itself is implemented for the kick path, reason `0`.)
+In this snapshot the host answers a *full room* (`BYE(reason=4)`, role cap or P# range
+exhausted), a *mode/build mismatch* (`BYE(reason=3)`) and a *kick* (`BYE(reason=0)`) with an
+explicit `BYE` in every mode, runner included (a host's decline of a held join is `BYE(reason=6)`).
+A protocol-version-range gap is still expressed by silently dropping the HELLO. A joining client MUST therefore still treat
+"no WELCOME after retries" as a soft failure.
 
 ---
 
@@ -1111,8 +1112,9 @@ snapshot) is authoritative.** Discrepancies found:
 9. **EMOTE / BYE / ROUND / EMOTEB now implemented; MOMENT / LEAVE / MIGRATE still reserved.**
    The emote and host-control frames landed ([§10.8](#108-frames-now-implemented-emote--host-control-stage));
    the remainder are still design-only ([§10.9](#109-frames-specified-but-not-in-this-snapshot)).
-   The host still drops *rejected HELLOs* silently rather than sending BYE with a reason code;
-   `BYE` is used for the kick path (reason `0`).
+   The host sends `BYE(4)` for a full room and `BYE(3)` for a mode mismatch in every mode (runner
+   rooms used to drop the HELLO silently, so a refused guest waited out its 30 s admission clock);
+   a protocol-range gap is still a silent drop.
 10. **Region code data.** The design example map uses `chi` for Chicago; the code's built-in
     seed uses `ord`. Region codes are directory data, not protocol; a client MUST take
     region codes from the active directory / invite, not hardcode them.
