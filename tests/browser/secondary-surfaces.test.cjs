@@ -15,7 +15,7 @@ assert.ok(['chromium', 'webkit'].includes(engineName), 'SPACE_MAN_SECONDARY_BROW
 const engine = engineName === 'webkit' ? webkit : chromium;
 const SHOTS = process.env.SPACE_MAN_SECONDARY_SCREENSHOTS;
 const SIZES = [[320, 568], [390, 844], [844, 390], [820, 1180], [1440, 900]];
-const GROUPS = ['Sound', 'Feel', 'Motion & controls', 'Performance', 'Keyboard', 'Run Together', 'Connection'];
+const GROUPS = ['Sound', 'Feel', 'Motion & controls', 'Vision', 'Assists', 'Performance', 'App', 'Keyboard', 'Run Together', 'Connection'];
 const TOP5 = [
   { initials: 'ORB', score: 98765, dist: 1782, chain: 8 },
   { initials: 'NVA', score: 12500, dist: 1420, chain: 4 },
