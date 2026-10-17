@@ -10,6 +10,7 @@
   'use strict';
   const DAY_MS = 86400000;
   const SITE = 'https://picatz.github.io/space-man/';
+  const VETERAN_RUNS = 10;                                          // runs before a random solo course skips the lessons (gen 3)
   const GEN = 2;                                                    // what new courses are built with
   const dayKey = (ms) => new Date(ms).toISOString().slice(0, 10);   // UTC, so the whole world shares a day
   // FNV-1a over the date string, then a murmur3 finalizer so neighbouring days
@@ -90,10 +91,11 @@
       kv[m[1]] = m[2];
     }
     if (kv.beat !== undefined && !/^\d{1,7}$/.test(kv.beat)) return null;
-    if (kv.v !== undefined && !/^[12]$/.test(kv.v)) return null;       // a generator this build knows
+    if (kv.v !== undefined && !/^[123]$/.test(kv.v)) return null;       // a generator this build knows
     const beat = kv.beat !== undefined ? parseInt(kv.beat, 10) : 0;
     const gen = kv.v !== undefined ? parseInt(kv.v, 10) : 1;
     if (kv.daily !== undefined) {
+      if (gen > 2) return null;   // gen 3 (veteran opener) is random solo seeds only
       if (kv.seed !== undefined || !validDay(kv.daily, now)) return null;
       return { kind: 'daily', day: kv.daily, seed: daySeed(kv.daily), beat, gen };
     }
@@ -107,5 +109,5 @@
     return SITE + (course.kind === 'daily' ? '#daily=' + course.day : '#seed=' + (course.seed >>> 0)) + '&beat=' + s
       + ((course.gen | 0) >= 2 ? '&v=' + (course.gen | 0) : '');
   }
-  window.SpaceManCourse = { SITE, GEN, THEMES, dayKey, daySeed, validDay, theme, parse, link };
+  window.SpaceManCourse = { SITE, GEN, VETERAN_RUNS, THEMES, dayKey, daySeed, validDay, theme, parse, link };
 })();

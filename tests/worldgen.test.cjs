@@ -599,3 +599,17 @@ test('a shield absorbs a brute shockwave and a bomb blast, like any other hit', 
     return out;`);
   assert.deepEqual(r, { waveAlive: true, waveShieldSpent: true, brutesLives: true, waveKillsUnshielded: true, blastAlive: true, blastShieldSpent: true, blastKillsUnshielded: true });
 });
+
+test('veteran start (gen 3): short test-level opener, seed-pure, and gen 2 is untouched', (t) => {
+  const c = solo(t);
+  const run = (gen) => json(c, `${STREAM(`resetRun(4242, true, { gen: ${gen} })`, 1500)}
+    return { log: G.wg.S.log, veteran: WORLD.VETERAN.map((s) => s[0]) };`);
+  const a = run(3), b = run(3), g2 = run(2);
+  assert.deepEqual(a, b, 'same seed, same veteran course');
+  const lessons = a.log.filter((q) => q.beat !== 'rest');   // a sector breather may still slot in
+  assert.deepEqual(lessons.slice(0, a.veteran.length).map((q) => q.id), a.veteran);
+  assert.ok(lessons.slice(1, a.veteran.length).every((q) => q.beat === 'test'), 'only the first hop is a teach beat');
+  assert.notDeepEqual(a.log.slice(0, 4).map((q) => q.id), g2.log.slice(0, 4).map((q) => q.id));
+  assert.equal(g2.log[0].id, 'hops');
+  assert.equal(g2.log[1].id, 'introPatrol');
+});

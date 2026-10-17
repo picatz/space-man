@@ -62,6 +62,10 @@ test('challenge fragments accept valid links and reject everything else', () => 
   assert.deepEqual({ ...C.parse('#seed=42&beat=900', now) }, { kind: 'seed', seed: 42, beat: 900, gen: 1 });
   assert.deepEqual({ ...C.parse('#seed=42&beat=900&v=2', now) }, { kind: 'seed', seed: 42, beat: 900, gen: 2 });
   assert.equal(C.parse('#v=2&daily=2026-09-28', now).gen, 2);
+  assert.deepEqual({ ...C.parse('#seed=42&beat=900&v=3', now) }, { kind: 'seed', seed: 42, beat: 900, gen: 3 });
+  assert.equal(C.parse('#daily=2026-09-28&v=3', now), null, 'the veteran opener is random seeds only');
+  assert.equal(C.parse('#seed=42&beat=900&v=4', now), null);
+  assert.ok(C.link({ kind: 'seed', seed: 42, gen: 3 }, 5).endsWith('#seed=42&beat=5&v=3'));
   assert.equal(C.parse('beat=7&seed=4294967295', now).seed, 4294967295);
   for (const bad of [
     '', '#', '#seed=42', '#beat=5', '#daily=2026-09-29', '#daily=2026-09-20', '#daily=2026-02-30',
@@ -70,7 +74,7 @@ test('challenge fragments accept valid links and reject everything else', () => 
     '#seed=1&beat=1&beat=2', '#daily=2026-09-28&seed=1&beat=1', '#daily=2026-09-28&beat=<b>x</b>',
     '#shot=dead&seed=3&beat=5', '#j=AQBrYWctcm9vbS1tb2Nr', '#seed=1&beat=1&x=1', '#seed=%31&beat=1',
     '#seed=1&beat=1&' , '#' + 'seed=1&'.repeat(12) + 'beat=1', '#daily=2026-09-28&beat=' + '9'.repeat(80),
-    '#seed=1&beat=1&v=3', '#seed=1&beat=1&v=0', '#seed=1&beat=1&v=2&v=2', '#seed=1&beat=1&v=22', '#v=2',
+    '#seed=1&beat=1&v=0', '#seed=1&beat=1&v=2&v=2', '#seed=1&beat=1&v=22', '#v=2',
   ]) assert.equal(C.parse(bad, now), null, bad);
   const link = C.link({ kind: 'daily', day: '2026-09-28' }, 1234);
   assert.equal(link, 'https://picatz.github.io/space-man/#daily=2026-09-28&beat=1234');
