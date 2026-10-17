@@ -546,6 +546,14 @@
     ['patrolBridge', 'test', 0.2, 'patrol'],
     ['starRush', 'rest', 0.1, 'hop'],
   ];
+  // Gen 3 (a returning player's random run): the same four lessons, already at test
+  // difficulty, with no breathers, so the first ~250 m is spent playing, not re-learning.
+  const VETERAN = [
+    ['hops', 'teach', 0.05, 'hop'],
+    ['introPatrol', 'test', 0.2, 'patrol'],
+    ['stairsUp', 'test', 0.2, 'climb'],
+    ['introShooter', 'test', 0.2, 'shooter'],
+  ];
   function freshElement(W, d) {
     let fresh = null;
     for (const el of ELEMENTS) if (!W.S.seen[el] && unlocked(W, el, d) && (!fresh || W.unlock[el] < W.unlock[fresh])) fresh = el;
@@ -634,7 +642,7 @@
       boost: t.id === 'burn' ? 3 : 1, weights: t.weights || {} };
     const unlock = Object.assign({}, UNLOCK, t.unlock || {});
     const opener = (t.opener || []).map((id) => [id, 'test', 0.25, SEGMENTS[id].focus[0]]);
-    const script = SCRIPT.slice(0, 1).concat(opener, SCRIPT.slice(1));
+    const script = G.gen >= 3 ? VETERAN.concat(opener) : SCRIPT.slice(0, 1).concat(opener, SCRIPT.slice(1));
     const S = { last: G.platforms[G.platforms.length - 1], script, beats: [], beatIdx: 0, focus: 'hop', seen: {}, focusAt: {},
       cycles: 0, sinceRest: 0, intro: false, recent: [], ids: [], lastRangedX: -Infinity, trails: 0, lastBand: 0, foes: 0, log: [] };
     const W = { G, api, S, mod, unlock, P: physics(api.CFG, mod.grav), yMin: G.groundY - 200, yMax: G.groundY + 24, seg: [], split: null };
@@ -665,6 +673,6 @@
     // Cull far-behind slabs (player-relative, so culling can't vary with viewport width).
     while (G.platforms.length > 3 && G.platforms[0].x + G.platforms[0].w < G.player.x - 900) G.platforms.shift();
   }
-  window.SpaceManWorld = { MARGIN, LOOKAHEAD, ELEMENTS, UNLOCK, INTRO, SEGMENTS, TERRAIN, SCRIPT,
+  window.SpaceManWorld = { MARGIN, LOOKAHEAD, ELEMENTS, UNLOCK, INTRO, SEGMENTS, TERRAIN, SCRIPT, VETERAN,
     simJump, physics, reachAt, heat, init, generate };
 })();

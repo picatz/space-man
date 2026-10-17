@@ -1402,8 +1402,9 @@ function dailyCourse(day) {
 }
 // The generator (and, for a designed daily, the theme) a course is built with.
 // Normal runs and rooms use the current generator; a link names its own.
-function courseWorld(c) {
-  const gen = c ? (c.gen || 1) : COURSE.GEN;
+// A returning player's random solo run (no course, no mercy assist) is gen 3: gen 2 with the short veteran opener.
+function courseWorld(c, veteran) {
+  const gen = c ? (c.gen || 1) : veteran ? 3 : COURSE.GEN;
   return { gen, theme: c && c.kind === 'daily' && gen >= 2 ? COURSE.theme(c.day) : null };
 }
 // target = the score the HUD chases: a friend's score if the link carried one,
@@ -3319,7 +3320,7 @@ function startRun(options) {
   // Drop any buffered jump/held keys from the restart keypress itself, or the
   // astronaut performs an involuntary full jump on frame 1 of every run.
   clearInput();
-  resetRun(seed, !!course || (solo && !stats.mercy), courseWorld(course));
+  resetRun(seed, !!course || (solo && !stats.mercy), courseWorld(course, solo && !course && !stats.mercy && SHOT_SEED === null && stats.runs >= COURSE.VETERAN_RUNS));
   G.course = course; G.runSeed = seed; G.targetBeaten = false;
   if (G.theme && !SHOT) queueToast('DAILY · ' + G.theme.title, 'sys');   // the rules are on the Daily card
   Audio.musicReset(seed);
