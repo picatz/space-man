@@ -46,8 +46,11 @@ node --test home.test.cjs                       # starts its own static server o
 - `SPACE_MAN_BASE_URL` tests an already-running deployment instead of the local server.
 - `SPACE_MAN_*_SCREENSHOTS=<dir>` writes review screenshots. `SPACE_MAN_HEADED=1` shows the browser.
 - `package.json` scripts cover only some suites (`test:previews`, `test:arena`, `test:arena-online`,
-  `test:arena-relay`); run the rest with `node --test <file>`. CI (`.github/workflows/`) is the source
-  of truth for which files run where.
+  `test:arena-relay`); run the rest with `node --test <file>`.
+- CI runs every browser suite from one matrix, `.github/workflows/browser.yml`, which calls
+  `tests/browser/ci-suite.sh <suite>` (the source of truth for which files run in each suite and
+  per-engine skips). Locally: `cd tests/browser && SPACE_MAN_ENGINE=chromium ./ci-suite.sh home`.
+  To add a suite, add a case to that script and its name to the matrix.
 
 Browser suites are slow and timing-sensitive. Run only the suites for the area you changed, and rerun a
 failing one once before assuming a real regression, but never skip or loosen a test to get green.
@@ -74,4 +77,6 @@ failing one once before assuming a real regression, but never skip or loosen a t
 ## Git and PRs
 
 Work on a feature branch, open a PR against `main`, and wait for CI and the AI review to finish before
-merging. Each PR runs about 18 workflows (consolidation is planned), so expect several minutes.
+merging. A PR runs `tests.yml` (unit tests plus preview and Arena browser checks) and `browser.yml`
+(28 suite/engine jobs); expect several minutes. Opt-in live-relay and deployed-preview checks are
+separate label- or dispatch-triggered workflows.

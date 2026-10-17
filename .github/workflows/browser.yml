@@ -1,0 +1,62 @@
+name: Browser tests
+# One matrix for every real-browser suite (Chromium and WebKit). Add a suite by
+# adding a case to tests/browser/ci-suite.sh and its name to the matrix below.
+# Check names stay "<suite> (<engine>)". Opt-in live-relay and deployed-preview
+# checks live in their own workflows.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  browser:
+    name: ${{ matrix.suite }} (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [action-buffer, characters, cosmetics, expedition, home, identity, invite-qr, journey, perspective, prism, racing-browser, simulated-relay, track-features, theme-browser]
+        engine: [chromium, webkit]
+    defaults:
+      run:
+        working-directory: tests/browser
+    env:
+      SPACE_MAN_ENGINE: ${{ matrix.engine }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # These suites test the PR head itself, not the merge commit.
+          ref: ${{ contains('invite-qr track-features simulated-relay', matrix.suite) && (github.event.pull_request.head.sha || github.sha) || '' }}
+      - name: Check out the base for before/after screenshots
+        if: matrix.suite == 'theme-browser'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+          path: theme-before
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
+      - run: npm ci
+      - name: Install independent QR pixel decoder
+        if: matrix.suite == 'invite-qr'
+        run: sudo apt-get update && sudo apt-get install -y libzbar0
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - name: Run ${{ matrix.suite }}
+        run: ./ci-suite.sh ${{ matrix.suite }}
+        env:
+          SHOTS: ${{ runner.temp }}/shots
+          SPACE_MAN_THEME_BASE_ROOT: ${{ github.workspace }}/theme-before
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.suite }}-${{ matrix.engine }}
+          path: |
+            ${{ runner.temp }}/shots/*.png
+            ${{ runner.temp }}/shots/*.json
+          if-no-files-found: ignore
+          retention-days: 5
