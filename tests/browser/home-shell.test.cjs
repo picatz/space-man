@@ -71,11 +71,14 @@ async function sampleFrames(page, action, name, id = 'btnPlay') {
     window.homePaintTarget = id;
     window.homePaintFrames = [];
     window.homePaintDone = new Promise(resolve => {
+      const started = performance.now();
       function sample() {
         const b = document.getElementById(homePaintTarget), s = getComputedStyle(b.closest('.home-mode') || b);
         homePaintFrames.push({ background: s.backgroundColor, image: s.backgroundImage,
           opacity: s.opacity, filter: s.filter, hover: b.matches(':hover'), active: b.matches(':active') });
-        if (homePaintFrames.length < 30) requestAnimationFrame(sample); else resolve();
+        // Bound by time as well as count: a throttled rAF under hosted-runner load
+        // must shorten the sample, not stall the whole test.
+        if (homePaintFrames.length < 30 && performance.now() - started < 2500) requestAnimationFrame(sample); else resolve();
       }
       requestAnimationFrame(sample);
     });
@@ -94,14 +97,15 @@ async function sampleFrames(page, action, name, id = 'btnPlay') {
   return frames;
 }
 
-// Twenty-four real hover/focus/press frame sequences plus screenshots took
-// 52 seconds in a passing WebKit run; leave bounded headroom for hosted load.
-test('home normal-motion mode and Done hover, focus and press keep continuously painted surfaces', {timeout:120000}, async t => {
+// Each control runs as its own test (six real hover/focus/press frame sequences
+// plus screenshots) so hosted-runner load can only slow one control, never exhaust
+// a shared budget, and a failure names the control.
+for (const id of ['btnPlay','btnArena','btnRace','btnWardrobeDone']) test(`home normal-motion ${id} hover, focus and press keep continuously painted surfaces`, {timeout:60000}, async t => {
   const {page} = await launch(t);
   // Hidden legacy control still keeps the regression fix in its stylesheet.
   assert.equal(await page.locator('#btnExpedition').isVisible(), false);
   assert.equal(await page.locator('#btnExpedition').evaluate(e=>getComputedStyle(e).backgroundColor), 'rgb(255, 205, 124)');
-  for (const id of ['btnPlay','btnArena','btnRace','btnWardrobeDone']) {
+  {
     if(id === 'btnWardrobeDone') { await page.locator('#btnWardrobe').click(); await page.locator('#ovWardrobe.in').waitFor(); await page.waitForTimeout(500); }
     const button = page.locator('#'+id);
     await button.scrollIntoViewIfNeeded(); await page.mouse.move(5,5);
