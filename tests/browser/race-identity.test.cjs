@@ -46,10 +46,19 @@ async function launch(t) {
         return fillText.call(this, text, ...rest);
       };
     });
-    p.page = await context.newPage(); peers.push(p);
-    p.page.on('pageerror', e => p.errors.push(e.message));
-    p.page.on('dialog', d => d.accept());
-    await p.page.goto(base);
+    peers.push(p);
+    // A hosted WebKit worker occasionally crashes the renderer during the very
+    // first load ("Page crashed"). That is the engine, not the game: retry once
+    // on a fresh page. Any other failure, or a second crash, still fails the test.
+    for (let attempt = 0; ; attempt++) {
+      p.page = await context.newPage();
+      p.page.on('pageerror', e => p.errors.push(e.message));
+      p.page.on('dialog', d => d.accept());
+      try { await p.page.goto(base); break; } catch (e) {
+        if (attempt || !/Page crashed/.test(e.message)) throw e;
+        await p.page.close().catch(() => {});
+      }
+    }
     await p.page.locator('#btnRace').click();
     return p;
   }
