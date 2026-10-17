@@ -25,7 +25,6 @@ jobs:
         working-directory: tests/browser
     env:
       SPACE_MAN_ENGINE: ${{ matrix.engine }}
-      SHOTS: ${{ runner.temp }}/shots
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +49,7 @@ jobs:
       - name: Run ${{ matrix.suite }}
         run: ./ci-suite.sh ${{ matrix.suite }}
         env:
+          SHOTS: ${{ runner.temp }}/shots
           SPACE_MAN_THEME_BASE_ROOT: ${{ github.workspace }}/theme-before
       - uses: actions/upload-artifact@v4
         if: always()
