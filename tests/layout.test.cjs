@@ -75,8 +75,15 @@ test('home is an open responsive launch scene with every legacy entry point', ()
   const home = fs.readFileSync(path.join(__dirname, '../src/home.css'), 'utf8');
   assert.match(home, /grid-template-areas: 'header header' 'world launch' 'footer footer'/);
   assert.match(home, /grid-template-areas: 'header' 'world' 'launch' 'footer'/);
-  assert.match(home, /max-height: 100%; overflow-x: hidden; overflow-y: auto/);
-  assert.match(html, /class="panel home-shell"/);
+  // The shell is a full-bleed scroller that pads itself by the safe areas, so
+  // nothing is clipped at a line inside the notch or home-indicator inset.
+  const shell = home.match(/#ovAttract \.home-shell \{([^}]*)\}/)[1];
+  assert.match(shell, /max-height: none/);
+  assert.match(shell, /overflow-x: hidden; overflow-y: auto/);
+  assert.match(shell, /padding: calc\(var\(--sm-safe-top\)[^;]*var\(--sm-safe-bottom\)/);
+  // The stage centres with auto margins, which stay reachable when it overflows.
+  assert.match(home, /#ovAttract \.home-stage \{[^}]*margin: auto/);
+  assert.match(html, /class="panel home-shell">\s*<div class="home-stage">/);
   for (const id of ['btnExpedition', 'btnExpeditionFriends', 'btnPlay', 'btnArena', 'btnRace', 'btnTogether', 'btnDaily', 'btnWardrobe', 'btnTrophy', 'btnSettings']) {
     assert.equal((html.match(new RegExp('id="' + id + '"', 'g')) || []).length, 1, id + ' remains unique');
   }

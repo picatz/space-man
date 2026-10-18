@@ -830,6 +830,7 @@
 <!-- Home: one adventure launch, with the arcade and personal tools in easy reach. -->
 <div class="overlay attract-anchor" id="ovAttract">
   <div class="panel home-shell">
+   <div class="home-stage">
     <header class="home-header">
       <h1 class="home-wordmark">SPACE<span>MAN</span><i aria-hidden="true">✦</i></h1>
       <div id="attractBest" class="title-lg">BEST 0</div>
@@ -874,6 +875,7 @@
       <div id="attractMedals" hidden></div><div id="attractStats" hidden></div>
       <div id="offlineNote" class="offline-note" role="status" style="display:none">Offline · single player ready</div>
     </footer>
+   </div>
   </div>
   <div id="homeNotice" class="home-notice" role="status" aria-live="polite" hidden></div>
 </div>
@@ -2328,7 +2330,10 @@ function menuMove(dx, dy) {
     if (d < bestD) { bestD = d; best = el; }
   }
   if (!best && dy) best = items[(i + dy + items.length) % items.length];
-  if (best) { best.focus(); if (best.scrollIntoView) best.scrollIntoView({ block: 'nearest' }); }
+  if (best) {
+    best.focus(); if (best.scrollIntoView) best.scrollIntoView({ block: 'nearest' });
+    if (input.pad.connected) buzz('select');   // a controller feels each step of the menu cursor
+  }
   return true;
 }
 // A sub-menu (Settings, Records, …) is open over the mode's own card — start /
