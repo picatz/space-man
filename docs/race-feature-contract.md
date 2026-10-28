@@ -33,6 +33,8 @@ Starlight catalog (unchanged geometry in catalog revision 2):
 
 Prism Canyon appends track index 3: one full-width ramp at .195, six coins (three entry, three airborne), and one Shield/Pulse row at .745. Its .58–.68 gallery is render-only architecture above continuous physical road. See [prism-canyon.md](prism-canyon.md).
 
+Aurora Ridge, Neon Gauntlet and Nebula Drift append track indexes 4, 5 and 6 (3-lap, about 6,000–6,700 units against roughly 4,000 for the originals). They declare `ramps` and `rows` as lap fractions in the course definition; the catalog builder turns each into a full-width ramp (gate = floor(f*20)) with three entry and three airborne coins, and a Shield/Pulse row. Older clients that lack these indexes reject a snapshot naming them, so rooms choosing a new circuit need an up-to-date build.
+
 The same catalog feeds physics, CPU routing, render geometry and decoder validation. Coin/row/ramp bit positions are their catalog indices. A view uses the followed actor's masks, never another actor's pickups.
 
 ## Added actor state
