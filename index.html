@@ -6558,6 +6558,7 @@ function showAttract() {
   window.SpaceManHome.render(equippedAppearance());
   syncOffline();
   showOverlay('ovAttract');
+  window.SpaceManHome.fit();
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
   G.mode = 'attract';
   attractGreet();   // E13: welcome-back wave + anniversary confetti (one-shots, DELIGHT-gated)
