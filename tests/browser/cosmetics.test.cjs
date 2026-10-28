@@ -65,7 +65,14 @@ test('old/corrupt profiles and real mode handoffs preserve a literal equipped ou
   // Enter with focus on Color, traverse with D-pad, activate Eyes, then move to
   // Calm and equip with A. A held across a rebuild must not trigger a new action.
   await page.locator('#wardTab-suit').focus();
-  const pad = async (button, hold = 90) => { await page.evaluate(button=>{testPad.buttons[button].pressed=true;},button); await page.waitForTimeout(hold); await page.evaluate(button=>{testPad.buttons[button].pressed=false;},button); await page.waitForTimeout(90); };
+  // A press lasts at least `hold` ms and until the game's own poll has seen it go down, then up: a slow software-rendered
+  // frame (WebKit CI) can outlast a fixed 90 ms tap, which then never happened as far as the game is concerned.
+  const pad = async (button, hold = 90) => {
+    await page.evaluate(button=>{testPad.buttons[button].pressed=true;},button);
+    await page.waitForTimeout(hold); await page.waitForFunction(button=>input.pad.prev[button]===true,button);
+    await page.evaluate(button=>{testPad.buttons[button].pressed=false;},button);
+    await page.waitForFunction(button=>input.pad.prev[button]===false,button); await page.waitForTimeout(90);
+  };
   await pad(15); await pad(15); await pad(0);
   assert.equal(await page.locator('#wardTab-eyes').getAttribute('aria-selected'),'true');
   await pad(13);

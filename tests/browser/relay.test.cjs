@@ -220,7 +220,7 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
       await wait(spectator.page, (p) => {
         const g = ghostByP.get(p);
         return spec.watchP === p && spec.cameraP === p && watchable(g)
-          && Math.abs(G.camX - (g.x1 - view.w * 0.42)) < 3;
+          && Math.abs(G.camX - (g.x1 - camLead())) < 3;
       }, p);
       const cameraBefore = await spectator.page.evaluate(() => G.camX);
       const before = await mover.page.evaluate(() => G.player.x + G.player.w / 2);
@@ -232,7 +232,7 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
       await wait(spectator.page, ({ p, x }) => {
         const g = ghostByP.get(p);
         return spec.watchP === p && spec.cameraP === p && watchable(g) && G.camX > x + 5
-          && Math.abs(G.camX - (g.x1 - view.w * 0.42)) < 4;
+          && Math.abs(G.camX - (g.x1 - camLead())) < 4;
       }, { p, x: cameraBefore });
     }
     stage = 'observing bidirectional live presence after reconnect';
