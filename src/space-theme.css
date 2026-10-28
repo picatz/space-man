@@ -479,3 +479,21 @@ body.keyboard-active .overlay :is(button, summary, input, textarea, [role="butto
 body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, textarea):focus {
  outline:3px solid var(--sm-focus) !important; outline-offset:-3px !important;
 }
+
+/* Lobby scrollers run to the bottom of the screen instead of ending inside the
+   modal's padding: content scrolls under a soft edge, never against a hard
+   clip, and keeps its breathing room at the end of the scroll. */
+.race-root .race-modal { padding-bottom: 0; }
+.race-root .race-dialog,
+.arena-root .arena-modal { --lobby-edge: 22px; }
+.race-root .race-dialog {
+  padding-bottom: calc(var(--race-bottom) + 22px);
+  -webkit-mask-image: linear-gradient(#000 calc(100% - var(--lobby-edge)), transparent);
+  mask-image: linear-gradient(#000 calc(100% - var(--lobby-edge)), transparent);
+}
+.arena-root .arena-modal { padding-bottom: 0; }
+.arena-root .arena-dialog {
+  padding-bottom: calc(var(--arena-safe-bottom) + 22px);
+  -webkit-mask-image: linear-gradient(#000 calc(100% - var(--lobby-edge)), transparent);
+  mask-image: linear-gradient(#000 calc(100% - var(--lobby-edge)), transparent);
+}

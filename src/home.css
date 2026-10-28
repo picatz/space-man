@@ -281,3 +281,9 @@ body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: no
 }
 body.reduce-motion #ovAttract::before, body.reduce-motion #ovAttract::after,
 body.battery-saver #ovAttract::before, body.battery-saver #ovAttract::after { animation: none !important; }
+
+/* Mode cards: title and tagline share one flow, so a long or wrapped tagline
+   grows the card text instead of landing on top of the title. */
+#ovAttract .home-mode { display: flex; flex-direction: column; }
+#ovAttract .home-mode .mode-link { min-height: 0; padding: 8px 6px 0; text-wrap: balance; overflow-wrap: anywhere; }
+#ovAttract .home-mode > span:not(.mode-link) { position: static; display: block; padding: 2px 6px 12px; line-height: 1.25; text-wrap: balance; overflow-wrap: anywhere; }
