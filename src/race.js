@@ -136,6 +136,7 @@
       pads: [.08, .24, .43, .6, .8, .93],
       ramps: [.2, .7],
       rows: [.34, .86],
+      hazards: [[.12, -52], [.3, 52], [.5, -44], [.76, 48]],
     },
     {
       id: "neon",
@@ -152,6 +153,7 @@
       pads: [.07, .19, .31, .46, .58, .72, .87],
       ramps: [.4],
       rows: [.26, .64],
+      hazards: [[.13, 44], [.22, -40], [.36, 42], [.52, -44], [.68, 40], [.8, -42]],
     },
     {
       id: "nebula",
@@ -168,6 +170,7 @@
       pads: [.1, .27, .45, .66, .9],
       ramps: [.3, .78],
       rows: [.52],
+      hazards: [[.06, -52], [.2, 52], [.38, -50], [.58, 52], [.72, -46], [.95, 48]],
     },
   ]);
   const colors = freeze([
@@ -319,6 +322,7 @@
     const c = course(typeof value === "string" ? value : value && (value.id || value.trackId));
     if (featureCache.has(c.id)) return featureCache.get(c.id);
     const catalog = { revision: CATALOG_REVISION, trackId: c.id, ramps: [], coins: [], rows: [] };
+    if (c.hazards) catalog.hazards = [];
     if (c.id === "starlight") {
       catalog.ramps = [.175, .595].map((f, index) => ({
         id: "ramp-" + (index ? "b" : "a"), index, s: c.length * f,
@@ -356,7 +360,7 @@
           id: "prism-exit-" + item, item, s: c.length * .745, d: i ? 44 : -44,
         })) }];
     }
-    if (c.ramps || c.rows) {
+    if (c.ramps || c.rows || c.hazards) {
       // Data-driven courses: ramps and item rows are fractions of the lap; the
       // gate is the lap twentieth that contains them.
       const gateOf = (f) => Math.floor(f * 20);
@@ -368,6 +372,10 @@
           index: catalog.coins.length, s: s - 60 * (3 - i) - 60, d: 44, airborne: false });
         for (let i = 0; i < 3; i++) catalog.coins.push({ id: "sky-" + index + "-" + i,
           index: catalog.coins.length, s: s + 54 * (i + 1), d: index % 2 ? 44 : -44, airborne: true });
+      });
+      // Static debris fields: fraction of the lap and a fixed lateral offset.
+      (c.hazards || []).forEach(([f, d], index) => {
+        catalog.hazards.push({ id: "hazard-" + index, index, s: c.length * f, d });
       });
       (c.rows || []).forEach((f, index) => {
         catalog.rows.push({ id: "item-row-" + index, index, s: c.length * f, gate: gateOf(f),
@@ -484,6 +492,23 @@
       if (pickupContact(c, coin, old, a, 24) === null) continue;
       a.coinMask |= 1 << coin.index; a.fuel = Math.min(100, a.fuel+6);
       state.events.push({ type: "coin", id: a.id });
+    }
+    // Debris costs speed like a pulse hit; a shield absorbs it and the brief
+    // immunity stops one field from re-hitting the same kart every tick.
+    if (catalog.hazards && !a.airRamp && !a.immunityTicks) {
+      for (const hazard of catalog.hazards) {
+        if (pickupContact(c, hazard, old, a, 28) === null) continue;
+        a.immunityTicks = 60;
+        if (a.shieldTicks) {
+          a.shieldTicks = 0; state.events.push({ type: "block", id: a.id });
+        } else {
+          a.vx *= .72; a.vy *= .72; a.speed = Math.hypot(a.vx, a.vy);
+          a.slowTicks = 24; a.padTicks = 0; a.boosting = false;
+          a.drifting = false; a.driftTicks = a.driftDirection = 0;
+          state.events.push({ type: "hit", id: a.id });
+        }
+        break;
+      }
     }
     for (const row of catalog.rows) {
       if (a.rowMask & (1 << row.index) || a.passed % 20 !== row.gate) continue;
@@ -698,6 +723,8 @@
     // Route deliberately through optional lines, with smooth look-ahead rather
     // than teleporting onto a pickup. These choices use only public state.
     if (catalog.coins.length && n.s >= 115 && n.s < c.length*.115+32) lane = 44;
+    for (const hazard of catalog.hazards || [])
+      if (n.s >= hazard.s-190 && n.s < hazard.s+30) lane = hazard.d > 0 ? -40 : 40;
     for (const ramp of catalog.ramps)
       if (n.s >= ramp.s-170 && n.s < ramp.s+184) lane = ramp.index ? 44 : -44;
     for (const row of catalog.rows) if (!(actor.rowMask & (1 << row.index)) &&
