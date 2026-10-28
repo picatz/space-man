@@ -327,18 +327,19 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 @media(min-width:851px) {
  .arena-root .arena-title, .race-root .race-title { font-size:36px; line-height:1.14; margin:12px 0; }
 }
-/* Pause is an intermission, not a dashboard. Keep one clear resume action. */
-#ovPause .panel { width:min(580px,100%); padding:28px; }
-#ovPause .title-lg { font-size:clamp(27px,3vw,34px); margin-bottom:16px; }
-#ovPause .dock.top { position:static; margin:0 0 18px; padding:0; border:0; background:none; }
-#ovPause .btn { font-family:var(--sm-font-body); letter-spacing:0; font-size:14px; }
-#ovPause .control-guide { gap:8px; margin:8px 0 20px; }
-#ovPause .control-guide > div { border:0; background:transparent; padding:9px 5px; }
-#ovPause .control-guide b { font:700 13px/1.4 var(--sm-font-body); letter-spacing:0; }
-#ovPause .control-guide span { font:450 calc(10px * var(--ui-scale, 1))/1.4 var(--sm-font-body); letter-spacing:.04em; }
-#ovPause .pause-settings > summary { padding:12px; font:600 13px/1.4 var(--sm-font-body); letter-spacing:0; text-transform:none; background:transparent; }
-#ovPause #btnQuit { background:transparent; border-color:transparent; color:#a9c2d4; box-shadow:none; margin-top:12px; }
-@media(max-height:560px) { #ovPause .panel { padding:18px 24px; }#ovPause .title-lg { margin-bottom:10px; font-size:27px; }#ovPause .control-guide { margin:0 0 8px; }#ovPause .dock.top { margin-bottom:10px; } }
+/* Pause is an intermission, not a dashboard: one clear resume action, a compact legend for the input in hand, then
+   settings and the way out. It wears the same surface, title and type as Settings and the run-over card. */
+#ovPause .panel { width:min(520px,100%); --px:28px; --py:24px; padding:var(--py) var(--px); background:#101e31; text-align:left; font:400 15px/1.5 var(--sm-font-body); }
+#ovPause .title-lg { font-size:clamp(26px,3vw,34px); margin:0 0 16px; text-align:left; }
+#ovPause .dock.top { position:static; margin:0 0 16px; padding:0; border:0; background:none; }
+#ovPause .btn { font:650 15px/1.4 var(--sm-font-body); letter-spacing:0; min-height:46px; }
+#ovPause .control-guide { gap:8px; margin:0 0 16px; }
+#ovPause .control-guide > div { display:flex; flex-direction:column; align-items:flex-start; gap:6px; border:1px solid var(--sm-line); background:rgba(4,12,27,.35); border-radius:var(--sm-radius-small); padding:10px 12px; text-align:left; }
+#ovPause .control-guide b { font:700 12px/1.3 var(--sm-font-body); letter-spacing:.02em; color:var(--sm-ink); padding:3px 7px; border-radius:6px; background:rgba(207,227,255,.08); box-shadow:inset 0 -1px 0 rgba(207,227,255,.14); }
+#ovPause .control-guide span { margin:0; font:600 calc(10px * var(--ui-scale, 1))/1.3 var(--sm-font-body); letter-spacing:.08em; color:#9fc3d9; }
+#ovPause .pause-settings > summary { padding:12px; font:600 14px/1.4 var(--sm-font-body); letter-spacing:0; text-transform:none; background:transparent; }
+#ovPause #btnQuit { background:transparent; border-color:transparent; color:#a9c2d4; box-shadow:none; margin-top:8px; }
+@media(max-height:560px) { #ovPause .panel { --px:24px; --py:16px; }#ovPause .title-lg { margin-bottom:10px; font-size:26px; }#ovPause .control-guide { margin:0 0 10px; }#ovPause .control-guide > div { padding:7px 10px; }#ovPause .dock.top { margin-bottom:10px; } }
 #ovPause .pause-session-note { margin:-7px 0 16px; color:#aac2d3; font:450 12px/1.5 var(--sm-font-body); }
 
 /* Secondary screens share the studio's quiet, readable surface language.
@@ -407,6 +408,35 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 #ovDead .secondary-panel .stat { font-family: var(--sm-font-body); }
 #ovDead .secondary-panel .dock .btn { width: 100%; }
 #ovDead .secondary-panel #deadTapHint { font-size: calc(11px * var(--ui-scale, 1)); text-align: center; }
+/* Run over: one compact card. The score and its reference sit together, the board is a short list (never a row
+   slipping under the docked buttons), and wide screens split it into result | board + actions instead of a tall
+   column with empty space beside the number. */
+#ovDead .secondary-panel { --py: 20px; }
+#ovDead .secondary-panel #deadScore { margin: 4px 0 6px; line-height: 1; }
+#ovDead #deadDelta { margin: 0 0 4px; letter-spacing: 1.5px; }
+#ovDead .dead-board-head { color: #9fc3d9; font: 600 12px/1.4 var(--sm-font-body); letter-spacing: .08em; text-transform: uppercase; margin: 14px 0 2px; }
+#ovDead .secondary-panel table.scores { margin: 0 0 6px; }
+#ovDead .secondary-panel table.scores td { padding: 5px 8px; font-size: 14px; }
+#ovDead .secondary-panel table.scores td.sc { font-size: 15px; }
+#ovDead .secondary-panel table.scores .empty { padding: 8px 0; }
+#ovDead .secondary-panel .dock { margin-top: 12px; }
+#ovDead .secondary-panel .dock .btn + .btn { margin-top: 8px; }
+#ovDead .dead-unlock { display: grid; gap: 2px; margin: 12px 0 2px; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,201,60,.45);
+  background: linear-gradient(100deg, rgba(255,201,60,.16), rgba(255,201,60,.04)); opacity: 0; transform: scale(.94); transition: opacity .25s ease, transform .35s cubic-bezier(.2,1.4,.4,1); }
+#ovDead .dead-unlock.reveal { opacity: 1; transform: none; animation: unlockGlow 1.4s ease-out .1s 1 backwards; }
+#ovDead .dead-unlock-kicker { color: var(--sm-gold, #FFC93C); font: 700 calc(11px * var(--ui-scale, 1))/1.3 var(--sm-font-body); letter-spacing: .1em; text-transform: uppercase; }
+#ovDead .dead-unlock b { color: #FFE59A; font: 700 17px/1.3 var(--sm-font-body); }
+#ovDead .dead-unlock-cta { color: #d9c79a; font: 500 12px/1.4 var(--sm-font-body); }
+@keyframes unlockGlow { 0% { box-shadow: 0 0 0 0 rgba(255,201,60,.55); } 100% { box-shadow: 0 0 0 14px rgba(255,201,60,0); } }
+body.reduce-motion #ovDead .dead-unlock { transition: opacity .2s ease; transform: none; }
+body.reduce-motion #ovDead .dead-unlock.reveal { animation: none; }
+@media (orientation: landscape) and (min-width: 760px) {
+  #ovDead .secondary-panel { width: min(820px,100%); max-width: 820px; }
+  #ovDead .dead-cols { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 0 28px; align-items: start; text-align: left; }
+  #ovDead .dead-side { align-self: stretch; display: flex; flex-direction: column; }
+  #ovDead .dead-side .dead-board-head { margin-top: 6px; }
+  #ovDead .dead-cols .dock { position: static; margin: auto 0 0; padding: 12px 0 0; border-top: 0; background: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 @media (hover:hover) and (pointer:fine) {
  .secondary-panel .settings-action:hover, .secondary-panel .net-radio-opt:hover { background: var(--sm-surface-hover); }
 }
