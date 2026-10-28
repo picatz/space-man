@@ -10,8 +10,11 @@
   function hero(c,appearance) {
     // A tiny landing moon, soft atmospheric rings and distant destinations.
     c.save();c.translate(320,218);c.rotate(-.18);c.strokeStyle='#7dcde429';c.lineWidth=1.5;c.beginPath();c.ellipse(0,0,247,104,0,0,TAU);c.stroke();c.strokeStyle='#c2eef118';c.beginPath();c.ellipse(0,0,270,129,0,0,TAU);c.stroke();c.restore();
+    // The ring is one orbit: its far half passes behind the planet, its near half in front.
+    const ring=(from,to)=>{c.save();c.translate(489,104);c.rotate(-.4);c.strokeStyle='#85c7cb77';c.lineWidth=5;c.lineCap='butt';c.beginPath();c.ellipse(0,0,65,17,0,from,to);c.stroke();c.restore();};
+    ring(Math.PI,TAU);
     ellipse(c,489,104,43,43,'#25465e');ellipse(c,479,94,31,30,'#2b536b');ellipse(c,490,95,7,5,'#365f74');ellipse(c,473,117,9,5,'#24465e');
-    c.save();c.translate(489,104);c.rotate(-.4);c.strokeStyle='#85c7cb77';c.lineWidth=5;c.beginPath();c.ellipse(0,0,65,17,0,0,TAU);c.stroke();c.restore();
+    ring(0,Math.PI);
     ellipse(c,136,204,21,21,'#87644f');ellipse(c,130,196,13,12,'#b58d60');
     star(c,160,92,9,'#ffda8b');star(c,450,221,7,'#9cf3ed');star(c,390,55,5,'#bbeaff');star(c,217,244,4,'#d6edff');star(c,516,262,4,'#d6edff');
     [[106,139],[210,60],[553,171],[448,42],[383,292],[118,271],[546,69],[239,159]].forEach(([x,y],i)=>ellipse(c,x,y,i%3===0?2:1.3,i%3===0?2:1.3,'#b6d9e377'));
