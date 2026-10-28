@@ -198,3 +198,13 @@ for (const [id, dialog] of [['btnRace', '.race-dialog'], ['btnArena', '.arena-di
     assert.ok(m.pad >= 16, 'the end of the scroll keeps breathing room');
   });
 }
+
+for (const [width, height] of [[1337, 600], [1100, 570], [820, 900]]) {
+  test(`home ${width}x${height}: a slightly tall home shrinks to fit one viewport`, { timeout: 30000 }, async t => {
+    const { page } = await launch(t, { width, height });
+    await page.waitForFunction(() => { const s = document.querySelector('.home-shell'); return s.scrollHeight <= s.clientHeight + 1; }, null, { timeout: 5000 });
+    const m = await page.evaluate(() => ({ zoom: parseFloat(document.querySelector('.home-stage').style.zoom || '1'), footer: document.querySelector('.home-footer').getBoundingClientRect().bottom, inner: innerHeight }));
+    assert.ok(m.zoom >= .8 && m.zoom <= 1, 'zoom stays within its floor');
+    assert.ok(m.footer <= m.inner, 'Records and Settings are inside the viewport');
+  });
+}
