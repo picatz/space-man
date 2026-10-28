@@ -304,9 +304,10 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
   .race-root .race-results { margin-block: 12px; }
 }
 
-/* Short landscape screens keep both Resume and the way out visible. Settings
+/* Short landscape screens (phones, and desktop windows under ~820px tall) keep
+   both Resume and the way out visible. Settings
    remain in the same scrollable dialog; no controls are hidden to force a fit. */
-@media (orientation: landscape) and (max-height: 560px) and (min-width: 600px) {
+@media (orientation: landscape) and (max-height: 560px) and (min-width: 600px), (orientation: landscape) and (max-height: 820px) and (min-width: 900px) {
   .race-root .race-pause-panel { width: min(730px,100%); display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-areas: 'copy actions' 'preferences actions'; gap: 0 20px; }
   .race-root .race-menu-copy { grid-area: copy; }
   .race-root .race-pause-panel .race-menu-actions { grid-area: actions; align-self: start; gap: 10px; }

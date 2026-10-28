@@ -1629,13 +1629,21 @@
           : me.finished
             ? "A fine orbit."
             : "Time for a new orbit.";
+      // The race ends when the last human crosses the line; rivals still on
+      // the road get a projected time from their pace so far rather than a blank.
+      const unfinishedLabel = (r, row) => {
+        const t = R.projectedFinish?.(state, r.id);
+        if (t === null || t === undefined) return "Did not finish";
+        row.title = "Projected from pace so far";
+        return "≈ " + fmt(t);
+      };
       for (const r of state.results) {
         const row = el("div", "race-result-row");
         row.dataset.you = String(r.id === ownActor()?.id);
         row.append(
           el("span", "", String(r.position)),
           el("strong", "", r.name + (r.id === ownActor()?.id ? " · YOU" : "")),
-          el("span", "", r.time === null ? "Unfinished" : fmt(r.time)),
+          el("span", "", r.time === null ? unfinishedLabel(r, row) : fmt(r.time)),
         );
         resultRows.append(row);
       }

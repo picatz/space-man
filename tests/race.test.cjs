@@ -813,3 +813,17 @@ test('every circuit is long enough, non-crossing and leaves room between road pa
   }
   for (const id of ['aurora', 'neon', 'nebula']) assert.ok(Race.course(id).length > 5500, `${id} is a longer lap`);
 });
+
+test('projectedFinish extrapolates a rival still racing and refuses DNFs and unstarted karts', () => {
+  const state = Race.create({ trackId: 'starlight', count: 3 }), c = Race.course('starlight');
+  assert.equal(Race.projectedFinish(state, 'pilot-1'), null, 'no elapsed time, no projection');
+  state.phase = 'racing'; state.raceTick = 60 * 20;
+  const a = state.actors[1], p = Race.at(c, c.length * 0.5);
+  Object.assign(a, { x: p.x, y: p.y, passed: 10, nextGate: 11 });
+  const t = Race.projectedFinish(state, 'pilot-1');
+  assert.ok(t > 20 && t < 20 + 3 * 20 * 2, `a kart halfway through lap one projects a plausible total (${t})`);
+  state.actors[0].finishTick = 60 * 30;
+  assert.equal(Race.projectedFinish(state, 'pilot-0'), 30, 'a finished kart reports its real time');
+  a.dnf = true;
+  assert.equal(Race.projectedFinish(state, 'pilot-1'), null);
+});
