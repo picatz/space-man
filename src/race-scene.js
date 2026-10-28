@@ -429,7 +429,10 @@
         dx * Math.cos(chaseActor.heading) + dz * Math.sin(chaseActor.heading);
       const side =
         -dx * Math.sin(chaseActor.heading) + dz * Math.cos(chaseActor.heading);
-      if (behind < -25 && behind > -320 && Math.abs(side) < 95) return false;
+      // Only a craft inside the narrow corridor between the chase camera
+      // (about 132 behind) and the subject can block the view; a rival
+      // alongside or further back stays drawn until the frustum drops it.
+      if (behind < -45 && behind > -125 && Math.abs(side) < 42) return false;
     }
     return true;
   }
@@ -652,7 +655,8 @@
   }
   // Fixed local-space boxes: shared and read-only, so no per-actor-per-frame object literals.
   const box = (min, max) => Object.freeze({ min: Object.freeze(min), max: Object.freeze(max) });
-  const HULL_BOUNDS = box([-72,0,-32], [32,46,32]), FACE_BOUNDS = box([-15,18,-11], [6,33,11]),
+  // The hull box carries a margin so a rival at the screen edge is not culled while its wings, hat or wake are still in view.
+  const HULL_BOUNDS = box([-84,-6,-44], [44,58,44]), FACE_BOUNDS = box([-15,18,-11], [6,33,11]),
     ENGINE_BOUNDS = box([-24,6,-20], [-23,10,20]), PLUME_BOUNDS = box([-35,5,-20], [-23,11,20]),
     SLIDE_BOUNDS = box([-40,1,-32], [-13,1,32]);
   // Heading + position as a column-major model matrix, written in place.
