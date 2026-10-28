@@ -120,6 +120,55 @@
       pads: [.15, .52, .84],
       architecture: { gallery: { start: .58, end: .68, clearance: 210, span: 432 } },
     },
+    {
+      // Append-only wire IDs: the three tracks below extend the course list.
+      id: "aurora",
+      name: "Aurora Ridge",
+      subtitle: "A long glacial run: huge sweeps, a back-straight launch and a ridge jump.",
+      difficulty: "LONG · FAST",
+      width: 196,
+      sky: "#0b1d33",
+      road: "#33506b",
+      edge: "#bff3ff",
+      accent: "#9df7d3",
+      planet: "#6fb5d4",
+      points: [[534,410],[1105,286],[1822,334],[2444,402],[2726,719],[2504,1059],[1988,1209],[1611,1475],[1559,1830],[1058,1959],[545,1703],[372,1193],[431,749]],
+      pads: [.08, .24, .43, .6, .8, .93],
+      ramps: [.2, .7],
+      rows: [.34, .86],
+    },
+    {
+      id: "neon",
+      name: "Neon Gauntlet",
+      subtitle: "A tight city circuit of chicanes and hairpins. Boost pads everywhere.",
+      difficulty: "TECHNICAL · TIGHT",
+      width: 156,
+      sky: "#150a2b",
+      road: "#3a2b55",
+      edge: "#ff5fd2",
+      accent: "#5ff2ff",
+      planet: "#b24fd0",
+      points: [[497,437],[882,348],[1287,466],[1725,404],[2144,495],[2328,782],[2122,1124],[2315,1498],[2084,1729],[1628,1724],[1214,1873],[758,1787],[593,1494],[721,1159],[528,802]],
+      pads: [.07, .19, .31, .46, .58, .72, .87],
+      ramps: [.4],
+      rows: [.26, .64],
+    },
+    {
+      id: "nebula",
+      name: "Nebula Drift",
+      subtitle: "A swooping loop with a mid-lap hairpin fold and two sky ramps.",
+      difficulty: "SWOOPING · MEDIUM",
+      width: 184,
+      sky: "#1a0d2e",
+      road: "#44345f",
+      edge: "#c7a0ff",
+      accent: "#ffb3e6",
+      planet: "#8a5fc0",
+      points: [[567,536],[1123,291],[1807,378],[2323,785],[2341,1285],[1949,1474],[1587,1330],[1273,1470],[1164,1852],[741,1935],[368,1576],[339,1038]],
+      pads: [.1, .27, .45, .66, .9],
+      ramps: [.3, .78],
+      rows: [.52],
+    },
   ]);
   const colors = freeze([
     "#73ecff",
@@ -306,6 +355,25 @@
         choices: ["shield", "pulse"].map((item, i) => ({
           id: "prism-exit-" + item, item, s: c.length * .745, d: i ? 44 : -44,
         })) }];
+    }
+    if (c.ramps || c.rows) {
+      // Data-driven courses: ramps and item rows are fractions of the lap; the
+      // gate is the lap twentieth that contains them.
+      const gateOf = (f) => Math.floor(f * 20);
+      (c.ramps || []).forEach((f, index) => {
+        const s = c.length * f;
+        catalog.ramps.push({ id: "ramp-" + index, index, s, startS: s - 60, d: 0,
+          width: c.width, gate: gateOf(f) });
+        for (let i = 0; i < 3; i++) catalog.coins.push({ id: "entry-" + index + "-" + i,
+          index: catalog.coins.length, s: s - 60 * (3 - i) - 60, d: 44, airborne: false });
+        for (let i = 0; i < 3; i++) catalog.coins.push({ id: "sky-" + index + "-" + i,
+          index: catalog.coins.length, s: s + 54 * (i + 1), d: index % 2 ? 44 : -44, airborne: true });
+      });
+      (c.rows || []).forEach((f, index) => {
+        catalog.rows.push({ id: "item-row-" + index, index, s: c.length * f, gate: gateOf(f),
+          choices: ["shield", "pulse"].map((item, i) => ({
+            id: "item-" + index + "-" + item, item, s: c.length * f, d: i ? 44 : -44 })) });
+      });
     }
     freeze(catalog); featureCache.set(c.id, catalog); return catalog;
   }
