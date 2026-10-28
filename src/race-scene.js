@@ -320,6 +320,15 @@
       }
       for(const side of [-1,1]) ribbon(b,c,at,begin,end,side*(half+25),3,.3,edge);
     }
+    for (const [fraction, d] of c.hazards || []) {
+      const p = at(c, fraction * c.length), h = Math.atan2(p.ty, p.tx),
+        x = p.x - p.ty * d, z = p.y + p.tx * d, hot = rgb("#ff7a3d");
+      // A jagged cluster of glowing debris: readable from the chase camera.
+      for (let i = 0; i < 5; i++) {
+        const a = i * 1.26 + h, r = i ? 15 : 0, size = 9 + (i * 5) % 7;
+        b.box(x + Math.cos(a) * r, size * .5, z + Math.sin(a) * r, size, size * .5, size, shade(hot, i % 2 ? .6 : 1), a);
+      }
+    }
     for (const fraction of c.pads) {
       const p = at(c, fraction * c.length),
         h = Math.atan2(p.ty, p.tx);

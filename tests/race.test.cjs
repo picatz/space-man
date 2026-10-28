@@ -827,3 +827,28 @@ test('projectedFinish extrapolates a rival still racing and refuses DNFs and uns
   a.dnf = true;
   assert.equal(Race.projectedFinish(state, 'pilot-1'), null);
 });
+
+test("debris hazards slow a kart that drives through them, shields absorb them, and the new courses carry some", () => {
+  for (const id of ["aurora", "neon", "nebula"]) {
+    const catalog = Race.features(id), c = Race.course(id);
+    assert.ok(catalog.hazards.length >= 4, id + " has hazards");
+    for (const h of catalog.hazards) assert.ok(Math.abs(h.d) < c.width / 2 - 30, id + " hazard stays on the road");
+  }
+  assert.equal(Race.features("starlight").hazards, undefined);
+  const drive = (shield) => {
+    const state = playing({ trackId: "aurora" }), a = state.actors[0],
+      c = Race.course("aurora"), h = Race.features("aurora").hazards[0],
+      p = Race.at(c, h.s);
+    place(a, p, { along: -20, lateral: h.d, speed: 6 });
+    a.shieldTicks = shield ? 100 : 0;
+    const events = [];
+    for (let i = 0; i < 6; i++) { Race.step(state); events.push(...state.events); }
+    return { state: { events }, a };
+  };
+  const hit = drive(false);
+  assert.ok(hit.state.events.some(e => e.type === "hit" && e.id === hit.a.id));
+  assert.ok(hit.a.slowTicks > 0 && hit.a.immunityTicks > 0);
+  const blocked = drive(true);
+  assert.ok(blocked.state.events.some(e => e.type === "block"));
+  assert.equal(blocked.a.slowTicks, 0);
+});
