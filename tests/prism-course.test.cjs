@@ -3,7 +3,7 @@ const R=require('../src/race'),O=require('../src/race-online'),Scene=require('..
 const c=R.course('prism'),catalog=R.features(c);
 const commands=s=>Object.fromEntries(s.actors.map(a=>[a.id,R.cpuInput(s,a)]));
 test('Prism appends wire ID 3 with a medium, genuinely wider physical route and bounded catalog',()=>{
-  assert.deepEqual(R.tracks.map(t=>t.id),['starlight','ember','bloom','prism']);
+  assert.deepEqual(R.tracks.map(t=>t.id),['starlight','ember','bloom','prism','aurora','neon','nebula']);
   assert.ok(c.length>4200&&c.length<4400);assert.equal(c.width,208);
   assert.ok(c.segments.every(s=>s.length>0&&Number.isFinite(s.tx+s.ty)));
   assert.equal(catalog.ramps.length,1);assert.equal(catalog.coins.length,6);assert.equal(catalog.rows.length,1);
@@ -35,7 +35,7 @@ test('Prism snapshots round trip a complete authoritative race and reject every 
     const packet=h.packet(),decoded=O.decodeSnapshot(packet);assert.ok(decoded,'valid snapshot at '+ticks);assert.equal(decoded.state.trackId,'prism');
     assert.ok(packet.length<=O.MAX_BYTES);
     if(ticks===200){for(const [offset,value] of [[65,64],[67,2],[68,2],[69,2]]){const bad=packet.slice();bad[O.HEADER_BYTES+offset]=value;assert.equal(O.decodeSnapshot(bad),null);}
-      for(const [offset,value] of [[16,4],[29,1]]){const bad=packet.slice();bad[offset]=value;assert.equal(O.decodeSnapshot(bad),null);}}
+      for(const [offset,value] of [[16,R.tracks.length],[29,1]]){const bad=packet.slice();bad[offset]=value;assert.equal(O.decodeSnapshot(bad),null);}}
   }
   assert.equal(h.state.phase,'finished');assert.ok(jumps>0);assert.equal(h.state.actors[0].passed,60);
 });

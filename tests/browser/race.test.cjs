@@ -98,7 +98,7 @@ test(
   { timeout: 70000 },
   async (t) => {
     const { page } = await launch(t);
-    assert.equal(await page.locator(".race-track").count(), 4);
+    assert.equal(await page.locator(".race-track").count(), 7);
     assert.equal(await page.locator(".race-segment").count(), 3);
     await capture(page, "race-lobby-desktop");
     await page.locator(".race-launch").click();
