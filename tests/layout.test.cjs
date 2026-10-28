@@ -177,3 +177,17 @@ test('text size: tokens and captions scale with --ui-scale and nothing renders b
   assert.doesNotMatch(html, /ctx\.font = '[0-9]+ [78]px /, 'no 7-8px canvas fonts');
   assert.match(html, /const hudPx = \(n\) => Math\.max\(9, n\)/);
 });
+
+test('the runner frame shows well over a jump of course ahead on every screen shape', () => {
+  const { client, relay } = require('./harness.cjs');
+  // A full-speed held jump covers ~340 px. A 16:10 laptop used to frame only ~360 px ahead of the runner and portrait ~245.
+  for (const [w, h] of [[1336, 860], [1440, 900], [1180, 820], [1024, 768], [1920, 1080], [844, 390], [667, 375], [390, 844], [360, 640], [820, 1180]]) {
+    const c = client(relay(), { width: w, height: h });
+    try {
+      const v = JSON.parse(c.run('JSON.stringify({ w: view.w, h: view.h, lead: camLead(), portrait: view.h > view.w })'));
+      const ahead = v.w - v.lead;
+      assert.ok(ahead >= (v.portrait ? 300 : 480), `${w}x${h}: only ${ahead.toFixed(0)} px of runway ahead`);
+      assert.ok(v.h >= (Math.min(w, h) >= 700 ? 400 : 360) - 0.01 || v.portrait, `${w}x${h}: the frame never crops below its minimum height`);
+    } finally { c.close(); }
+  }
+});
