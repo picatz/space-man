@@ -420,7 +420,10 @@ const characterHats = {
     // The shoulder starts beneath the neck seal. Helmet paints last, so no
     // limb can pop over the face during idle or the brief equip greeting.
     const handX = 11 + hello * 3, handY = 6 + bob - hello * 13;
-    c.strokeStyle = P.arm; c.lineWidth = 4.5; c.beginPath(); c.moveTo(5, 2 + bob); c.quadraticCurveTo(10, 4 + bob, handX, handY); c.stroke();
+    const armPath = () => { c.beginPath(); c.moveTo(4, 2.5 + bob); c.quadraticCurveTo(9.5, 3.5 + bob, handX, handY); };
+    // A thin shade under the sleeve keeps the pale arm readable against the pale suit.
+    c.strokeStyle = P.legB; c.lineWidth = 5.6; armPath(); c.stroke();
+    c.strokeStyle = P.arm; c.lineWidth = 4.4; armPath(); c.stroke();
     c.fillStyle = P.legB; rrPath(c, handX - 2.4, handY - 1.5, 4.8, 3, 1); c.fill();
     c.fillStyle = P.suit; c.beginPath(); c.ellipse(handX, handY + 1.1, 2.7, 3.1, -.2, 0, TAU); c.fill();
     c.beginPath(); c.ellipse(handX - 2, handY + .6, 1.2, 1.6, -.45, 0, TAU); c.fill();
