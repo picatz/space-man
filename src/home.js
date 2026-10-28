@@ -114,12 +114,13 @@
       st.pointer=p;st.pointerAt=st.t;st.poke=onAlien?'alien':'wave';st.pokeAt=st.t;
       if(onAlien){st.hopT=0;st.hop=1;}
     };
-    const stop=()=>{live=null;doc.removeEventListener('pointermove',onMove);doc.removeEventListener('pointerdown',onDown);c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,640,400);c.drawImage(back,0,0,640,400);actors(c,appearance(),null);};
+    let rafId=0,watch=null;
+    const stop=()=>{live=null;if(rafId&&root.cancelAnimationFrame)root.cancelAnimationFrame(rafId);rafId=0;if(watch)watch.disconnect();doc.removeEventListener('pointermove',onMove);doc.removeEventListener('pointerdown',onDown);c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,640,400);c.drawImage(back,0,0,640,400);actors(c,appearance(),null);};
     doc.addEventListener('pointermove',onMove,{passive:true});doc.addEventListener('pointerdown',onDown,{passive:true});
     const frame=now=>{
       if(!live)return;
-      if(!home?.classList.contains('show')||doc.hidden||calm()){stop();return;}
-      root.requestAnimationFrame(frame);
+      if(!home?.classList.contains('show')||home.closest('[inert]')||doc.hidden||calm()){stop();return;}
+      rafId=root.requestAnimationFrame(frame);
       if(now-st.last<33)return;
       const dt=Math.min(.1,st.last?(now-st.last)/1000:.033);st.last=now;st.t+=dt;
       const ch=choreo(st.t),near=st.t-st.pointerAt<2.6&&st.pointer,poked=st.t-st.pokeAt<1.6;
@@ -137,7 +138,9 @@
       c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,640,400);c.drawImage(back,0,0,640,400);
       actors(c,appearance(),{t:st.t,alx:st.gx,aly:st.gy,wave:st.wave,mood:st.mood,lx:st.lx,ly:st.ly,lean:st.lean,hop:st.hop,hopT:st.hopT});
     };
-    live=st;root.requestAnimationFrame(frame);
+    // Leaving the home screen cancels the pending frame at once instead of one tick later.
+    if(home&&root.MutationObserver){watch=new root.MutationObserver(()=>{if(live&&!home.classList.contains('show'))stop();});watch.observe(home,{attributes:true,attributeFilter:['class']});}
+    live=st;rafId=root.requestAnimationFrame(frame);
   }
   let lastAppearance=null;
   const appearance=()=>lastAppearance;
@@ -161,7 +164,10 @@
     stage.style.width=stage.offsetWidth+'px';stage.style.maxWidth='none';
     stage.style.zoom=String(Math.max(FIT_FLOOR,Math.floor(room/need*100)/100));
   }
-  function queueFit() { if(fitQueued||!root.requestAnimationFrame)return;fitQueued=true;root.requestAnimationFrame(fit); }
+  function queueFit() { if(fitQueued||!root.requestAnimationFrame)return;
+    // A hidden home has nothing to fit; don't leave a frame pending under another mode.
+    const home=root.document?.getElementById?.('ovAttract');if(home&&(!home.classList.contains('show')||home.closest('[inert]')))return;
+   fitQueued=true;root.requestAnimationFrame(fit); }
   root.addEventListener?.('resize',queueFit);root.addEventListener?.('orientationchange',queueFit);
   root.document?.fonts?.ready?.then?.(queueFit);
   // The shell goes from hidden to laid out when the home is shown, and again when the game cards reflow.
