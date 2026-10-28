@@ -51,12 +51,38 @@
   }
   const api={MODES,heroLabel,resetsIn};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
-  root.SpaceManHome=Object.freeze({heroLabel,resetsIn,notice(text) {
+  // Fit the whole home into one viewport when its natural height is a little
+  // too tall (browser zoom, big text, short windows). Zoom scales layout, not
+  // just paint; the floor keeps captions legible and leaves the shell
+  // scrollable below it.
+  const FIT_FLOOR=.8;let fitQueued=false;
+  function fit() {
+    fitQueued=false;
+    const doc=root.document,shell=doc?.querySelector?.('.home-shell'),stage=doc?.querySelector?.('.home-stage');
+    if(!shell||!stage||!root.getComputedStyle)return;
+    // Phones keep their hand-tuned compact layouts; this is for desktop and tablet windows.
+    if(root.innerWidth<760||root.innerHeight<560){stage.style.zoom='';stage.style.width='';stage.style.maxWidth='';return;}
+    stage.style.zoom='';stage.style.width='';stage.style.maxWidth='';
+    const cs=root.getComputedStyle(shell),pad=(parseFloat(cs.paddingTop)||0)+(parseFloat(cs.paddingBottom)||0);
+    const need=stage.offsetHeight,room=shell.clientHeight-pad;
+    if(!(need>0)||!(room>0)||need<=room)return;
+    // Pin the unzoomed width so the grid reflows exactly as before, just smaller.
+    stage.style.width=stage.offsetWidth+'px';stage.style.maxWidth='none';
+    stage.style.zoom=String(Math.max(FIT_FLOOR,Math.floor(room/need*100)/100));
+  }
+  function queueFit() { if(fitQueued||!root.requestAnimationFrame)return;fitQueued=true;root.requestAnimationFrame(fit); }
+  root.addEventListener?.('resize',queueFit);root.addEventListener?.('orientationchange',queueFit);
+  root.document?.fonts?.ready?.then?.(queueFit);
+  // The shell goes from hidden to laid out when the home is shown, and again when the game cards reflow.
+  const watchShell=()=>{const shell=root.document.querySelector('.home-shell');const stage=root.document.querySelector('.home-stage');if(shell&&root.ResizeObserver){const ro=new root.ResizeObserver(queueFit);ro.observe(shell);if(stage)ro.observe(stage);}};
+  if(root.document?.readyState==='loading')root.document.addEventListener('DOMContentLoaded',watchShell);else if(root.document?.querySelector)watchShell();
+  root.SpaceManHome=Object.freeze({heroLabel,resetsIn,fit:queueFit,notice(text) {
     const el=root.document.getElementById('homeNotice');if(!el)return;
     if(el.textContent!==text)el.textContent=text;
     el.hidden=!text;
   },render(appearance) {
     const c=surface('homeHero',640,400);if(c&&root.SpaceManArt?.drawAvatar)hero(c,appearance);
     [['homeRunArt','run'],['homeArenaArt','arena'],['homeRaceArt','race']].forEach(([id,mode])=>{const g=surface(id,260,156);if(g&&root.SpaceManArt?.drawAvatar)tile(g,mode,appearance);});
+    queueFit();
   }});
 })(typeof window!=='undefined'?window:globalThis);
