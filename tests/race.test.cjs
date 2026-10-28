@@ -798,3 +798,18 @@ for (const track of Race.tracks) {
     });
   }
 }
+
+test('every circuit is long enough, non-crossing and leaves room between road passes', () => {
+  for (const def of Race.tracks) {
+    const c = Race.course(def.id);
+    let gap = Infinity;
+    for (let i = 0; i < c.segments.length; i += 3) for (let j = i + 1; j < c.segments.length; j += 3) {
+      const a = c.segments[i], b = c.segments[j], along = Math.min(Math.abs(a.start - b.start), c.length - Math.abs(a.start - b.start));
+      if (along > 600) gap = Math.min(gap, Math.hypot(a.x - b.x, a.y - b.y) - c.width);
+    }
+    assert.ok(gap > 120, `${def.id}: roads pass ${gap} apart`);
+    assert.ok(c.length > 3500, `${def.id}: lap too short`);
+    assert.ok(def.pads.every((p) => p > 0 && p < 1), `${def.id}: pad fractions`);
+  }
+  for (const id of ['aurora', 'neon', 'nebula']) assert.ok(Race.course(id).length > 5500, `${id} is a longer lap`);
+});
