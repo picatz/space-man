@@ -1219,7 +1219,9 @@ if (SHOT && typeof WebSocket !== 'undefined') {
    ------------------------------------------------------------------------- */
 const STEP = 1 / 60;
 const CFG = {
-  logicalH: 360, tabletH: 400, portraitW: 420, dprCap: 2, dprMax: 3, dprUnplugged: 2,   // dprCap: the golden/#shot size; dprMax: where a live screen starts (3× phones), stepping down only if it cannot keep up; dprUnplugged: the ceiling while the battery is discharging (Sharp Rendering opts out)
+  // Landscape frames at least logicalH (tabletH) tall AND at least viewW (tabletViewW) wide, whichever shows more world:
+  // a 16:10 laptop used to see ~620px, under two jumps of runway. Portrait shows portraitW across.
+  logicalH: 360, tabletH: 400, viewW: 780, tabletViewW: 880, portraitW: 460, dprCap: 2, dprMax: 3, dprUnplugged: 2,   // dprCap: the golden/#shot size; dprMax: where a live screen starts (3× phones), stepping down only if it cannot keep up; dprUnplugged: the ceiling while the battery is discharging (Sharp Rendering opts out)
   accelGround: 0.85, accelAir: 0.5, maxRun: 6.8,
   fricGround: 0.8, fricAir: 0.95, turnMult: 2,
   jumpVel: -13.2, gravRise: 0.5, gravFall: 0.8, varJumpCut: 0.45, maxFall: 14,
@@ -1492,8 +1494,11 @@ function resize() {
     view.w = CFG.portraitW;
     view.h = canvas.height / view.scale;
   } else {
-    view.scale = canvas.height / logicalH;
-    view.h = logicalH;
+    // Fit the minimum height and the minimum runway width, so a near-4:3 or 16:10 screen pulls back instead of
+    // cropping the course ahead. A wide phone keeps its height-led framing (its width already clears the runway).
+    const minW = view.isTablet ? CFG.tabletViewW : CFG.viewW;
+    view.scale = Math.min(canvas.height / logicalH, canvas.width / minW);
+    view.h = canvas.height / view.scale;
     view.w = canvas.width / view.scale;
   }
   nebulaCanvas = null; nebulaPrevCanvas = null;   // rebuild sized caches
@@ -3123,7 +3128,7 @@ function resetRun(seed, replayable, world) {
     hang: null, hangCooldown: 0, hangLastPlat: null, hangLastSide: 0,
   };
   rigSync();   // presentation rig starts the run clean (no phantom landing at spawn)
-  G.camX = G.player.x - view.w * 0.42; G.camXprev = G.camX;
+  G.camX = G.player.x - camLead(); G.camXprev = G.camX;
   // Matches updateCamera()'s grounded target exactly so frame 1 never has to
   // ease a mismatch away — portrait needs more headroom above the HUD band.
   G.camY = G.groundY - view.h * (view.h > view.w ? 0.64 : 0.58); G.camYprev = G.camY;
@@ -3268,7 +3273,7 @@ function seatMidRound(elapsedMs) {
   G.ebullets = G.ebullets.filter((b) => Math.abs(b.x - p.x) > 500);
   // Reseat the camera on the grounded target (matches updateCamera's grounded aim
   // exactly, off the platform's own height) so frame 1 never eases a phantom jump.
-  G.camX = p.x - view.w * 0.42; G.camXprev = G.camX;
+  G.camX = p.x - camLead(); G.camXprev = G.camX;
   G.camY = plat.y - view.h * (view.h > view.w ? 0.64 : 0.58); G.camYprev = G.camY;
   // 4. Seat the shared flare AT its computed position (synced → no fast-forward sweep
   //    on the first frame) and resume distance co-located with the team.
@@ -4154,12 +4159,15 @@ function updateThemeMeta() {
   if (tmetaEl) tmetaEl.content = `hsl(${hue} 42% 8%)`;
 }
 
+// Where the runner rests across the screen: left of center, so most of the frame is the course ahead. Portrait is
+// narrow, so it leans further left still. Run start, room reseat and updateCamera() all aim here.
+function camLead() { return view.w * (view.h > view.w ? 0.3 : 0.36); }
 function updateCamera() {
   const p = G.player;
   G.camXprev = G.camX; G.camYprev = G.camY;
-  // Lookahead scales with viewport width so it never dominates a narrow portrait screen.
-  const look = p.vx * 14 + p.facing * Math.min(70, view.w * 0.18);
-  const targetX = p.x + look - view.w * 0.42;
+  // Lookahead grows with run speed and scales with viewport width so it never dominates a narrow portrait screen.
+  const look = p.vx * 14 + p.facing * Math.min(80, view.w * 0.1);
+  const targetX = p.x + look - camLead();
   G.camX += (targetX - G.camX) * 0.08;
   // HARD BAND CLAMP: guarantee the player's rendered x stays within [15%,60%] of the
   // viewport regardless of lookahead overshoot or lerp lag (critical on narrow portrait).
@@ -4900,7 +4908,7 @@ function render(alpha) {
   if ((FORCE_TOUCH || input.usingTouch) && (G.mode === 'play' || G.mode === 'resume') && !netSpectating()) drawTouchControls();
   if (G.mode === 'resume') {
     ctx.textAlign = 'center';
-    drawGlowText(String(clamp(Math.ceil(G.resumeT / 0.434), 1, 3)), view.w / 2, view.h / 2, 46, '#38E1FF', '#F4F7FF');
+    drawGlowText(String(clamp(Math.ceil(G.resumeT / 0.434), 1, 3)), view.w / 2, view.h / 2, 46, '#38E1FF', '#F4F7FF', FONT_NUM);
   }
   drawCelebration();
   drawToast();
@@ -6123,7 +6131,7 @@ function drawHudScrim(h, w) {
 }
 function drawHUD() {
   const us = uiScale();
-  drawHudScrim((netInRun() ? 32 : 0) + viewInset('top') + 110 * us, Math.min(view.w * 0.8, 330 * us) + viewInset('left'));
+  drawHudScrim((netInRun() ? 32 : 0) + viewInset('top') + 96 * us, Math.min(view.w * 0.6, 300 * us) + viewInset('left'));
   // Run Together: the race strip owns the topmost band, so the run HUD shifts
   // down by (strip 26 + 6 gap) while in a room (§10.1). Solo: netInRun() false → 0.
   const netBand = netInRun() ? 32 : 0;
@@ -6166,54 +6174,63 @@ function drawHUD() {
   const ox = left + (dead ? 0 : pitch + ps + Math.max(8 * us, 12 * view.w / vpW()));
   ctx.save(); ctx.globalAlpha *= lerp(1, 0.3, G.hudDuck);   // composes with ambient (E9.1 death fade), doesn't clobber it
   ctx.textAlign = 'left';
-  drawGlowText(Math.floor(G.dist) + 'm', ox, top + 15 * us, 20 * us, '#38E1FF', '#F4F7FF');
+  // Three quiet rows: distance (the run's headline), points, then how far back the flare is. Numerals use the
+  // rounded body face: Orbitron's slashed zero turned a fresh run's "00000" into what looked like a glitch.
+  const dist = Math.floor(G.dist);
+  drawGlowText(dist + 'm', ox, top + 16 * us, 21 * us, '#38E1FF', '#F4F7FF', FONT_NUM);
+  const score = Math.floor(G.dispScore).toLocaleString('en-US');
+  const ss = Math.max(12, 12.5 * us), sy = top + 31 * us;
+  ctx.fillStyle = '#E6F0FF'; ctx.font = fontStr(800, ss, FONT_NUM);
+  ctx.fillText(score, ox, sy);
+  const sw = ctx.measureText(score).width;
+  ctx.fillStyle = 'rgba(207,227,255,.6)'; ctx.font = fontStr(700, hudPx(9 * us), FONT_NUM);
+  ctx.fillText('PTS', ox + sw + 4 * us, sy);
+  // Fixed-course target (friend's score / today's daily best): quiet, gold once passed.
+  if (G.course && G.course.target > 0) {
+    ctx.save(); ctx.globalAlpha *= G.targetBeaten ? 0.9 : 0.6;
+    const pw = ctx.measureText('PTS').width;
+    ctx.fillStyle = G.targetBeaten ? '#FFC93C' : '#CFE3FF';
+    ctx.fillText((G.targetBeaten ? '✓ ' : '▸ ') + G.course.target.toLocaleString('en-US'), ox + sw + pw + 10 * us, sy);
+    ctx.restore();
+  }
 
-  // E4 gap chevron: the chase made legible as a number, not a vignette read.
+  // E4 flare gap: the chase made legible as a labeled number ("FLARE 43m" behind you), not a bare chevron.
   if (!dead && G.mode === 'play' && G.player) {
     const gapM = Math.max(0, Math.round((G.player.x - G.flare.x) / 10));
-    const pulse = G.threat > 0.6 ? 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(G.time * TAU * 2)) : 0.6;
+    const pulse = G.threat > 0.6 ? 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(G.time * TAU * 2)) : 0.75;
     ctx.save(); ctx.globalAlpha *= G.hot ? 1 : pulse;
-    // Small labels use the body face at a legible floor (docs/interface-surfaces.md: display lettering is for titles).
-    const gs = Math.max(11, 10.5 * us);
-    ctx.fillStyle = G.hot ? '#FFC93C' : '#FF8A6B'; ctx.font = fontStr(700, gs, FONT_NUM);
-    ctx.fillText('‹‹ ', ox, top + 27 * us);
-    const cw = ctx.measureText('‹‹ ').width;
-    ctx.fillText(gapM + 'm', ox + cw, top + 27 * us);
-    const gw = ctx.measureText(gapM + 'm').width;
-    if (G.hot) {   // Hot Pursuit: gold readout, a small flame, and the live multiplier
-      const fx = ox + cw + gw + 7 * us, fy = top + 27 * us, fh = gs * 0.95;
-      ctx.beginPath(); ctx.moveTo(fx, fy); ctx.bezierCurveTo(fx - fh * 0.42, fy - fh * 0.3, fx - fh * 0.2, fy - fh * 0.75, fx - fh * 0.02, fy - fh);
-      ctx.bezierCurveTo(fx + fh * 0.02, fy - fh * 0.6, fx + fh * 0.42, fy - fh * 0.45, fx + fh * 0.3, fy - fh * 0.12);
-      ctx.bezierCurveTo(fx + fh * 0.24, fy, fx + fh * 0.1, fy + fh * 0.04, fx, fy); ctx.fill();
-      ctx.fillText('×' + HEAT_MULT, fx + fh * 0.5 + 3 * us, fy);
-    } else if (G.heatT > 0.05 && G.heatT < HEAT_BUILD) {   // the build: a thin gold bar filling toward the multiplier
-      ctx.fillStyle = 'rgba(255,201,60,.8)'; ctx.fillRect(ox, top + 30 * us, (cw + gw) * G.heatT / HEAT_BUILD, 1.5 * us);
+    const gs = hudPx(Math.max(10, 10 * us)), gy = top + 44 * us, fh = gs * 0.9;
+    ctx.fillStyle = G.hot ? '#FFC93C' : '#FF8A6B';
+    drawFlameGlyph(ox + fh * 0.4, gy, fh);
+    ctx.font = fontStr(800, gs, FONT_NUM);
+    const label = 'FLARE ' + gapM + 'm', lx = ox + fh + 4 * us;
+    ctx.fillText(label, lx, gy);
+    const gw = ctx.measureText(label).width;
+    if (G.hot) ctx.fillText('×' + HEAT_MULT, lx + gw + 6 * us, gy);   // Hot Pursuit: gold readout and the live multiplier
+    else if (G.heatT > 0.05 && G.heatT < HEAT_BUILD) {   // the build: a thin gold bar filling toward the multiplier
+      ctx.fillStyle = 'rgba(255,201,60,.8)'; ctx.fillRect(lx, gy + 3 * us, gw * G.heatT / HEAT_BUILD, 1.5 * us);
     }
     ctx.restore();
   }
 
-  drawGlowText(String(Math.floor(G.dispScore)).padStart(5, '0'), ox, top + 46 * us, Math.max(12, 13 * us), '#38E1FF', '#CFE3FF');
-  // Fixed-course target (friend's score / today's daily best): quiet, gold once passed.
-  if (G.course && G.course.target > 0) {
-    ctx.save(); ctx.globalAlpha *= G.targetBeaten ? 0.9 : 0.6;
-    ctx.font = '900 ' + Math.max(12, 13 * us) + 'px ' + FONT;
-    const sw = ctx.measureText(String(Math.floor(G.dispScore)).padStart(5, '0')).width;   // sits just past the odometer
-    ctx.font = '700 ' + Math.max(9, 9 * us) + 'px ' + FONT_NUM;
-    ctx.fillStyle = G.targetBeaten ? '#FFC93C' : '#CFE3FF';
-    ctx.fillText((G.targetBeaten ? '✓ ' : '▸ ') + G.course.target.toLocaleString(), ox + sw + 8 * us, top + 46 * us);
-    ctx.restore();
-  }
-
   if (G.mission) {
-    const m = expeditionRunnerActive() ? { done: false, kind: 'expedition', label: 'ROUTE ' + (expedition.snapshot().index + 1) + ' · REACH ' + expedition.snapshot().current.goal + 'm', progress: G.dist, target: expedition.snapshot().current.goal } : G.mission, mw = Math.min(190 * us, view.w * .46), my = top + 57 * us;
-    ctx.fillStyle = 'rgba(10,14,32,.62)'; roundRect(ox, my, mw, 27 * us, 6 * us); ctx.fill();
-    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF'; ctx.font = fontStr(700, Math.max(11, 9 * us), FONT_NUM); ctx.textAlign = 'left';
-    const tierTag = !expeditionRunnerActive() && (G.mission.tier | 0) > 0 ? (G.mission.tier + 1) + '/3 · ' : '';
-    const label = m.done ? 'MISSION COMPLETE' : tierTag + (view.w < 480 ? (m.kind === 'distance' ? 'REACH ' + m.target + 'm' : (MISSION_SHORT[m.kind] || m.label)) : m.label);
-    ctx.fillText(label, ox + 6 * us, my + 12 * us);
-    ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(ox + 6 * us, my + 18 * us, mw - 12 * us, 3 * us, 2); ctx.fill();
+    // A new mission reads in full for a few seconds, then folds to a short tag with its count, so the pill
+    // never parks a wide banner over the course ahead.
+    const exp = expeditionRunnerActive();
+    const m = exp ? { done: false, kind: 'expedition', label: 'ROUTE ' + (expedition.snapshot().index + 1) + ' · REACH ' + expedition.snapshot().current.goal + 'm', progress: G.dist, target: expedition.snapshot().current.goal } : G.mission;
+    if (hudMission.ref !== G.mission || hudMission.done !== m.done) { hudMission.ref = G.mission; hudMission.done = m.done; hudMission.t = G.time; }
+    const fresh = G.time - hudMission.t < 3.5 && view.w >= 480;
+    const tierTag = !exp && (G.mission.tier | 0) > 0 ? (G.mission.tier + 1) + '/3 · ' : '';
+    const count = m.kind === 'distance' || m.kind === 'expedition' ? '' : '  ' + Math.min(m.progress | 0, m.target) + '/' + m.target;
+    const label = m.done ? 'MISSION COMPLETE' : fresh ? tierTag + m.label : tierTag + (m.kind === 'distance' ? 'REACH ' + m.target + 'm' : (MISSION_SHORT[m.kind] || m.label)) + count;
+    ctx.font = fontStr(700, hudPx(Math.max(10, 9.5 * us)), FONT_NUM); ctx.textAlign = 'left';
+    const pad = 6 * us, mw = Math.min(ctx.measureText(label).width + pad * 2, view.w * 0.5), my = top + 51 * us, mh = 20 * us;
+    ctx.fillStyle = 'rgba(10,14,32,.55)'; roundRect(ox, my, mw, mh, 6 * us); ctx.fill();
+    ctx.fillStyle = m.done ? '#4EF07A' : '#9FF1FF';
+    ctx.fillText(label, ox + pad, my + 11 * us);
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; roundRect(ox + pad, my + 14.5 * us, mw - pad * 2, 2 * us, 1); ctx.fill();
     ctx.fillStyle = m.done ? '#4EF07A' : '#38E1FF';
-    roundRect(ox + 6 * us, my + 18 * us, (mw - 12 * us) * clamp(m.progress / m.target, 0, 1), 3 * us, 2); ctx.fill();
+    roundRect(ox + pad, my + 14.5 * us, (mw - pad * 2) * clamp(m.progress / m.target, 0, 1), 2 * us, 1); ctx.fill();
   }
   ctx.restore();
 
@@ -6274,8 +6291,16 @@ function drawMuteButton(x, y, s, us) {
     }
   }
 }
-function drawGlowText(text, x, y, size, glow, fill) {
-  ctx.font = fontStr(900, size, FONT);
+// A small flame (the flare's mark) whose base sits on (fx, fy), fh tall; fills with the current fillStyle.
+function drawFlameGlyph(fx, fy, fh) {
+  ctx.beginPath(); ctx.moveTo(fx, fy); ctx.bezierCurveTo(fx - fh * 0.42, fy - fh * 0.3, fx - fh * 0.2, fy - fh * 0.75, fx - fh * 0.02, fy - fh);
+  ctx.bezierCurveTo(fx + fh * 0.02, fy - fh * 0.6, fx + fh * 0.42, fy - fh * 0.45, fx + fh * 0.3, fy - fh * 0.12);
+  ctx.bezierCurveTo(fx + fh * 0.24, fy, fx + fh * 0.1, fy + fh * 0.04, fx, fy); ctx.fill();
+}
+// Render-side memory of which mission the HUD pill last showed, so a new one reads in full before folding.
+const hudMission = { ref: null, done: false, t: 0 };
+function drawGlowText(text, x, y, size, glow, fill, family = FONT) {
+  ctx.font = fontStr(900, size, family);
   const a = ctx.globalAlpha;   // ambient alpha multiplies both layers (HUD duck, stinger/celebrate fades)
   // Skew the letters around their baseline, not the screen origin. Otherwise
   // moving a HUD below a notch/status rail also drags its text left.
