@@ -405,7 +405,7 @@ const characterHats = {
   }
   // Full appearance preview with no dependency on a running game or player.
   // x/y is the slot center; size is the total headwear-to-boot height in pixels.
-  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0 } = {}) {
+  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0, lookX = 0, lookY = 0, mood = null } = {}) {
     const style = characterStyle(appearance), P = style.palette;
     const bob = reduceMotion ? 0 : Math.sin(time * 2) * .65;
     const hello = reduceMotion ? 0 : clamp(greeting, 0, 1);
@@ -435,7 +435,7 @@ const characterHats = {
     c.beginPath(); c.ellipse(0, 1.9, 2.7, 3, 0, 0, TAU); c.fill(); c.stroke();
     c.beginPath(); c.ellipse(-2.2, 1.4, 1.1, 1.7, -.4, 0, TAU); c.fill(); c.stroke();
     c.restore();
-    characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: hello > .15 ? 1 : 0 });
+    characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: mood ?? (hello > .15 ? 1 : 0), lookX, lookY });
     c.restore();
   }
 
