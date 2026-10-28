@@ -168,3 +168,33 @@ for (const [width,height] of [[320,568],[390,844],[430,932],[667,375],[844,390],
     assert.equal(await shell.evaluate(e=>e.scrollWidth<=e.clientWidth+1),true,'rotation retains horizontal fit');
   });
 }
+
+for (const [width, height] of [[320, 568], [390, 844], [820, 1180], [1000, 640], [1440, 900]]) {
+  test(`mode cards ${width}x${height}: title and tagline never overlap or spill`, { timeout: 30000 }, async t => {
+    const { page } = await launch(t, { width, height });
+    const cards = await page.locator('.home-mode').evaluateAll(list => list.map(card => {
+      const box = e => e.getBoundingClientRect(), c = box(card), title = box(card.querySelector('.mode-link')), tag = box(card.querySelector('.mode-link ~ span'));
+      // The title element spans the card; compare the text line boxes instead.
+      const lines = el => { const r = document.createRange(); r.selectNodeContents(el); return [...r.getClientRects()]; };
+      const t = lines(card.querySelector('.mode-link')), g = lines(card.querySelector('.mode-link ~ span'));
+      return { id: card.id, titleBottom: Math.max(...t.map(r => r.bottom)), tagTop: Math.min(...g.map(r => r.top)), tagBottom: Math.max(...g.map(r => r.bottom)), cardBottom: c.bottom };
+    }));
+    for (const c of cards) {
+      assert.ok(c.titleBottom <= c.tagTop + 0.5, `${c.id}: tagline starts below the title`);
+      assert.ok(c.tagBottom <= c.cardBottom + 0.5, `${c.id}: tagline stays inside the card`);
+    }
+  });
+}
+
+for (const [id, dialog] of [['btnRace', '.race-dialog'], ['btnArena', '.arena-dialog']]) {
+  test(`${id} lobby scrolls to the bottom of a short window instead of clipping above it`, { timeout: 30000 }, async t => {
+    const { page } = await launch(t, { width: 1000, height: 640 });
+    await page.locator('#' + id).click();
+    const box = page.locator(dialog).first();
+    await box.waitFor();
+    const m = await box.evaluate(e => ({ bottom: e.getBoundingClientRect().bottom, inner: innerHeight, scrolls: e.scrollHeight > e.clientHeight, pad: parseFloat(getComputedStyle(e).paddingBottom) }));
+    assert.ok(m.scrolls, 'the short window really overflows the lobby');
+    assert.ok(Math.abs(m.bottom - m.inner) <= 1, 'the scroller reaches the bottom edge, with no dead band under it');
+    assert.ok(m.pad >= 16, 'the end of the scroll keeps breathing room');
+  });
+}
