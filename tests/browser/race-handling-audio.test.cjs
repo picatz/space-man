@@ -489,7 +489,15 @@ for (const device of [
     await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks>=24);
     await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
     await page.waitForFunction(()=>raceUI.snapshot().actors[0].driftTicks===0);
-    assert.equal(await page.evaluate(()=>raceUI.snapshot().actors[0].padTicks),0,'real touch cancellation is not brake release');
+    // A track boost pad the kart happened to cross while the touches were held is not a drift-exit boost.
+    // padTicks counts down from 45, so the pad can be at most (45-padTicks) ticks of travel behind.
+    assert.equal(await page.evaluate(()=>{
+      const R=window.SpaceManRace,snap=raceUI.snapshot(),a=snap.actors[0],c=R.course(snap.trackId);
+      if(!a.padTicks)return 0;
+      const s=R.nearest(c,a.x,a.y).s,slack=23+(45-a.padTicks+2)*10;
+      const crossed=c.pads.some(p=>Math.abs(((s/c.length-p+.5)%1+1)%1-.5)*c.length<slack);
+      return crossed?0:a.padTicks;
+    }),0,'real touch cancellation is not brake release');
     for(const releaseKind of ['both-fingers','brake-only']){
       await page.keyboard.press('Escape');await screen(page,'pause');await menu(page,'Restart race');await playing(page);
       await page.waitForFunction(()=>raceUI.snapshot().actors[0].speed>4.5);
