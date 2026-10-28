@@ -419,15 +419,22 @@ const characterHats = {
     c.fillStyle = P.suit; rrPath(c, -8, -5 + bob, 16, 17, 6); c.fill(); suitDetails(c, 0, bob, style);
     // The shoulder starts beneath the neck seal. Helmet paints last, so no
     // limb can pop over the face during idle or the brief equip greeting.
-    const handX = 11 + hello * 3, handY = 6 + bob - hello * 13;
-    const armPath = () => { c.beginPath(); c.moveTo(4, 2.5 + bob); c.quadraticCurveTo(9.5, 3.5 + bob, handX, handY); };
-    // A thin shade under the sleeve keeps the pale arm readable against the pale suit.
-    c.strokeStyle = P.legB; c.lineWidth = 5.6; armPath(); c.stroke();
-    c.strokeStyle = P.arm; c.lineWidth = 4.4; armPath(); c.stroke();
-    c.fillStyle = P.legB; rrPath(c, handX - 2.4, handY - 1.5, 4.8, 3, 1); c.fill();
-    c.fillStyle = P.suit; c.beginPath(); c.ellipse(handX, handY + 1.1, 2.7, 3.1, -.2, 0, TAU); c.fill();
-    c.beginPath(); c.ellipse(handX - 2, handY + .6, 1.2, 1.6, -.45, 0, TAU); c.fill();
-    c.strokeStyle = style.accent; c.lineWidth = .8; c.beginPath(); c.moveTo(handX - 1.3, handY + 2.2); c.lineTo(handX + 1, handY + 2.2); c.stroke();
+    // Shoulder cap on the body's edge, a sleeve that bows outward, then a cuff
+    // and mitten. Each piece carries a thin legB shade so the silhouette matches
+    // the legs and pack instead of melting into the suit.
+    const shX = 6.6, shY = -.4 + bob, handX = 11.6 + hello * 2.6, handY = 7.4 + bob - hello * 14, elX = 11.8 + hello * 1.2, elY = 2.6 + bob - hello * 5;
+    const sleeve = () => { c.beginPath(); c.moveTo(shX, shY); c.quadraticCurveTo(elX, elY, handX, handY); };
+    c.lineCap = 'round'; c.strokeStyle = P.legB; c.lineWidth = 5.3; sleeve(); c.stroke();
+    c.strokeStyle = P.arm; c.lineWidth = 4; sleeve(); c.stroke();
+    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(shX, shY, 3.1, 0, TAU); c.fill(); c.stroke();
+    const wrist = Math.atan2(handY - elY, handX - elX);
+    c.save(); c.translate(handX, handY); c.rotate(wrist - Math.PI / 2);
+    c.fillStyle = P.legB; rrPath(c, -2.6, -2.3, 5.2, 2.6, 1.1); c.fill();
+    c.fillStyle = style.accent; c.fillRect(-2.1, -1.5, 4.2, .8);
+    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
+    c.beginPath(); c.ellipse(0, 1.9, 2.7, 3, 0, 0, TAU); c.fill(); c.stroke();
+    c.beginPath(); c.ellipse(-2.2, 1.4, 1.1, 1.7, -.4, 0, TAU); c.fill(); c.stroke();
+    c.restore();
     characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: hello > .15 ? 1 : 0 });
     c.restore();
   }
