@@ -1782,6 +1782,11 @@
           g.restore();
         }
       }
+      for (const [fraction, d] of c.hazards || []) {
+        const p = R.at(c, fraction * c.length);
+        g.fillStyle = "#ff7a3d";
+        g.beginPath(); g.arc(p.x - p.ty * d, p.y + p.tx * d, 11, 0, Math.PI * 2); g.fill();
+      }
       for (const fraction of c.pads) {
         const p = R.at(c, fraction * c.length);
         g.save();
