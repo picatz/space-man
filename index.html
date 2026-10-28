@@ -5188,9 +5188,10 @@ function drawBackground(camX, camY) {
   if (!skyCanvas || skyHue !== hue) { skyCanvas = buildSky(hue); skyHue = hue; }
   ctx.drawImage(skyCanvas, 0, 0, 1, skyCanvas.height, 0, 0, view.w, view.h);
 
-  // E13 seasonal: dusk week shifts the nebula toward ember-orange (nebula only —
+  // E13 seasonal: dusk week shifts the nebula toward ember-rose (nebula only —
   // sky + platform art keep the sector hue so the world still reads its band).
-  const nhue = SEASON.dusk ? 28 : hue;
+  // Rose, not orange: an orange haze over the blue sky mixes to olive mud.
+  const nhue = SEASON.dusk ? 342 : hue;
   if (!nebulaCanvas || Math.abs(nebulaHue - nhue) > 1) { nebulaCanvas = buildNebula(nhue); nebulaHue = nhue; }
   const px = lessMotion() ? 0.5 : 1;   // Reduce Motion: far layers drift at half parallax
   const nx = -(((camX * 0.05 * px) % view.w) + view.w) % view.w;
@@ -5271,26 +5272,30 @@ function drawBackground(camX, camY) {
    difficulty math (G.flare.x itself) is never read here for anything but
    direction, so the rubber-band trace can't be perturbed. ---- */
 function drawFlareTongues() {
-  const calm = lessMotion();   // Reduce Motion: a narrower surge and no tip sway
+  const calm = lessMotion();   // Reduce Motion: a narrower surge and no flicker
   const surge = sectorSurgeAmt() * (calm ? 0.4 : 1);
   const w = Math.max(lerp(10, 90, G.threat), surge * view.w * 0.33);
   if (w < 1.5) return;
-  ctx.save(); ctx.fillStyle = flareGrad;
-  const seg = view.h / 4;
-  for (let i = 0; i < 4; i++) {
-    const cy = seg * i + seg / 2, wob = calm ? 0 : Math.sin(G.time * 3 + i * 1.7) * 14;
+  // Heat licking in from the left edge: six soft, round-tipped flames of
+  // uneven reach, added light rather than painted pink, so they glow over the
+  // sky instead of reading as flat triangles.
+  ctx.save(); ctx.fillStyle = flareGrad; ctx.globalCompositeOperation = 'lighter';
+  const n = 6, seg = view.h / n;
+  for (let i = 0; i < n; i++) {
+    const cy = seg * i + seg / 2;
+    const reach = 0.55 + 0.45 * ANIM.hash01(i * 3.7) + (calm ? 0 : 0.18 * Math.sin(G.time * (2.1 + i * 0.37) + i * 1.9));
+    const lean = calm ? 0 : Math.sin(G.time * 1.7 + i * 2.3) * seg * 0.12;
     ctx.save();
     // flareGrad is authored over a fixed 128px span (-120..8 local); scale
-    // that span to the live column width so the glow always reaches the true
-    // screen edge, however wide the sector surge pushes it — a translate-only
-    // approach detaches from the edge once w exceeds 128px. wob (tip sway)
-    // is applied in the outer, unscaled translate so its on-screen amplitude
-    // stays a fixed 14px regardless of column width.
-    ctx.translate(w + wob, 0); ctx.scale(w / 128, 1);
+    // that span to the live flame length so the glow always reaches the true
+    // screen edge, however wide the sector surge pushes it.
+    const len = w * reach;
+    ctx.translate(len, 0); ctx.scale(len / 128, 1);
+    ctx.globalAlpha = 0.75;
     ctx.beginPath();
-    ctx.moveTo(-128, cy - seg / 2 - 6);
-    ctx.quadraticCurveTo(-64, cy - seg * 0.15, 0, cy);
-    ctx.quadraticCurveTo(-64, cy + seg * 0.15, -128, cy + seg / 2 + 6);
+    ctx.moveTo(-128, cy - seg * 0.75);
+    ctx.bezierCurveTo(-60, cy - seg * 0.5 + lean, -6, cy - seg * 0.22 + lean, 0, cy + lean);
+    ctx.bezierCurveTo(-6, cy + seg * 0.22 + lean, -60, cy + seg * 0.5 + lean, -128, cy + seg * 0.75);
     ctx.closePath(); ctx.fill();
     ctx.restore();
   }
@@ -5413,18 +5418,38 @@ function drawForeground(camX) {
 }
 
 /* ---- flare wall ---- */
+// The wall's front: a soft corona that peaks in a hot white core and falls
+// away on both sides, so the edge glows instead of ending in a hard line.
+const flareWallGrad = ctx.createLinearGradient(-140, 0, 28, 0);
+flareWallGrad.addColorStop(0, 'rgba(255,79,102,0)');
+flareWallGrad.addColorStop(0.5, 'rgba(255,79,102,0.32)');
+flareWallGrad.addColorStop(0.74, 'rgba(255,128,88,0.7)');
+flareWallGrad.addColorStop(0.83, 'rgba(255,226,190,0.95)');
+flareWallGrad.addColorStop(0.9, 'rgba(255,150,100,0.45)');
+flareWallGrad.addColorStop(1, 'rgba(255,79,102,0)');
 function drawFlare(camX, alpha) {
   const fx = lerp(G.flare.prevX, G.flare.x, alpha);
-  if (fx < camX - 130) return;
+  if (fx < camX - 150) return;
+  const calm = lessMotion();
   ctx.save();
   ctx.drawImage(GLOW.coralBig, fx - 120, G.camY + view.h / 2 - 120, 240, 240);
   // Wall gradient lives in fx-local space so the boot-built cache fits every frame.
   ctx.translate(fx, 0);
-  ctx.fillStyle = flareGrad; ctx.fillRect(-120, G.camY - 100, 130, view.h + 400);
-  ctx.strokeStyle = 'rgba(255,235,200,0.7)'; ctx.lineWidth = 1.5;
+  ctx.fillStyle = flareWallGrad; ctx.fillRect(-140, G.camY - 100, 168, view.h + 400);
+  // Plasma filaments: smooth curves along the core, brightest at the front.
+  ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+  const t = calm ? 0 : G.time, step = 30;
   for (let i = 0; i < 3; i++) {
-    ctx.beginPath(); ctx.moveTo(-4, G.camY);
-    for (let y = G.camY; y < G.camY + view.h; y += 40) ctx.lineTo(-4 + Math.sin(y * 0.3 + G.crackle * 10 + i) * 10, y);
+    ctx.strokeStyle = i ? 'rgba(255,170,120,0.35)' : 'rgba(255,240,215,0.6)';
+    ctx.lineWidth = i ? 1.5 : 2;
+    ctx.beginPath();
+    let y = G.camY - step;
+    ctx.moveTo(-i * 9 + Math.sin(y * 0.021 + t * (3 + i) + i * 2) * 7, y);
+    for (; y < G.camY + view.h + step; y += step) {
+      const x = -i * 9 + Math.sin((y + step / 2) * 0.021 + t * (3 + i) + i * 2) * 7;
+      const x2 = -i * 9 + Math.sin((y + step) * 0.021 + t * (3 + i) + i * 2) * 7;
+      ctx.quadraticCurveTo(x, y + step / 2, (x + x2) / 2, y + step);
+    }
     ctx.stroke();
   }
   ctx.restore();
@@ -6414,11 +6439,14 @@ function drawVignette() {
   if (G.vignette > 0.05) {
     // Full-strength cached gradient; intensity rides globalAlpha (stop alpha
     // scales linearly, so the composite is identical to baking it into stops).
+    // The heat comes from behind: a wash from the left edge that thins out
+    // before mid-screen, so the course ahead stays clear and the hue stays clean.
     if (!vignetteGrad) {
-      vignetteGrad = ctx.createRadialGradient(view.w / 2, view.h / 2, view.h * 0.3, view.w / 2, view.h / 2, view.h * 0.75);
-      vignetteGrad.addColorStop(0, 'rgba(255,79,102,0)'); vignetteGrad.addColorStop(1, 'rgba(255,79,102,1)');
+      vignetteGrad = ctx.createLinearGradient(0, 0, view.w * 0.55, 0);
+      vignetteGrad.addColorStop(0, 'rgba(255,79,102,1)'); vignetteGrad.addColorStop(0.35, 'rgba(255,79,102,0.35)');
+      vignetteGrad.addColorStop(1, 'rgba(255,79,102,0)');
     }
-    ctx.globalAlpha = G.vignette * 0.6;
+    ctx.globalAlpha = G.vignette * 0.5;
     ctx.fillStyle = vignetteGrad; ctx.fillRect(0, 0, view.w, view.h);
     ctx.globalAlpha = 1;
   }
