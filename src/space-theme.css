@@ -581,3 +581,7 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 .arena-root .arena-control-hint { opacity: .6; font-size: calc(11px * var(--ui-scale, 1)); }
 @media (max-width: 1180px) { .arena-root:not([data-touch=true]) .arena-control-hint { display: none; } .arena-root:not([data-touch=true]) .arena-roster { max-width: calc(100vw - 340px); } }
 @media (prefers-reduced-motion: reduce) { .arena-root .arena-roster { transition: none; } }
+
+/* The friends drawer summary inherits the page font and wraps like body copy, not a 36px-tall line. */
+.arena-root .arena-online-panel > summary { font: 750 15px/1.35 var(--sm-font-body); min-height: 36px; padding-block: 6px; display: list-item; }
+@media (max-width: 480px) { .arena-root .arena-online-panel > summary { font-size: 14px; } }
