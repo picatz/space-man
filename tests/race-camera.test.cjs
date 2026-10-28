@@ -332,3 +332,18 @@ test('topdown redraws without elapsed frame time do not spend camera easing twic
   assert.deepEqual(portrait, Camera.createTopdown().update(moved, { portrait: true }),
     'a genuine viewport orientation change still reframes immediately');
 });
+
+test("chase occlusion keeps rivals drawn alongside and slightly behind the subject", () => {
+  const s = R.snapshot(R.create()), a = s.actors[0];
+  const at = (behind, side) => ({
+    ...a, id: "rival",
+    x: a.x - Math.cos(a.heading) * behind - Math.sin(a.heading) * side,
+    y: a.y - Math.sin(a.heading) * behind + Math.cos(a.heading) * side,
+  });
+  const drawn = (r) => Scene.actors({ ...s, actors: [a, r] }, { chaseActor: a }).vertices.length >
+    Scene.actors({ ...s, actors: [a] }, { chaseActor: a }).vertices.length;
+  assert.ok(drawn(at(40, 60)), "alongside-and-behind stays visible");
+  assert.ok(drawn(at(100, 70)), "wide of the camera corridor stays visible");
+  assert.ok(drawn(at(200, 0)), "behind the camera is the frustum's call, not a hide rule");
+  assert.ok(!drawn(at(80, 0)), "directly between camera and subject is hidden");
+});
