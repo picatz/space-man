@@ -527,3 +527,56 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
   -webkit-mask-image: linear-gradient(#000 calc(100% - var(--lobby-edge)), transparent);
   mask-image: linear-gradient(#000 calc(100% - var(--lobby-edge)), transparent);
 }
+
+/* Orbital Arena lobby on short, wide windows (laptops, browser zoom): one screen,
+   with Launch always in reach and Play with friends visible without scrolling. */
+@media (min-width: 760px) and (max-height: 900px) {
+  .arena-root .arena-lobby-top { margin-bottom: 6px; }
+  .arena-root .arena-lobby-grid { gap: clamp(24px, 4vw, 56px); align-items: start; }
+  .arena-root .arena-intro { align-self: center; }
+  .arena-root .arena-lobby-art { max-width: min(100%, 36vh, 360px); margin: 0 auto 4px; }
+  .arena-root .arena-title { margin: 12px 0 10px; }
+  .arena-root .arena-setup { padding: 16px 18px; }
+  .arena-root .arena-choice-group + .arena-choice-group { margin-top: 12px; }
+  .arena-root .arena-section-label { margin-bottom: 7px; }
+  .arena-root .arena-players-note,
+  .arena-root .arena-local-note { display: none; }
+  .arena-root .arena-setup-options { margin: 10px 0 12px; }
+  .arena-root .arena-stage-description { min-height: 0; margin-top: 6px; }
+  .arena-root .arena-format-card { min-height: 0; padding: 9px 10px; gap: 4px; }
+  .arena-root .arena-format-card { justify-content: flex-start; }
+  .arena-root .arena-format-card > * { overflow-wrap: anywhere; }
+  .arena-root .arena-launch { position: sticky; bottom: 0; z-index: 2; }
+  .arena-root .arena-controls-help { margin-top: 8px; padding-top: 2px; }
+  .arena-root .arena-controls-help summary,
+  .arena-root .arena-online-panel summary { min-height: 36px; padding-block: 4px; }
+  .arena-root .arena-online-panel { margin-top: 8px; padding: 2px 16px; }
+  .arena-root .arena-online-panel > summary { font-size: 14px; }
+}
+@media (min-width: 760px) and (max-height: 700px) {
+  .arena-root .arena-stage-card { min-height: 0; }
+  .arena-root .arena-stage-preview { aspect-ratio: 288/92; min-height: 0; }
+  .arena-root .arena-rules { gap: 4px 12px; }
+  .arena-root .arena-stage-description { display: none; }
+  .arena-root .arena-difficulty .arena-segmented { min-height: 0; }
+  .arena-root .arena-difficulty .arena-segmented .arena-button { min-height: 38px; padding-block: 4px; }
+  .arena-root .arena-setup-options { margin: 8px 0 10px; }
+  .arena-root .arena-launch { min-height: 48px; }
+  .arena-root .arena-lobby-art { max-width: min(100%, 38vh, 340px); }
+}
+
+/* Orbital Arena match HUD (mouse and keyboard): the damage cards live along the
+   bottom edge, compact, and fade while a fighter passes behind them, so the sky
+   above the upper platform stays clear. Touch keeps its own layout. */
+.arena-root:not([data-touch=true]) .arena-roster {
+  position: fixed; left: 50%; bottom: calc(var(--arena-safe-bottom) + 12px); transform: translateX(-50%);
+  width: max-content; max-width: min(640px, calc(100vw - 600px)); margin: 0; gap: 6px; z-index: 3;
+  transition: opacity .25s ease;
+}
+.arena-root:not([data-touch=true]) .arena-roster.arena-roster-fade { opacity: .22; }
+.arena-root:not([data-touch=true]) .arena-player-card { min-width: 0; max-width: 176px; padding: 5px 9px; gap: 7px; border-radius: 10px; }
+.arena-root:not([data-touch=true]) .arena-damage { font-size: 18px; min-width: 0; }
+.arena-root:not([data-touch=true]) .arena-hud-top { margin-bottom: 0; }
+.arena-root .arena-control-hint { opacity: .6; font-size: calc(11px * var(--ui-scale, 1)); }
+@media (max-width: 1180px) { .arena-root:not([data-touch=true]) .arena-control-hint { display: none; } .arena-root:not([data-touch=true]) .arena-roster { max-width: calc(100vw - 340px); } }
+@media (prefers-reduced-motion: reduce) { .arena-root .arena-roster { transition: none; } }
