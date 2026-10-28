@@ -223,3 +223,16 @@ for (const [width, height] of [[955, 620], [1000, 640], [1280, 800], [1024, 768]
     assert.ok(m.art.bottom <= m.inner && m.art.height > 60, 'the hero art is fully shown');
   });
 }
+
+test('home hero is alive: the canvas changes over time, and holds still under reduced motion', { timeout: 40000 }, async t => {
+  const { page } = await launch(t, { width: 1280, height: 800 });
+  const snap = () => page.evaluate(() => document.getElementById('homeHero').toDataURL());
+  const a = await snap();
+  await page.waitForTimeout(4500);
+  assert.notEqual(await snap(), a, 'the hero animates in normal motion');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.waitForTimeout(600);
+  const b = await snap();
+  await page.waitForTimeout(2500);
+  assert.equal(await snap(), b, 'the hero is static under reduced motion');
+});

@@ -558,6 +558,11 @@
   .gamepad-guide { display: none; }
   body.gamepad-active .desktop-guide { display: none; }
   body.gamepad-active .gamepad-guide { display: grid; }
+  /* Once a player has touched anything, the guides follow the last input used (syncInputKind sets body[data-input]). */
+  body[data-input="keys"] .desktop-guide, body[data-input="pad"] .gamepad-guide, body[data-input="touch"] .touch-guide { display: grid; }
+  body[data-input="keys"] .gamepad-guide, body[data-input="keys"] .touch-guide,
+  body[data-input="pad"] .desktop-guide, body[data-input="pad"] .touch-guide,
+  body[data-input="touch"] .desktop-guide, body[data-input="touch"] .gamepad-guide { display: none; }
 
   /* initials picker */
   .initials {
@@ -897,6 +902,9 @@
     <div class="control-guide gamepad-guide">
       <div><b>LEFT STICK</b><span>MOVE</span></div><div><b>A / ✕</b><span>JUMP</span></div><div><b>X / □ / R2</b><span>FIRE</span></div>
     </div>
+    <div class="control-guide touch-guide" id="pauseTouchGuide">
+      <div><b>LEFT THUMB</b><span>MOVE</span></div><div><b>TAP RIGHT</b><span>JUMP</span></div><div><b>FIRE BUTTON</b><span>FIRE</span></div>
+    </div>
     <div class="crew" id="pauseCrew" style="display:none;"></div>
     <details class="pause-settings" id="pauseSettings">
       <summary>Settings</summary>
@@ -921,9 +929,10 @@
     <div id="deadTarget" class="sub next-goal" style="display:none;"></div>
     <div id="deadCourse" class="sub" style="font-size:11px;letter-spacing:1.5px;color:var(--gold);margin-top:6px;display:none;"></div>
     <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
-    <div id="deadUnlock" class="stats-line" style="color:var(--gold);opacity:0.95;display:none;"></div>
+    <div id="deadUnlock" class="dead-unlock" style="display:none;"><span class="dead-unlock-kicker" aria-hidden="true">✦ New unlock</span><b id="deadUnlockNames"></b><span class="dead-unlock-cta">Wear it from Suit Up</span></div>
     </div>
     <div class="dead-side">
+    <div class="dead-board-head" id="deadBoardHead">Your top runs</div>
     <table class="scores" id="deadScores"></table>
     <div class="round-head" id="deadRound" style="display:none;"></div>
     <div class="round-standings" id="deadStandings" style="display:none;"></div>
@@ -2406,6 +2415,30 @@ function pickGamepad(pads) {
     if (!fallback) fallback = p;
   }
   return fallback;
+}
+// The input the player last used: 'pad', 'touch' or 'keys' (a mouse counts as keys: a desktop player reads key hints).
+// Every printed hint follows it, so a controller picked up mid-run or a tap on a laptop's touchscreen relabels the guides.
+let _finePointer = null;
+function inputKind() {
+  if (input.usingGamepad) return 'pad';
+  if (FORCE_TOUCH || input.usingTouch) return 'touch';
+  if (input.usingKeys) return 'keys';
+  if (_finePointer === null) { try { _finePointer = !!(window.matchMedia && matchMedia('(pointer: fine)').matches); } catch (e) { _finePointer = false; } }
+  return _finePointer ? 'keys' : 'touch';
+}
+// Mirrors inputKind() onto <body data-input> (CSS shows the matching .desktop-/.gamepad-/.touch-guide) and refreshes the
+// live retry hint. Called once per animation frame; it touches the DOM only when the kind or handedness changes.
+let _inputKindKey = '';
+function syncInputKind() {
+  const kind = inputKind(), key = kind + (settings.lefty ? 'L' : 'R');
+  if (key === _inputKindKey || SHOT) return;
+  _inputKindKey = key;
+  document.body.dataset.input = kind;
+  const tg = document.getElementById('pauseTouchGuide');
+  const tb = tg ? tg.querySelectorAll('b') : [];
+  if (tb.length >= 2) { const b = tb; b[0].textContent = settings.lefty ? 'RIGHT THUMB' : 'LEFT THUMB'; b[1].textContent = settings.lefty ? 'TAP LEFT' : 'TAP RIGHT'; }
+  const h = document.getElementById('deadTapHint');
+  if (h && h.classList.contains('show')) h.textContent = RETRY_HINT[kind];
 }
 function pollGamepad() {
   if (modeOverlayActive()) return;
@@ -4592,6 +4625,7 @@ function modeOverlayActive() { return !!((journeyUI && journeyUI.active) || (are
 let arenaPadNeutral = false;
 function frame(now) {
   rafId = requestAnimationFrame(frame);
+  syncInputKind();
   // The opt-in arena owns its own fixed tick and input while open. The runner
   // is parked, not reset or repurposed; no runner physics, saves or room code
   // participate in an arena match.
@@ -6584,6 +6618,7 @@ function showAttract() {
   syncOffline();
   showOverlay('ovAttract');
   window.SpaceManHome.fit();
+  window.SpaceManHome.animate();
   resetRun(SHOT_SEED !== null ? SHOT_SEED : 12345);
   G.mode = 'attract';
   attractGreet();   // E13: welcome-back wave + anniversary confetti (one-shots, DELIGHT-gated)
@@ -6665,9 +6700,10 @@ function stampMedal() {
   if (G.runMedal && !lessMotion() && !SHOT) { dm.classList.remove('stamp'); void dm.offsetWidth; dm.classList.add('stamp'); }
 }
 function revealDeathDelta() { $('deadDelta').classList.add('reveal'); }
+const RETRY_HINT = { pad: 'PRESS A TO RETRY', touch: 'TAP TO RETRY', keys: 'SPACE / ENTER TO RETRY' };
 function revealTapHint() {
   const h = $('deadTapHint');
-  if (!SHOT) h.textContent = input.usingGamepad ? 'PRESS A TO RETRY' : (FORCE_TOUCH || input.usingTouch) ? 'TAP TO RETRY' : input.usingKeys ? 'SPACE / ENTER TO RETRY' : 'TAP TO RETRY';
+  if (!SHOT) h.textContent = RETRY_HINT[inputKind()];
   h.classList.add('show');
 }
 // A target, not a period (E9.5): nearest of next medal / next sector / best-distance
@@ -6711,6 +6747,7 @@ function showDeathCard() {
   }, 300));
   deathTimers.push(setTimeout(revealDeathDelta, 550));
   deathTimers.push(setTimeout(revealTapHint, 900));   // matches the tap-anywhere arm time (E9.6)
+  deathTimers.push(setTimeout(revealUnlock, 1100));
   announceRunOver();   // before the picker branch: a qualifying run is narrated immediately too
   if (G.showPicker) { showInitials(); return; }   // only a full-table crack blocks; else auto-committed
   renderDeathCard();
@@ -6730,7 +6767,7 @@ function renderDeathCard() {
   // a first-ever run is a NEW BEST, and the gold line never shows a stale +0.
   // Computed exactly as before; only its reveal (showDeathCard's timer) is staged.
   if (fs > G.prevBest) $('deadDelta').innerHTML = `<span style="color:#FFC93C">NEW BEST +${(fs - G.prevBest).toLocaleString()}</span>`;
-  else $('deadDelta').textContent = (G.prevBest - fs).toLocaleString() + ' TO BEAT';
+  else $('deadDelta').textContent = 'BEST ' + G.prevBest.toLocaleString();   // a reference point, not a scolding deficit
   $('deadDelta').classList.toggle('best', fs > G.prevBest);
   $('deadMedal').classList.toggle('has', !!G.runMedal);   // reserve the stamp's line only when a medal is coming
   // Stat tiles: value over label, one glance per number (numbers only — no markup from state).
@@ -6752,15 +6789,16 @@ function renderDeathCard() {
   else dq.style.display = 'none';
   // Passive unlock line — plain text, nothing focusable, restart tap untouched.
   const du = $('deadUnlock');
+  du.classList.remove('reveal');
   if (G.newCosmetics.length) {
-    du.textContent = 'UNLOCKED: ' + G.newCosmetics.map(cosmeticName).join(' · ') + ' ✦ SUIT UP';
-    du.style.display = 'block';
+    $('deadUnlockNames').textContent = G.newCosmetics.map(cosmeticName).join(' · ');
+    du.style.display = '';
   } else du.style.display = 'none';
   // In a live room the ROOM board is the standings that matter — don't stack the
   // five local solo bests next to it (they'd read as duplicate/foreign, D4b). Solo
   // play (net off) is untouched, so the #shot=dead golden stays pixel-identical.
-  if (netLive()) { $('deadScores').style.display = 'none'; }
-  else { $('deadScores').style.display = ''; renderScoreTable('deadScores', true); }
+  if (netLive()) { $('deadScores').style.display = 'none'; $('deadBoardHead').style.display = 'none'; }
+  else { $('deadScores').style.display = ''; $('deadBoardHead').style.display = ''; renderScoreTable('deadScores', true); }
   renderRoomBoard();               // Run Together: ROOM column + spectate/emote controls (no-op solo)
   const chip = $('installChip');
   if (deferredPrompt && !installQuiet() && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
@@ -6769,7 +6807,17 @@ function renderDeathCard() {
   // SHOT goldens are captured on the frozen first frame — reveal everything
   // now instead of waiting on the 300/550ms timers scheduled by showDeathCard
   // (which the SHOT=dead harness bypasses entirely by calling this directly).
-  if (SHOT) { stampMedal(); revealDeathDelta(); revealTapHint(); }
+  if (SHOT) { stampMedal(); revealDeathDelta(); revealTapHint(); revealUnlock(true); }
+}
+// An unlock gets its own beat after the score lands: the chip pops in with a chime and a buzz (a quiet fade under Reduce Motion).
+function revealUnlock(quiet) {
+  const du = $('deadUnlock');
+  if (du.style.display === 'none' || du.classList.contains('reveal')) return;
+  du.classList.add('reveal');
+  if (quiet) return;
+  announceMoment('New unlock: ' + G.newCosmetics.map(cosmeticName).join(', ') + '. Wear it from Suit Up.');
+  if (settings.sfx && !settings.muted) Audio.sfx.medal(2, true);
+  buzz('celebrate');
 }
 // Daily / challenge verdict — plain text. Solo random runs have no line at all.
 function deathCourseLine(fs) {

@@ -244,3 +244,16 @@ test('the retry hint matches the last input device', (t) => {
   c.run('input.usingGamepad = false; input.usingTouch = true; revealTapHint()'); assert.equal(hint(), 'TAP TO RETRY');
   c.run('input.usingTouch = false; input.usingKeys = true; revealTapHint()'); assert.equal(hint(), 'SPACE / ENTER TO RETRY');
 });
+
+test('printed hints follow the input in hand: body[data-input] and the live retry hint switch together', (t) => {
+  const c = client(relay());
+  t.after(() => c.close());
+  c.run("input.usingGamepad = false; input.usingTouch = false; input.usingKeys = true; revealTapHint(); syncInputKind()");
+  assert.equal(c.run('document.body.dataset.input'), 'keys');
+  c.run('input.usingKeys = false; input.usingGamepad = true; syncInputKind()');
+  assert.equal(c.run('document.body.dataset.input'), 'pad');
+  assert.equal(c.run("$('deadTapHint').textContent"), 'PRESS A TO RETRY', 'a controller picked up on the card relabels the hint');
+  c.run('input.usingGamepad = false; input.usingTouch = true; syncInputKind()');
+  assert.equal(c.run('document.body.dataset.input'), 'touch');
+  assert.equal(c.run("$('deadTapHint').textContent"), 'TAP TO RETRY');
+});
