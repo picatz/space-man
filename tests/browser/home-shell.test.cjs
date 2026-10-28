@@ -186,14 +186,14 @@ for (const [width, height] of [[320, 568], [390, 844], [820, 1180], [1000, 640],
   });
 }
 
-for (const [id, dialog] of [['btnRace', '.race-dialog'], ['btnArena', '.arena-dialog']]) {
+for (const [id, dialog] of [['btnRace', '.race-dialog']]) {
   test(`${id} lobby scrolls to the bottom of a short window instead of clipping above it`, { timeout: 30000 }, async t => {
     const { page } = await launch(t, { width: 1000, height: 640 });
     await page.locator('#' + id).click();
     const box = page.locator(dialog).first();
     await box.waitFor();
     const m = await box.evaluate(e => ({ bottom: e.getBoundingClientRect().bottom, inner: innerHeight, scrolls: e.scrollHeight > e.clientHeight, pad: parseFloat(getComputedStyle(e).paddingBottom) }));
-    assert.ok(m.scrolls, 'the short window really overflows the lobby');
+    if (id === 'btnRace') assert.ok(m.scrolls, 'the short window really overflows the lobby');
     assert.ok(Math.abs(m.bottom - m.inner) <= 1, 'the scroller reaches the bottom edge, with no dead band under it');
     assert.ok(m.pad >= 16, 'the end of the scroll keeps breathing room');
   });
@@ -206,5 +206,20 @@ for (const [width, height] of [[1337, 600], [1100, 570], [820, 900]]) {
     const m = await page.evaluate(() => ({ zoom: parseFloat(document.querySelector('.home-stage').style.zoom || '1'), footer: document.querySelector('.home-footer').getBoundingClientRect().bottom, inner: innerHeight }));
     assert.ok(m.zoom >= .8 && m.zoom <= 1, 'zoom stays within its floor');
     assert.ok(m.footer <= m.inner, 'Records and Settings are inside the viewport');
+  });
+}
+
+for (const [width, height] of [[955, 620], [1000, 640], [1280, 800], [1024, 768]]) {
+  test(`arena lobby ${width}x${height}: Launch and Play with friends are visible without scrolling`, { timeout: 30000 }, async t => {
+    const { page } = await launch(t, { width, height });
+    await page.locator('#btnArena').click();
+    await page.locator('#arenaStart').waitFor();
+    const m = await page.evaluate(() => {
+      const box = id => document.querySelector(id).getBoundingClientRect();
+      return { launch: box('#arenaStart').bottom, friends: box('.arena-online-panel > summary').bottom, inner: innerHeight, art: box('.arena-lobby-art') };
+    });
+    assert.ok(m.launch <= m.inner, 'Launch is on screen');
+    assert.ok(m.friends <= m.inner, 'Play with friends is on screen');
+    assert.ok(m.art.bottom <= m.inner && m.art.height > 60, 'the hero art is fully shown');
   });
 }

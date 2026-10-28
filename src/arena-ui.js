@@ -277,7 +277,7 @@
       if (r) roomRejoin.textContent = 'Rejoin ' + social().lastRoomText(r);
     }
     let active = false, built = false, destroyed = false, rootEl, canvas, ctx, modal, lobby, pausePanel, resultPanel;
-    let live, timerEl, rosterEl, statusEl, statusSub, matchTitle, touchEl, stickZone, stickBase, stickKnob, pulseButton, dashButton;
+    let live, timerEl, rosterEl, rosterRect = null, rosterFaded = false, canvasLeft = 0, canvasTop = 0, statusEl, statusSub, matchTitle, touchEl, stickZone, stickBase, stickKnob, pulseButton, dashButton;
     let pulseMeter, dashMeter, countdownEl, pauseButton, launchButton, resultTitle, resultText, resultRoster;
     let formatButtons = [], stageButtons = [], difficultyButtons = [], mirrorButton, stageDescription;
     let savedFocus = null, inertSiblings = [], savedBodyOverflow = '';
@@ -1187,7 +1187,7 @@
         if (e.type === 'koflash') {
           ctx.save(); ctx.globalAlpha = .34 * (1 - k) * (1 - k); ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, width, height); ctx.restore();
         } else if (e.type === 'kotext') {
-          const sx = clamp((e.x - c.x) * c.scale + width / 2, 38, width - 38), sy = clamp((e.y - c.y) * c.scale + c.centerY, top, bottom);
+          const sx = clamp((e.x - c.x) * c.scale + width / 2, 60, width - 60), sy = clamp((e.y - c.y) * c.scale + c.centerY, top, bottom);
           ctx.save(); ctx.translate(sx, sy);
           if (!calm() && k < .4) {
             // Directional flash: a bright streak from the exit point back toward the stage.
@@ -1195,9 +1195,9 @@
             grad.addColorStop(0, '#FFFFFF'); grad.addColorStop(1, 'rgba(255,255,255,0)');
             ctx.strokeStyle = grad; ctx.lineCap = 'round'; ctx.lineWidth = 7 * (1 - k / .4) + 1; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(dx / len * reach, dy / len * reach); ctx.stroke();
           }
-          const pop = calm() ? 1 : 1 + .35 * Math.max(0, 1 - k * 5), fade = k < .7 ? 1 : 1 - (k - .7) / .3, lift = -28 * (1 - Math.min(1, k * 3)) - 14;
-          ctx.globalAlpha = clamp(fade, 0, 1); ctx.scale(pop, pop); ctx.font = '900 26px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          ctx.lineJoin = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = '#071522'; ctx.strokeText(e.text, 0, lift);
+          const pop = calm() ? 1 : 1 + .6 * Math.max(0, 1 - k * 6) * Math.max(0, 1 - k * 6), fade = k < .75 ? 1 : 1 - (k - .75) / .25, lift = -28 * (1 - Math.min(1, k * 3)) - 14, big = clamp(width * .045, 34, 56);
+          ctx.globalAlpha = clamp(fade, 0, 1); ctx.scale(pop, pop); ctx.font = '900 ' + big + 'px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.lineJoin = 'round'; ctx.lineWidth = Math.round(big / 5); ctx.strokeStyle = '#071522'; ctx.strokeText(e.text, 0, lift);
           ctx.fillStyle = e.color; ctx.fillText(e.text, 0, lift); ctx.restore();
         }
       }
@@ -1232,6 +1232,16 @@
         ctx.globalAlpha = 1;
       }
       const c = applyFeelCamera(updateCamera(a, alpha), a), art = root.SpaceManArt;
+      // Roster cards sit over the stage's lower edge: step aside while a fighter is behind them.
+      if (rosterEl && rosterRect) {
+        let behind = false;
+        for (const actor of state.actors) {
+          if (actor.stocks <= 0 || actor.respawnTicks > 0) continue;
+          const sx = (actor.x + actor.w / 2 - c.x) * c.scale + width / 2 + canvasLeft, sy = (actor.y + actor.h / 2 - c.y) * c.scale + c.centerY + canvasTop;
+          if (sx > rosterRect.left - 28 && sx < rosterRect.right + 28 && sy > rosterRect.top - 28 && sy < rosterRect.bottom + 28) { behind = true; break; }
+        }
+        if (behind !== rosterFaded) { rosterFaded = behind; rosterEl.classList.toggle('arena-roster-fade', behind); }
+      }
       ctx.save(); ctx.translate(width / 2, c.centerY); ctx.scale(c.scale, c.scale); ctx.translate(-c.x, -c.y);
       // Quiet orbital guide rings help the camera feel located in a larger world.
       ctx.strokeStyle = t.accent; ctx.globalAlpha = .055; ctx.lineWidth = 1 / c.scale; ctx.beginPath(); ctx.ellipse(a.width / 2, 420, 445, 130, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
@@ -1378,6 +1388,7 @@
     function updateHud(force) {
       if (!state || (!force && state.tick - lastHudTick < 5)) return;
       lastHudTick = state.tick;
+      if (rosterEl && canvas) { const was = rosterEl.classList.contains('arena-roster-fade'); rosterEl.classList.remove('arena-roster-fade'); rosterRect = rosterEl.getBoundingClientRect(); const cr = canvas.getBoundingClientRect(); canvasLeft = cr.left; canvasTop = cr.top; if (was) rosterEl.classList.add('arena-roster-fade'); }
       const seconds = Math.max(0, Math.ceil(state.timeLeftTicks / 60)); timerEl.textContent = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0'); timerEl.classList.toggle('arena-clock-urgent', seconds <= 30);
       for (const actor of state.actors) {
         const card = rosterEl.querySelector('[data-actor="' + actor.id + '"]'); if (!card) continue;
@@ -1429,7 +1440,7 @@
     }
     function koFeel(event, who, involved) {
       const F = arena.feel, color = actorColor(who);
-      effects.push({ type: 'kotext', x: event.x, y: event.y, color, life: 36, max: 36, text: who.stocks > 0 ? 'KO' : 'OUT' });
+      effects.push({ type: 'kotext', x: event.x, y: event.y, color, life: 54, max: 54, text: who.stocks > 0 ? 'KO' : 'OUT' });
       if (calm()) return;
       effects.push({ type: 'koflash', x: event.x, y: event.y, color, life: F.KO_FLASH_TICKS, max: F.KO_FLASH_TICKS });
       if (involved) { feel.koLeft = F.KO_SLOW_TICKS; feel.koPoint = { x: event.x, y: event.y }; }
