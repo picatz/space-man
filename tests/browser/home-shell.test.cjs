@@ -236,3 +236,13 @@ test('home hero is alive: the canvas changes over time, and holds still under re
   await page.waitForTimeout(2500);
   assert.equal(await snap(), b, 'the hero is static under reduced motion');
 });
+
+test('arena lobby: the friends drawer title uses the app font and stays on one line on a phone', { timeout: 30000 }, async t => {
+  const { page } = await launch(t, { width: 390, height: 844 });
+  await page.evaluate(() => document.getElementById('btnArena').click());
+  const s = page.locator('.arena-online-panel > summary');
+  await s.waitFor();
+  const m = await s.evaluate(el => ({ font: getComputedStyle(el).fontFamily, h: el.getBoundingClientRect().height }));
+  assert.match(m.font, /^ui-rounded/, 'uses the app body font, not the browser default');
+  assert.ok(m.h < 56, `one line tall, got ${m.h}`);
+});
