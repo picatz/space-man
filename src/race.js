@@ -1088,6 +1088,18 @@
     }
     return state;
   }
+  // Seconds at which a kart still on the road would finish, extrapolated from
+  // its average pace so far; null when it cannot (DNF, no time, no progress).
+  // Display only: results never carry it and it never feeds the simulation.
+  function projectedFinish(state, actorId) {
+    const a = state.actors.find((x) => x.id === actorId);
+    if (!a || a.dnf) return null;
+    if (a.finishTick !== null) return a.finishTick * STEP;
+    const c = course(state.trackId), elapsed = state.raceTick * STEP,
+      done = raceDistance(a, c), total = state.laps * c.length;
+    if (!(elapsed > 0) || !(done > 0) || done >= total) return null;
+    return elapsed + (total - done) / (done / elapsed);
+  }
   function standings(state) {
     return state.actors
       .slice()
@@ -1137,6 +1149,7 @@
     catchup: CATCHUP,
     command,
     cancelControl,
+    projectedFinish,
     create,
     cpuInput,
     step,

@@ -432,7 +432,7 @@
       // Only a craft inside the narrow corridor between the chase camera
       // (about 132 behind) and the subject can block the view; a rival
       // alongside or further back stays drawn until the frustum drops it.
-      if (behind < -45 && behind > -125 && Math.abs(side) < 42) return false;
+      if (behind < -45 && behind > -125 && Math.abs(side) < 24) return false;
     }
     return true;
   }

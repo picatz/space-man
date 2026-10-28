@@ -285,6 +285,7 @@
         dt: config.dt,
         aspect: w / h,
         reduceMotion: config.reduceMotion,
+        staging: snapshot.phase === "countdown",
       });
       // Reuse immutable local-space craft meshes on the GPU. Only small model
       // transforms change each display frame, including interpolated frames.
@@ -292,13 +293,13 @@
         models: actorModels,
         hideId: mode === "cockpit" ? a.id : null,
         calm: !!config.reduceMotion,
-        chaseActor: mode === "chase" ? a : null,
+        chaseActor: mode === "chase" && snapshot.phase !== "countdown" ? a : null,
         cockpitEye: mode === "cockpit" ? view.eye : null,
         course, catalog, nearest: root.SpaceManRace.nearest,
       });
       const features = root.SpaceManRaceScene.featureMeshes?.(snapshot, course, root.SpaceManRace.at, catalog, {
         actorId: a.id, hideId: mode === "cockpit" ? a.id : null,
-        chaseActor: mode === "chase" ? a : null,
+        chaseActor: mode === "chase" && snapshot.phase !== "countdown" ? a : null,
         calm: !!config.reduceMotion, nearest: root.SpaceManRace.nearest,
       }) || [];
       const started = root.performance.now();

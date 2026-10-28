@@ -347,3 +347,11 @@ test("chase occlusion keeps rivals drawn alongside and slightly behind the subje
   assert.ok(drawn(at(200, 0)), "behind the camera is the frustum's call, not a hide rule");
   assert.ok(!drawn(at(80, 0)), "directly between camera and subject is hidden");
 });
+
+test("grid staging pulls the chase camera back and up, and the race view returns to normal", () => {
+  const s = R.snapshot(R.create()), a = s.actors[0], at = R.at, course = R.course(s.trackId);
+  const race = Camera.create().update(a, course, at, { mode: "chase", aspect: 1.6 }),
+    grid = Camera.create().update(a, course, at, { mode: "chase", aspect: 1.6, staging: true });
+  assert.ok(Math.hypot(grid.eye[0] - a.x, grid.eye[2] - a.y) > Math.hypot(race.eye[0] - a.x, race.eye[2] - a.y) + 60);
+  assert.ok(grid.eye[1] > race.eye[1] + 20);
+});
