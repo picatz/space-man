@@ -926,7 +926,8 @@
     <div id="deadMedal" class="sub"></div>
     <div id="deadDelta" class="sub"></div>
     <div id="deadStats" class="stat-grid"></div>
-    <div id="deadTarget" class="sub next-goal" style="display:none;"></div>
+    <div id="deadMission" class="dead-mission" style="display:none;"><span class="dead-mission-kicker" aria-hidden="true">✓ Mission complete</span><b id="deadMissionNames"></b><span class="dead-mission-reward" id="deadMissionReward"></span></div>
+    <div id="deadTarget" class="sub next-goal" style="display:none;"><span id="deadTargetText"></span><i class="goal-bar" aria-hidden="true"><i id="deadTargetFill"></i></i></div>
     <div id="deadCourse" class="sub" style="font-size:11px;letter-spacing:1.5px;color:var(--gold);margin-top:6px;display:none;"></div>
     <div id="deadQuip" class="sub" style="font-size:12px;opacity:0.55;margin-top:6px;display:none;"></div>
     <div id="deadUnlock" class="dead-unlock" style="display:none;"><span class="dead-unlock-kicker" aria-hidden="true">✦ New unlock</span><b id="deadUnlockNames"></b><span class="dead-unlock-cta">Wear it from Suit Up</span></div>
@@ -934,6 +935,7 @@
     <div class="dead-side">
     <div class="dead-board-head" id="deadBoardHead">Your top runs</div>
     <table class="scores" id="deadScores"></table>
+    <div class="dead-now" id="deadNow" style="display:none;"></div>
     <div class="round-head" id="deadRound" style="display:none;"></div>
     <div class="round-standings" id="deadStandings" style="display:none;"></div>
     <div class="sub" id="deadRoundNext" style="font-size:11px;opacity:0.7;display:none;"></div>
@@ -1525,6 +1527,11 @@ function resize() {
   if (booted && (SHOT || G.mode)) { try { render(1); } catch (e) {} }
 }
 window.addEventListener('resize', resize);
+// A trackpad pinch (ctrl+wheel in Chromium and Firefox, gesture events in Safari) magnifies the visual viewport
+// without resizing the page: the frame crops to one corner, the ground lands on the bottom edge and the right half
+// of the HUD and cards falls off screen. Text size lives in Settings, and keyboard browser zoom still reflows cleanly.
+window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+for (const type of ['gesturestart', 'gesturechange']) document.addEventListener(type, (e) => e.preventDefault());
 try { if (window.ResizeObserver) new ResizeObserver(() => { const r = canvas.getBoundingClientRect(); if (Math.round(r.width) !== _vpW || Math.round(r.height) !== _vpH) resize(); }).observe(canvas); } catch (e) {}
 window.addEventListener('orientationchange', resize);
 let booted = false;
@@ -2957,6 +2964,7 @@ function missionProgress(kind, amount) {
   stats.missionsDone = (stats.missionsDone || 0) + 1;   // aurora-suit counter
   const reward = missionRewardFor(m.tier);
   G.missionsRun = (G.missionsRun | 0) + 1;
+  (G.missionLog || (G.missionLog = [])).push({ label: m.label, reward });   // the run-over card names what was earned
   if ((m.tier | 0) < MISSION_REWARDS.length - 1) G.missionNextIn = MISSION_CHAIN_TICKS;
   G.score += reward;
   G.ammo = CFG.ammoCap; G.ammoPulse = 1;
@@ -3147,15 +3155,19 @@ function resetRun(seed, replayable, world) {
   let x = -60, y = G.groundY;
   for (let i = 0; i < 4; i++) { const w = 300; G.platforms.push(newPlatform(x, y, w)); x += w + (i < 1 ? 0 : 220); }
   G.genX = x;
-  const p0 = G.platforms[0];
-  G.startX = p0.x + 90;
+  // The launch slab reaches back past the left edge of the frame, so the run opens on
+  // solid ground instead of a ledge floating mid-screen. Only its left end moves: the
+  // spawn point and everything ahead of it stay where the seeded layout put them.
+  const p0 = G.platforms[0], spawnX = p0.x + 90;
+  p0.x -= 360; p0.w += 360;
+  G.startX = spawnX;
   G.genStartM = (G.genX - G.startX) / 10;   // meters where generated terrain begins (starters end ~177m)
   G.player = {
-    x: p0.x + 90, y: p0.y - CFG.ph, px: p0.x + 90, py: p0.y - CFG.ph, vx: 0, vy: 0,
+    x: spawnX, y: p0.y - CFG.ph, px: spawnX, py: p0.y - CFG.ph, vx: 0, vy: 0,
     w: CFG.pw, h: CFG.ph, onGround: true, facing: 1,
     coyote: 0, buffer: 0, jumping: false, sqX: 1, sqY: 1, landDip: 0, pose: 4,
     runCycle: 0, glint: 0, idle: 0, dead: false, groundPlat: p0, holdFor: 0,
-    airFrames: 0, jumpStartX: p0.x + 90, jumpPlat: p0, boostT: 0,
+    airFrames: 0, jumpStartX: spawnX, jumpPlat: p0, boostT: 0,
     // LEDGE GRAB state: hang = { plat, side, t } while clinging (null otherwise);
     // hangCooldown (frames) + hangLastPlat/Side lock out an instant same-edge re-grab.
     hang: null, hangCooldown: 0, hangLastPlat: null, hangLastSide: 0,
@@ -3199,7 +3211,7 @@ function resetRun(seed, replayable, world) {
   toastQ.length = 0; G.toastT = 0;
   const missionSeed = MISSIONS[(rng() * missionPool()) | 0];
   G.mission = { kind: missionSeed.kind, target: missionSeed.target, label: missionSeed.label, progress: 0, done: false, tier: 0 };
-  G.missionNextIn = 0; G.missionsRun = 0;
+  G.missionNextIn = 0; G.missionsRun = 0; G.missionLog = [];
   G.attractBase = undefined; G.attractAlienPlat = G.platforms[0];
   G.threat = 0; G.glanceT = 0; G.glanceActive = false; G.glanceTimer = 0; G.glanceCooldown = 0;
   G.glanceIn = 4; G.glanceAlt = false;
@@ -5274,28 +5286,25 @@ function drawBackground(camX, camY) {
 function drawFlareTongues() {
   const calm = lessMotion();   // Reduce Motion: a narrower surge and no flicker
   const surge = sectorSurgeAmt() * (calm ? 0.4 : 1);
-  const w = Math.max(lerp(10, 90, G.threat), surge * view.w * 0.33);
+  const w = Math.max(lerp(10, 72, G.threat), surge * view.w * 0.33);
   if (w < 1.5) return;
-  // Heat licking in from the left edge: six soft, round-tipped flames of
-  // uneven reach, added light rather than painted pink, so they glow over the
-  // sky instead of reading as flat triangles.
+  // Heat licking in from the left edge: a row of slim, tapered flames of uneven reach, added as light. Each keeps
+  // to its own lane (little overlap), so they read as flames rather than a stack of glowing ribbons.
   ctx.save(); ctx.fillStyle = flareGrad; ctx.globalCompositeOperation = 'lighter';
-  const n = 6, seg = view.h / n;
+  const n = Math.max(6, Math.round(view.h / 56)), seg = view.h / n;
   for (let i = 0; i < n; i++) {
     const cy = seg * i + seg / 2;
-    const reach = 0.55 + 0.45 * ANIM.hash01(i * 3.7) + (calm ? 0 : 0.18 * Math.sin(G.time * (2.1 + i * 0.37) + i * 1.9));
-    const lean = calm ? 0 : Math.sin(G.time * 1.7 + i * 2.3) * seg * 0.12;
-    ctx.save();
-    // flareGrad is authored over a fixed 128px span (-120..8 local); scale
-    // that span to the live flame length so the glow always reaches the true
-    // screen edge, however wide the sector surge pushes it.
+    const reach = 0.45 + 0.55 * ANIM.hash01(i * 3.7) + (calm ? 0 : 0.15 * Math.sin(G.time * (2.1 + i * 0.37) + i * 1.9));
+    const lean = calm ? 0 : Math.sin(G.time * 1.7 + i * 2.3) * seg * 0.1;
+    // flareGrad is authored over a fixed 128px span (-120..8 local); scale that span to the live flame length so the
+    // glow always reaches the true screen edge, however wide the sector surge pushes it.
     const len = w * reach;
-    ctx.translate(len, 0); ctx.scale(len / 128, 1);
-    ctx.globalAlpha = 0.75;
+    ctx.save(); ctx.translate(len, 0); ctx.scale(len / 128, 1);
+    ctx.globalAlpha = 0.55;
     ctx.beginPath();
-    ctx.moveTo(-128, cy - seg * 0.75);
-    ctx.bezierCurveTo(-60, cy - seg * 0.5 + lean, -6, cy - seg * 0.22 + lean, 0, cy + lean);
-    ctx.bezierCurveTo(-6, cy + seg * 0.22 + lean, -60, cy + seg * 0.5 + lean, -128, cy + seg * 0.75);
+    ctx.moveTo(-128, cy - seg * 0.5);
+    ctx.bezierCurveTo(-70, cy - seg * 0.4 + lean, -18, cy - seg * 0.12 + lean, 0, cy + lean);
+    ctx.bezierCurveTo(-18, cy + seg * 0.12 + lean, -70, cy + seg * 0.4 + lean, -128, cy + seg * 0.5);
     ctx.closePath(); ctx.fill();
     ctx.restore();
   }
@@ -6736,7 +6745,9 @@ function revealTapHint() {
 }
 // A target, not a period (E9.5): nearest of next medal / next sector / best-distance
 // gap, compared as a fraction of each one's own band so cross-unit "nearest" is fair.
-function deathTargetLine(fs, distM) {
+function deathTargetLine(fs, distM) { const t = deathTarget(fs, distM); return t ? t.text : ''; }
+// The nearest target with how far along its band this run got, so the card can draw the gap as a meter.
+function deathTarget(fs, distM) {
   const cands = [];
   let prevV = 0;
   for (const md of MEDALS.slice().reverse()) {   // ascending: BRONZE → PLATINUM
@@ -6749,9 +6760,9 @@ function deathTargetLine(fs, distM) {
     prevFrom = s.from;
   }
   if (stats.bestDist > distM) cands.push({ frac: (stats.bestDist - distM) / Math.max(1, stats.bestDist), text: Math.ceil(stats.bestDist - distM) + 'm TO YOUR BEST' });
-  if (!cands.length) return '';
+  if (!cands.length) return null;
   cands.sort((a, b) => a.frac - b.frac);
-  return cands[0].text;
+  return cands[0];
 }
 
 function showDeathCard() {
@@ -6774,6 +6785,7 @@ function showDeathCard() {
     if (settings.sfx && !settings.muted && G.runMedal) Audio.sfx.medal(G.runMedal.name === 'BRONZE' ? 1 : G.runMedal.name === 'SILVER' ? 2 : 3);
   }, 300));
   deathTimers.push(setTimeout(revealDeathDelta, 550));
+  deathTimers.push(setTimeout(revealMission, 800));
   deathTimers.push(setTimeout(revealTapHint, 900));   // matches the tap-anywhere arm time (E9.6)
   deathTimers.push(setTimeout(revealUnlock, 1100));
   announceRunOver();   // before the picker branch: a qualifying run is narrated immediately too
@@ -6800,13 +6812,24 @@ function renderDeathCard() {
   $('deadMedal').classList.toggle('has', !!G.runMedal);   // reserve the stamp's line only when a medal is coming
   // Stat tiles: value over label, one glance per number (numbers only — no markup from state).
   const tile = (v, k, cls) => `<div class="stat${cls ? ' ' + cls : ''}"><b>${v}</b><span>${k}</span></div>`;
-  $('deadStats').innerHTML = tile((G.dist | 0) + 'm', 'DIST') + tile(G.killsRun | 0, 'KILLS') + tile(G.shards | 0, 'STARS') + tile('×' + (G.bestChainRun | 0), 'CHAIN')
-    + (G.missionsRun > 0 ? tile('✓' + (G.missionsRun > 1 ? ' ×' + G.missionsRun : ''), 'MISSION', 'done') : '');
+  $('deadStats').innerHTML = tile((G.dist | 0) + 'm', 'DIST') + tile(G.killsRun | 0, 'KILLS') + tile(G.shards | 0, 'STARS') + tile('×' + (G.bestChainRun | 0), 'CHAIN');
   const powBits = POW.deathStats().replace(/^ · /, '');   // POWER-UPS n · PARRIES n, a full-width line under the tiles
   if (powBits) $('deadStats').innerHTML += `<div style="grid-column:1/-1;text-align:center;font-size:11px;letter-spacing:.08em;opacity:.8">${powBits}</div>`;
-  $('deadStats').style.gridTemplateColumns = G.missionsRun > 0 ? 'repeat(5, minmax(0, 1fr))' : '';
-  const dt = $('deadTarget'), target = deathTargetLine(fs, G.dist);
-  if (target) { dt.textContent = target; dt.style.display = 'block'; } else dt.style.display = 'none';
+  // Missions get named, with what they paid, instead of a bare check in a stat tile; the chip pops in on its own beat.
+  const dm = $('deadMission'), log = G.missionLog || [];
+  dm.classList.remove('reveal');
+  if (log.length) {
+    $('deadMissionNames').textContent = log.map((m) => m.label).join(' · ');
+    $('deadMissionReward').textContent = '+' + log.reduce((n, m) => n + m.reward, 0).toLocaleString() + ' PTS' + (log.length > 1 ? ' · ' + log.length + ' MISSIONS' : '');
+    dm.style.display = '';
+  } else dm.style.display = 'none';
+  // The next target reads as a meter: how much of the way there this run got, not only how far it fell short.
+  const dt = $('deadTarget'), target = deathTarget(fs, G.dist);
+  if (target) {
+    $('deadTargetText').textContent = target.text;
+    $('deadTargetFill').style.width = Math.round(clamp(1 - target.frac, 0.04, 1) * 100) + '%';
+    dt.style.display = 'block';
+  } else dt.style.display = 'none';
   const dc = $('deadCourse'), courseText = (deathCourseLine(fs) || '') + (G.assisted ? (deathCourseLine(fs) ? ' · ' : '') + 'ASSISTED · NO DAILY RECORD OR CHALLENGE LINK' : '');
   if (courseText) { dc.textContent = courseText; dc.style.display = 'block'; } else dc.style.display = 'none';
   const sb = $('btnShare');
@@ -6827,6 +6850,12 @@ function renderDeathCard() {
   // play (net off) is untouched, so the #shot=dead golden stays pixel-identical.
   if (netLive()) { $('deadScores').style.display = 'none'; $('deadBoardHead').style.display = 'none'; }
   else { $('deadScores').style.display = ''; $('deadBoardHead').style.display = ''; renderScoreTable('deadScores', true); }
+  // A run that missed the board still gets a row, under the line, so you can see where it landed.
+  const dn = $('deadNow');
+  if (!netLive() && !justAdded && fs > 0 && top5.length) {
+    dn.innerHTML = `<span class="rank">–</span><span>THIS RUN</span><span class="sc">${fs.toLocaleString()}</span>`;
+    dn.style.display = '';
+  } else dn.style.display = 'none';
   renderRoomBoard();               // Run Together: ROOM column + spectate/emote controls (no-op solo)
   const chip = $('installChip');
   if (deferredPrompt && !installQuiet() && stats.runs >= 3) chip.classList.add('show'); else chip.classList.remove('show');
@@ -6835,7 +6864,14 @@ function renderDeathCard() {
   // SHOT goldens are captured on the frozen first frame — reveal everything
   // now instead of waiting on the 300/550ms timers scheduled by showDeathCard
   // (which the SHOT=dead harness bypasses entirely by calling this directly).
-  if (SHOT) { stampMedal(); revealDeathDelta(); revealTapHint(); revealUnlock(true); }
+  if (SHOT) { stampMedal(); revealDeathDelta(); revealTapHint(); revealMission(true); revealUnlock(true); }
+}
+// A completed mission lands just after the score with a soft chime (a quiet fade under Reduce Motion).
+function revealMission(quiet) {
+  const dm = $('deadMission');
+  if (dm.style.display === 'none' || dm.classList.contains('reveal')) return;
+  dm.classList.add('reveal');
+  if (!quiet && settings.sfx && !settings.muted) Audio.sfx.medal(1, true);
 }
 // An unlock gets its own beat after the score lands: the chip pops in with a chime and a buzz (a quiet fade under Reduce Motion).
 function revealUnlock(quiet) {
@@ -6889,7 +6925,9 @@ function renderScoreTable(id, highlight) {
   let html = '';
   for (let i = 0; i < top5.length; i++) {
     const e = top5[i], me = highlight && e === justAdded;
-    html += `<tr class="${me ? 'me' : ''}"><td class="rank">${i + 1}</td><td>${e.initials}</td><td class="sc">${e.score.toLocaleString()}</td></tr>`;
+    // Unset initials (the AAA default) say nothing: show the run's distance instead, or THIS RUN for the one just played.
+    const named = e.initials && e.initials !== 'AAA', who = named ? e.initials : me ? 'THIS RUN' : e.dist > 0 ? (e.dist | 0).toLocaleString() + 'm' : '';
+    html += `<tr class="${me ? 'me' : ''}"><td class="rank">${i + 1}</td><td${named || me ? '' : ' class="dim"'}>${who}</td><td class="sc">${e.score.toLocaleString()}</td></tr>`;
   }
   $(id).innerHTML = html;
 }

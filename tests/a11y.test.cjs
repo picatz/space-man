@@ -456,3 +456,19 @@ test('iOS haptic label layer stays documented (IN-04)', () => {
 test('touch MOVE hint lifts clear of the active stick (UX-04)', () => {
   assert.match(read('index.html'), /if \(input\.stick\.active\) \{ hx = camX \+ input\.stick\.cx; hy = camY \+ clamp\(input\.stick\.cy - 70/);
 });
+
+test('the run-over card names completed missions, places a run that missed the board, and hides unset initials', (t) => {
+  const { c } = solo(t);
+  c.run('top5 = [5000, 4000, 3000, 2000, 1000].map((score, i) => ({ initials: i ? "AAA" : "KPG", score, dist: i === 1 ? 900 : 0, chain: 1 }));');
+  c.run('startRun(); G.mode = "play"; missionProgress(G.mission.kind, G.mission.target); G.score = 500; G.dist = 40; die("void"); showDeathCard();');
+  assert.equal(c.elements.get('deadMission').style.display, '');
+  assert.equal(c.elements.get('deadMissionNames').textContent, c.run('G.missionLog[0].label'));
+  assert.match(c.elements.get('deadMissionReward').textContent, /^\+\d[\d,]* PTS$/);
+  assert.doesNotMatch(c.elements.get('deadStats').innerHTML, /MISSION/, 'the bare check tile is gone');
+  assert.match(c.elements.get('deadNow').innerHTML, /THIS RUN.*>[\d,]+</);
+  const board = c.elements.get('deadScores').innerHTML;
+  assert.match(board, /<td>KPG<\/td>/);
+  assert.match(board, /<td class="dim">900m<\/td>/);
+  assert.doesNotMatch(board, /AAA/);
+  assert.match(c.elements.get('deadTargetFill').style.width, /^\d+%$/);
+});
