@@ -431,6 +431,39 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 @keyframes unlockGlow { 0% { box-shadow: 0 0 0 0 rgba(255,201,60,.55); } 100% { box-shadow: 0 0 0 14px rgba(255,201,60,0); } }
 body.reduce-motion #ovDead .dead-unlock { transition: opacity .2s ease; transform: none; }
 body.reduce-motion #ovDead .dead-unlock.reveal { animation: none; }
+/* Mission chip: the cyan sibling of the unlock chip, naming what was earned and what it paid. */
+#ovDead .dead-mission { display: grid; gap: 1px; margin: 10px 0 2px; padding: 8px 14px; border-radius: 12px; border: 1px solid rgba(159,241,255,.4);
+  background: linear-gradient(100deg, rgba(56,225,255,.14), rgba(56,225,255,.03)); text-align: left; opacity: 0; transform: scale(.94); transition: opacity .25s ease, transform .35s cubic-bezier(.2,1.4,.4,1); }
+#ovDead .dead-mission.reveal { opacity: 1; transform: none; animation: missionGlow 1.2s ease-out .1s 1 backwards; }
+#ovDead .dead-mission-kicker { color: #7CF0A8; font: 700 calc(11px * var(--ui-scale, 1))/1.3 var(--sm-font-body); letter-spacing: .1em; text-transform: uppercase; }
+#ovDead .dead-mission b { color: #DFFBFF; font: 700 15px/1.3 var(--sm-font-body); letter-spacing: .02em; }
+#ovDead .dead-mission-reward { color: #9FF1FF; font: 600 calc(11px * var(--ui-scale, 1))/1.4 var(--font-num); letter-spacing: .08em; }
+@keyframes missionGlow { 0% { box-shadow: 0 0 0 0 rgba(56,225,255,.5); } 100% { box-shadow: 0 0 0 12px rgba(56,225,255,0); } }
+body.reduce-motion #ovDead .dead-mission { transition: opacity .2s ease; transform: none; }
+body.reduce-motion #ovDead .dead-mission.reveal { animation: none; }
+/* Next target as a meter: the line names the gap, the bar shows how much of the way this run got. */
+#ovDead .next-goal { margin-top: 10px; font: 600 calc(12px * var(--ui-scale, 1))/1.4 var(--sm-font-body); letter-spacing: .06em; opacity: 1; color: #CFE3FF; text-align: left; }
+#ovDead .next-goal .goal-bar { display: block; height: 6px; margin-top: 6px; border-radius: 3px; background: rgba(207,227,255,.1); overflow: hidden; }
+#ovDead .next-goal .goal-bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #FFB36B, #FFC93C); }
+/* The board: unset initials show a dim distance; the run that missed the board sits under a hairline, highlighted. */
+#ovDead table.scores td.dim { color: #7f97b2; font-family: var(--font-num); font-size: 13px; }
+#ovDead .dead-now { display: grid; grid-template-columns: auto 1fr auto; gap: 0 12px; align-items: baseline; margin: 0 0 6px; padding: 7px 8px; border-radius: 8px;
+  border-top: 1px dashed rgba(207,227,255,.18); background: rgba(255,201,60,.07); color: var(--sm-gold, #FFC93C); font: 700 14px/1.3 var(--sm-font-body); letter-spacing: .06em; }
+#ovDead .dead-now .rank { opacity: .7; }
+#ovDead .dead-now .sc { font-family: var(--font-num); font-size: 15px; }
+/* Short landscape phones: the chips fold onto one line and the number steps down, so the card fits without a scroll. */
+@media (orientation: landscape) and (max-height: 500px) {
+  #ovDead .secondary-panel #deadScore { font-size: 40px; margin: 0 0 4px; }
+  #ovDead .stat-grid { margin: 6px 0 2px; }
+  #ovDead .dead-mission, #ovDead .dead-unlock { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 6px 12px; margin-top: 8px; }
+  #ovDead .dead-mission b, #ovDead .dead-unlock b { font-size: 14px; }
+  #ovDead .next-goal { margin-top: 8px; }
+  #ovDead .secondary-panel table.scores td { padding: 3px 8px; }
+  #ovDead .dead-side .dead-board-head { margin-top: 0; }
+  #ovDead .dead-side { display: flex; flex-direction: column; }
+  #ovDead .dead-cols .dock { position: static; margin: auto 0 0; padding-top: 8px; box-shadow: none; }
+  #ovDead .secondary-panel .dock .btn { min-height: 44px; padding-top: 8px; padding-bottom: 8px; }
+}
 @media (orientation: landscape) and (min-width: 760px) {
   #ovDead .secondary-panel { width: min(820px,100%); max-width: 820px; }
   #ovDead .dead-cols { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap: 0 28px; align-items: start; text-align: left; }
