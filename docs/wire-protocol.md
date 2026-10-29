@@ -951,6 +951,11 @@ feature — features negotiate, they are never assumed.
 | 10 | `0x400` | Optional fixed-catalog APPEARANCE, independent of mode |
 | 11 | `0x800` | RACE revision 4: Starlight feature rules/catalog and race codec v2 |
 | 12 | `0x1000` | JOURNEY revision 2: Starlight race compatibility and envelope v2 |
+| 15 | `0x8000` | ARENA_ITEMS: the peer decodes Arena item-drop snapshots (set only in Arena rooms, alongside bit 5) |
+
+Bit 15 is a pure feature flag, not an admission requirement: an Arena host sends peers without it
+a flagless snapshot variant (no drops block, no item events) so older builds keep decoding the
+match; see [arena-online.md](arena-online.md#item-drops).
 
 The base mask is `0x41F`, including optional appearance. Arena adds bit 5,
 current Star Circuit adds only bit 11, and current Star Expedition adds only

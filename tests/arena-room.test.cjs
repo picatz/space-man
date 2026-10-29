@@ -249,3 +249,27 @@ test('a host who reloads gets the same room back in its lobby, and the crew is c
   assert.equal(reborn.room.start(10), true);
   await until(() => player.room.current.status === 'running', 'next match starts for both');
 });
+
+test('online rooms drop items for capable guests, and a guest without the cap still gets the fight without drops', { timeout: 60000 }, async t => {
+  const { host, join, step } = await setup(t), modern = await join(), old = await join();
+  const oldP = old.net.info().myP;
+  // The host sees this guest as an older build that never advertised bit 15.
+  const roster = host.context.SpaceManNet.roster;
+  host.context.SpaceManNet.roster = () => roster.call(host.context.SpaceManNet).map(r => r.p === oldP ? Object.assign({}, r, { caps: r.caps & ~(1 << 15) }) : r);
+  assert.equal(host.room.configure({ format: 'ffa' }), true);
+  assert.equal(host.room.start(5), true);
+  await until(() => modern.room.current.status === 'running' && old.room.current.status === 'running', 'round begins');
+  assert.ok(host.room.current.state.items, 'host simulation carries drops');
+  // 180 countdown ticks + ITEM_FIRST_TICKS (600) before the first cell appears.
+  const ticks = c => c.snapshots.map(s => s.state);
+  for (let i = 0; i < 9 && !ticks(modern).some(s => s.items && s.items.list.length); i++) await step(100);
+  const withDrop = ticks(modern).find(s => s.items && s.items.list.length);
+  assert.ok(withDrop, 'capable guest received a dropped cell');
+  assert.ok(withDrop.actors.every(a => Number.isInteger(a.surge)), 'and surge counters');
+  assert.ok(ticks(modern).some(s => s.events.some(e => e.type === 'item-spawn')), 'and the spawn event');
+  assert.ok(state(host).items.list.length > 0 || state(host).items.serial > 0);
+  await step(30);
+  assert.ok(state(old).tick > 600 && state(old).tick <= state(host).tick, 'the legacy-cap guest keeps receiving the fight past the first drop');
+  assert.ok(ticks(old).filter(s => s.tick > 0).length > 30, 'many in-match snapshots reached the legacy guest');
+  assert.ok(ticks(old).filter(s => s.tick > 0).every(s => s.items === undefined && s.events.every(e => !e.type.startsWith('item-'))), 'but never sees drops');
+});

@@ -41,6 +41,13 @@ test('arena mode is explicit; runner codecs stay protocol-6 byte compatible', as
   const [guest] = guests, F = host.net._n1.frames, H = host.net._room.arena;
   assert.equal(host.net.info().mode, 'arena'); assert.equal(guest.net.info().mode, 'arena');
   assert.equal(host.net.info().cap, 4); assert.equal(host.net.info().specCap, 4);
+  // Item drops negotiate on their own bit (15); Arena peers advertise it, and the host sees each guest's caps.
+  const ITEMS = host.net._room.caps.CAP_ARENA_ITEMS;
+  assert.equal(ITEMS, 1 << 15);
+  assert.equal(host.net.info().caps & ITEMS, ITEMS); assert.equal(guest.net.info().caps & ITEMS, ITEMS);
+  assert.equal(host.net.info().caps & host.net._room.caps.CAP_ARENA, host.net._room.caps.CAP_ARENA);
+  assert.equal(host.net.roster().find(r => r.p === guest.net.info().myP).caps & ITEMS, ITEMS, 'host roster exposes guest caps');
+  assert.equal(host.net._room.CAPS & ITEMS, 0, 'the base mask (runner rooms, old hellos) is unchanged');
   assert.equal(host.net.peekInvite(invite).mode, 'arena');
   assert.equal(host.net._n1.invite.decodeInvite(invite).inv.flags & H.INV_ARENA, H.INV_ARENA);
   assert.equal(host.net.resumeToken().mode, 'arena', 'an arena host keeps a room token for a reload');

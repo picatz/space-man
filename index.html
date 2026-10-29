@@ -2598,7 +2598,14 @@ function onKey(e, down) {
 document.addEventListener('keydown', (e) => {
   if (!e.metaKey && !e.ctrlKey && !e.altKey && ['Tab', 'Enter', ' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) document.body.classList.add('keyboard-active');
 }, true);
-document.addEventListener('pointerdown', () => document.body.classList.remove('keyboard-active'), true);
+// A touch anywhere, a menu button included, switches the run to touch controls: a phone player who taps Play in the
+// menu sees the stick and jump guides and touch wording from the first frame, not keyboard hints. (Only a mouse press
+// on the canvas switches back, as before.)
+function notePointerKind(e) {
+  document.body.classList.remove('keyboard-active');
+  if (e.pointerType === 'touch' || e.pointerType === 'pen') { input.usingTouch = true; input.usingKeys = false; input.usingGamepad = false; }
+}
+document.addEventListener('pointerdown', notePointerKind, true);
 window.addEventListener('keydown', (e) => onKey(e, true));
 window.addEventListener('keyup', (e) => onKey(e, false));
 
@@ -3227,6 +3234,7 @@ function resetRun(seed, replayable, world) {
   G.camY = G.groundY - camGround(); G.camYprev = G.camY;
   G.hudDuck = 0; G.hudFade = 1;
   G.flare.x = G.player.x - CFG.flareStartBehind; G.flare.prevX = G.flare.x; G.flare.speed = BANDS[0].flare;
+  G.flareLive = false;   // the solo chase starts when the runner does (updateFlare)
   // Run Together shared-flare integrator (in-room only; spawn line is seed- and
   // player-independent so x0 is identical on every screen). synced=false makes the
   // first shared-flare frame fast-forward to the shared position (Play-Again continuity).
@@ -3275,8 +3283,16 @@ function resetRun(seed, replayable, world) {
   // so the wording always matches how this player is actually holding the
   // device; `in` (0..1) eases each hint in over 0.3s once it starts fading.
   if (!flags.taughtRun) G.hints.push({ x: G.player.x + 70, y: G.groundY - 56, kind: 'move', in: 0 });
-  if (!flags.taughtJump) G.hints.push({ x: G.player.x + 330, y: G.groundY - 96, kind: 'jump', in: 0 });
-  if (!flags.taughtShoot) G.hints.push({ x: G.player.x + 590, y: G.groundY - 120, kind: 'shoot', in: 0 });
+  // The jump lesson sits just before the first real gap (a fixed offset could land it past the lip on a long opening
+  // slab, so a new player read it while already falling); the fire lesson follows it.
+  let lip = null;
+  for (let i = 0; i + 1 < G.platforms.length && !lip; i++) {
+    const P = G.platforms[i], end = P.x + P.w;
+    if (G.platforms[i + 1].x - end > 24 && end > G.player.x + 200) lip = P;
+  }
+  const jumpX = lip ? lip.x + lip.w - 150 : G.player.x + 330;
+  if (!flags.taughtJump) G.hints.push({ x: jumpX, y: (lip ? lip.y : G.groundY) - 96, kind: 'jump', in: 0 });
+  if (!flags.taughtShoot) G.hints.push({ x: Math.max(G.player.x + 590, jumpX + 300), y: G.groundY - 120, kind: 'shoot', in: 0 });
   if (!flags.taughtStomp) {
     // Teach the stomp against a real target: one slow patroller on the last
     // starter platform, hint planted just before it. Fixed values — no rng.
@@ -4125,6 +4141,12 @@ const ASSIST_FLARE_MUL = 0.85;
 function updateFlare() {
   const B = bandParams(G.band, G.dist);
   G.flare.prevX = G.flare.x;
+  // The chase starts when the runner does. A new player still reading the controls (or one who
+  // put the phone down after tapping Play) used to be burned at 0 m before taking a step.
+  if (!G.flareLive) {
+    if (G.player.onGround && Math.abs(G.player.x - G.startX) < 8) return;
+    G.flareLive = true;
+  }
   let target = B.flare;
   if (G.mercyLvl > 0 && G.frameCount * STEP < 30) target *= (0.94 - 0.02 * G.mercyLvl);
   if (G.assisted) target *= ASSIST_FLARE_MUL;   // A11Y-08 Slower solar flare: ~15% more distance before the flare catches up
@@ -6148,14 +6170,16 @@ function drawParticles(alpha) {
 // input mode — a mid-run controller swap never teaches the wrong verb, and a
 // touch player's frame-1 hint never reads a keyboard key. No brand glyphs.
 const HINT_STRINGS = {
-  move:  { touch: 'DRAG LEFT SIDE TO MOVE', gamepad: 'LEFT STICK TO MOVE', keys: 'MOVE →' },
-  jump:  { touch: 'TAP RIGHT SIDE TO JUMP · HOLD FOR HIGHER', gamepad: 'JUMP BUTTON · HOLD TO JUMP HIGHER', keys: 'HOLD TO JUMP HIGHER' },
+  // Keyboard lessons name the actual keys (arrows always work; the letter follows any rebinding).
+  move:  { touch: 'DRAG LEFT SIDE TO MOVE', gamepad: 'LEFT STICK TO MOVE', keys: () => '→ OR ' + keyLabel(settings.keys.right) + ' TO RUN' },
+  jump:  { touch: 'TAP RIGHT SIDE TO JUMP · HOLD FOR HIGHER', gamepad: 'JUMP BUTTON · HOLD TO JUMP HIGHER', keys: () => 'SPACE OR ' + keyLabel(settings.keys.jump) + ' TO JUMP · HOLD FOR HIGHER' },
   shoot: { touch: 'TAP FIRE', gamepad: 'FIRE TRIGGER', keys: 'F / CLICK TO FIRE' },
   stomp: { touch: 'STOMP ENEMIES', gamepad: 'STOMP ENEMIES', keys: 'STOMP ENEMIES' },
 };
 function hintText(h) {
   const s = HINT_STRINGS[h.kind];
-  return input.usingGamepad ? s.gamepad : ((FORCE_TOUCH || input.usingTouch) ? s.touch : s.keys);
+  const t = input.usingGamepad ? s.gamepad : ((FORCE_TOUCH || input.usingTouch) ? s.touch : s.keys);
+  return typeof t === 'function' ? t() : t;
 }
 const HINT_FLAG = { move: 'taughtRun', jump: 'taughtJump', shoot: 'taughtShoot', stomp: 'taughtStomp' };
 function drawHints(camX, camY) {
