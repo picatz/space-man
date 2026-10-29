@@ -99,8 +99,13 @@ test('coordinator release, shared pause, late viewing, and same-identity reconne
   const paused = state(host).tick; await step(5);
   assert.equal(state(host).tick, paused);
   assert.equal(await watcher.room.role(0), false, 'match role lock rejects elevation');
+  assert.equal(watcher.net.info().waiting, true, 'the request queues for the next lobby instead');
+  assert.equal(await watcher.room.role(1), true, 'asking to watch leaves the queue');
+  assert.equal(watcher.net.info().waiting, false);
+  await until(() => !host.net.roster().some(r => r.waiting), 'host dropped the watcher from its queue');
   const late = await join(0);
   assert.equal(late.net.info().role, 1, 'new mid-match player is admitted as a viewer');
+  assert.equal(late.net.info().waiting, true, 'and queued for a fighter');
   assert.equal(seat(late, late.net.info().myP), undefined);
   const key = player.net._n1.bytes.hex(player.net._n1.session().keys.pub);
   const actorId = seat(host, p).actorId, generation = player.net._n1.session().welcomeGen;
@@ -115,11 +120,13 @@ test('coordinator release, shared pause, late viewing, and same-identity reconne
   await until(() => player.room.current.status === 'running', 'resume');
   assert.equal(host.room.lobby(), true);
   await until(() => [player, watcher, late].every(c => c.room.current.status === 'lobby'), 'return to shared lobby');
-  assert.equal(await late.room.role(0), true, 'late viewer may choose a fighter in next lobby');
-  await until(() => host.room.current.seats.length === 2, 'duel keeps its two configured slots');
-  assert.equal(host.room.start(18), false, 'three humans cannot be silently excluded from duel');
+  assert.equal(late.net.info().role, 1, 'a full duel keeps the queued viewer watching');
+  assert.equal(late.net.info().waiting, true);
+  assert.equal(host.room.start(18), true, 'so a rematch still starts');
+  assert.equal(host.room.lobby(), true);
   assert.equal(host.room.configure({ format: 'ffa' }), true);
-  assert.equal(host.room.start(18), true);
+  await until(() => late.net.info().role === 0, 'free-for-all seats the queued viewer');
+  assert.equal(host.room.start(19), true);
   await until(() => late.room.current.seats.some(s => s.p === late.net.info().myP), 'new-round seat');
   assert.equal(host.room.current.state.actors.filter(a => a.controller === 'cpu').length, 1);
   assert.ok(hub.packetCount > 50);
@@ -138,7 +145,7 @@ test('invalid invites leave coordinator reusable without runner state', async t 
   assert.equal(await guest.room.join(host.net.info().link, 1), true);
   guest.room.close();
   assert.equal(guest.room.status().error, ''); assert.equal(guest.room.status().connection, '');
-  assert.equal(guest.room.current, null); assert.equal(guest.net.resumeToken(), null);
+  assert.equal(guest.room.current, null);
   assert.equal(await guest.room.hosting({ format: 'ffa' }), true);
 });
 
@@ -186,4 +193,59 @@ test('an Arena join explains how to open a Star Circuit invite', async t => {
   assert.match(guest.room.status().error, /Star Circuit/);
   assert.equal(guest.net.active, false);
   assert.equal(guest.room.busy, false);
+});
+
+test('a guest who reloads mid-match comes back to the same fighter, and a deliberate leave forgets the seat', { timeout: 20000 }, async t => {
+  const { host, join, peer, step } = await setup(t), player = await join();
+  player.room.close(); // rebuild the guest coordinator with a resume store, as index.html wires it
+  player.run(`window.__saved=[];window.room=SpaceManArenaRoom.create({net:SpaceManNet,resume:{save(){__saved.push(SpaceManNet.resumeToken());},clear(){__saved.push(null);}}});`);
+  player.room = player.context.room;
+  await until(() => host.net.roster().length === 1, 'deliberate leave freed the old seat');
+  assert.equal(await player.room.join(host.net.info().link, 0), true);
+  await until(() => host.net.roster().length === 2, 'rejoined');
+  const token = JSON.parse(JSON.stringify(player.context.__saved.at(-1)));
+  assert.equal(token.mode, 'arena'); assert.equal(token.host, false);
+  const p = player.net.info().myP;
+  assert.equal(host.room.start(5), true);
+  await until(() => seat(host, p)?.connected, 'seated in the match');
+  const actorId = seat(host, p).actorId;
+  player.close(); // the tab reloads: no room.close, the socket just drops
+  await until(() => seat(host, p)?.connected === false, 'seat reserved while away');
+  const back = peer();
+  assert.equal(await back.room.join(token.invite, token.role, true, token.priv), true);
+  await until(() => seat(host, p)?.connected, 'same seat reconnected', 9000);
+  assert.equal(back.net.info().myP, p); assert.equal(back.net.info().role, 0);
+  assert.equal(seat(host, p).actorId, actorId, 'same fighter');
+  await step(10);
+  assert.equal(host.room.current.status, 'running', 'the match never stopped for anyone else');
+});
+
+test('a host who reloads gets the same room back in its lobby, and the crew is carried in without touching anything', { timeout: 30000 }, async t => {
+  const { hub, host, join, peer } = await setup(t), player = await join();
+  // Rebuild the host coordinator with a resume store, as index.html wires it.
+  host.room.close(); await until(() => !player.room.active, 'old room closed');
+  host.run(`window.__saved=[];window.room=SpaceManArenaRoom.create({net:SpaceManNet,hostOptions:()=>({relayHost:'relay.test',code:false}),resume:{save(game){const t=SpaceManNet.resumeToken();__saved.push(t&&t.host?Object.assign({},t,{game}):t);},clear(){__saved.push(null);}}});`);
+  host.room = host.context.room;
+  assert.equal(await host.room.hosting({ format: 'ffa', arenaId: 'orbital-dock' }), true);
+  const link = host.net.info().link;
+  assert.equal(await player.room.join(link, 0), true);
+  await until(() => host.net.roster().length === 2, 'crew joined');
+  assert.equal(host.room.start(9), true);
+  await until(() => player.room.current?.status === 'running', 'match running');
+  const token = JSON.parse(JSON.stringify(host.context.__saved.at(-1)));
+  assert.equal(token.host, true); assert.equal(token.mode, 'arena'); assert.equal(token.game.format, 'ffa');
+  const s = host.net._n1.session(); if (s.snapTimer) s.snapTimer.stop(); s.relay.close();   // the tab is gone, nothing said
+  const reborn = peer();
+  reborn.run(`window.room=SpaceManArenaRoom.create({net:SpaceManNet,hostOptions:()=>({relayHost:'relay.test',code:false})});`);
+  reborn.room = reborn.context.room;
+  assert.equal(await reborn.room.hosting(token.game, token), true);
+  assert.equal(reborn.net.info().link, link, 'the invite everyone holds still works');
+  assert.equal(reborn.room.current.state.format, 'ffa', 'saved rules come back');
+  for (let i = 0; i < 400 && reborn.net.info().players < 2; i++) { hub.advance(300); await sleep(25); }
+  assert.equal(reborn.net.info().players, 2, 'the guest found the restored host');
+  await until(() => player.room.current?.status === 'lobby' && player.room.current.epoch === reborn.room.current.epoch, 'guest follows the restarted authority into its lobby');
+  assert.equal(player.room.status().connection, '');
+  assert.ok(reborn.room.current.seats.some(seat => seat.p === player.net.info().myP), 'seated as a fighter again');
+  assert.equal(reborn.room.start(10), true);
+  await until(() => player.room.current.status === 'running', 'next match starts for both');
 });

@@ -300,6 +300,14 @@ Header overhead = **11 bytes**; AES-GCM tag = **16 bytes**. Total per-frame over
 - **AAD (11 bytes):** `ver(1)=PROTO (currently 0x06) || roomId(8) || epoch(1) || dir(1)`.
 - A host→guest pair starts its counter at the wall clock in ms (never below one past the highest counter already used for that key), so a purged-and-rejoined key never reuses a nonce and the guest's replay window never sees it as stale; it then increments by 1 per sent frame per (pairKey, dir). Receivers accept any counter above their window, so older peers that assumed 0 interoperate unchanged. A restored side starts at the wall clock likewise. At 2⁵³ frames
   the pair is exhausted and MUST be closed (unreachable in practice — assert anyway).
+- **Arcade rooms (arena, race, journey)** instead give every admission attempt its own disjoint
+  2³² counter range (`arenaCounterBase`), independent of the wall clock. A host restored from its
+  page-reload token (the token carries `mode`, `arenaBase` and `hostEpoch`) starts 4096 ranges past
+  the saved base, which covers admissions the old page made after its last save, and bumps
+  `hostEpoch` by one. Guests that waited through the reload are re-admitted as fresh joins on
+  counters above anything they have seen; a WELCOME with a higher `hostEpoch` tells their game layer
+  that the authority restarted (its match state starts over in the lobby), so it accepts snapshots
+  again from the new epoch 0. A token only restores a room of its own mode.
 
 ### 7.3 Replay rule (MUST)
 
@@ -692,6 +700,17 @@ ack only when its own entry shows the requested role, or when it is that single-
 rejection. A guest switching *to* spectator MAY stop sending PRES immediately (always safe)
 and MUST NOT resume before the ack; a guest switching *to* player MUST wait for the roster
 ack before sending PRES, or it will be struck for `spectator-pres`.
+
+**Arcade seat queue (no wire change).** In arena, race and journey rooms a spectator's
+request for a player seat that cannot be granted now (a match holds the role lock, or every
+player seat is taken) is answered with the same single-entry rejection, but the host also
+queues that key, first come first served. A HELLO asking for a player seat in the same
+situation is admitted as a spectator and queued the same way. When the room is back in its
+lobby the host promotes queued spectators while seats are free (arena caps this at the
+current format's fighter count) and announces it with an ordinary ROSTER `op 0`. A
+spectator request from a queued key, even one that matches its current role, leaves the
+queue. Guests infer their own queued state locally ("I asked to play and am still
+watching"); it is never sent.
 
 ### 10.7 Control-frame envelope (hostEpoch/seq gate)
 

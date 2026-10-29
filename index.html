@@ -7902,7 +7902,8 @@ let joinResumeKey = null;   // set when this join is a return to a seat we alrea
 async function acceptInvite(role) {
   if (!joinPayload) return;
   const resuming = !!joinResumeKey, resumeKey = joinResumeKey; joinResumeKey = null;
-  if (!hasCallsign()) { showCallsign(() => { resetJoinPrompt(); showOverlay('ovJoin'); acceptInvite(role); }); return; }
+  // A reload returning to a seat goes straight back in: the room already knows this pilot (or shows its P#).
+  if (!hasCallsign() && !resuming) { showCallsign(() => { resetJoinPrompt(); showOverlay('ovJoin'); acceptInvite(role); }); return; }
   // Consent gate (§6 / F.1): peek the host key WITHOUT connecting. A blocked host
   // needs a deliberate one-time override (default-safe = Not Now); a custom relay
   // is disclosed at the commit moment — joining IS directory consent.
@@ -7913,8 +7914,8 @@ async function acceptInvite(role) {
   joinOverride = false;                                    // override consumed (single-use)
   if (isOffline()) { setJoinState(OFFLINE_TOGETHER); return; }
   if (peek && peek.mode === 'journey') { hideAllOverlays(); await getJourneyUI().joinInvite(joinPayload, role); stripInviteHash(); return; }
-  if (peek && peek.mode === 'race') { $('btnRace').onclick(); if (raceUI && raceUI.active) { hideAllOverlays(); await raceUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
-  if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
+  if (peek && peek.mode === 'race') { $('btnRace').onclick(); if (raceUI && raceUI.active) { hideAllOverlays(); await raceUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
+  if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
   $('joinChoices').style.display = 'none';
   // Cancel stays reachable the whole time: a slow relay or a host who never answers must not
@@ -7972,6 +7973,7 @@ async function resumeRoomOnLoad() {
   if (tok.host) {
     if (peek && peek.hostHex !== tok.pub) { clearResume(); return false; }   // an invite to somebody else's room wins
     if (tok.expiryMin && tok.expiryMin < Math.floor(Date.now() / 60000)) { clearResume(); return false; }
+    if (tok.mode === 'arena' || tok.mode === 'race') return resumeArcadeHosting(tok);
     return resumeHosting(tok);
   }
   if (!tok.invite || (HASH.j && HASH.j !== tok.invite) || (NET.peekInvite && NET.peekInvite(tok.invite).err)) { clearResume(); return false; }
@@ -7979,6 +7981,18 @@ async function resumeRoomOnLoad() {
   $('joinTitle').textContent = 'Rejoining Your Room…';
   hideAllOverlays(); showOverlay('ovJoin');
   acceptInvite(tok.role | 0);
+  return true;
+}
+async function resumeArcadeHosting(tok) {
+  const race = tok.mode === 'race';
+  $(race ? 'btnRace' : 'btnArena').onclick();
+  const ui = race ? raceUI : arenaUI;
+  if (!ui || !ui.active || !ui.restoreHost) { clearResume(); return false; }
+  stripInviteHash();
+  if (await ui.restoreHost(tok)) {
+    queueToast('Room restored · same invite link', 'net');
+    announce('Your room is back in its lobby. Friends reconnect on their own.');
+  }
   return true;
 }
 async function resumeHosting(tok) {
@@ -9072,9 +9086,16 @@ $('btnArena').onclick = () => {
 };
 // SOC-03: the last room code a join resolved, kept on this device for 20 minutes (public capability only).
 const lastRoomStore = window.SpaceManRoomSocial.createLastRoomStore({ key: BUILD.storageKey('sm2.lastroom.v1') });
+// Arena and Star Circuit rooms keep the same tab-scoped token as Run Together. A guest's reload (or a phone that
+// evicted the tab) rejoins under the same key and the host hands back the reserved seat; a host's reload reopens the
+// same room, invite and code in its lobby with the saved rules (`game`), and members waiting for it are carried in.
+const arcadeResume = {
+  save(game) { if (SHOT || !TRANSPORT) return; try { const t = TRANSPORT.resumeToken(); if (t) sessionStorage.setItem(RESUME_KEY, JSON.stringify(t.host ? { ...t, game: game || {} } : t)); else clearResume(); } catch (e) {} },
+  clear: clearResume,
+};
 function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
-    storageKey: BUILD.storageKey('sm2.arena.v1'), lastRoom: lastRoomStore,
+    storageKey: BUILD.storageKey('sm2.arena.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent, buzz,
     hostOptions: relayHostOptions,
@@ -9095,7 +9116,7 @@ $('btnRace').onclick = () => {
 };
 function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
-    storageKey: BUILD.storageKey('sm2.race.v1'), lastRoom: lastRoomStore,
+    storageKey: BUILD.storageKey('sm2.race.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions: relayHostOptions,

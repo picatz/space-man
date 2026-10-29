@@ -389,12 +389,15 @@
                 : status.active
                   ? status.host
                     ? "You host the race. Keep this tab open; stepping away pauses everyone."
-                    : "The host chooses the circuit. Mid-race arrivals watch until the next lobby."
+                    : status.info.waiting
+                      ? "You are up next. The host seats you when this race ends."
+                      : "The host chooses the circuit. Join mid-race to race from the next lobby."
                   : "Up to 4 friends + 4 spectators. CPUs fill the five-pilot grid.")),
       );
       if (status.active) {
+        const upNext = (r) => !!(r.spectator && (r.waiting || (r.you && status.info.waiting)));
         const signature = JSON.stringify(
-          status.roster.map((r) => [r.p, r.callsign, r.role]),
+          status.roster.map((r) => [r.p, r.callsign, r.role, upNext(r)]),
         ) + (status.votes && status.current?.status === "lobby" ? "|" + status.votes.ready.missing : "");
         if (signature !== roomSignature) {
           roomSignature = signature;
@@ -407,7 +410,7 @@
                 (r.callsign || "PLAYER " + r.p) +
                   (r.you ? " · YOU" : "") +
                   (r.host ? " · HOST" : "") +
-                  (r.spectator ? " · WATCHING" : " · RACER") +
+                  (upNext(r) ? " · UP NEXT" : r.spectator ? " · WATCHING" : " · RACER") +
                   (status.votes && status.current?.status === "lobby" && !r.spectator && !status.votes.ready.missing.includes(r.p) ? " · READY ✓" : ""),
               ),
             );
@@ -423,14 +426,16 @@
           status.info.joinCode ||
             (link ? "Invite link · same build" : "Friend race"),
         );
+        // A watcher can ask for a pilot seat mid-race: the host seats them in the
+        // next lobby. Asked and still waiting, the same button gives the seat up.
+        const inLobby = status.current?.status === "lobby";
         setText(
           roomRole,
-          status.info.role === 1 ? "Join next race" : "Watch instead",
+          status.info.role !== 1 ? "Watch instead"
+            : status.info.waiting ? "Up next · watch only"
+            : inLobby ? "Join next race" : "Race next round",
         );
-        setDisabled(
-          roomRole,
-          !status.current || status.current.status !== "lobby",
-        );
+        setDisabled(roomRole, !status.current || (status.info.role !== 1 && !inLobby));
         const interrupted = !!(status.connection || status.stale),
           wasInterrupted = !!(previous?.connection || previous?.stale),
           ownershipChanged = previous?.active &&
@@ -633,8 +638,9 @@
       });
       roomRole = button("Watch instead", "race-text", async () => {
         roomRole.disabled = true;
-        const ok = await room.role(roomStatus.info.role === 1 ? 0 : 1);
-        if (!ok)
+        const info = roomStatus.info;
+        const ok = await room.role(info.role === 1 && !info.waiting ? 0 : 1);
+        if (!ok && !room.status().info.waiting)
           roomHint.textContent =
             "No seat available yet. Try again in the next lobby.";
       });
@@ -688,6 +694,7 @@
         hostOptions: opts.hostOptions,
         baseUrl: opts.baseUrl,
         lastRoom: opts.lastRoom,
+        resume: opts.resume,
         onAutoStart: () => { if (room?.isHost) start(); },
         onChange: roomChanged,
         onSnapshot: networkSnapshot,
@@ -2608,11 +2615,24 @@
       closeSharedSession,
       close,
       destroy,
-      joinInvite(payload, role) {
+      joinInvite(payload, role, resumeKey) {
         if (!active) open();
         if (!room) return Promise.resolve(false);
         roomDetails.open = true;
-        return room.join(payload, role, true);
+        return room.join(payload, role, true, resumeKey);
+      },
+      // A host's page reload: reopen the same room (same invite, same code) in
+      // its lobby with the saved rules.
+      restoreHost(token) {
+        if (!active) open();
+        if (!room || !token) return Promise.resolve(false);
+        const g = token.game || {};
+        selected = Object.assign({}, selected, {
+          trackId: R.course(g.trackId).id,
+          difficulty: ["easy", "normal", "hard"].includes(g.difficulty) ? g.difficulty : selected.difficulty,
+        });
+        roomDetails.open = true;
+        return room.hosting(selected, token);
       },
       roomStatus() {
         const s = room?.status();

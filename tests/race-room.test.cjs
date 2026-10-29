@@ -132,9 +132,12 @@ test(
     const paused = state(host).tick;
     await step(4);
     assert.equal(state(host).tick, paused);
-    assert.equal(await watcher.room.role(0), false);
+    assert.equal(await watcher.room.role(0), false, "a watcher cannot take a seat mid-race");
+    assert.equal(watcher.net.info().waiting, true, "…but is queued for the next lobby");
     const late = await join();
     assert.equal(late.net.info().role, 1);
+    assert.equal(late.net.info().waiting, true, "a mid-race arrival is queued too");
+    assert.ok(host.net.roster().filter((r) => r.waiting).length === 2, "host sees both in its queue");
     const generation = player.net._n1.session().welcomeGen;
     player.net._n1.session().relay.kick("race reconnect regression");
     await until(
@@ -155,10 +158,14 @@ test(
     await until(() => player.room.current.status === "running", "race resumes");
     assert.equal(host.room.lobby(), true);
     await until(() => late.room.current.status === "lobby", "next grid");
-    assert.equal(await late.room.role(0), true);
     await until(
-      () => host.room.current.seats.length === 3,
-      "new racer assigned",
+      () => late.net.info().role === 0 && watcher.net.info().role === 0,
+      "queued watchers seated without asking again",
+    );
+    assert.equal(late.net.info().waiting, false);
+    await until(
+      () => host.room.current.seats.length === 4,
+      "new racers assigned",
     );
   },
 );
@@ -238,4 +245,37 @@ test('Item readiness is exposed for host loopback and guests only after a neutra
   await step(6, guest); assert.equal(host.room.itemReady(), true); assert.equal(guest.room.itemReady(), true);
   host.room.pause(true); assert.equal(host.room.itemReady(), false);
   await until(() => guest.room.current.status === 'paused'); assert.equal(guest.room.itemReady(), false);
+});
+test("a race host who reloads gets the same room back, and the grid is carried in", { timeout: 30000 }, async (t) => {
+  const { hub, host, join, peer } = await setup(t),
+    player = await join();
+  host.room.close();
+  await until(() => !player.room.active, "old room closed");
+  host.run(`window.__saved=[];window.room=SpaceManRaceRoom.create({net:SpaceManNet,hostOptions:()=>({relayHost:'relay.test',code:false}),resume:{save(game){const t=SpaceManNet.resumeToken();__saved.push(t&&t.host?Object.assign({},t,{game}):t);},clear(){__saved.push(null);}}});`);
+  host.room = host.context.room;
+  assert.equal(await host.room.hosting({ trackId: "ember", difficulty: "hard" }), true);
+  const link = host.net.info().link;
+  assert.equal(await player.room.join(link, 0), true);
+  await until(() => host.net.roster().length === 2, "racer joined");
+  assert.equal(host.room.start(), true);
+  await until(() => player.room.current?.status === "running", "race running");
+  const token = JSON.parse(JSON.stringify(host.context.__saved.at(-1)));
+  assert.equal(token.mode, "race");
+  assert.equal(token.game.trackId, "ember");
+  const s = host.net._n1.session();
+  if (s.snapTimer) s.snapTimer.stop();
+  s.relay.close();
+  const reborn = peer();
+  assert.equal(await reborn.room.hosting(token.game, token), true);
+  assert.equal(reborn.net.info().link, link);
+  assert.equal(reborn.room.current.state.trackId, "ember");
+  for (let i = 0; i < 400 && reborn.net.info().players < 2; i++) {
+    hub.advance(300);
+    await sleep(25);
+  }
+  assert.equal(reborn.net.info().players, 2);
+  await until(
+    () => player.room.current?.status === "lobby" && player.room.current.epoch === reborn.room.current.epoch,
+    "racer follows the restarted authority",
+  );
 });

@@ -500,7 +500,9 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await host.page.getByRole('button',{name:'Pause race',exact:true}).click(); await pausedAgreement(host,[guest,watcher]);
     assert.equal(await guest.page.locator('#raceResume').isDisabled(),true,'guest cannot resume shared pause');
     const late = await client('late player'); await join(late,invite,false,'pause'); await roster(4);
-    assert.equal((await identity(late)).role,1,'late player watches current race');
+    const lateIdentity = await identity(late);
+    assert.equal(lateIdentity.role,1,'late player watches current race');
+    assert.equal(await late.page.evaluate(() => SpaceManNet.info().waiting),true,'and is queued for the next one');
     await pausedAgreement(host,[guest,watcher,late]);
     const socketsBefore = guest.sockets;
     stage = 'confirming the phone network is offline';
@@ -535,8 +537,11 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await Promise.all([host,guest].map(stopDriver));
     const result = await snapshot(host);
     assert.equal(result.phase,'finished'); assert.equal(result.results.length,5);
-    const humans = result.actors.filter(a => Number.isInteger(a.peerP) && a.peerP > 0);
-    assert.equal(humans.length,2,'both original human seats remain');
+    const seated = result.actors.filter(a => Number.isInteger(a.peerP) && a.peerP > 0);
+    assert.equal(seated.length,3,'both original human seats remain, and the late arrival took the free one on restart');
+    assert.equal(seated.filter(a => a.peerP === lateIdentity.p).length,1,'the queued late arrival races the restarted round');
+    const humans = seated.filter(a => a.peerP === 1 || a.peerP === guestIdentity.p);
+    assert.equal(humans.length,2);
     for (const actor of humans) {
       assert.equal(actor.passed,60,'each human crossed all 60 ordered gates');
       assert.ok(actor.finishTick > 600,'each human raced to a real finish');
@@ -567,7 +572,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await host.page.locator('[data-track="ember"]').click(); await host.page.locator('.race-launch').click();
     await Promise.all(clients.map(c => wait(c,() => raceUI.snapshot()?.trackId === 'ember')));
     assert.equal((await snapshot(host)).actors.length,5);
-    assert.equal((await snapshot(host)).actors.filter(a => a.controller === 'cpu').length,3);
+    assert.equal((await snapshot(host)).actors.filter(a => a.controller === 'cpu').length,2,'host, the promoted watcher and the late arrival race; CPUs fill the rest');
     assert.ok((await snapshot(guest)).actors.every(a => a.controller !== 'human'));
     assert.equal((await snapshot(watcher)).actors.filter(a => a.controller === 'human').length,1);
     for (const id of ['raceWatchPrevious','raceWatchNext']) {

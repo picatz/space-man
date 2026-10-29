@@ -783,14 +783,15 @@
       if (!status.active && ((previous && previous.active) || status.busy && !(previous && previous.busy))) resetRoomPresentation();
       roomEntry.hidden = status.active; roomBox.hidden = !status.active; roomLeave.hidden = !status.active && !status.busy;
       roomLeave.textContent = status.busy ? 'Cancel connecting' : status.host ? 'Close arena room' : 'Leave arena room';
-      roomHint.textContent = status.error || status.closedReason || (status.busy ? 'Connecting to your arena… You can cancel below.' : status.connection || (status.stale ? 'Waiting for host · controls released' : status.active ? (status.host ? 'You host the match. Keep this tab open; stepping away pauses everyone.' : 'The host sets the match. Join during a round to watch until the next lobby.') : 'Up to 4 friends + 4 spectators. Empty fighter slots get CPUs.'));
+      roomHint.textContent = status.error || status.closedReason || (status.busy ? 'Connecting to your arena… You can cancel below.' : status.connection || (status.stale ? 'Waiting for host · controls released' : status.active ? (status.host ? 'You host the match. Keep this tab open; stepping away pauses everyone.' : (status.info.waiting ? 'You are up next. The host seats you when this match ends.' : 'The host sets the match. Join during a round to play from the next lobby.')) : 'Up to 4 friends + 4 spectators. Empty fighter slots get CPUs.'));
       if (status.active) {
-        const signature = JSON.stringify([status.roster.map(r => [r.p,r.role,r.callsign]),status.info.role,selections.format,status.current && status.current.status,status.current && status.current.seats.map(s => [s.p,s.actorId]),status.votes && status.current && status.current.status === 'lobby' ? status.votes.ready.missing : null]);
+        const upNext = r => !!(r.spectator && (r.waiting || (r.you && status.info.waiting)));
+        const signature = JSON.stringify([status.roster.map(r => [r.p,r.role,r.callsign,upNext(r)]),status.info.role,selections.format,status.current && status.current.status,status.current && status.current.seats.map(s => [s.p,s.actorId]),status.votes && status.current && status.current.status === 'lobby' ? status.votes.ready.missing : null]);
         if (signature !== roomSignature) {
           roomSignature = signature; roomMembers.replaceChildren(); const players = status.roster.filter(r => !r.spectator), numbers = players.map(r => r.p);
           for (const r of status.roster) {
             const seat = status.current && status.current.seats.find(s => s.p === r.p), actor = seat && status.current.state.actors.find(a => a.id === seat.actorId), team = actor ? actor.team : numbers.indexOf(r.p) % 2;
-            const row = el('li','',(r.callsign || 'PLAYER ' + r.p) + (r.you ? ' · YOU' : '') + (r.host ? ' · HOST' : '') + (r.spectator ? ' · WATCHING' : selections.format === 'teams' ? (team === 1 ? ' · GOLD △' : ' · BLUE ◇') : ' · PLAYER') + (status.votes && status.current && status.current.status === 'lobby' && !r.spectator && !status.votes.ready.missing.includes(r.p) ? ' · READY ✓' : ''));
+            const row = el('li','',(r.callsign || 'PLAYER ' + r.p) + (r.you ? ' · YOU' : '') + (r.host ? ' · HOST' : '') + (upNext(r) ? ' · UP NEXT' : r.spectator ? ' · WATCHING' : selections.format === 'teams' ? (team === 1 ? ' · GOLD △' : ' · BLUE ◇') : ' · PLAYER') + (status.votes && status.current && status.current.status === 'lobby' && !r.spectator && !status.votes.ready.missing.includes(r.p) ? ' · READY ✓' : ''));
             if (status.host && !r.spectator && selections.format === 'teams' && status.current && status.current.status === 'lobby') { const b = button('Switch team','arena-text-button',() => room.setTeam(r.p,team === 0 ? 1 : 0)); b.dataset.teamPeer = r.p; row.append(b); }
             roomMembers.append(row);
           }
@@ -799,7 +800,9 @@
         if (roomInvite.value !== link) { roomInvite.value = link; if (link && root.SpaceManQR) root.SpaceManQR.draw(roomQR.getContext('2d'),0,0,roomQR.width,link); }
         roomCopy.disabled = !link; roomCopy.hidden = !link; roomShare.hidden = !link; roomQRDetails.hidden = !link; roomQR.hidden = !link; roomInvite.hidden = !link;
         roomCode.textContent = status.info.joinCode || (link ? 'Invite link · same build' : 'Friend arena');
-        roomRole.textContent = status.info.role === 1 ? 'Join next match' : 'Watch instead'; roomRole.disabled = !status.current || status.current.status !== 'lobby';
+        // A watcher can ask for a fighter mid-match: the host seats them in the next lobby. Asked and still waiting, the same button gives the seat up.
+        const inLobby = !!status.current && status.current.status === 'lobby';
+        roomRole.textContent = status.info.role !== 1 ? 'Watch instead' : status.info.waiting ? 'Up next · watch only' : inLobby ? 'Join next match' : 'Play next match'; roomRole.disabled = !status.current || (status.info.role !== 1 && !inLobby);
         if (status.connection || status.stale) resetInput();
         if (view === 'match') { const q = opts.net.quality(); matchTitle.textContent = selectedArena().name + ' · ' + (status.connection || (status.stale ? 'WAITING FOR HOST' : q.rttMs ? q.rttMs + ' ms · FRIEND ARENA' : 'FRIEND ARENA')); }
       } else if (status.closedReason && view === 'match') { state = null; dropPlayout(); view = 'lobby'; paused = roomPaused = localRoomMenu = false; setModal(lobby); paintLobby(); announce(status.closedReason); }
@@ -840,7 +843,7 @@
       roomCopy=button('Copy invite link','',async()=>{try{await root.navigator.clipboard.writeText(roomInvite.value);roomHint.textContent='Invite copied. Send it to your friends.';}catch(_){roomInvite.focus();roomInvite.select();roomHint.textContent='Select and copy this invite link.';}});
       roomShare=button('Share','arena-text-button',async()=>{if(root.navigator.share){try{await root.navigator.share({title:'Space Man · Friend Arena',url:roomInvite.value});}catch(_){}}else roomCopy.click();});
       roomQR=el('canvas','arena-room-qr');roomQR.width=roomQR.height=240;roomQR.setAttribute('aria-label','Arena invitation QR code');roomQRDetails=el('details','arena-room-qr-details');roomQRDetails.append(el('summary','','Show invite QR'),roomQR);
-      roomRole=button('Watch instead','arena-text-button',async()=>{roomRole.disabled=true;const ok=await room.role(roomStatus.info.role===1?0:1);if(!ok)roomHint.textContent='No seat available yet. Try again from the next lobby.';});roomRole.id='arenaRoomRole';
+      roomRole=button('Watch instead','arena-text-button',async()=>{roomRole.disabled=true;const info=roomStatus.info,ok=await room.role(info.role===1&&!info.waiting?0:1);if(!ok&&!room.status().info.waiting)roomHint.textContent='No seat available yet. Try again from the next lobby.';});roomRole.id='arenaRoomRole';
       const shareRow=el('div','arena-online-actions');shareRow.append(roomCopy,roomShare,roomRole);
       roomReadyRow=el('div','arena-ready-row');roomReadyRow.hidden=true;
       roomReady=button('I’m ready','',()=>room.vote('ready'));roomReady.id='arenaReady';roomReady.setAttribute('aria-pressed','false');
@@ -851,7 +854,7 @@
       roomBox.append(roomCode,roomMembers,roomReadyRow,roomInvite,shareRow,roomQRDetails);
       roomHint=el('p','arena-local-note');roomHint.id='arenaRoomHint';roomHint.setAttribute('role','status');roomLeave=button('Leave arena room','arena-text-button',leaveArenaRoom);roomLeave.id='arenaRoomLeave';roomLeave.hidden=true;roomDetails.append(roomEntry,roomBox,roomHint,roomLeave);roomDetails.addEventListener('toggle',paintRejoin);roomDetails.addEventListener('toggle',queueLobbyFit);(lobbyFit || lobby).append(roomDetails);
       watchTools=el('div','arena-watch-tools');watchTools.hidden=true;const prev=button('←','arena-icon-button',()=>cycleWatch(-1));prev.id='arenaWatchPrevious';prev.setAttribute('aria-label','Watch previous fighter');const next=button('→','arena-icon-button',()=>cycleWatch(1));next.id='arenaWatchNext';next.setAttribute('aria-label','Watch next fighter');watchName=el('span','','WATCHING');watchTools.append(prev,watchName,next);rootEl.append(watchTools);
-      room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,lastRoom:opts.lastRoom,onAutoStart:()=>{if(room&&room.isHost)startMatch();},canStart:()=>!(selections.format==='duel'&&roomStatus&&roomStatus.info.players>2),onChange:roomChanged,onSnapshot:networkSnapshot});
+      room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,lastRoom:opts.lastRoom,resume:opts.resume,onAutoStart:()=>{if(room&&room.isHost)startMatch();},canStart:()=>!(selections.format==='duel'&&roomStatus&&roomStatus.info.players>2),onChange:roomChanged,onSnapshot:networkSnapshot});
     }
     function leaveArenaRoom() {
       if (!room) return true;
@@ -1783,7 +1786,9 @@
       syncChoices(); startMatch(); return true;
     }
     function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
-    return Object.freeze({ open, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true); }, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
+    return Object.freeze({ open, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role, resumeKey) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true, resumeKey); },
+      // A host's page reload: reopen the same room (same invite, same code) in its lobby with the saved rules.
+      restoreHost(token) { if (!active) open(); if (!room || !token) return Promise.resolve(false); const g = token.game || {}; selections = { arenaId: arena.getArena(g.arenaId).id, format: ['duel', 'ffa', 'teams'].includes(g.format) ? g.format : selections.format, difficulty: ['easy', 'normal', 'hard'].includes(g.difficulty) ? g.difficulty : selections.difficulty }; syncChoices(); roomDetails.open = true; return room.hosting(selections, token); }, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
   }
   root.SpaceManArenaUI = Object.freeze({ create, localKeys: LOCAL_KEYS, assignPads });
 })(typeof window !== 'undefined' ? window : globalThis);
