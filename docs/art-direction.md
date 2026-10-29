@@ -52,7 +52,7 @@ when a new one is needed, add it here first.
 |--------|------|---------------------|--------|------------|-------------|---------|
 | Orbital Dock | home port, morning shift | `#060818` → `#18264A` | cyan `#38E1FF` | Orbital Dawn, Ion Drift | Orbital Dock | Starlight Speedway |
 | Bloom | garden moons, humid, alive | `#061817` → `#173C36` | green `#4EF07A` | Night Bloom | Bloom Reactor | Bloom Lagoon |
-| Ember | forge worlds near Old Flare | `#1A0C20` → `#46202D` | amber `#FFB454` | Red Shift | Ember Foundry | Ember Switchback |
+| Ember | forge worlds near Old Flare | `#1A0C20` → `#46202D` | amber `#FFB454` | Red Shift | Ember Foundry | Ember Switchback, Forge Ring |
 | Prism | crystal canyons, quiet | `#12152B` → `#2B2A4A` | lilac `#B4A6E8` | Violet Reach | (future) | Prism Canyon |
 | Aurora | ice ridges, high wind | `#0B1D33` → `#1D3C55` | ice `#9FF1FF` | (future) | (future) | Aurora Ridge |
 | Neon | the night market city | `#150A2B` → `#32124A` | magenta `#FF5FD2` | Event Horizon | (future) | Neon Gauntlet |

@@ -255,7 +255,7 @@
       }
     }
     // Each biome has its own silhouette so no two circuits share a skyline.
-    const themed = { aurora: 40, neon: 34, nebula: 36 };
+    const themed = { aurora: 40, neon: 34, nebula: 36, forge: 48 };
     const landmarks = themed[c.id] || 32, tint = (k) => shade(rgb(c.planet), k);
     for (let i = 0; !styled && i < landmarks; i++) {
       const p = at(c, (i * c.length) / landmarks),
@@ -292,6 +292,16 @@
           const a = k * Math.PI / 3;
           b.box(x + Math.cos(a) * 40, y + Math.sin(a) * 9, z + Math.sin(a) * 40, 7, 4, 7, k % 2 ? edge : shade(edge, .6), a);
         }
+      } else if (c.id === "forge") {
+        // Smelter stacks: a tapering chimney with a molten collar, a glowing slag
+        // pool at its foot and a drifting cinder shard.
+        const h = 120 + (i % 5) * 36;
+        b.ellipsoid(x, 2, z, 66, 8, 48, shade(accent, .55), i, 8, 3);
+        b.box(x, -5, z, 30, h, 30, [0.2, 0.12, 0.1], i);
+        b.box(x, h * .55, z, 22, h * .45, 22, [0.26, 0.15, 0.12], i);
+        b.box(x, h * .5, z, 34, 6, 34, accent, i);
+        b.box(x, h - 8, z, 26, 8, 26, edge, i);
+        b.crystal(x + 38, 70 + (i % 4) * 22, z - 14, 8, 22, shade(accent, .8), 4);
       } else if (c.id === "ember") {
         b.crystal(
           x,
@@ -463,6 +473,12 @@
         const a = k * .1309 + (k % 3) * .02, h = 160 + ((k * 53) % 9) * 55;
         sky.box(900 + Math.cos(a) * 2900, h / 2 - 20, 750 + Math.sin(a) * 2900, 70, h, 60, shade(rgb(c.sky), 1.9), a);
         sky.box(900 + Math.cos(a) * 2900, h - 12, 750 + Math.sin(a) * 2900, 72, 5, 62, k % 2 ? edge : accent, a);
+      }
+    } else if (c.id === "forge") {
+      // A ring of low furnace glows on the horizon, brighter than the dark sky.
+      for (let k = 0; k < 36; k++) {
+        const a = k * Math.PI / 18 + (k % 3) * .03, h = 40 + ((k * 37) % 6) * 22;
+        sky.box(900 + Math.cos(a) * 3000, h / 2 - 20, 750 + Math.sin(a) * 3000, 90, h, 70, shade(accent, k % 2 ? .45 : .3), a);
       }
     } else if (c.id === "nebula") {
       // A banded ring around the sky planet, tilted so it reads from the road.
