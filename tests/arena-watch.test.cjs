@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const source=fs.readFileSync(require.resolve('../src/arena-ui.js'),'utf8');
-function view(actors,{format='free',local=null,id=1}={}){
- const context=vm.createContext({local2:null,state:{actors,format},onlineActive:()=>true,localActor:()=>local,spectatorId:id,camera:{initialized:true},watchName:{textContent:''}});
+function view(actors,{format='free',local=null,id=1,roomStatus=null}={}){
+ const context=vm.createContext({local2:null,state:{actors,format},onlineActive:()=>true,localActor:()=>local,spectatorId:id,camera:{initialized:true},watchName:{textContent:''},roomStatus});
  vm.runInContext(source.slice(source.indexOf('    function watchCandidates()'),source.indexOf('    function resetRoomPresentation()'))+source.slice(source.indexOf('    function watchedActor()'),source.indexOf('    function updateCamera(')),context);
  return context;
 }
@@ -21,4 +21,9 @@ test('selection removal and an entirely respawning roster have safe deterministi
  const v=view([actor(1),actor(2,{respawnTicks:30}),actor(3)],{id:2});
  v.cycleWatch(-1);assert.equal(v.watchedActor().id,3);v.spectatorId=2;v.cycleWatch(1);assert.equal(v.watchedActor().id,1);
  v.state.actors.forEach(a=>a.respawnTicks=30);const before=v.spectatorId;v.cycleWatch(1);assert.equal(v.spectatorId,before);assert.ok(v.watchedActor());
+});
+
+test('A queued friend sees UP NEXT on the watch bar while they wait for the next lobby',()=>{
+ const v=view([actor(1),actor(2)],{roomStatus:{info:{waiting:true}}});
+ v.cycleWatch(1);assert.equal(v.watchName.textContent,'UP NEXT · WATCHING Fighter 2');
 });

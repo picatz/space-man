@@ -233,6 +233,7 @@
       roomCode,
       roomCopy,
       roomShare,
+      roomInviteCard,
       watchTools,
       watchName;
     let roomButtons = [],
@@ -323,7 +324,7 @@
       touch.hidden = view !== "play" || paused || (online && !canControl());
       watchTools.hidden = !online || view !== "play" || paused || !!ownActor();
       if (!watchTools.hidden)
-        setText(watchName, "WATCHING " + (followActor()?.name || "RACE"));
+        setText(watchName, (roomStatus?.info?.waiting ? "UP NEXT · WATCHING " : "WATCHING ") + (followActor()?.name || "RACE"));
     }
     function paintVotes(votes) {
       if (!roomReady) return;
@@ -419,13 +420,16 @@
           status.host && typeof status.info.link === "string"
             ? status.info.link
             : "";
+        const fresh = !!link && !roomInvite.value;
         if (roomInvite.value !== link) roomInvite.value = link;
         roomInvite.hidden = roomCopy.hidden = roomShare.hidden = !link;
-        setText(
-          roomCode,
-          status.info.joinCode ||
-            (link ? "Invite link · same build" : "Friend race"),
-        );
+        if (roomInviteCard) {
+          roomInviteCard.set(link, status.info.joinCode);
+          if (fresh) root.setTimeout(showInvite, 0);
+        }
+        // The host's invite card already carries the code; guests see which room they are in.
+        roomCode.hidden = !!(link && roomInviteCard);
+        setText(roomCode, status.info.joinCode || "Friend race");
         // A watcher can ask for a pilot seat mid-race: the host seats them in the
         // next lobby. Asked and still waiting, the same button gives the seat up.
         const inLobby = status.current?.status === "lobby";
@@ -569,6 +573,12 @@
       roomChanged(room.status());
       return true;
     }
+    // Bring the fresh invite card into view so the host can hand the phone over straight away.
+    function showInvite() {
+      const card = roomInviteCard?.el;
+      if (card && !card.hidden && card.scrollIntoView)
+        card.scrollIntoView({ block: "center", behavior: calm() ? "auto" : "smooth" });
+    }
     function buildRoomControls() {
       if (!opts.net || !root.SpaceManRaceRoom) return;
       roomDetails = el("details", "race-online-panel");
@@ -616,7 +626,7 @@
       roomInvite.id = "raceInvite";
       roomInvite.readOnly = true;
       roomInvite.setAttribute("aria-label", "Race invite link");
-      roomCopy = button("Copy invite link", "", async () => {
+      roomCopy = button("Copy link", "", async () => {
         try {
           await root.navigator.clipboard.writeText(roomInvite.value);
           roomHint.textContent = "Invite copied. Send it to your friends.";
@@ -665,7 +675,16 @@
       roomAutoCancel.id = "raceAutoCancel";
       roomAutoCancel.hidden = true;
       roomReadyRow.append(roomReady, roomVotes, roomAutoLabel, roomAutoCancel);
-      roomBox.append(roomCode, roomMembers, roomReadyRow, roomInvite, sharing);
+      roomInviteCard = root.SpaceManRoomInvite?.create({ document, game: "race" }) || null;
+      roomInviteCard?.qr.classList.add("race-room-qr");
+      roomBox.append(
+        ...(roomInviteCard ? [roomInviteCard.el] : []),
+        roomCode,
+        sharing,
+        roomMembers,
+        roomReadyRow,
+        roomInvite,
+      );
       roomHint = el("p", "race-local-note");
       roomHint.id = "raceRoomHint";
       roomHint.setAttribute("role", "status");

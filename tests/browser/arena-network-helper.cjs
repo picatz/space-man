@@ -224,7 +224,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     try {
       await fs.mkdir(process.env.SPACE_MAN_ARENA_SCREENSHOTS,{recursive:true});
       await c.page.screenshot({path:path.join(process.env.SPACE_MAN_ARENA_SCREENSHOTS,'arena-online-'+name+'.png'),timeout:5000,
-        mask:[c.page.locator('#arenaInvite'),c.page.locator('#arenaRoomInput'),c.page.locator('.arena-room-qr'),c.page.locator('.arena-room-code')]});
+        mask:[c.page.locator('#arenaInvite'),c.page.locator('#arenaRoomInput'),c.page.locator('.arena-room-qr'),c.page.locator('.sm-invite-code'),c.page.locator('.arena-room-code')]});
     } catch { t.diagnostic('Optional simulated-relay screenshot unavailable: '+name); }
   }
   async function open(c) { await c.page.locator('#btnArena').click(); await screen(c, 'lobby'); await c.page.locator('.arena-online-panel > summary').click(); }
