@@ -636,6 +636,14 @@ test(
       return Array.from(g.getImageData(0, 0, c.width, c.height).data).reduce((n, v, i) => (i % 4 === 3 && v ? n + 1 : n), 0);
     });
     assert.ok((await stage()) > 5000, "the stage canvas is painted");
+    const deck = page.locator(".race-preferences");
+    assert.equal(await deck.evaluate((n) => n.open), false, "settings start tucked away");
+    assert.match(await page.locator(".race-deck-status").textContent(), /^Chase · Sound (on|off)$/);
+    await page.locator(".race-deck-summary").click();
+    assert.equal(await page.locator(".race-camera-options button").first().isVisible(), true, "camera choices open on demand");
+    await page.getByRole("button", { name: "Cockpit", exact: true }).click();
+    await page.waitForFunction(() => /^Cockpit · /.test(document.querySelector(".race-deck-status").textContent));
+    await page.locator(".race-deck-summary").click();
     await capture(page, "race-lobby-stage");
   },
 );

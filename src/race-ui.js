@@ -187,6 +187,7 @@
       previousPose = null,
       renderDt = 1 / 60,
       heroId = 0,
+      deckStatus = null,
       records = {},
       renderFrame = 0,
       itemRequest = createItemRequest(),
@@ -1159,6 +1160,11 @@
         b?.focus({ preventScroll: true });
       } else canvas.focus({ preventScroll: true });
     }
+    function syncDeckStatus() {
+      if (!deckStatus) return;
+      const camera = lobby?.querySelector(".race-camera-options [aria-pressed=true], .race-camera-options [aria-checked=true]");
+      setText(deckStatus, (camera?.textContent || "Chase") + " · " + (prefs.muted ? "Sound off" : "Sound on"));
+    }
     function syncChoices() {
       trackButtons.forEach((b) =>
         b.setAttribute(
@@ -1181,6 +1187,7 @@
         if (best) b.dataset.medal = MEDALS[best.position] || ""; else delete b.dataset.medal;
       }
       save();
+      syncDeckStatus();
       startHero();
       syncRoomChoices();
     }
@@ -1386,6 +1393,8 @@
         list = el("div", "race-track-list");
       for (const t of R.tracks) {
         const b = button("", "race-track", () => {
+          const sound = raceAudio(), index = R.tracks.indexOf(t), changed = selected.trackId !== t.id;
+          if (changed) sound?.unlock().then((ok) => ok && sound.select(index));
           selected.trackId = t.id;
           syncChoices();
           if (onlineActive()) room.configure(selected);
@@ -1449,9 +1458,14 @@
         inputHint("p", "race-input-hint", "← ↑ ↓ → choose · Enter launch · Esc back", "D-PAD CHOOSE · A LAUNCH · B BACK"),
       );
       roomUtilities = el("div", "race-utilities");
-      const preferences = el("section", "race-preferences");
+      // Settings are one tucked-away row, so the circuit choice is the star.
+      const preferences = el("details", "race-preferences");
       preferences.setAttribute("aria-label", "Race preferences");
-      preferences.append(el("h2", "race-label", "YOUR FLIGHT DECK"));
+      const deckSummary = el("summary", "race-deck-summary");
+      deckStatus = el("span", "race-deck-status");
+      deckSummary.append(el("span", "race-deck-title", "⚙ Flight deck"), deckStatus);
+      preferences.append(deckSummary);
+      preferences.addEventListener("click", () => root.setTimeout(syncDeckStatus, 0));
       if (perspective) {
         preferences.append(el("p", "race-setting-label", "Camera"));
         perspective.panel(preferences);
