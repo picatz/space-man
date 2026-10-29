@@ -209,7 +209,7 @@ for (const [width, height] of [[1337, 600], [1100, 570], [820, 900]]) {
   });
 }
 
-for (const [width, height] of [[955, 620], [1000, 640], [1280, 800], [1024, 768]]) {
+for (const [width, height] of [[820, 530], [760, 500], [955, 620], [1000, 640], [1280, 800], [1024, 768]]) {
   test(`arena lobby ${width}x${height}: Launch and Play with friends are visible without scrolling`, { timeout: 30000 }, async t => {
     const { page } = await launch(t, { width, height });
     await page.locator('#btnArena').click();
@@ -221,6 +221,8 @@ for (const [width, height] of [[955, 620], [1000, 640], [1280, 800], [1024, 768]
     assert.ok(m.launch <= m.inner, 'Launch is on screen');
     assert.ok(m.friends <= m.inner, 'Play with friends is on screen');
     assert.ok(m.art.bottom <= m.inner && m.art.height > 60, 'the hero art is fully shown');
+    const tags = await page.evaluate(() => [...document.querySelectorAll('.arena-format-copy small')].map(e => e.getClientRects().length && e.getBoundingClientRect().height < parseFloat(getComputedStyle(e).lineHeight) * 1.6));
+    assert.ok(tags.every(Boolean), 'format taglines such as 2v2 · CPU ally stay on one line');
   });
 }
 

@@ -412,29 +412,58 @@ const characterHats = {
     c.save(); c.translate(x, y + size * .13); c.scale(size / 54, size / 54);
     if (ship) { c.scale(.78, .78); c.rotate(-.18); hoverpod(c, style, { tick: time * 60 + 20, calm: reduceMotion, hero: true }); c.restore(); return; }
     c.fillStyle = '#0005'; c.beginPath(); c.ellipse(0, 18, 12, 2.8, 0, 0, TAU); c.fill();
-    c.lineWidth = 5; c.lineCap = 'round'; c.strokeStyle = P.legB; c.beginPath(); c.moveTo(3, 7); c.lineTo(5, 16); c.stroke();
-    c.strokeStyle = P.legF; c.beginPath(); c.moveTo(-3, 7); c.lineTo(-5, 16); c.stroke();
-    c.fillStyle = '#415D78'; rrPath(c, -14, -5 + bob, 7, 15, 3); c.fill(); c.fillStyle = style.accent; c.fillRect(-13, -2 + bob, 2, 6);
-    c.strokeStyle = P.legB; c.lineWidth = 4.5; c.beginPath(); c.moveTo(-5, bob); c.lineTo(-10, 7 + bob); c.stroke();
-    c.fillStyle = P.suit; rrPath(c, -8, -5 + bob, 16, 17, 6); c.fill(); suitDetails(c, 0, bob, style);
-    // The shoulder starts beneath the neck seal. Helmet paints last, so no
+    // One limb language for arms and legs: a hairline outline under a rounded sleeve,
+    // a cuff band in the accent colour, and a mitten or boot in suit white. The far
+    // side (back leg, back arm) takes the same shapes in the shaded palette, with a
+    // soft dark wash so it recedes without becoming a different design.
+    const FAR = 'rgba(8,18,40,.2)';
+    const tube = (x1, y1, cx, cy, x2, y2, fill, edge, w) => {
+      c.lineCap = 'round'; c.beginPath(); c.moveTo(x1, y1); c.quadraticCurveTo(cx, cy, x2, y2);
+      c.strokeStyle = edge; c.lineWidth = w + 1.3; c.stroke();
+      c.strokeStyle = fill; c.lineWidth = w; c.stroke();
+    };
+    // Cuff then mitten (hand) or boot (foot), drawn in the limb's own frame: +y points away from the body.
+    const cuff = (x, y, angle, far) => {
+      c.save(); c.translate(x, y); c.rotate(angle);
+      c.fillStyle = P.legB; rrPath(c, -2.6, -2.3, 5.2, 2.6, 1.1); c.fill();
+      c.fillStyle = style.accent; c.fillRect(-2.1, -1.5, 4.2, .8);
+      c.restore();
+    };
+    const mitten = (x, y, angle, far) => {
+      c.save(); c.translate(x, y); c.rotate(angle);
+      c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
+      c.beginPath(); c.ellipse(0, 1.9, 2.7, 3, 0, 0, TAU); c.fill(); c.stroke();
+      c.beginPath(); c.ellipse(-2.2, 1.4, 1.1, 1.7, -.4, 0, TAU); c.fill(); c.stroke();
+      if (far) { c.fillStyle = FAR; c.beginPath(); c.ellipse(0, 1.9, 2.7, 3, 0, 0, TAU); c.fill(); }
+      c.restore();
+    };
+    const boot = (x, y, far) => {
+      cuff(x, y - 1.5, 0, far);
+      c.save(); c.translate(x, y);
+      c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
+      c.beginPath(); c.ellipse(1.2, .9, 3.2, 1.9, 0, 0, TAU); c.fill(); c.stroke();
+      if (far) { c.fillStyle = FAR; c.beginPath(); c.ellipse(1.2, .9, 3.2, 1.9, 0, 0, TAU); c.fill(); }
+      c.restore();
+    };
+    const arm = (sx, sy, ex, ey, hx, hy, far) => {
+      tube(sx, sy, ex, ey, hx, hy, far ? P.legB : P.arm, P.legB, 4);
+      if (far) { c.strokeStyle = FAR; c.lineWidth = 4; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(ex, ey, hx, hy); c.stroke(); }
+      c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(sx, sy, 3.1, 0, TAU); c.fill(); c.stroke();
+      if (far) { c.fillStyle = FAR; c.beginPath(); c.arc(sx, sy, 3.1, 0, TAU); c.fill(); }
+      const wrist = Math.atan2(hy - ey, hx - ex) - Math.PI / 2;
+      cuff(hx, hy, wrist, far); mitten(hx, hy, wrist, far);
+    };
+    // Legs: far leg first, then the near one, each ending in the same boot.
+    tube(3, 7, 4, 11.5, 5, 15.8, P.legB, P.legB, 4.6); boot(5, 15.8, true);
+    tube(-3, 7, -4, 11.5, -5, 15.8, P.legF, P.legB, 4.6); boot(-5, 15.8, false);
+    c.fillStyle = '#415D78'; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -14, -5 + bob, 7, 15, 3); c.fill(); c.stroke();
+    c.fillStyle = style.accent; c.fillRect(-13, -2 + bob, 2, 6);
+    // The far arm hangs behind the torso from the pack side, mirroring the near arm.
+    arm(-6.6, -.4 + bob, -11.8, 2.6 + bob, -11.6, 7.4 + bob, true);
+    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -8, -5 + bob, 16, 17, 6); c.fill(); c.stroke(); suitDetails(c, 0, bob, style);
+    // The near shoulder starts beneath the neck seal. The helmet paints last, so no
     // limb can pop over the face during idle or the brief equip greeting.
-    // Shoulder cap on the body's edge, a sleeve that bows outward, then a cuff
-    // and mitten. Each piece carries a thin legB shade so the silhouette matches
-    // the legs and pack instead of melting into the suit.
-    const shX = 6.6, shY = -.4 + bob, handX = 11.6 + hello * 2.6, handY = 7.4 + bob - hello * 14, elX = 11.8 + hello * 1.2, elY = 2.6 + bob - hello * 5;
-    const sleeve = () => { c.beginPath(); c.moveTo(shX, shY); c.quadraticCurveTo(elX, elY, handX, handY); };
-    c.lineCap = 'round'; c.strokeStyle = P.legB; c.lineWidth = 5.3; sleeve(); c.stroke();
-    c.strokeStyle = P.arm; c.lineWidth = 4; sleeve(); c.stroke();
-    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(shX, shY, 3.1, 0, TAU); c.fill(); c.stroke();
-    const wrist = Math.atan2(handY - elY, handX - elX);
-    c.save(); c.translate(handX, handY); c.rotate(wrist - Math.PI / 2);
-    c.fillStyle = P.legB; rrPath(c, -2.6, -2.3, 5.2, 2.6, 1.1); c.fill();
-    c.fillStyle = style.accent; c.fillRect(-2.1, -1.5, 4.2, .8);
-    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
-    c.beginPath(); c.ellipse(0, 1.9, 2.7, 3, 0, 0, TAU); c.fill(); c.stroke();
-    c.beginPath(); c.ellipse(-2.2, 1.4, 1.1, 1.7, -.4, 0, TAU); c.fill(); c.stroke();
-    c.restore();
+    arm(6.6, -.4 + bob, 11.8 + hello * 1.2, 2.6 + bob - hello * 5, 11.6 + hello * 2.6, 7.4 + bob - hello * 14, false);
     characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: mood ?? (hello > .15 ? 1 : 0), lookX, lookY });
     c.restore();
   }
