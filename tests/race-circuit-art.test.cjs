@@ -86,3 +86,17 @@ test('station connections stay beyond runoff and the gantry clears every chase e
   for(const arch of scene.clearances.filter(x=>x.type==='arch'))assert.ok(arch.height-4>151+20);
   assert.ok(scene.meshes[0].vertices.length/9<=5376,'smooth planets retain the original sky tessellation');
 });
+
+test('every circuit takes its sky from a shared region of the Lantern Reach', () => {
+  const regions = new Set();
+  for (const id of ['starlight', 'ember', 'bloom', 'prism', 'aurora', 'neon', 'nebula']) {
+    const sky = Art.circuitSky(R.course(id));
+    assert.ok(Object.values(Art.REGIONS).some(r => r.name === sky.region), id);
+    regions.add(sky.region);
+    for (const key of ['top', 'horizon', 'glow', 'ground', 'haze']) assert.ok(sky[key].length === 3 && sky[key].every(n => n >= 0 && n <= 1), id + ' ' + key);
+    const lum = c => c[0] * .3 + c[1] * .59 + c[2] * .11;
+    assert.ok(lum(sky.glow) > lum(sky.horizon) && lum(sky.horizon) > lum(sky.top), id + ' brightens toward the horizon');
+  }
+  assert.equal(regions.size, 7, 'no two circuits share a sky');
+  assert.equal(Art.circuitSky(R.course('ember')).region, 'Ember');
+});

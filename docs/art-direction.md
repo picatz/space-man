@@ -43,7 +43,9 @@ The game has no gore, no death screams and no cruelty. A defeated pilot is
 ### Regions
 
 Places are shared between modes. A region owns a palette and a mood, and each
-mode visits it in its own way. Reuse a region before inventing a new one, and
+mode visits it in its own way. `SpaceManArt.REGIONS` is the code copy of this table, and
+`SpaceManArt.circuitSky` turns a region into a 3D sky dome (`scene.sky` in
+`SpaceManRender3D`). Reuse a region before inventing a new one, and
 when a new one is needed, add it here first.
 
 | Region | Mood | Sky (top → horizon) | Accent | Run sector | Arena stage | Circuit |

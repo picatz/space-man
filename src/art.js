@@ -20,6 +20,31 @@
   // Semantic roles for gameplay reads — keep hazards warm, friends cool, rewards gold.
   const ROLE = Object.freeze({ hazard: C.coral, friend: C.cyan, reward: C.gold, enemy: C.green, text: C.ui, power: '#B87BFF' });
 
+  // The shared regions of the Lantern Reach (docs/art-direction.md). A mode that
+  // visits a place takes its sky and accent from here, so Bloom reads as Bloom
+  // whether you run, brawl or race there.
+  const REGIONS = Object.freeze({
+    orbital: Object.freeze({ name: 'Orbital Dock', skyTop: '#060818', horizon: '#18264A', accent: '#38E1FF' }),
+    bloom: Object.freeze({ name: 'Bloom', skyTop: '#061817', horizon: '#173C36', accent: '#4EF07A' }),
+    ember: Object.freeze({ name: 'Ember', skyTop: '#1A0C20', horizon: '#46202D', accent: '#FFB454' }),
+    prism: Object.freeze({ name: 'Prism', skyTop: '#12152B', horizon: '#2B2A4A', accent: '#B4A6E8' }),
+    aurora: Object.freeze({ name: 'Aurora', skyTop: '#0B1D33', horizon: '#1D3C55', accent: '#9FF1FF' }),
+    neon: Object.freeze({ name: 'Neon', skyTop: '#150A2B', horizon: '#32124A', accent: '#FF5FD2' }),
+    nebula: Object.freeze({ name: 'Nebula', skyTop: '#1A0D2E', horizon: '#3A2052', accent: '#B87BFF' }),
+  });
+  const CIRCUIT_REGIONS = Object.freeze({ starlight: 'orbital', ember: 'ember', bloom: 'bloom', prism: 'prism', aurora: 'aurora', neon: 'neon', nebula: 'nebula' });
+  const unitRgb = (hex) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const mixRgb = (a, b, t) => a.map((n, i) => n + (b[i] - n) * t);
+  // Sky dome colors for a circuit (SpaceManRender3D scene.sky): the region's
+  // gradient, a horizon glow lit by its accent and darker space below. haze is
+  // the fog color, so distant track sinks into the sky instead of into black.
+  function circuitSky(course) {
+    const region = REGIONS[CIRCUIT_REGIONS[course && course.id]] || REGIONS.orbital;
+    const top = unitRgb(region.skyTop), horizon = unitRgb(region.horizon), accent = unitRgb(region.accent);
+    return Object.freeze({ region: region.name, top, horizon, glow: mixRgb(horizon, accent, 0.16),
+      ground: top, haze: mixRgb(horizon, top, 0.5), stars: 320 });
+  }
+
   // Render-only Circuit design tokens. Physics retains its authored course data.
   const STARLIGHT_MATERIALS = Object.freeze({ road: '#294052', edge: '#86cdbf',
     curb: '#9aadaf', apron: '#172935', outerEdge: '#42646d', accent: '#bdeca2',
@@ -572,7 +597,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { REGIONS, circuitSky, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
