@@ -65,6 +65,15 @@ test('arena reload: guest resumes its seat and a reloaded host reopens the same 
     await wait(host, () => SpaceManNet.active && SpaceManNet.info().mode === 'arena' && SpaceManNet.info().isHost);
     const link = await host.page.evaluate(() => SpaceManNet.info().link);
     assert.ok(link && link.includes('#j='), 'host has an invite link');
+    // The invite is a big open QR card, scrolled into view, and the host has a real name.
+    const card = host.page.locator('.sm-invite');
+    await card.waitFor({ state: 'visible' });
+    await wait(host, () => { const r = document.querySelector('.sm-invite').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; });
+    const qr = await host.page.evaluate(() => { const c = document.querySelector('.sm-invite-qr'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let dark = 0; for (let i = 0; i < d.length; i += 4) if (d[i] < 64) dark++; return { size: c.getBoundingClientRect().width, dark: dark / (d.length / 4) }; });
+    assert.ok(qr.size >= 200, 'QR is large enough to scan across a table: ' + qr.size);
+    assert.ok(qr.dark > 0.2 && qr.dark < 0.7, 'QR canvas is drawn: ' + qr.dark);
+    assert.doesNotMatch(await host.page.locator('#arenaRoomMembers').innerText(), /PLAYER 1/, 'host gets a callsign, not a seat number');
 
     await guest.page.locator('#btnArena').click();
     await guest.page.locator('.arena-root[data-screen="lobby"]').waitFor();

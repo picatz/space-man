@@ -262,10 +262,10 @@
 .arena-online-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.arena-online-actions>button{min-height:48px}
 .arena-room-input{box-sizing:border-box;min-width:0;width:100%;padding:14px;border:1px solid #36526d;border-radius:10px;background:#050b1a;color:#e8f5ff;font:16px system-ui}
 .arena-room-code{font:700 18px system-ui;letter-spacing:.08em;color:#9ff1ff}.arena-room-members{margin:0;padding-left:22px;font:12px/1.8 system-ui;color:#bfd4e8}
-.arena-room-qr{width:200px;height:200px;margin-top:12px;border-radius:10px}.arena-room-qr-details summary{cursor:pointer;font:13px system-ui;min-height:36px;line-height:36px}
+
 .arena-ready-row{display:grid;gap:8px}.arena-ready-row[hidden],.arena-ready-row>[hidden]{display:none!important}.arena-auto-label{display:flex;gap:8px;align-items:center;font:13px system-ui;min-height:44px}.arena-auto-label input{width:22px;height:22px;flex:none}.arena-vote-note:empty{display:none}.arena-vote-note{margin:0;font:13px/1.5 system-ui;color:#bfd4e8}
 .arena-watch-tools{position:absolute;z-index:6;bottom:calc(var(--arena-safe-bottom) + 22px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px;background:#071527ed;border:1px solid #36526d;border-radius:14px;max-width:calc(100% - 24px)}
-.arena-watch-tools span{font:700 calc(10px * var(--ui-scale, 1)) system-ui;text-align:center;min-width:110px}.arena-root button:disabled{opacity:.48;cursor:default}
+.arena-watch-tools span{font:700 calc(10px * var(--ui-scale, 1)) system-ui;text-align:center;flex:1 1 110px;min-width:0;overflow-wrap:anywhere}.arena-watch-tools>button{flex:0 0 auto}.arena-root button:disabled{opacity:.48;cursor:default}
 `;
   function create(options) {
     const opts = options || {};
@@ -305,7 +305,7 @@
     let touchEdges = { jump: false, attack: false, dash: false }, recoveryTap = null, clearRecoveryClick = null;
     let pad = { moveX: 0, moveY: 0, jump: false }, padPrevious = {}, padNeedsNeutral = true, lastPadId = null, usingTouch = false;
     let audio = null, audioGain = null, lastSfx = -999, lastFar = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
-    let room = null, roomBox, roomEntry, roomMembers, roomHint, roomInput, roomInvite, roomCode, roomQR, roomRole, roomLeave, roomCopy, roomShare, roomQRDetails, roomHost, roomJoin, roomWatch, roomDetails;
+    let room = null, roomBox, roomEntry, roomMembers, roomHint, roomInput, roomInvite, roomCode, roomQR, roomRole, roomLeave, roomCopy, roomShare, roomInviteCard, roomHost, roomJoin, roomWatch, roomDetails;
     let roomStatus = null, roomSignature = '', rosterSignature = '', roomPaused = false, localRoomMenu = false, roomClosing = false, networkReceived = 0, playout = null, priorNetworkTick = -1, networkEventHigh = 0;
     let watchTools, watchName;
     const onlineActive = () => !!(room && room.active);
@@ -769,12 +769,14 @@
       const allies = state.format === 'teams' && (!onlineActive() || localActor()) ? living.filter(a => a.team === human.team) : [];
       return allies.length ? allies : living;
     }
+    // A friend who arrived mid-match is told they are queued, not just that they are watching.
+    function watchLabel(name) { return (roomStatus && roomStatus.info && roomStatus.info.waiting ? 'UP NEXT · WATCHING ' : 'WATCHING ') + name; }
     function cycleWatch(direction) {
       if (!state) return; const candidates = watchCandidates(); if (!candidates.length) return;
       const index = candidates.findIndex(a => a.id === spectatorId);
       const next = index < 0 ? (direction > 0 ? 0 : candidates.length - 1) : (index + direction + candidates.length) % candidates.length;
       spectatorId = candidates[next].id; camera.initialized = false;
-      if (watchName) watchName.textContent = 'WATCHING ' + candidates.find(a => a.id === spectatorId).name;
+      if (watchName) watchName.textContent = watchLabel(candidates.find(a => a.id === spectatorId).name);
     }
     function resetRoomPresentation() {
       roomPaused = localRoomMenu = false; priorNetworkTick = -1; networkEventHigh = 0;
@@ -787,7 +789,9 @@
       if (!status.active && ((previous && previous.active) || status.busy && !(previous && previous.busy))) resetRoomPresentation();
       roomEntry.hidden = status.active; roomBox.hidden = !status.active; roomLeave.hidden = !status.active && !status.busy;
       roomLeave.textContent = status.busy ? 'Cancel connecting' : status.host ? 'Close arena room' : 'Leave arena room';
-      roomHint.textContent = status.error || status.closedReason || (status.busy ? 'Connecting to your arena… You can cancel below.' : status.connection || (status.stale ? 'Waiting for host · controls released' : status.active ? (status.host ? 'You host the match. Keep this tab open; stepping away pauses everyone.' : (status.info.waiting ? 'You are up next. The host seats you when this match ends.' : 'The host sets the match. Join during a round to play from the next lobby.')) : 'Up to 4 friends + 4 spectators. Empty fighter slots get CPUs.'));
+      // Friends still queued while the host sits in the lobby means the format is full (a Duel seats two).
+      const queued = status.active && status.host && status.current && status.current.status === 'lobby' ? status.roster.filter(r => r.waiting).length + (selections.format === 'duel' ? Math.max(0, status.info.players - 2) : 0) : 0;
+      roomHint.textContent = status.error || status.closedReason || (status.busy ? 'Connecting to your arena… You can cancel below.' : status.connection || (status.stale ? 'Waiting for host · controls released' : status.active ? (status.host ? (queued ? queued + (queued === 1 ? ' friend is' : ' friends are') + ' waiting for a seat. Pick Free-for-all or Teams so everyone plays.' : 'You host the match. Keep this tab open; stepping away pauses everyone.') : (status.info.waiting ? 'You are up next. The host seats you when this match ends.' : 'The host sets the match. Join during a round to play from the next lobby.')) : 'Up to 4 friends + 4 spectators. Empty fighter slots get CPUs.'));
       if (status.active) {
         const upNext = r => !!(r.spectator && (r.waiting || (r.you && status.info.waiting)));
         const signature = JSON.stringify([status.roster.map(r => [r.p,r.role,r.callsign,upNext(r)]),status.info.role,selections.format,status.current && status.current.status,status.current && status.current.seats.map(s => [s.p,s.actorId]),status.votes && status.current && status.current.status === 'lobby' ? status.votes.ready.missing : null]);
@@ -801,9 +805,12 @@
           }
         }
         const link = status.host && typeof status.info.link === 'string' ? status.info.link : '';
-        if (roomInvite.value !== link) { roomInvite.value = link; if (link && root.SpaceManQR) root.SpaceManQR.draw(roomQR.getContext('2d'),0,0,roomQR.width,link); }
-        roomCopy.disabled = !link; roomCopy.hidden = !link; roomShare.hidden = !link; roomQRDetails.hidden = !link; roomQR.hidden = !link; roomInvite.hidden = !link;
-        roomCode.textContent = status.info.joinCode || (link ? 'Invite link · same build' : 'Friend arena');
+        const fresh = !!link && !roomInvite.value;
+        if (roomInvite.value !== link) roomInvite.value = link;
+        if (roomInviteCard) { roomInviteCard.set(link, status.info.joinCode); if (fresh) root.setTimeout(showInvite, 0); }
+        roomCopy.disabled = !link; roomCopy.hidden = !link; roomShare.hidden = !link; roomInvite.hidden = !link;
+        // The host's invite card already carries the code; guests see which room they are in.
+        roomCode.hidden = !!(link && roomInviteCard); roomCode.textContent = status.info.joinCode || 'Friend arena';
         // A watcher can ask for a fighter mid-match: the host seats them in the next lobby. Asked and still waiting, the same button gives the seat up.
         const inLobby = !!status.current && status.current.status === 'lobby';
         roomRole.textContent = status.info.role !== 1 ? 'Watch instead' : status.info.waiting ? 'Up next · watch only' : inLobby ? 'Join next match' : 'Play next match'; roomRole.disabled = !status.current || (status.info.role !== 1 && !inLobby);
@@ -839,14 +846,14 @@
     function buildRoomControls() {
       if (!opts.net || !root.SpaceManArenaRoom) return;
       roomDetails = el('details','arena-online-panel'); roomDetails.append(el('summary','','Play with friends · Create, join or watch'));
-      roomEntry=el('div','arena-online-entry'); roomHost=button('Create arena room','arena-primary',async()=>{await room.hosting(selections);roomDetails.open=true;});roomHost.id='arenaHost';
+      roomEntry=el('div','arena-online-entry'); roomHost=button('Create arena room','arena-primary',async()=>{if(await room.hosting(selections))roomDetails.open=true;});roomHost.id='arenaHost';
       roomInput=el('input','arena-room-input');roomInput.id='arenaRoomInput';roomInput.type='text';roomInput.placeholder=opts.build&&opts.build.preview?'Full invite link from this preview':'Room code or invite link';roomInput.setAttribute('aria-label','Arena room code or invite link');roomInput.autocomplete='off';
       const joinRow=el('div','arena-online-actions');roomJoin=button('Join arena','',()=>room.join(roomInput.value,0));roomJoin.id='arenaJoin';roomWatch=button('Watch arena','arena-text-button',()=>room.join(roomInput.value,1));roomWatch.id='arenaWatch';joinRow.append(roomJoin,roomWatch);roomRejoin=button('Rejoin last room','arena-text-button',()=>{const r=lastRoomEntry();if(!r)return;const text=social().lastRoomText(r);roomInput.value=text;room.join(text,0);});roomRejoin.id='arenaRejoin';roomRejoin.hidden=true;roomEntry.append(roomHost,roomInput,joinRow,roomRejoin);
       roomBox=el('div','arena-room-box');roomBox.hidden=true;roomCode=el('strong','arena-room-code');roomMembers=el('ul','arena-room-members');roomMembers.id='arenaRoomMembers';
       roomInvite=el('input','arena-room-input');roomInvite.id='arenaInvite';roomInvite.readOnly=true;roomInvite.setAttribute('aria-label','Arena invite link');
-      roomCopy=button('Copy invite link','',async()=>{try{await root.navigator.clipboard.writeText(roomInvite.value);roomHint.textContent='Invite copied. Send it to your friends.';}catch(_){roomInvite.focus();roomInvite.select();roomHint.textContent='Select and copy this invite link.';}});
+      roomCopy=button('Copy link','',async()=>{try{await root.navigator.clipboard.writeText(roomInvite.value);roomHint.textContent='Invite copied. Send it to your friends.';}catch(_){roomInvite.focus();roomInvite.select();roomHint.textContent='Select and copy this invite link.';}});
       roomShare=button('Share','arena-text-button',async()=>{if(root.navigator.share){try{await root.navigator.share({title:'Space Man · Friend Arena',url:roomInvite.value});}catch(_){}}else roomCopy.click();});
-      roomQR=el('canvas','arena-room-qr');roomQR.width=roomQR.height=240;roomQR.setAttribute('aria-label','Arena invitation QR code');roomQRDetails=el('details','arena-room-qr-details');roomQRDetails.append(el('summary','','Show invite QR'),roomQR);
+      roomInviteCard=root.SpaceManRoomInvite?root.SpaceManRoomInvite.create({document,game:'arena'}):null;if(roomInviteCard)roomInviteCard.qr.classList.add('arena-room-qr');
       roomRole=button('Watch instead','arena-text-button',async()=>{roomRole.disabled=true;const info=roomStatus.info,ok=await room.role(info.role===1&&!info.waiting?0:1);if(!ok&&!room.status().info.waiting)roomHint.textContent='No seat available yet. Try again from the next lobby.';});roomRole.id='arenaRoomRole';
       const shareRow=el('div','arena-online-actions');shareRow.append(roomCopy,roomShare,roomRole);
       roomReadyRow=el('div','arena-ready-row');roomReadyRow.hidden=true;
@@ -855,11 +862,13 @@
       roomVotes=el('p','arena-vote-note');roomVotes.id='arenaReadyNote';
       roomAutoCancel=button('Cancel auto-start','arena-text-button',()=>room.cancelAuto());roomAutoCancel.id='arenaAutoCancel';roomAutoCancel.hidden=true;
       roomReadyRow.append(roomReady,roomVotes,roomAutoLabel,roomAutoCancel);
-      roomBox.append(roomCode,roomMembers,roomReadyRow,roomInvite,shareRow,roomQRDetails);
+      roomBox.append(...(roomInviteCard?[roomInviteCard.el]:[]),roomCode,shareRow,roomMembers,roomReadyRow,roomInvite);
       roomHint=el('p','arena-local-note');roomHint.id='arenaRoomHint';roomHint.setAttribute('role','status');roomLeave=button('Leave arena room','arena-text-button',leaveArenaRoom);roomLeave.id='arenaRoomLeave';roomLeave.hidden=true;roomDetails.append(roomEntry,roomBox,roomHint,roomLeave);roomDetails.addEventListener('toggle',paintRejoin);roomDetails.addEventListener('toggle',queueLobbyFit);(lobbyFit || lobby).append(roomDetails);
       watchTools=el('div','arena-watch-tools');watchTools.hidden=true;const prev=button('←','arena-icon-button',()=>cycleWatch(-1));prev.id='arenaWatchPrevious';prev.setAttribute('aria-label','Watch previous fighter');const next=button('→','arena-icon-button',()=>cycleWatch(1));next.id='arenaWatchNext';next.setAttribute('aria-label','Watch next fighter');watchName=el('span','','WATCHING');watchTools.append(prev,watchName,next);rootEl.append(watchTools);
       room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,lastRoom:opts.lastRoom,resume:opts.resume,onAutoStart:()=>{if(room&&room.isHost)startMatch();},canStart:()=>!(selections.format==='duel'&&roomStatus&&roomStatus.info.players>2),onChange:roomChanged,onSnapshot:networkSnapshot});
     }
+    // Bring the fresh invite card into view so the host can hand the phone over straight away.
+    function showInvite() { if (roomInviteCard && !roomInviteCard.el.hidden && roomInviteCard.el.scrollIntoView) roomInviteCard.el.scrollIntoView({ block: 'center', behavior: calm() ? 'auto' : 'smooth' }); }
     function leaveArenaRoom() {
       if (!room) return true;
       if (room.active && room.isHost && room.status().info.players+room.status().info.spectators>1 && !root.confirm('Close the arena room? This ends the match for everyone.')) return false;
@@ -1467,7 +1476,7 @@
         card.setAttribute('aria-label', actor.name + (local2 && actor.controller === 'human' ? ', player ' + actor.id : actor.controller === 'human' ? ', you' : '') + (state.format === 'teams' ? (actor.team === 0 ? ', blue team' : ', gold team') : '') + ', ' + actor.stocks + ' lives, ' + Math.round(actor.damage) + ' percent damage');
       }
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
-      if (watchTools) { watchTools.hidden = !onlineActive() || canControl(); if (!watchTools.hidden) watchName.textContent = 'WATCHING ' + watchedActor().name; }
+      if (watchTools) { watchTools.hidden = !onlineActive() || canControl(); if (!watchTools.hidden) watchName.textContent = watchLabel(watchedActor().name); }
       touchEl.hidden = (onlineActive() && !canControl()) || !!local2;
       const K = arena.constants, remaining = human.attackTicks > 0 ? human.attackTicks + K.ATTACK_RECOVERY : (human.attackCooldown || 0);
       const attackReady = human.charge > 0 ? clamp(human.charge / K.CHARGE_MAX, 0, 1) : 1 - clamp(remaining / (K.ATTACK_TICKS + K.ATTACK_RECOVERY), 0, 1), dashReady = 1 - clamp(human.dashCooldown / arena.constants.DASH_COOLDOWN, 0, 1);

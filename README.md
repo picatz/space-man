@@ -123,9 +123,11 @@ and single-player are unchanged, and nothing about the room wire format changes.
 Play locally against CPUs, or open **Play with friends** to create, join or watch
 an arena room. Up to four players and four spectators share authoritative combat,
 lives and results. The host picks the stage, match format and team assignments;
-empty fighter slots get CPUs. Share the invite link/QR or a production room code.
-Preview invites use their full revision-specific links. Late arrivals watch until
-the next lobby, where they can request a player seat.
+empty fighter slots get CPUs. Creating a room opens a large **Scan to join** QR
+card (the same card Star Circuit uses) with the room code and Copy/Share buttons.
+Preview invites use their full revision-specific links. Late arrivals watch as
+**UP NEXT** and are seated automatically in the next lobby; if a Duel is full, the
+host is told to pick Free-for-all or Teams so everyone plays.
 
 The host browser runs all combat. Guests send inputs and display authoritative
 snapshots, so relay latency affects guest responsiveness. Host pause or connection

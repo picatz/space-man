@@ -95,7 +95,7 @@ function inputLifecycle(onRelease=()=>{}) {
  const q=context.window.SpaceManRaceUI.createItemRequest(),node=()=>({}),status={active:true,host:false,connection:'',stale:false,info:{role:0,myP:2},roster:[],current:{status:'running'}};
  let releases=0;
  const ui=vm.createContext({active:true,roomClosing:false,roomStatus:status,rootEl:{dataset:{}},
-  roomEntry:node(),roomBox:node(),roomLeave:node(),roomHint:node(),roomInvite:{value:''},roomCopy:node(),roomShare:node(),roomCode:node(),roomRole:node(),roomMembers:node(),roomSignature:'[]',
+  roomEntry:node(),roomBox:node(),roomLeave:node(),roomHint:node(),roomInvite:{value:''},roomInviteCard:null,roomCopy:node(),roomShare:node(),roomCode:node(),roomRole:node(),roomMembers:node(),roomSignature:'[]',
   keys:new Map(),touches:new Map(),itemRequest:q,warningReceipt:receipt(),onlineActive:()=>true,
   room:{release(){releases++;onRelease();}},setText(){},setDisabled(){},syncRoomChoices(){},ensureFrame(){},setPanel(){},announce(){},
   selected:{trackId:'starlight',difficulty:'normal'},networkEpoch:1,roomPaused:false,paused:false,localRoomMenu:false,view:'play',document:{hidden:false},audio:null,followActor:()=>null});

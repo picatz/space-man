@@ -1171,6 +1171,7 @@
 <script src="src/crew.js"></script>
 <script src="src/relay-directory.js"></script>
 <script src="src/qr.js"></script>
+<script src="src/room-invite.js"></script>
 <script src="src/netsmooth.js"></script>
 <script src="src/net.js"></script>
 <script src="src/journey-online.js"></script>
@@ -7513,6 +7514,18 @@ function getCallsign() {
   return null;
 }
 function hasCallsign() { return !!getCallsign(); }
+// Arcade rooms open straight from a mode lobby with no picker on the way, so a
+// pilot without a callsign gets a random valid one rather than appearing as "P1".
+// Wardrobe → Callsign changes it any time.
+function ensureCallsign() {
+  if (hasCallsign() || !NET || !G.cosmetics) return;
+  const d = callsignData();
+  for (let i = 0; i < 128; i++) {
+    const a = (Math.random() * d.adj.length) | 0, n = (Math.random() * d.noun.length) | 0;
+    if (callsignStepValid(a, n)) { G.cosmetics.callsign = [a, n]; persistAll(); applyCallsignToNet(); return; }
+  }
+}
+function arcadeIdentity() { ensureCallsign(); return netIdentity(); }
 function applyCallsignToNet() { const c = getCallsign(); if (c && NET) NET.setCallsign(c[0], c[1]); }
 function netIdentity() {
   const c = getCallsign();
@@ -9144,7 +9157,7 @@ const arcadeResume = {
 function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
     storageKey: BUILD.storageKey('sm2.arena.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
-    net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    net: TRANSPORT, build: BUILD, identity: arcadeIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent, buzz,
     hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
@@ -9165,7 +9178,7 @@ $('btnRace').onclick = () => {
 function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
     storageKey: BUILD.storageKey('sm2.race.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
-    net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
+    net: TRANSPORT, build: BUILD, identity: arcadeIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
