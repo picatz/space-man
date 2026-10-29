@@ -186,6 +186,8 @@
       perspective = null,
       previousPose = null,
       renderDt = 1 / 60,
+      heroId = 0,
+      records = {},
       renderFrame = 0,
       itemRequest = createItemRequest(),
       displayedWarnings = Array(5).fill(0),
@@ -1170,14 +1172,22 @@
           String(b.dataset.difficulty === selected.difficulty),
         ),
       );
-      setText(description, R.course(selected.trackId).subtitle);
+      const course = R.course(selected.trackId);
+      setText(description, course.subtitle + " Lap " + (course.length / 1000).toFixed(1) + "k" + recordText(selected.trackId, " · Best "));
+      for (const b of trackButtons) {
+        const t = R.course(b.dataset.track), best = records[t.id];
+        const label = b.querySelector("small");
+        if (label) setText(label, t.difficulty + (best ? " · " + fmt(best.time) : ""));
+        if (best) b.dataset.medal = MEDALS[best.position] || ""; else delete b.dataset.medal;
+      }
       save();
-      drawHero();
+      startHero();
       syncRoomChoices();
     }
     function build() {
       if (built) return;
       if (!R) throw Error("Race simulation is unavailable");
+      loadRecords();
       load();
       rootEl = el("section", "race-root");
       rootEl.id = "raceRoot";
@@ -1702,6 +1712,11 @@
           ? root.SpaceManLogbook.discover("photo") : null;
         if (photo) resultRows.append(el("p", "race-cosmetic-reward", "Logbook: " + photo.name));
       }
+      if (me?.finished && me.time !== null && state.laps === 3 && !onlineActive()) {
+        const faster = recordBest(state.trackId, me.time, me.position);
+        if (faster) resultRows.append(el("p", "race-cosmetic-reward", "New personal best on " + R.course(state.trackId).name + ": " + fmt(me.time)));
+        syncChoices();
+      }
       setPanel(resultPanel);
       announce(
         "Race complete. You placed " +
@@ -1988,26 +2003,80 @@
       if(a.shieldTicks > 0){ctx.strokeStyle="#98eaff";ctx.lineWidth=3;ctx.beginPath();for(let i=0;i<6;i++){const a=i*TAU/6;if(i)ctx.lineTo(Math.cos(a)*37,Math.sin(a)*30);else ctx.moveTo(Math.cos(a)*37,Math.sin(a)*30);}ctx.closePath();ctx.stroke();}
       ctx.restore();
     }
-    function drawHero() {
+    const MEDALS = { 1: "gold", 2: "silver", 3: "bronze" };
+    function recordsKey() { return (opts.storageKey || "sm2.race.v1") + ".best"; }
+    function loadRecords() {
+      try {
+        const raw = JSON.parse(root.localStorage.getItem(recordsKey()) || "{}");
+        for (const t of R.tracks) {
+          const r = raw[t.id];
+          if (r && Number.isFinite(r.time) && r.time > 0 && Number.isInteger(r.position)) records[t.id] = { time: r.time, position: r.position };
+        }
+      } catch (_) {}
+    }
+    // A personal best is a finished three-lap race; the medal is the best place.
+    function recordBest(trackId, time, position) {
+      const old = records[trackId], faster = !old || time < old.time;
+      records[trackId] = { time: faster ? time : old.time, position: Math.min(position, old?.position ?? position) };
+      try { root.localStorage.setItem(recordsKey(), JSON.stringify(records)); } catch (_) {}
+      return faster;
+    }
+    function recordText(trackId, lead) {
+      const r = records[trackId];
+      return r ? lead + fmt(r.time) + " · " + (MEDALS[r.position] || "finisher") : "";
+    }
+    // The lobby stage: the chosen circuit in its own colors with a small field
+    // flying it, so changing circuit visibly changes the place.
+    function startHero() {
+      if (heroId || !hero || !active || view !== "lobby" || document.hidden) return;
+      heroId = root.requestAnimationFrame(heroTick);
+    }
+    function heroTick(now) {
+      heroId = 0;
+      if (!active || view !== "lobby" || document.hidden) return;
+      drawHero(now);
+      if (!calm()) heroId = root.requestAnimationFrame(heroTick);
+    }
+    function drawHero(now = 0) {
       if (!hero) return;
-      const h = hero.getContext("2d");
-      h.clearRect(0, 0, 780, 340);
-      const c = R.course(selected.trackId);
-      h.strokeStyle = c.edge + "33";
-      h.lineWidth = 3;
+      const h = hero.getContext("2d"), W = 780, H = 340, c = R.course(selected.trackId);
+      h.clearRect(0, 0, W, H);
+      // Region glow behind the circuit, tinted by the course's planet.
+      const glow = h.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, W / 2);
+      glow.addColorStop(0, c.planet + "40"); glow.addColorStop(1, c.planet + "00");
+      h.fillStyle = glow; h.fillRect(0, 0, W, H);
+      for (let i = 0; i < 28; i++) {
+        const tw = calm() ? .6 : .45 + .35 * Math.sin(now / 700 + i * 1.7);
+        h.fillStyle = "rgba(220,238,255," + tw.toFixed(2) + ")";
+        h.fillRect((i * 137) % W, (i * 61) % H, i % 5 ? 1.5 : 2.5, i % 5 ? 1.5 : 2.5);
+      }
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const g of c.segments) { x0 = Math.min(x0, g.x); x1 = Math.max(x1, g.x); y0 = Math.min(y0, g.y); y1 = Math.max(y1, g.y); }
+      const pad = 46, k = Math.min((W - pad * 2) / (x1 - x0), (H - pad * 2) / (y1 - y0)),
+        ox = (W - (x1 - x0) * k) / 2 - x0 * k, oy = (H - (y1 - y0) * k) / 2 - y0 * k,
+        map = (p) => [p.x * k + ox, p.y * k + oy];
       h.beginPath();
-      h.ellipse(390, 195, 290, 78, -0.14, 0, TAU);
-      h.stroke();
-      kart(
-        h,
-        { x: 413, y: 159, heading: -0.25, color: "#73ecff", boosting: true },
-        4.4,
-        true,
-      );
-      kart(h, { x: 150, y: 234, heading: -0.18, color: "#ffbb69" }, 1.7, true);
-      h.fillStyle = "#c7f47d";
-      h.font = "700 16px system-ui";
-      h.fillText("01", 508, 204);
+      c.segments.forEach((g, n) => h[n ? "lineTo" : "moveTo"](...map(g)));
+      h.closePath();
+      h.lineJoin = "round";
+      h.lineWidth = 18; h.strokeStyle = c.edge + "30"; h.stroke();
+      h.lineWidth = 8; h.strokeStyle = c.edge + "aa"; h.stroke();
+      h.lineWidth = 2; h.strokeStyle = "#eaf7ff55"; h.stroke();
+      const [sx, sy] = map(c.segments[0]);
+      h.fillStyle = c.accent; h.fillRect(sx - 3, sy - 14, 6, 28);
+      // Three pilots at different speeds, with a boost trail behind each.
+      const lap = now / (c.length < 5000 ? 5200 : 9000);
+      const field = [["#73ecff", 0, 1, 1.7], ["#ffbb69", .12, .93, 1.3], ["#c7f47d", .27, .88, 1.2]];
+      for (const [color, offset, speed, scale] of field.slice().reverse()) {
+        const f = calm() ? offset + .04 : offset + lap * speed;
+        for (let t = 7; t >= 0; t--) {
+          const p = R.at(c, c.length * (f - t * .006)), [tx, ty] = map(p);
+          h.fillStyle = color + Math.round(150 - t * 18).toString(16).padStart(2, "0");
+          h.beginPath(); h.arc(tx, ty, Math.max(1, 4.5 - t * .5), 0, TAU); h.fill();
+        }
+        const p = R.at(c, c.length * f), [px, py] = map(p);
+        kart(h, { x: px, y: py, heading: Math.atan2(p.ty, p.tx), color, boosting: true }, scale, true);
+      }
     }
     function updateIdentity(actor) {
       const own = actor.id === ownActor()?.id;
@@ -2471,6 +2540,7 @@
       } else {
         resize();
         ensureFrame();
+        startHero();
       }
     }
     function blur(e) {

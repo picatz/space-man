@@ -697,3 +697,33 @@ body.gamepad-active .race-root [data-for=key] { display: none; }
 @media (orientation: landscape) and (max-height: 560px) and (min-width: 600px) {
   .race-root .race-launch-bar .race-input-hint { display: none; }
 }
+
+/* Lobby stage: the hero canvas now flies the chosen circuit, so give it room on wide desktops. */
+@media (min-width: 900px) and (min-height: 861px) {
+  .race-root .race-hero { max-width: 100%; margin: 4px 0 6px; border-radius: 16px; background: radial-gradient(120% 90% at 50% 40%, #12223a, #0a1426 70%); border: 1px solid #2a4258; }
+}
+/* Medal tint on a circuit's best-time label. */
+.race-root .race-track[data-medal=gold] small { color: #ffd45e; }
+.race-root .race-track[data-medal=silver] small { color: #d6e6f2; }
+.race-root .race-track[data-medal=bronze] small { color: #e8a574; }
+.race-root .race-track[aria-pressed=true] { transform: translateY(-1px); box-shadow: 0 0 0 1px #c7f47d66, 0 6px 18px #0006; }
+@media (prefers-reduced-motion: no-preference) {
+  .race-root .race-track { transition: transform .14s ease, box-shadow .14s ease; }
+}
+
+/* Tall desktops have room: let the circuit cards breathe instead of leaving a dead band. */
+@media (min-width: 900px) and (min-height: 940px) {
+  .race-root .race-track { min-height: 84px; gap: 14px; }
+  .race-root .race-track canvas { width: 100px; height: 62px; flex-basis: 100px; }
+  .race-root .race-track strong { font-size: 14px; }
+  .race-root .race-track-list { gap: 10px; }
+  .race-root .race-track-description { font-size: calc(12px * var(--ui-scale, 1)); }
+}
+@media (min-width: 900px) and (min-height: 940px) {
+  .race-root .race-setup { align-self: stretch; display: flex; flex-direction: column; }
+  .race-root .race-setup .race-options { margin-top: auto; }
+}
+@media (min-width: 900px) and (min-height: 940px) {
+  .race-root .race-setup .race-track-list { flex: 1 1 auto; max-height: none; grid-auto-rows: minmax(84px, 1fr); }
+  .race-root .race-track canvas { width: 108px; height: 66px; flex-basis: 108px; }
+}
