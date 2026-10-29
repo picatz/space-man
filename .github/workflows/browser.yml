@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [action-buffer, characters, cosmetics, expedition, home, identity, invite-qr, journey, perspective, prism, racing-browser, simulated-relay, track-features, theme-browser]
+        suite: [action-buffer, characters, cosmetics, expedition, home, identity, invite-qr, journey, layout-qa, perspective, prism, racing-browser, simulated-relay, track-features, theme-browser]
         engine: [chromium, webkit]
     defaults:
       run:
