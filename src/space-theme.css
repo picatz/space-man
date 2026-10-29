@@ -618,3 +618,8 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 /* The friends drawer summary inherits the page font and wraps like body copy, not a 36px-tall line. */
 .arena-root .arena-online-panel > summary { font: 750 15px/1.35 var(--sm-font-body); min-height: 36px; padding-block: 6px; display: list-item; }
 @media (max-width: 480px) { .arena-root .arena-online-panel > summary { font-size: 14px; } }
+
+/* Orbit cards size to their content: a thumbnail and a name, no empty band underneath. */
+.arena-root .arena-stage-card { min-height: 0; padding-bottom: 9px; }
+.arena-root .arena-stage-name { padding-top: 7px; }
+.arena-root .arena-format-copy small { white-space: nowrap; }
