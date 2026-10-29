@@ -2788,20 +2788,30 @@ function takeoffPuff(p) {   // the push-off: a low fan of dust both ways from th
   const fx = p.x + p.w / 2, fy = p.y + p.h;
   for (let i = 0; i < 6; i++) { const d = i % 2 ? 1 : -1; spawnP(fx + d * 3, fy - 1, d * (0.8 + G.decorRng() * 1.4) - p.vx * 0.15, -(0.1 + G.decorRng() * 0.6), 16 + G.decorRng() * 8, 1.8 + G.decorRng() * 1.2, frostDust(palNow().trailMid), 0.04, false, 0); }
 }
-const landRings = [];   // render-side shock rings from heavy landings: { x, y, t0 (G.time), k }
-function landingSpray(p, impact) {   // dust sprays sideways along the deck, harder the bigger the drop; a big one rings
-  if (lessMotion()) return;
-  const k = clamp((impact - 4) / 10, 0, 1), fx = p.x + p.w / 2, fy = p.y + p.h, n = 4 + Math.round(k * 8);
-  for (let i = 0; i < n; i++) { const d = i % 2 ? 1 : -1; spawnP(fx + d * (4 + G.decorRng() * 6), fy - 1, d * (1 + k * 2.6) * (0.5 + G.decorRng() * 0.7), -(0.2 + G.decorRng() * (0.6 + k)), 18 + G.decorRng() * 10, 2 + G.decorRng() * 1.4, frostDust(palNow().trailMid), 0.06, false, 0); }
-  if (k > 0.6 && landRings.length < 4) landRings.push({ x: fx, y: fy, t0: G.time, k });
+// Shared-kit moments (src/fx.js): landings puff, stomps and shots flash, pickups sparkle, in the same look as Arena and
+// Star Circuit. A render-side list on the sim clock, { kind, x, y, t0 (G.time), life (s), color, scale, k }; 'ring' is
+// Run's own shock ring under a heavy landing. Ground-level moments draw under the actors, the rest over them.
+const FX = window.SpaceManFX, runFx = [], FX_GROUND = { land: 1, ring: 1 };
+function fxAt(kind, x, y, color, scale) {
+  if (runFx.length >= 32) runFx.shift();
+  runFx.push({ kind, x, y, t0: G.time, life: (kind === 'ring' ? 19 : FX.LIFE[kind] || 20) / 60, color, scale: scale || 1, k: scale || 1 });
 }
-function drawLandRings() {
-  for (let i = landRings.length - 1; i >= 0; i--) {
-    const r = landRings[i], u = (G.time - r.t0) / 0.32;
-    if (u >= 1 || u < 0) { landRings.splice(i, 1); continue; }
-    const e = 1 - (1 - u) * (1 - u), w = 14 + e * (34 + 26 * r.k);
-    ctx.globalAlpha = (1 - u) * 0.55; ctx.strokeStyle = palNow().trailHot; ctx.lineWidth = 2 * (1 - u) + 0.5;
-    ctx.beginPath(); ctx.ellipse(r.x, r.y, w, w * 0.18, 0, 0, TAU); ctx.stroke();
+function landingSpray(p, impact) {   // a dust puff along the deck, wider the bigger the drop; a big one also rings
+  if (lessMotion()) return;
+  const k = clamp((impact - 4) / 10, 0, 1), fx = p.x + p.w / 2, fy = p.y + p.h;
+  fxAt('land', fx, fy, frostDust(palNow().trailMid), 0.9 + k * 0.9);
+  if (k > 0.6) fxAt('ring', fx, fy, palNow().trailHot, k);
+}
+function drawRunFx(ground) {
+  const calm = lessMotion(), saver = !!settings.batterySaver;
+  for (let i = runFx.length - 1; i >= 0; i--) {
+    const f = runFx[i], u = (G.time - f.t0) / f.life;
+    if (u >= 1 || u < 0) { runFx.splice(i, 1); continue; }
+    if (!FX_GROUND[f.kind] !== !ground) continue;
+    if (f.kind !== 'ring') { FX.draw(ctx, f.kind, f.x, f.y, u, { color: f.color, scale: f.scale, seed: f.x * 0.13, calm, saver }); continue; }
+    const e = 1 - (1 - u) * (1 - u), w = 14 + e * (34 + 26 * f.k);
+    ctx.globalAlpha = (1 - u) * 0.55; ctx.strokeStyle = f.color; ctx.lineWidth = 2 * (1 - u) + 0.5;
+    ctx.beginPath(); ctx.ellipse(f.x, f.y, w, w * 0.18, 0, 0, TAU); ctx.stroke();
   }
   ctx.globalAlpha = 1;
 }
@@ -3236,6 +3246,7 @@ function resetRun(seed, replayable, world) {
   G.hudDuck = 0; G.hudFade = 1;
   G.flare.x = G.player.x - CFG.flareStartBehind; G.flare.prevX = G.flare.x; G.flare.speed = BANDS[0].flare;
   G.flareLive = false;   // the solo chase starts when the runner does (updateFlare)
+  runFx.length = 0;
   // Run Together shared-flare integrator (in-room only; spawn line is seed- and
   // player-independent so x0 is identical on every screen). synced=false makes the
   // first shared-flare frame fast-forward to the shared position (Play-Again continuity).
@@ -4047,6 +4058,7 @@ function killEnemy(e, method, interrupted) {
   popup(e.x, e.y - 10, '+' + pts + (mult > 1 ? ' ×' + mult : ''), '#FFE59A');
   if (interrupted) { G.score += CFG.scoreInterrupt; popup(e.x, e.y - 26, '+10 STOP', '#FFE59A'); }
   burst(e.x, e.y, 12, 2.4, 26, 3, 'rgba(78,240,122,0.95)', 0.18, 2);
+  fxAt('hit', e.x, e.y, method === 'stomp' ? '#9FF1FF' : '#FFE59A');   // the kit's hit: a white flash and a ring in the runner's cyan (stomp) or shot gold
   if (method === 'stomp' && rng() < CFG.killDropChance)
     G.pickups.push({ type: 'ammo', x: e.x, y: e.y, vy: -2, amt: CFG.killDropAmt, parachute: false, bob: 0, grabbed: false });
   if (method === 'stomp') { Audio.sfx.stomp(G.chain); G.freeze = 0.09; G.trauma = Math.min(1, G.trauma + 0.25); G.kickX = 0; G.kickY = -5; G.kickAt = G.time; buzz('heavy'); flags.taughtStomp = true; }   // kick down — you drove through it
@@ -4100,6 +4112,7 @@ function collisions() {
         const bonus = Math.round((CFG.scoreShard + Math.min(18, (G.shardStreak - 1) * 3)) * heatMul());
         G.score += bonus; popup(k.x, k.y, '+' + bonus + ' STAR', '#FFE59A');
         burst(k.x, k.y, 12, 2.6, 24, 2.4, 'rgba(159,241,255,.95)', 0, 3);
+        fxAt('pickup', k.x, k.y);
         Audio.sfx.ammo(false); buzz('select'); missionProgress('shard', 1);
         // Full-trail sweep: every shard of one trail, in one pass. A new trail
         // (or a miss that lets a later trail start) resets the count.
@@ -4980,7 +4993,7 @@ function render(alpha) {
   ctx.fillStyle = voidGrad;
   ctx.fillRect(iCamX - 40, G.groundY + 60, view.w + 80, 600);
   drawPlatforms(iCamX);
-  if (landRings.length) drawLandRings();
+  if (runFx.length) drawRunFx(true);
   drawPickups(iCamX);
   POW.drawWorld(iCamX);
   drawPBFlag();
@@ -5002,6 +5015,7 @@ function render(alpha) {
   POW.drawFront(alpha);              // saber, shield bubble, magnet tethers
   drawArrivalFront();
   drawParticles(alpha);
+  if (runFx.length) drawRunFx(false);
   drawHints(iCamX, iCamY);
   drawRunnerIdentity(alpha);
   ctx.restore();
