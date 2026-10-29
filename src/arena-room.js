@@ -27,7 +27,11 @@
       if(!active||!host||(!force&&now()-lastPublish<online.SNAPSHOT_MS))return;
       lastPublish=now();const bytes=host.packet(),snapshot=client.accept(bytes);
       if(snapshot){lastReceived=now();if(force||host.status!=='running'||host.state.phase==='over')present(snapshot);}
-      net.sendArena(bytes).catch(()=>{});changed();
+      // Peers without the item-drop capability get a same-revision variant that omits drops, so older builds still decode the fight.
+      const itemsCap=net._room&&net._room.caps&&net._room.caps.CAP_ARENA_ITEMS||0,old=host.state.items?roster().filter(r=>r.p!==1&&!(r.caps&itemsCap)).map(r=>r.p):[];
+      if(!old.length)net.sendArena(bytes).catch(()=>{});
+      else{const legacy=host.legacyPacket();for(const r of roster())if(r.p!==1)net.sendArena(old.includes(r.p)?legacy:bytes,r.p).catch(()=>{});}
+      changed();
     }
     // Friends who joined mid-match (or found every seat taken) take free fighter slots whenever the room is in its lobby.
     function seatLate(){if(host&&host.status==='lobby')net.seatWaiting(host.state.actors.filter(a=>!a.boss).length);}

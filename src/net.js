@@ -73,7 +73,8 @@
   // Arcade rooms are explicit modes, never inferred from capability alone.
   // Runner HELLO/WELCOME bytes stay unchanged; each arcade mode requires its
   // own invite bit, HELLO/WELCOME marker and negotiated capability.
-  const CAP_ARENA = 1 << 5, INV_ARENA = 0x10, MODE_ARENA = 1, A_ARENA = 0x40;
+  // Bit 15: this Arena peer decodes item-drop snapshots; hosts send everyone else a flagless variant.
+  const CAP_ARENA = 1 << 5, CAP_ARENA_ITEMS = 1 << 15, INV_ARENA = 0x10, MODE_ARENA = 1, A_ARENA = 0x40;
   // Prism catalog is an atomic race and journey revision. Legacy race bits
   // 6/7/8/11 and journey bits 9/12 are never advertised by these builds.
   // Appearance bit 10 remains independent; runner/Arena and PROTO stay stable.
@@ -94,7 +95,7 @@
     const flags = inv.flags & (INV_ARENA | INV_RACE | INV_JOURNEY);
     return flags === INV_JOURNEY ? 'journey' : flags === INV_RACE ? 'race' : flags === INV_ARENA ? 'arena' : flags ? 'invalid' : 'runner';
   };
-  const modeCaps = (o) => CAPS | modeCap(o);
+  const modeCaps = (o) => CAPS | modeCap(o) | (modeName(o) === 'arena' ? CAP_ARENA_ITEMS : 0);
   const modeMatches = (mode, h) => h.mode === modeByte({ mode }) && (!modeCap({ mode }) || !!(h.caps & modeCap({ mode })));
   const modeRejection = (o, peerMode) => o.mode === 'journey' || peerMode === MODE_JOURNEY ? INV_JOURNEY : o.mode === 'race' || peerMode === MODE_RACE ? INV_RACE : INV_ARENA;
   const modeError = () => new Error('This invite is for a different game mode. Open Star Expedition for journey rooms, Star Circuit for racing rooms, Arena for arena rooms or Run Together for runner rooms.');
@@ -3376,6 +3377,7 @@
           p: r.p, tag: r.tag, suit: r.suit, hat: r.hat, appearance: copyAppearance(r.appearance), role: r.role, spectator: r.role === ROLE_SPECTATOR,
           adjIdx: indexOrNone(r.adjIdx), nounIdx: indexOrNone(r.nounIdx),
           callsign: cs(r.adjIdx, r.nounIdx, r.p), unverified: !!r.unverified, dimmed: !!r.unverified, waiting: !!r.waiting,
+          caps: r.caps >>> 0,
           pubHex: r.pub ? hex(r.pub) : undefined,   // for the hide/block/kick sheet (§7); guests can't see peer pubs
         }); }
         return out.sort((a, b) => a.p - b.p);
@@ -3539,7 +3541,7 @@
     // Room-protocol seam (N2): additive over _n1 for the harness + N2b UI.
     _room: {
       ROLE_PLAYER, ROLE_SPECTATOR, PLAYER_CAP, SPECTATOR_CAP, CAPS, CALLSIGN_NONE,
-      caps: { CAP_CALLSIGN, CAP_SPECTATE, CAP_ROLECHANGE, CAP_ANTICHEAT, CAP_HOSTEPOCH, CAP_ARENA, CAP_RACE, CAP_JOURNEY, CAP_APPEARANCE },
+      caps: { CAP_CALLSIGN, CAP_SPECTATE, CAP_ROLECHANGE, CAP_ANTICHEAT, CAP_HOSTEPOCH, CAP_ARENA, CAP_ARENA_ITEMS, CAP_RACE, CAP_JOURNEY, CAP_APPEARANCE },
       arena: { A_ARENA, INV_ARENA, MODE_ARENA, ARENA_MAX, ARENA_CHUNK, ARENA_TTL, ARENA_ABSENT_GRACE, SEAL_QUEUE_MAX, arenaFragment, arenaReceive },
       race: { A_RACE, INV_RACE, MODE_RACE, RACE_MAX: ARENA_MAX, RACE_CHUNK: ARENA_CHUNK, RACE_TTL: ARENA_TTL, RACE_ABSENT_GRACE: ARENA_ABSENT_GRACE, SEAL_QUEUE_MAX, raceFragment, raceReceive: arenaReceive },
       journey: { A_JOURNEY, INV_JOURNEY, MODE_JOURNEY, MAX_BYTES: ARENA_MAX, fragment: (bytes, id, index) => arenaFragment(bytes, id, index, A_JOURNEY) },

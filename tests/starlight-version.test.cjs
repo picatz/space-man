@@ -55,7 +55,7 @@ test('race and journey advertise only their own atomic capability; runner/Arena 
   for (const mode of ['runner', 'arena', 'race', 'journey']) {
     const hub = relay(), c = peer(hub); t.after(() => c.close());
     await c.net.openRoom({ relayHost: 'relay.test', code: false, mode });
-    const caps = c.net.info().caps, modeCap = mode === 'race' ? 1 << 13 : mode === 'journey' ? 1 << 14 : mode === 'arena' ? 1 << 5 : 0;
+    const caps = c.net.info().caps, modeCap = mode === 'race' ? 1 << 13 : mode === 'journey' ? 1 << 14 : mode === 'arena' ? (1 << 5) | (1 << 15) : 0; // Arena also advertises item drops (bit 15)
     assert.equal(caps, 0x1f | (1 << 10) | modeCap); assert.equal(c.net._n1.PROTO, 6);
     assert.equal(caps & ((1 << 6) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 11) | (1 << 12)), 0);
   }
