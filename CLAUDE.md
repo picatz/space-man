@@ -63,8 +63,10 @@ failing one once before assuming a real regression, but never skip or loosen a t
 - **Adding or renaming a `src/` file:** add the `<script src>` to `index.html` (order matters) and the
   path to `SHELL` in `service-worker.js`. `tests/platform.test.cjs` enforces both and the harness reads
   load order from the page.
-- **Any change to a shipped asset:** bump `VERSION` in `service-worker.js` in the same commit, or
-  installed clients keep the old build.
+- **Do not bump `VERSION` in `service-worker.js`.** Deploys stamp it with a hash of the shipped shell
+  (`scripts/build-preview.cjs`), so any asset change installs a new build and PRs never conflict on
+  it. Locally the worker keeps the unstamped `v3`: use DevTools "Update on reload" if you test an
+  installed build on localhost.
 - **Wire format changes** need a protocol version consideration and an update to
   `docs/wire-protocol.md`; keep old-client compatibility in mind (shared invites and sessions persist).
 - The simulation is fixed-step and must be identical at any frame rate. Keep gameplay logic out of

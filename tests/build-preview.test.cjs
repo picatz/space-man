@@ -12,7 +12,7 @@ async function fixture(t) {
   for (const name of ['src', 'icons', 'screenshots', 'docs']) await fs.mkdir(path.join(source, name), { recursive: true });
   for (const [name, content] of Object.entries({
     'index.html': '<html><head><link rel="stylesheet" href="src/theme-2.css"></head><body><script src="src/build.js"></script><script>BUILD.storageKey("test")</script></body></html>',
-    'service-worker.js': 'throw Error("never executed")',
+    'service-worker.js': "const VERSION = 'v3-fixture';\nthrow Error('never executed')",
     'manifest.json': '{}', 'favicon.png': '',
   })) await fs.writeFile(path.join(source, name), content);
   return { dir, source, output: path.join(dir, 'output') };
@@ -99,4 +99,28 @@ test('static packaging still rejects overlapping directories', async (t) => {
   for (const output of [source, path.join(source, 'nested'), dir]) {
     await assert.rejects(copyProduction(source, output), /separate, non-nested directories/);
   }
+});
+
+test('the deployed worker VERSION is a hash of the shipped shell, so contributors never bump it', async (t) => {
+  const { dir, source } = await fixture(t);
+  await fs.writeFile(path.join(source, 'src/build.js'), 'BUILD');
+  const build = async (name) => { const out = path.join(dir, name); const version = await copyProduction(source, out);
+    return { version, worker: await fs.readFile(path.join(out, 'service-worker.js'), 'utf8') }; };
+  const first = await build('a'), same = await build('b');
+  assert.match(first.version, /^v3-fixture-[a-f0-9]{12}$/);
+  assert.equal(first.worker, `const VERSION = '${first.version}';\nthrow Error('never executed')`);
+  assert.equal(same.version, first.version, 'an unchanged shell keeps its cache');
+  await fs.writeFile(path.join(source, 'docs/notes.md'), '# docs are not shipped in the shell');
+  assert.equal((await build('c')).version, first.version);
+  await fs.writeFile(path.join(source, 'src/build.js'), 'BUILD 2');
+  const changed = await build('d');
+  assert.notEqual(changed.version, first.version, 'any src change installs a new worker');
+  assert.equal(await fs.readFile(path.join(source, 'service-worker.js'), 'utf8'), "const VERSION = 'v3-fixture';\nthrow Error('never executed')", 'the source is never rewritten');
+  await fs.writeFile(path.join(source, 'service-worker.js'), 'no version here');
+  await assert.rejects(build('e'), /exactly one const VERSION/);
+});
+
+test('the real worker declares exactly one stampable VERSION', async () => {
+  const text = await fs.readFile(path.join(__dirname, '..', 'service-worker.js'), 'utf8');
+  assert.equal([...text.matchAll(/const VERSION = '([^'\\]*)';/g)].length, 1);
 });
