@@ -8,16 +8,16 @@
   'use strict';
   // Lunar New Year (m*100+d) through 2030. Extend the table before it runs out.
   const LUNAR = Object.freeze({ 2026: 217, 2027: 206, 2028: 126, 2029: 213, 2030: 203 });
-  // Each row: flag (the key modes test), name, a short home tagline (tag) and a
+  // Each row: flag (the key modes test), stamp (its logbook entry), name, a short home tagline (tag) and a
   // present-tense line for screen readers, motif (the shared decor family), and when(month, day, date).
   const CALENDAR = Object.freeze([
-    Object.freeze({ flag: 'fw', name: 'Turnover', motif: 'fireworks', tag: 'Turnover · fireworks tonight.',
+    Object.freeze({ flag: 'fw', stamp: 'turnover', name: 'Turnover', motif: 'fireworks', tag: 'Turnover · fireworks tonight.',
       line: 'Turnover night. Fireworks over Orbital Dock.',
       when: (m, d) => (m === 12 && d === 31) || (m === 1 && d === 1) }),
-    Object.freeze({ flag: 'frost', name: 'Long Night', motif: 'snow', tag: 'Long Night · frosty visors.',
+    Object.freeze({ flag: 'frost', stamp: 'longnight', name: 'Long Night', motif: 'snow', tag: 'Long Night · frosty visors.',
       line: 'The Long Night. Frost on every visor.',
       when: (m, d) => m === 12 || (m === 1 && d <= 5) }),
-    Object.freeze({ flag: 'lunar', name: 'Lantern Week', motif: 'lanterns', tag: 'Lantern Week · lights up.',
+    Object.freeze({ flag: 'lunar', stamp: 'lanternweek', name: 'Lantern Week', motif: 'lanterns', tag: 'Lantern Week · lights up.',
       line: 'Lantern Week. Red lanterns over the Reach.',
       when: (m, d, date) => {
         const start = LUNAR[date.getFullYear()];
@@ -25,10 +25,10 @@
         const days = Math.floor((date - new Date(date.getFullYear(), ((start / 100) | 0) - 1, start % 100)) / 864e5);
         return days >= 0 && days < 7;
       } }),
-    Object.freeze({ flag: 'blossom', name: 'Bloom Equinox', motif: 'petals', tag: 'Bloom Equinox · in flower.',
+    Object.freeze({ flag: 'blossom', stamp: 'equinox', name: 'Bloom Equinox', motif: 'petals', tag: 'Bloom Equinox · in flower.',
       line: 'Bloom Equinox. The garden moons are flowering.',
       when: (m, d) => m === 3 && d >= 19 && d <= 21 }),
-    Object.freeze({ flag: 'dusk', name: 'Dusk Week', motif: 'lanterns', tag: 'Dusk Week · lanterns are out.',
+    Object.freeze({ flag: 'dusk', stamp: 'dusk', name: 'Dusk Week', motif: 'lanterns', tag: 'Dusk Week · lanterns are out.',
       line: 'Dusk Week. Old Flare dims and lanterns drift through the Reach.',
       when: (m, d) => m === 10 && d >= 24 }),
   ]);
@@ -49,7 +49,7 @@
     const m = date.getMonth() + 1, d = date.getDate();
     for (const row of CALENDAR) if (row.when(m, d, date)) {
       s[row.flag] = true;
-      s.events.push({ flag: row.flag, name: row.name, tag: row.tag, line: row.line, motif: row.motif });
+      s.events.push({ flag: row.flag, stamp: row.stamp, name: row.name, tag: row.tag, line: row.line, motif: row.motif });
     }
     if (typeof firstRunDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(firstRunDate)) {
       const years = date.getFullYear() - +firstRunDate.slice(0, 4);

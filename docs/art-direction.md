@@ -208,6 +208,11 @@ modes read `SpaceManSeasons.current()` and only decorate.
   pilot who waves back. They reward curiosity with a moment of joy and a
   logbook line, never power. Each one should be discoverable without a guide
   and repeatable once found.
+- **One logbook for the whole Reach.** The Records logbook (`DISCOVERIES` in
+  `index.html`) takes entries from every mode through
+  `SpaceManLogbook.discover(id)`: Untouched Orbit (win an Arena match without
+  losing a life), Photo Finish (win a Circuit race by 0.15 s or less), and a
+  stamp for each season, earned by finishing any game while it is on.
 
 To add an event, add a `CALENDAR` row (flag, name, tag, line, motif, `when`) and
 a test in `tests/seasons.test.cjs`; any mode that already paints the motif picks

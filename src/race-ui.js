@@ -1688,6 +1688,12 @@
         const receipt = onlineActive() ? root.SpaceManCosmetics.roundReceipt("race", opts.net.info().roomId, networkEpoch) : cosmeticSession + ":" + cosmeticRound;
         const found = receipt ? opts.onReward({ type: "race", id: receipt }) || [] : [];
         if (found.length) resultRows.append(el("p", "race-cosmetic-reward", "Found: " + found.map(id => root.SpaceManCosmetics.item(id)?.name || "").join(", ")));
+        root.SpaceManLogbook?.stampSeason();
+        // A photo finish: first across the line, the runner-up within 0.15 s.
+        const second = state.results.find((r) => r.position === 2 && r.time !== null);
+        const photo = me.position === 1 && me.time !== null && second && second.time - me.time <= 0.15 && root.SpaceManLogbook
+          ? root.SpaceManLogbook.discover("photo") : null;
+        if (photo) resultRows.append(el("p", "race-cosmetic-reward", "Logbook: " + photo.name));
       }
       setPanel(resultPanel);
       announce(

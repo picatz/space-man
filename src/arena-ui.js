@@ -1657,6 +1657,9 @@
         const receipt = onlineActive() ? root.SpaceManCosmetics.roundReceipt('arena', opts.net.info().roomId, Number(rootEl.dataset.epoch)) : cosmeticSession + ':' + cosmeticRound;
         const found = receipt ? opts.onReward({ type: 'arena', id: receipt }) || [] : [];
         if (found.length) resultText.textContent += ' Found: ' + found.map(id => root.SpaceManCosmetics.item(id)?.name || '').join(', ') + '.';
+        root.SpaceManLogbook?.stampSeason();
+        const flawless = won && !result.tie && human.deaths === 0 && root.SpaceManLogbook ? root.SpaceManLogbook.discover('flawless') : null;
+        if (flawless) resultText.textContent += ' Logbook: ' + flawless.name + '.';
       }
       syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent);
     }

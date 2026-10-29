@@ -2856,16 +2856,33 @@ const DISCOVERIES = [
   { id: 'loop',   name: 'BEST FRIEND',     glyph: '✦', hint: 'make your buddy proud.' },
   { id: 'sat',    name: 'LITTLE BEEPER',   glyph: '✧', hint: 'beep… beep…' },
   { id: 'lucky',  name: 'LUCKY STAR',      glyph: '★', hint: 'one in a very many is golden.' },
+  // Across the Reach: Orbital Arena and Star Circuit log here too (SpaceManLogbook).
+  { id: 'flawless', name: 'UNTOUCHED ORBIT', glyph: '◎', hint: 'win an arena match without losing a life.' },
+  { id: 'photo',  name: 'PHOTO FINISH',    glyph: '⚑', hint: 'win a star circuit race by a whisker.' },
+  // Season stamps (src/seasons.js): finish any game while the Reach celebrates.
+  { id: 'dusk',   name: 'DUSK WEEK',       glyph: '◈', hint: 'play while the lanterns are out, late october.' },
+  { id: 'longnight', name: 'THE LONG NIGHT', glyph: '❄', hint: 'play in the deep of december.' },
+  { id: 'turnover', name: 'TURNOVER',      glyph: '✺', hint: 'be here when the year turns.' },
+  { id: 'lanternweek', name: 'LANTERN WEEK', glyph: '◇', hint: 'play when the red lanterns rise.' },
+  { id: 'equinox', name: 'BLOOM EQUINOX',  glyph: '❀', hint: 'visit when the garden moons flower.' },
 ];
 const found = (id) => G.discoveries.indexOf(id) >= 0;
-function discover(id, toastText, glyph) {   // idempotent; entry persists even if the toast never lands
+function discover(id, toastText, glyph, quiet = false) {   // idempotent; entry persists even if the toast never lands
   const d = DISCOVERIES.find((x) => x.id === id);
   if (SHOT || !d || found(id)) return;
   G.discoveries.push(id);
-  persistAll();
+  saveJSON(LS.discoveries, G.discoveries);   // only the logbook: arcade modes log here without touching runner records
   queueToast(toastText || ('★ NEW DISCOVERY — ' + d.name), 'gold', glyph);
-  Audio.sfx.discover();
+  if (!quiet) Audio.sfx.discover();   // quiet: another mode owns the audio and says it in its own result
 }
+// Finishing any game during a season stamps it in the logbook, once per season.
+function stampSeason(quiet = false) { for (const e of SEASON.events || []) if (e.stamp) discover(e.stamp, null, null, quiet); }
+// Arena and Circuit log through this from their own result screens (quietly:
+// they own the audio); discover returns the entry only when newly found.
+window.SpaceManLogbook = {
+  discover(id) { const was = found(id); discover(id, null, null, true); return !was && found(id) ? DISCOVERIES.find((x) => x.id === id) : null; },
+  stampSeason() { stampSeason(true); },
+};
 // Milestone postcards — zero points; the sky is the reward.
 const POSTCARDS = {
   moon:   { m: 500,  text: 'YOU PASSED THE MOON' },
@@ -6816,6 +6833,7 @@ function showDeathCard() {
   finalizeDeath();
   if (sharedRunnerActive()) { finishSharedRunner(false); return; }
   if (expeditionRunnerActive()) { finishExpeditionRunner(false); return; }
+  stampSeason();
   G.mode = 'dead'; G.deadShownAt = G.time;
   cancelDeathAnim();
   input.deadIgnore = new Set(input.downIds);   // mash-guard (E9.6): fingers already down don't count as the retry tap

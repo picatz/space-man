@@ -48,3 +48,21 @@ test('modes read one shared state, and a cleared state is no season', () => {
   assert.equal(Seasons.set(s), s); assert.equal(Seasons.current().dusk, true);
   assert.equal(Seasons.set(null).dusk, false); assert.deepEqual(Seasons.current().events, []);
 });
+
+test('finishing a game in a season stamps the logbook once, and other modes log through SpaceManLogbook', () => {
+  const { client, relay } = require('./harness.cjs');
+  const c = client(relay());
+  const out = JSON.parse(c.run(`JSON.stringify((() => {
+    G.discoveries.length = 0;
+    SEASON = window.SpaceManSeasons.set(window.SpaceManSeasons.at(new Date(2026, 9, 29, 12)));
+    stampSeason(); stampSeason();
+    const first = window.SpaceManLogbook.discover('photo'), again = window.SpaceManLogbook.discover('photo');
+    const unknown = window.SpaceManLogbook.discover('nope');
+    const stamps = window.SpaceManSeasons.CALENDAR.map(r => r.stamp).filter(id => !DISCOVERIES.some(d => d.id === id));
+    return { found: G.discoveries.slice(), first: first && first.name, again, unknown, stamps, ids: new Set(DISCOVERIES.map(d => d.id)).size === DISCOVERIES.length };
+  })())`));
+  assert.deepEqual(out.found, ['dusk', 'photo']);
+  assert.equal(out.first, 'PHOTO FINISH'); assert.equal(out.again, null); assert.equal(out.unknown, null);
+  assert.deepEqual(out.stamps, [], 'every season has a logbook entry');
+  assert.equal(out.ids, true);
+});
