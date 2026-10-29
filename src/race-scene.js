@@ -320,6 +320,17 @@
       }
       for(const side of [-1,1]) ribbon(b,c,at,begin,end,side*(half+25),3,.3,edge);
     }
+    for (const [fraction, d] of c.strips || []) {
+      const p = at(c, fraction * c.length), h = Math.atan2(p.ty, p.tx),
+        x = p.x - p.ty * d, z = p.y + p.tx * d, gold = rgb("#ffd45e");
+      // A narrow gold lane with chevrons, brighter than the full-width pads.
+      b.box(x, 0.6, z, 60, 0.5, 26, shade(gold, 0.55), h);
+      for (let j = -1; j <= 1; j++) {
+        const f = j * 22, point = (u, v) => [x + Math.cos(h) * u - Math.sin(h) * v, 1.5, z + Math.sin(h) * u + Math.cos(h) * v];
+        b.quad(point(f - 8, 20), point(f - 1, 20), point(f + 11, 0), point(f + 4, 0), gold);
+        b.quad(point(f - 8, -20), point(f - 1, -20), point(f + 11, 0), point(f + 4, 0), gold);
+      }
+    }
     for (const [fraction, d] of c.hazards || []) {
       const p = at(c, fraction * c.length), h = Math.atan2(p.ty, p.tx),
         x = p.x - p.ty * d, z = p.y + p.tx * d, hot = rgb("#ff7a3d");

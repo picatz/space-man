@@ -137,6 +137,7 @@
       ramps: [.2, .7],
       rows: [.34, .86],
       hazards: [[.12, -52], [.3, 52], [.5, -44], [.76, 48]],
+      strips: [[.16, 44], [.4, -44], [.56, 44], [.88, -44]],
     },
     {
       id: "neon",
@@ -154,6 +155,7 @@
       ramps: [.4],
       rows: [.26, .64],
       hazards: [[.13, 44], [.22, -40], [.36, 42], [.52, -44], [.68, 40], [.8, -42]],
+      strips: [[.16, -40], [.28, 40], [.44, 40], [.6, -40], [.76, -40], [.92, 40]],
     },
     {
       id: "nebula",
@@ -171,6 +173,7 @@
       ramps: [.3, .78],
       rows: [.52],
       hazards: [[.06, -52], [.2, 52], [.38, -50], [.58, 52], [.72, -46], [.95, 48]],
+      strips: [[.12, 48], [.3, -48], [.46, 48], [.64, -48], [.84, 48]],
     },
   ]);
   const colors = freeze([
@@ -723,6 +726,10 @@
     // Route deliberately through optional lines, with smooth look-ahead rather
     // than teleporting onto a pickup. These choices use only public state.
     if (catalog.coins.length && n.s >= 115 && n.s < c.length*.115+32) lane = 44;
+    // Lane strips pull CPUs toward the racing line unless they are on Chill.
+    if (state.difficulty !== "easy")
+      for (const [f, d] of c.strips || [])
+        if (n.s >= c.length*f-170 && n.s < c.length*f+10) lane = d > 0 ? 40 : -40;
     for (const hazard of catalog.hazards || [])
       if (n.s >= hazard.s-190 && n.s < hazard.s+30) lane = hazard.d > 0 ? -40 : 40;
     for (const ramp of catalog.ramps)
@@ -994,6 +1001,18 @@
         )
       ) {
         a.padTicks = 45;
+        a.padCooldown = 95;
+        state.events.push({ type: "pad", id: a.id });
+      } else if (
+        c.strips && !a.offroad && !a.drifting && !a.slowTicks && a.padCooldown === 0 &&
+        c.strips.some(([f, d]) =>
+          (Math.abs(angle((n.s / c.length - f) * TAU)) * c.length) / TAU < 23 &&
+          Math.abs(-(a.x - n.x) * n.ty + (a.y - n.y) * n.tx - d) < 26)
+      ) {
+        // Narrow racing-line strip: the pad boost plus a boost-reserve refill for
+        // committing to the lane. Both fit the existing wire fields.
+        a.padTicks = 45;
+        a.fuel = Math.min(100, a.fuel + 12);
         a.padCooldown = 95;
         state.events.push({ type: "pad", id: a.id });
       }

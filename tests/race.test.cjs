@@ -852,3 +852,26 @@ test("debris hazards slow a kart that drives through them, shields absorb them, 
   assert.ok(blocked.state.events.some(e => e.type === "block"));
   assert.equal(blocked.a.slowTicks, 0);
 });
+
+test("lane strips pay out only inside their narrow lane, and the original tracks have none", () => {
+  for (const id of ["aurora", "neon", "nebula"]) {
+    const c = Race.course(id);
+    assert.ok(c.strips.length >= 4, id + " has strips");
+    for (const [f, d] of c.strips) assert.ok(Math.abs(d) + 30 < c.width / 2, id + " strip stays on the road");
+  }
+  assert.equal(Race.course("starlight").strips, undefined);
+  const c = Race.course("aurora"), [f, d] = c.strips[0], p = Race.at(c, f * c.length);
+  const hit = (lateral) => {
+    const state = playing({ trackId: "aurora" }), a = state.actors[0];
+    a.fuel = 50;
+    place(a, p, { lateral, speed: 4 });
+    Race.step(state);
+    return a;
+  };
+  const inLane = hit(d);
+  assert.equal(inLane.padTicks, 45);
+  assert.ok(inLane.fuel > 55, "a strip refills boost reserve");
+  assert.equal(inLane.padCooldown, 95);
+  assert.equal(hit(-d).padTicks, 0, "the opposite side of the road does not trigger it");
+  assert.ok(hit(-d).fuel < 55, "and refills nothing");
+});
