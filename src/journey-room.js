@@ -47,7 +47,7 @@
     function sync(){if(host){host.syncRoster(roster(),now());publish(true);}changed();}
     function beat(){
       if(!active)return;const t=now();
-      if(host&&!connection){acc+=Math.min(100,Math.max(0,t-lastBeat));let steps=0;while(acc>=1000/60&&steps++<6){acc-=1000/60;const before=host.epoch,wasBarrier=host.phase==='barrier';host.step(t);if(wasBarrier&&host.phase==='running'&&pauseAfterBarrier){host.pause(true);pauseAfterBarrier=false;}if(host.epoch!==before){net.setJourneyRoleLock(false);acc=0;break;}presentHostTick();}net.setJourneyRoleLock(host.phase!=='lobby'&&host.phase!=='barrier');publish();}
+      if(host&&!connection){acc+=Math.min(100,Math.max(0,t-lastBeat));let steps=0;while(acc>=1000/60&&steps++<6){acc-=1000/60;const before=host.epoch,wasBarrier=host.phase==='barrier';host.step(t);if(wasBarrier&&host.phase==='running'&&pauseAfterBarrier){host.pause(true);pauseAfterBarrier=false;}if(host.epoch!==before){net.setJourneyRoleLock(false);acc=0;break;}presentHostTick();}const open=host.phase==='lobby'||host.phase==='barrier';net.setJourneyRoleLock(!open);if(open)net.seatWaiting();publish();}
       lastBeat=t;if(localRunnerDone&&client.current?.mode==='runner'&&lastRunnerSample&&t-lastInput>100)submit({...lastRunnerSample,state:(lastRunnerSample.state||8)|32});if(client.current?.phase==='barrier'&&t-lastReady>250)sendReady();
       if(pendingRole!==null&&client.current?.phase==='barrier'&&t-lastRoleAttempt>=1500){lastRoleAttempt=t;const value=pendingRole;pendingRole=null;net.setRole(value).then(ok=>{if(!ok){pendingRole=value;changed();}});}
       if(!host&&t-lastReceived>1500)changed();

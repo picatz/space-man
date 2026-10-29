@@ -130,8 +130,11 @@ their same seat, then receive a did-not-finish result.
 
 The host's pause applies to everyone. A guest's menu only releases their own
 controls. Keep the host tab open; a suspended host pauses the race and closing
-it ends the room. New mid-race arrivals watch until the next lobby. There is no
-host migration or page-reload race restoration. Local CPU racing still works
+it ends the room. New mid-race arrivals (and anyone who finds the grid full) watch with a place in
+a first-come queue and take a free racer seat as soon as the room is back in its lobby. There is no
+host migration. A guest's reload rejoins its reserved seat under the same key; a
+host's reload reopens the same room in its lobby (the race in progress is lost) and
+waiting racers reconnect on their own. Local CPU racing still works
 without a connection. The shared room has no voice or text chat.
 
 Verification: Node authority/codec/transport/coordinator tests and separate

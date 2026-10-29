@@ -93,6 +93,12 @@ edge of space. Double jump and dash to recover; each spacefarer has three lives.
   The visible movement pod matches its touch area. Controls mirror for left-handed
   play, clear safely on rotation/interruption and leave Pause directly accessible
 
+**Item drops (local matches).** Every 9-15 seconds a cell lands on a platform top (two
+at most, seeded so replays match): green **Repair Core** heals 30%, cyan **Aegis Cell**
+grants four seconds of shielding, amber **Surge Cell** powers pulses (+50% damage, +25%
+knockback) for twelve seconds. Walk into one to claim it; unclaimed cells expire. Items are
+opt-in in the engine (`create({ items: true })`) and are not yet enabled in online rooms.
+
 **2 Players (same device, offline).** In the arena setup pick **2 Players**, then
 P2 opts in with a join prompt (press `.` or `/`, or A on a controller). It works
 with all three formats: **2P Duel** (P1 vs P2), **free-for-all** (P1 + P2 + two CPUs)
@@ -123,8 +129,9 @@ the next lobby, where they can request a player seat.
 The host browser runs all combat. Guests send inputs and display authoritative
 snapshots, so relay latency affects guest responsiveness. Host pause or connection
 loss freezes the shared match; guest menus release controls while play continues.
-Same-tab reconnect keeps a seat for a short grace period. Host leave/reload ends
-the room; no host migration is claimed. [Rules, limits and tests](docs/arena-online.md).
+Same-tab reconnect, or a guest's page reload, keeps a seat for a short grace period. A host's reload brings
+the same room back in its lobby and the crew reconnects on its own; host leave ends the room and no host
+migration is claimed. [Rules, limits and tests](docs/arena-online.md).
 
 Run Together continues to be the existing shared-course runner. Leave its room
 explicitly before opening Arena. Arena matches do not affect runner scores or
@@ -171,8 +178,8 @@ Friend rooms support up to four racers plus four watchers, with CPUs filling
 the five-kart grid. The host owns laps, collisions and results, and pauses the
 whole race when stepping away. Guests can take a local pit-stop menu. A lost
 connection releases controls and reserves the seat for ten seconds, then marks
-it unfinished. New arrivals watch until the next lobby. There is no host
-migration or page-reload restoration. Racing does not change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
+it unfinished. A guest's page reload rejoins that seat automatically. New arrivals watch the current race and
+take the next free seat when it ends. A host's reload reopens the room in its lobby. There is no host migration. Racing does not change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
 
 ## Daily Course and challenges
 

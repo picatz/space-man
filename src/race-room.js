@@ -9,7 +9,8 @@
       sim = root.SpaceManRace;
     const social = root.SpaceManRoomSocial,
       lastRoom = opts.lastRoom || null;
-    let votes = null;
+    let votes = null,
+      config = null;
     let host = null,
       client = online.createClient(),
       active = false,
@@ -119,15 +120,28 @@
       net.sendRace(bytes).catch(() => {});
       changed();
     }
+    // Friends who joined mid-race (or found every grid slot taken) take free
+    // pilot seats whenever the room is back in its lobby.
+    function seatLate() {
+      if (host && host.status === "lobby") net.seatWaiting();
+    }
+    // The tab-scoped seat token (a guest's key, or a host's room plus its
+    // rules) follows every roster change.
+    function remember() {
+      if (opts.resume && active) opts.resume.save(host ? config : undefined);
+    }
     function sync() {
       if (host) {
+        seatLate();
         host.syncRoster(roster(), now());
         publish(true);
       }
+      remember();
       if (votes) votes.evaluate();
       changed();
     }
     function cleanup(leave = true) {
+      if (opts.resume) opts.resume.clear();
       if (votes) votes.reset();
       serial++;
       active = false;
@@ -172,6 +186,11 @@
               changed();
             }
           }
+        } else if (event === "welcomed" && !host && data && data.restarted) {
+          // The host reloaded: its authority restarts in the lobby.
+          client = online.createClient();
+          connection = "";
+          sync();
         } else if (
           [
             "join",
@@ -221,7 +240,7 @@
         if (active && !host && now() - lastReceived > 1500) changed();
       }, 50);
     }
-    async function hosting(config) {
+    async function hosting(rules, resumeToken) {
       if (active || busy || net.active) return false;
       const mine = ++serial;
       busy = true;
@@ -245,14 +264,19 @@
                   ? opts.baseUrl()
                   : opts.baseUrl,
             },
+            resumeToken
+              ? { resume: resumeToken, region: resumeToken.region || undefined, relayHost: resumeToken.relayHost || undefined }
+              : {},
           ),
         );
         if (mine !== serial) return false;
-        host = online.createHost(config);
+        config = Object.assign({}, rules);
+        host = online.createHost(rules);
         active = true;
         busy = false;
         host.syncRoster(roster(), now());
         publish(true);
+        remember();
         changed();
         return true;
       } catch (e) {
@@ -264,7 +288,7 @@
         return false;
       }
     }
-    async function join(target, role, trustedPayload = false) {
+    async function join(target, role, trustedPayload = false, resumeKey) {
       if (active || busy || net.active) return false;
       const mine = ++serial;
       busy = true;
@@ -317,11 +341,12 @@
           Object.assign(
             {},
             typeof opts.identity === "function" ? opts.identity() : {},
-            { mode: "race", role: role === 1 ? 1 : 0 },
+            { mode: "race", role: role === 1 ? 1 : 0, resumeKey: resumeKey || undefined },
           ),
         );
         if (mine !== serial) return false;
         if (codeRoom && lastRoom) lastRoom.save(codeRoom);
+        if (opts.resume) opts.resume.save();
         active = true;
         busy = false;
         lastReceived = now();
@@ -378,9 +403,13 @@
         }
       }
     }
-    function configure(config) {
+    function configure(next) {
       if (!host) return false;
-      const ok = host.configure(config);
+      const ok = host.configure(next);
+      if (ok) {
+        config = Object.assign({}, config, next);
+        remember();
+      }
       publish(true);
       return ok;
     }
@@ -408,6 +437,7 @@
       if (!host) return false;
       host.lobby();
       net.setRaceRoleLock(false);
+      seatLate();
       host.syncRoster(roster(), now());
       publish(true);
       return true;

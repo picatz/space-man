@@ -43,7 +43,8 @@ test('arena mode is explicit; runner codecs stay protocol-6 byte compatible', as
   assert.equal(host.net.info().cap, 4); assert.equal(host.net.info().specCap, 4);
   assert.equal(host.net.peekInvite(invite).mode, 'arena');
   assert.equal(host.net._n1.invite.decodeInvite(invite).inv.flags & H.INV_ARENA, H.INV_ARENA);
-  assert.equal(host.net.resumeToken(), null); assert.equal(guest.net.resumeToken(), null);
+  assert.equal(host.net.resumeToken().mode, 'arena', 'an arena host keeps a room token for a reload');
+  assert.equal(guest.net.resumeToken().mode, 'arena', 'a guest keeps a seat token for a reload');
   const hello = F.encHello(F.makeScratch(), { tag: 'ABC', suit: 0, hat: 0, wantP: 0, proof16: new Uint8Array(16) });
   assert.equal(hello.length, 43); assert.equal(F.decHello(hello).mode, 0);
   assert.equal(F.decHello(hello).caps, host.net._room.CAPS);
@@ -243,6 +244,30 @@ test('arena hard caps bound player and spectator seats; runner rooms cannot use 
   await runner.net.openRoom({ relayHost: 'relay.test', code: false });
   assert.equal(await runner.net.sendArena(bytes(18)), false); assert.equal(runner.net.setArenaRoleLock(true), false);
   assert.equal(runner.net.info().cap, 32); assert.equal(runner.net.info().specCap, 16);
+});
+
+test('a friend who finds every seat taken watches in a first-come queue and takes the next free seat', async (t) => {
+  const { host, guests, join } = await room(t, { players: 3 });
+  assert.equal(host.net.info().players, 4);
+  const first = await join(0), second = await join(0);
+  for (const g of [first, second]) {
+    assert.equal(g.net.info().role, 1, 'admitted as a watcher rather than turned away');
+    assert.equal(g.net.info().waiting, true, 'and knows it is queued');
+  }
+  assert.equal(host.net.roster().filter((r) => r.waiting).map((r) => r.p).join(), [first.net.info().myP, second.net.info().myP].join());
+  assert.equal(host.net.seatWaiting(), 0, 'no free seat yet');
+  host.net.setArenaRoleLock(true);
+  assert.equal(await host.net.kick(guests[0].net.info().myP), true);
+  await until(() => host.net._n1.session().counts(true).players === 3, 'a seat freed');
+  assert.equal(host.net.seatWaiting(), 0, 'a running match keeps the queue waiting');
+  host.net.setArenaRoleLock(false);
+  assert.equal(host.net.seatWaiting(), 1, 'the lobby seats one');
+  await until(() => first.net.info().role === 0, 'the first in line plays');
+  assert.equal(first.net.info().waiting, false);
+  assert.equal(second.net.info().role, 1); assert.equal(second.net.info().waiting, true, 'the next in line keeps their place');
+  assert.equal(await second.net.setRole(1), true, 'asking to watch leaves the queue');
+  await until(() => !host.net.roster().some((r) => r.waiting), 'queue empty');
+  assert.equal(second.net.info().waiting, false);
 });
 
 test('immediately awaited sends cannot strand a new pending input between pump completions', async (t) => {

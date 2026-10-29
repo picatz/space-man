@@ -14,8 +14,11 @@ Rooms hold up to four players and four spectators. The host chooses Duel (up to
 two players), Free-for-all or Teams, and one of the existing three stages. Empty
 fighter slots use CPUs. Team assignments are shown before launch; the host can
 switch a player’s team, swapping a member back when the destination is full.
-Friendly fire is disabled. Joining during a round means watching until the host
-returns everyone to the lobby; then spectators can request a player seat.
+Friendly fire is disabled. Joining during a round (or when every player seat is
+taken) means watching with a place in a first-come queue. When the room is back in
+its lobby, including the lobby a rematch passes through, queued friends take any
+free fighter slots for the current format, oldest first. A watcher can join or
+leave the queue mid-match with the same seat button.
 
 Spectators receive real shared combat, stocks and results with no invisible actor.
 Previous/Next switches the watched fighter. Guests’ menus release their controls
@@ -74,6 +77,14 @@ Hit-stop, screen shake, KO slow-motion, squash and the edge-danger cue are local
 presentation only: hit-stop and slow-motion run in local matches, never in
 authoritative online rooms, so they cannot desynchronize anyone.
 
+## Item drops (not yet online)
+
+`Arena.create({ items: true })` adds `state.items = { nextTick, serial, list }` and an
+optional `surge` tick counter on actors; `restore()` validates both strictly and rejects
+them on states created without items. Online rooms do not pass the option, so the wire
+format and snapshots are unchanged. Enabling items in a room needs the host to carry the
+flag in its start config (a protocol version decision) and clients to render `item-*` events.
+
 ## Disconnects and lifecycle
 
 - Lost guest input becomes neutral; same-tab socket reconnection retains identity
@@ -84,8 +95,13 @@ authoritative online rooms, so they cannot desynchronize anyone.
 - Host connection loss pauses authority; Resume/Start stay disabled until connected
 - A hidden/paused host freezes the match; no automatic host migration occurs
 - Explicit host leave ends the room for everyone; guest leave does not
-- Host reload ends the match. Arena does not persist a running match or room key
-  in browser storage. Reopening an invite joins the next available role
+- Host reload ends the match but not the room: the host's tab-scoped token reopens
+  the same room, invite and code in its lobby with the saved rules, and guests who
+  were waiting (the two-minute host-away grace) are carried in without touching
+  anything. A running match is not persisted. A guest's reload (or a phone that evicts the tab) rejoins automatically
+  under the same key from a tab-scoped seat token, so within the reserve window
+  the host hands back the same fighter mid-match; later it is an ordinary join,
+  queued for the next lobby. Leaving on purpose clears the token
 - Leaving/cancelling removes arena listeners and timers, releases inputs, and
   restores the runner without changing its records or actor
 
