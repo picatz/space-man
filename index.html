@@ -2867,11 +2867,15 @@ const DISCOVERIES = [
   { id: 'flawless', name: 'UNTOUCHED ORBIT', glyph: '◎', hint: 'win an arena match without losing a life.' },
   { id: 'photo',  name: 'PHOTO FINISH',    glyph: '⚑', hint: 'win a star circuit race by a whisker.' },
   // Season stamps (src/seasons.js): finish any game while the Reach celebrates.
-  { id: 'dusk',   name: 'DUSK WEEK',       glyph: '◈', hint: 'play while the lanterns are out, late october.' },
-  { id: 'longnight', name: 'THE LONG NIGHT', glyph: '❄', hint: 'play in the deep of december.' },
-  { id: 'turnover', name: 'TURNOVER',      glyph: '✺', hint: 'be here when the year turns.' },
-  { id: 'lanternweek', name: 'LANTERN WEEK', glyph: '◇', hint: 'play when the red lanterns rise.' },
-  { id: 'equinox', name: 'BLOOM EQUINOX',  glyph: '❀', hint: 'visit when the garden moons flower.' },
+  { id: 'dusk',   name: 'HALLOWEEN',       glyph: '◈', hint: 'play while the pumpkins are out, late october.' },
+  { id: 'harvest', name: 'THANKSGIVING',   glyph: '❦', hint: 'drop by for the harvest, late november.' },
+  { id: 'longnight', name: 'WINTER HOLIDAYS', glyph: '❄', hint: 'play when the snow falls in december.' },
+  { id: 'turnover', name: 'NEW YEAR',      glyph: '✺', hint: 'be here when the year turns.' },
+  { id: 'valentine', name: 'VALENTINE’S DAY', glyph: '♥', hint: 'play when the hearts float, mid february.' },
+  { id: 'lanternweek', name: 'LUNAR NEW YEAR', glyph: '◇', hint: 'play when the red lanterns rise.' },
+  { id: 'clover', name: 'ST. PATRICK’S DAY', glyph: '☘', hint: 'try your luck in mid march.' },
+  { id: 'equinox', name: 'SPRING EQUINOX', glyph: '❀', hint: 'visit when the garden moons flower.' },
+  { id: 'july4',  name: 'FOURTH OF JULY',  glyph: '✷', hint: 'watch the fireworks in early july.' },
 ];
 const found = (id) => G.discoveries.indexOf(id) >= 0;
 function discover(id, toastText, glyph, quiet = false) {   // idempotent; entry persists even if the toast never lands
@@ -9854,6 +9858,12 @@ function applySeasonTagline() {
   el.textContent = e ? e.tag : 'Small suit. Big universe.';
   el.title = e ? e.line : '';
   el.classList.toggle('is-season', !!e);
+  // The home's sky takes on the season too (src/home.css), and the hero repaints with its decor.
+  const home = document.getElementById('ovAttract');
+  if (home && (home.dataset.season || '') !== (e ? e.motif : '')) {
+    if (e) home.dataset.season = e.motif; else delete home.dataset.season;
+    if (home.classList.contains('show') && window.SpaceManHome) { window.SpaceManHome.render(equippedAppearance()); window.SpaceManHome.animate(); }
+  }
 }
 applySeasonTagline();
 function frostDust(c) { return SEASON.frost ? 'rgba(216,240,255,0.7)' : c; }
