@@ -867,7 +867,7 @@
           <button class="home-mode home-arena" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends."><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Orbital Arena</span><span class="home-mode-caption" aria-hidden="true">Bump, dodge, KO.</span></button>
           <button class="home-mode home-race" id="btnRace" aria-label="Star Circuit. Arcade hover racing."><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Star Circuit</span><span class="home-mode-caption" aria-hidden="true">Catch a boost</span></button>
         </div>
-        <button class="home-run-together" id="btnTogether">Run Together <span>Shared-course runner</span><b aria-hidden="true">↗</b></button>
+        <button class="home-run-together" id="btnTogether" aria-label="Play together. Run, battle or race with friends. Share a code or QR."><i class="home-together-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2a5 5 0 0 1 5 4.8v1"/></svg></i><span class="home-together-text"><strong>Play together</strong><em>Any game with friends · code or QR</em></span><b aria-hidden="true">↗</b></button>
       </section>
       <div id="challengeBanner" class="challenge-banner" style="display:none;"></div>
     </main>
@@ -9359,7 +9359,7 @@ $('btnQuit').onclick = () => {
 $('btnAgain').onclick = () => tryRestart();
 $('btnInitialsOk').onclick = () => commitInitials();
 // --- Run Together wiring ---
-$('btnTogether').onclick = () => openTogether();
+$('btnTogether').onclick = () => (typeof openPlayTogether === 'function' ? openPlayTogether() : openTogether());
 $('btnCreateRoom').onclick = () => openRoomFlow();
 $('btnJoinGo').onclick = () => submitJoin();
 $('btnRejoinLast').onclick = () => { const c = $('btnRejoinLast').dataset.code; if (!c) return; $('joinInput').value = c; submitJoin(); };

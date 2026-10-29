@@ -90,8 +90,14 @@
 #ovAttract .home-mode .mode-link::before { display: none; content: none; }
 #ovAttract .home-mode .mode-link::after { display: none; }
 .home-mode > span:not(.mode-link) { position: absolute; left: 3px; right: 3px; bottom: 8px; color: #a7c3d5; font: 450 calc(11px * var(--ui-scale, 1))/1.1 var(--sm-font-body); text-align: center; pointer-events: none; }
-#ovAttract .home-run-together { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; padding: 10px 1px 3px; background: transparent; border: 0; color: #bcdbe8; font: 650 calc(11px * var(--ui-scale, 1))/1.4 var(--sm-font-body); text-align: left; cursor: pointer; }
-.home-run-together span { color: #8fabbf; font-weight: 450; }.home-run-together b { margin-left: auto; color: #c4e4ef; font-size: 16px; }
+#ovAttract .home-run-together { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 62px; margin-top: 10px; padding: 10px 16px 10px 12px; background: linear-gradient(135deg, #17435a 0%, #232e5a 100%); border: 1px solid #5fc3de88; border-radius: 16px; color: #effbff; font: 650 calc(12px * var(--ui-scale, 1))/1.35 var(--sm-font-body); text-align: left; cursor: pointer; box-shadow: 0 8px 22px #02081a66, inset 0 1px 0 #ffffff1c; transition: transform .15s ease, border-color .15s ease; }
+#ovAttract .home-run-together:hover, #ovAttract .home-run-together:focus-visible { transform: translateY(-1px); border-color: #9ff1ffcc; }
+#ovAttract .home-together-icon { display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; background: #9ff1ff24; border: 1px solid #9ff1ff66; }
+.home-together-icon svg { width: 22px; height: 22px; fill: none; stroke: #9ff1ff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.home-together-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.home-together-text strong { font: 800 calc(15px * var(--ui-scale, 1))/1.2 var(--sm-font-body); color: #ffffff; }
+.home-together-text em { font-style: normal; font-weight: 450; color: #b7d6e6; font-size: calc(11px * var(--ui-scale, 1)); }
+.home-run-together > b { margin-left: auto; color: #c4e4ef; font-size: 16px; }
 #ovAttract #btnDaily { display: flex; align-items: center; gap: 10px; width: 100%; margin: 14px 0 0; min-height: 56px; padding: 11px 0; border: 0; border-top: 1px solid #9abfd529; border-bottom: 1px solid #9abfd529; border-radius: 0; background: transparent; color: #dbeaf5; font: 650 12px/1.4 var(--sm-font-body); text-align: left; box-shadow: none; }
 #ovAttract #btnDaily .home-daily-icon { font-size: 29px; color: #ffd084; width: 29px; flex-shrink: 0; }
 #ovAttract #btnDaily .daily-theme { display: block; color: #9dbace; font: 450 calc(10px * var(--ui-scale, 1))/1.4 var(--sm-font-body); letter-spacing: 0; text-transform: capitalize; }
@@ -108,7 +114,7 @@
   #ovAttract .home-mode:hover:not(:active) { transform: translateY(-3px); border-color: #a3d6ec70; }
   #ovAttract #btnExpedition:hover { background: #ffe0a2; box-shadow: 0 4px 0 #9e713c,0 8px 28px #ffbe5f28; }
   #ovAttract #btnExpeditionFriends:hover,#ovAttract #btnWardrobe:hover { background: #28435a; }
-  #ovAttract #btnDaily:hover,#ovAttract #attractRow .btn:hover,#ovAttract .home-run-together:hover { color: #effbff; background: transparent; box-shadow: none; }
+  #ovAttract #btnDaily:hover,#ovAttract #attractRow .btn:hover { color: #effbff; background: transparent; box-shadow: none; }
 }
 @media (max-width: 759px) and (min-height: 561px) {
   #ovAttract { --home-pad-x: 20px; --home-pad-y: 8px; }
