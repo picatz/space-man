@@ -14,8 +14,11 @@ Rooms hold up to four players and four spectators. The host chooses Duel (up to
 two players), Free-for-all or Teams, and one of the existing three stages. Empty
 fighter slots use CPUs. Team assignments are shown before launch; the host can
 switch a player’s team, swapping a member back when the destination is full.
-Friendly fire is disabled. Joining during a round means watching until the host
-returns everyone to the lobby; then spectators can request a player seat.
+Friendly fire is disabled. Joining during a round (or when every player seat is
+taken) means watching with a place in a first-come queue. When the room is back in
+its lobby, including the lobby a rematch passes through, queued friends take any
+free fighter slots for the current format, oldest first. A watcher can join or
+leave the queue mid-match with the same seat button.
 
 Spectators receive real shared combat, stocks and results with no invisible actor.
 Previous/Next switches the watched fighter. Guests’ menus release their controls

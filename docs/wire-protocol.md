@@ -693,6 +693,17 @@ rejection. A guest switching *to* spectator MAY stop sending PRES immediately (a
 and MUST NOT resume before the ack; a guest switching *to* player MUST wait for the roster
 ack before sending PRES, or it will be struck for `spectator-pres`.
 
+**Arcade seat queue (no wire change).** In arena, race and journey rooms a spectator's
+request for a player seat that cannot be granted now (a match holds the role lock, or every
+player seat is taken) is answered with the same single-entry rejection, but the host also
+queues that key, first come first served. A HELLO asking for a player seat in the same
+situation is admitted as a spectator and queued the same way. When the room is back in its
+lobby the host promotes queued spectators while seats are free (arena caps this at the
+current format's fighter count) and announces it with an ordinary ROSTER `op 0`. A
+spectator request from a queued key, even one that matches its current role, leaves the
+queue. Guests infer their own queued state locally ("I asked to play and am still
+watching"); it is never sent.
+
 ### 10.7 Control-frame envelope (hostEpoch/seq gate)
 
 Host-authoritative control frames (roster acks today; the reserved-range move/handoff/

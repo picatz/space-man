@@ -171,7 +171,7 @@ Friend rooms support up to four racers plus four watchers, with CPUs filling
 the five-kart grid. The host owns laps, collisions and results, and pauses the
 whole race when stepping away. Guests can take a local pit-stop menu. A lost
 connection releases controls and reserves the seat for ten seconds, then marks
-it unfinished. New arrivals watch until the next lobby. There is no host
+it unfinished. New arrivals watch the current race and take the next free seat when it ends. There is no host
 migration or page-reload restoration. Racing does not change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
 
 ## Daily Course and challenges

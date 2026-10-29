@@ -395,8 +395,13 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await wait(host,() => arenaUI.snapshot()?.phase === 'countdown');
     await host.page.locator('#arenaPause').click(); await host.page.locator('#arenaLobby').click();
     await Promise.all(clients.map(c => screen(c,'lobby')));
+    // The late arrival queued for a fighter; the rematch's full duel kept them watching.
+    assert.equal(await late.page.evaluate(() => SpaceManNet.info().waiting), true);
+    assert.match(await late.page.locator('#arenaRoomRole').innerText(), /up next/i);
     await guest.page.locator('#arenaRoomRole').click();
     await wait(guest,() => SpaceManNet.info().role === 1);
+    // The guest's freed duel seat goes to the queued late arrival without them asking again.
+    await wait(late,() => SpaceManNet.info().role === 0 && !SpaceManNet.info().waiting);
     await watcher.page.locator('#arenaRoomRole').click();
     await wait(watcher,() => SpaceManNet.info().role === 0); await roster(4);
     await host.page.locator('.arena-format-card[data-format="teams"]').click();
@@ -407,7 +412,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     await Promise.all(clients.map(c => wait(c,() => arenaUI.snapshot()?.format === 'teams')));
     const teams = await snapshot(host);
     assert.equal(teams.actors.length,4);
-    assert.equal(teams.actors.filter(a => a.controller === 'cpu').length,2);
+    assert.equal(teams.actors.filter(a => a.controller === 'cpu').length,1);
     assert.equal(teams.actors.find(a => a.peerP === 1).team,1);
     assert.ok((await snapshot(guest)).actors.every(a => a.controller !== 'human'));
     assert.ok((await snapshot(watcher)).actors.some(a => a.controller === 'human'));

@@ -119,8 +119,14 @@
       net.sendRace(bytes).catch(() => {});
       changed();
     }
+    // Friends who joined mid-race (or found every grid slot taken) take free
+    // pilot seats whenever the room is back in its lobby.
+    function seatLate() {
+      if (host && host.status === "lobby") net.seatWaiting();
+    }
     function sync() {
       if (host) {
+        seatLate();
         host.syncRoster(roster(), now());
         publish(true);
       }
@@ -408,6 +414,7 @@
       if (!host) return false;
       host.lobby();
       net.setRaceRoleLock(false);
+      seatLate();
       host.syncRoster(roster(), now());
       publish(true);
       return true;

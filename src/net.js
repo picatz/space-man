@@ -1689,6 +1689,20 @@
       for (const r of S.roster.values()) { if (r.absent && !reserveAbsent) continue; if (r.role === ROLE_SPECTATOR) spectators++; else players++; }
       return { players, spectators };
     }
+    // Arcade late seats. A friend who joins (or asks to play) while a match runs, or while every
+    // player seat is taken, watches with a place in a first-come queue; seatWaiting() hands the
+    // queue free seats when the room is back in its lobby. Only the host tracks the queue: the
+    // guest's own view of it is "I asked to play and I am still watching" (info().waiting).
+    function queueLateSeat(h, c) {
+      if (!arcadeMode(S) || h.role === ROLE_SPECTATOR) return;
+      if (!S.roleLocked && c.players < S.playerCap) return;
+      h.role = ROLE_SPECTATOR; h.waiting = true;
+    }
+    function setWaiting(row, on, t) {
+      if (!!row.waiting === on) return;
+      row.waiting = on; row.waitSince = on ? t : 0;
+      S.ev.emit('waiting', { p: row.p, waiting: on });
+    }
     // A peer's transport dropped (relay F_PEER_GONE) — hide its ghost at once and
     // tell the room, but KEEP the roster row (keyed by pub) so a reconnect
     // re-HELLO re-WELCOMEs the SAME P#. row.absent gates the rejoin re-announce
@@ -1927,12 +1941,19 @@
         const rc = decRole(pt);
         if (!rc) return;
         const t3 = performance.now();
+        const c = counts(arcadeMode(S));
+        // Arcade: a watcher asking to play while a match runs (or every seat is taken) is queued
+        // for the next lobby rather than refused; asking to watch takes them out of the queue.
+        if (arcadeMode(S) && row.role === ROLE_SPECTATOR && rc.newRole === ROLE_PLAYER && (S.roleLocked || c.players >= S.playerCap)) {
+          setWaiting(row, true, t3); sendRoster(1, [row], row).catch(() => {}); return;
+        }
+        if (rc.newRole === ROLE_SPECTATOR) setWaiting(row, false, t3);
         if (arcadeMode(S) && S.roleLocked) { sendRoster(1, [row], row).catch(() => {}); return; }
         if (row.lastRole && t3 - row.lastRole < ROLE_MIN_INTERVAL) { sendRoster(1, [row], row).catch(() => {}); return; }
-        const c = counts(arcadeMode(S));
         if (rc.newRole === ROLE_SPECTATOR && row.role !== ROLE_SPECTATOR && c.spectators >= S.spectatorCap) { sendRoster(1, [row], row).catch(() => {}); return; }
         if (rc.newRole === ROLE_PLAYER && row.role !== ROLE_PLAYER && c.players >= S.playerCap) { sendRoster(1, [row], row).catch(() => {}); return; }
         row.lastRole = t3;
+        if (rc.newRole === ROLE_PLAYER) setWaiting(row, false, t3);
         if (row.role !== rc.newRole) {
           row.role = rc.newRole;
           if (rc.newRole === ROLE_SPECTATOR) row.pres = null;   // spectators hide their ghost
@@ -2020,8 +2041,8 @@
         bumpCtrFloor(key, pair); S.ev.emit('mode-rejected', { mode: S.mode }); return;
       }
       // Separate caps (Addendum A): 32 players + 16 spectators, checked by role.
-      if (arcadeMode(S) && S.roleLocked) h.role = ROLE_SPECTATOR;
       const c = counts(arcadeMode(S));
+      queueLateSeat(h, c);
       if (h.role === ROLE_SPECTATOR ? c.spectators >= S.spectatorCap : c.players >= S.playerCap) {
         S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));   // full: tell the guest now, not after its 30 s join timeout
         bumpCtrFloor(key, pair);
@@ -2056,8 +2077,8 @@
         S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 3, modeRejection(S, h.mode))));
         return false;
       }
-      if (arcadeMode(S) && S.roleLocked) h.role = ROLE_SPECTATOR;
       const c = counts(arcadeMode(S));
+      queueLateSeat(h, c);
       if (h.role === ROLE_SPECTATOR ? c.spectators >= S.spectatorCap : c.players >= S.playerCap) {
         S.relay.send(srcPub, await sealApp(pair, encBye(S.out, 4, 0)));   // full: tell the guest now, not after its 30 s join timeout
         bumpCtrFloor(key, pair);
@@ -2084,7 +2105,7 @@
         pres: null, strikes: 0, lastSeen: t, bucket: 20, bucketT: t,
         emoteBucket: 3, emoteBucketT: t, emoteId: 0, emoteSeq: 0,
         unverified: false, lastRole: 0, runT0: null, runId: S.runId, proof: h.proof16.slice(),
-        absentAt: 0,
+        absentAt: 0, waiting: !!h.waiting, waitSince: h.waiting ? t : 0,
       };
       S.roster.set(key, row);
       S.joinTimes.push(t);                                    // the join budget counts admissions, not proofs/retries
@@ -2439,6 +2460,25 @@
       if (S.mode !== mode) return false;
       S.roleLocked = !!locked; return true;
     }
+    // Seat queued watchers, oldest first, up to `limit` players (the mode's seats for the current
+    // rules; the room's player cap at most). A no-op while a match holds the role lock.
+    S.seatWaiting = (limit) => {
+      if (!arcadeMode(S) || S.roleLocked) return 0;
+      const cap = Math.min(S.playerCap, limit == null ? S.playerCap : Math.max(0, limit | 0));
+      let players = counts(true).players;
+      const seated = [];
+      const queue = Array.from(S.roster.values()).filter((r) => r.waiting && !r.absent && r.role === ROLE_SPECTATOR)
+        .sort((a, b) => a.waitSince - b.waitSince);
+      for (const r of queue) {
+        if (players >= cap) break;
+        r.role = ROLE_PLAYER; r.waiting = false; r.waitSince = 0; r.lastRole = performance.now(); players++;
+        seated.push(r);
+      }
+      if (!seated.length) return 0;
+      sendRoster(0).catch(() => {});
+      for (const r of seated) { S.ev.emit('waiting', { p: r.p, waiting: false }); S.ev.emit('role', { p: r.p, role: r.role }); }
+      return seated.length;
+    };
     S.setArenaRoleLock = (locked) => setArcadeRoleLock('arena', locked);
     S.setRaceRoleLock = (locked) => setArcadeRoleLock('race', locked);
     S.setJourneyRoleLock = (locked) => setArcadeRoleLock('journey', locked);
@@ -2612,6 +2652,7 @@
       appearance: appearanceValue(opts.appearance, opts), appearances: new Map(),
       p: 0, tag: wTag(opts.tag || 'AAA'), suit: opts.suit | 0, hat: opts.hat | 0,
       role: opts.role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER,
+      wantRole: opts.role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER,   // the seat this guest last asked for
       adjIdx: opts.adjIdx == null ? CALLSIGN_NONE : opts.adjIdx & 0xff,
       nounIdx: opts.nounIdx == null ? CALLSIGN_NONE : opts.nounIdx & 0xff,
       caps: 0, hostEpoch: 0, gate: makeCtrlGate(), rosterMap: new Map(),   // p → {tag,suit,hat,role,adjIdx,nounIdx,you}
@@ -2967,7 +3008,7 @@
     S.requestRole = async (role) => {
       if (!S.welcomed || !S.relay || S.relay.state !== 'established') return;
       const nr = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER;
-      S.requestedRole = nr;
+      S.requestedRole = nr; S.wantRole = nr;
       S.roleSeq = (S.roleSeq + 1) & 0xffff;
       S.relay.send(S.inv.hostPub, await sealApp(S.pair, encRole(S.out, S.roleSeq, nr)));
     };
@@ -3255,7 +3296,8 @@
     setRole(role) {
       if (!session) return Promise.resolve(false);
       const current = session, wanted = role === ROLE_SPECTATOR ? ROLE_SPECTATOR : ROLE_PLAYER;
-      if (current.role === wanted) return Promise.resolve(true);
+      // A queued arcade watcher asking to watch still tells the host, so it leaves the seat queue.
+      if (current.role === wanted && (current.isHost || current.wantRole === wanted)) return Promise.resolve(true);
       if (current.isHost) return Promise.resolve(current.setRole(wanted) !== false);
       return new Promise((resolve) => {
         let done = false;
@@ -3268,6 +3310,8 @@
     // Arcade app data is latest-value/best-effort. Repeat durable configuration in
     // snapshots; transport deliberately knows nothing about game packet fields.
     sendArena(bytes, targetP) { return session && session.sendArena ? session.sendArena(bytes, targetP) : Promise.resolve(false); },
+    // Host: seat watchers queued for a player seat (see HostSession.seatWaiting).
+    seatWaiting(limit) { return session && session.seatWaiting ? session.seatWaiting(limit) : 0; },
     setArenaRoleLock(locked) { return !!(session && session.setArenaRoleLock && session.setArenaRoleLock(locked)); },
     sendRace(bytes, targetP) { return session && session.sendRace ? session.sendRace(bytes, targetP) : Promise.resolve(false); },
     setRaceRoleLock(locked) { return !!(session && session.setRaceRoleLock && session.setRaceRoleLock(locked)); },
@@ -3317,7 +3361,7 @@
         for (const r of session.roster.values()) { if (r.absent) continue; out.push({
           p: r.p, tag: r.tag, suit: r.suit, hat: r.hat, appearance: copyAppearance(r.appearance), role: r.role, spectator: r.role === ROLE_SPECTATOR,
           adjIdx: indexOrNone(r.adjIdx), nounIdx: indexOrNone(r.nounIdx),
-          callsign: cs(r.adjIdx, r.nounIdx, r.p), unverified: !!r.unverified, dimmed: !!r.unverified,
+          callsign: cs(r.adjIdx, r.nounIdx, r.p), unverified: !!r.unverified, dimmed: !!r.unverified, waiting: !!r.waiting,
           pubHex: r.pub ? hex(r.pub) : undefined,   // for the hide/block/kick sheet (§7); guests can't see peer pubs
         }); }
         return out.sort((a, b) => a.p - b.p);
@@ -3363,6 +3407,8 @@
         mobility: session.mobility || [],
         unstable: !!session.unstable,
         hostAway: !!session.hostGoneTimer,
+        // Arcade guest asked to play and is still watching: queued for the next lobby's free seat.
+        waiting: !session.isHost && arcadeMode(session) && !!session.welcomed && session.role === ROLE_SPECTATOR && session.wantRole === ROLE_PLAYER,
         quality: session.mock ? 'good' : (session.quality ? session.quality().level : 'unknown'),
       };
     },

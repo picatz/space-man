@@ -132,9 +132,12 @@ test(
     const paused = state(host).tick;
     await step(4);
     assert.equal(state(host).tick, paused);
-    assert.equal(await watcher.room.role(0), false);
+    assert.equal(await watcher.room.role(0), false, "a watcher cannot take a seat mid-race");
+    assert.equal(watcher.net.info().waiting, true, "…but is queued for the next lobby");
     const late = await join();
     assert.equal(late.net.info().role, 1);
+    assert.equal(late.net.info().waiting, true, "a mid-race arrival is queued too");
+    assert.ok(host.net.roster().filter((r) => r.waiting).length === 2, "host sees both in its queue");
     const generation = player.net._n1.session().welcomeGen;
     player.net._n1.session().relay.kick("race reconnect regression");
     await until(
@@ -155,10 +158,14 @@ test(
     await until(() => player.room.current.status === "running", "race resumes");
     assert.equal(host.room.lobby(), true);
     await until(() => late.room.current.status === "lobby", "next grid");
-    assert.equal(await late.room.role(0), true);
     await until(
-      () => host.room.current.seats.length === 3,
-      "new racer assigned",
+      () => late.net.info().role === 0 && watcher.net.info().role === 0,
+      "queued watchers seated without asking again",
+    );
+    assert.equal(late.net.info().waiting, false);
+    await until(
+      () => host.room.current.seats.length === 4,
+      "new racers assigned",
     );
   },
 );

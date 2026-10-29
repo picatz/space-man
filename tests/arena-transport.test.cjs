@@ -245,6 +245,30 @@ test('arena hard caps bound player and spectator seats; runner rooms cannot use 
   assert.equal(runner.net.info().cap, 32); assert.equal(runner.net.info().specCap, 16);
 });
 
+test('a friend who finds every seat taken watches in a first-come queue and takes the next free seat', async (t) => {
+  const { host, guests, join } = await room(t, { players: 3 });
+  assert.equal(host.net.info().players, 4);
+  const first = await join(0), second = await join(0);
+  for (const g of [first, second]) {
+    assert.equal(g.net.info().role, 1, 'admitted as a watcher rather than turned away');
+    assert.equal(g.net.info().waiting, true, 'and knows it is queued');
+  }
+  assert.equal(host.net.roster().filter((r) => r.waiting).map((r) => r.p).join(), [first.net.info().myP, second.net.info().myP].join());
+  assert.equal(host.net.seatWaiting(), 0, 'no free seat yet');
+  host.net.setArenaRoleLock(true);
+  assert.equal(await host.net.kick(guests[0].net.info().myP), true);
+  await until(() => host.net._n1.session().counts(true).players === 3, 'a seat freed');
+  assert.equal(host.net.seatWaiting(), 0, 'a running match keeps the queue waiting');
+  host.net.setArenaRoleLock(false);
+  assert.equal(host.net.seatWaiting(), 1, 'the lobby seats one');
+  await until(() => first.net.info().role === 0, 'the first in line plays');
+  assert.equal(first.net.info().waiting, false);
+  assert.equal(second.net.info().role, 1); assert.equal(second.net.info().waiting, true, 'the next in line keeps their place');
+  assert.equal(await second.net.setRole(1), true, 'asking to watch leaves the queue');
+  await until(() => !host.net.roster().some((r) => r.waiting), 'queue empty');
+  assert.equal(second.net.info().waiting, false);
+});
+
 test('immediately awaited sends cannot strand a new pending input between pump completions', async (t) => {
   const { host, guests } = await room(t), [guest] = guests, rx = collect(host.net);
   for (let i = 0; i < 15; i++) assert.equal(await guest.net.sendArena(bytes(18, i)), true);
