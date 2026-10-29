@@ -615,3 +615,27 @@ test(
     assert.match((await visible(".race-hint [data-for=pad]"))[0], /BOOST/);
   },
 );
+
+test(
+  "race lobby shows personal bests with medal tints and flies the chosen circuit on its stage",
+  { timeout: 60000 },
+  async (t) => {
+    const { page } = await launch(t, {}, () => {
+      localStorage.setItem("sm2.race.v1.best", JSON.stringify({
+        starlight: { time: 72.4, position: 1 }, ember: { time: 95.1, position: 3 }, bogus: { time: -1, position: 1 },
+      }));
+    });
+    const label = (id) => page.locator(`[data-track="${id}"] small`).textContent();
+    assert.match(await label("starlight"), /FLOWING · 1:12/);
+    assert.equal(await page.locator('[data-track="starlight"]').getAttribute("data-medal"), "gold");
+    assert.equal(await page.locator('[data-track="ember"]').getAttribute("data-medal"), "bronze");
+    assert.equal(await page.locator('[data-track="bloom"]').getAttribute("data-medal"), null);
+    assert.match(await page.locator(".race-track-description").textContent(), /Lap \d+\.\dk · Best 1:12/);
+    const stage = () => page.evaluate(() => {
+      const c = document.querySelector(".race-hero"), g = c.getContext("2d");
+      return Array.from(g.getImageData(0, 0, c.width, c.height).data).reduce((n, v, i) => (i % 4 === 3 && v ? n + 1 : n), 0);
+    });
+    assert.ok((await stage()) > 5000, "the stage canvas is painted");
+    await capture(page, "race-lobby-stage");
+  },
+);
