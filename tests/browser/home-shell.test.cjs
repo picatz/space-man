@@ -270,3 +270,17 @@ test('home: the controller hint appears only once a pad is in use and stays on s
   const b = await hint.boundingBox();
   assert.ok(b && b.y + b.height <= 768 && b.x >= 0 && b.x + b.width <= 1024, 'inside the viewport');
 });
+
+for (const [width, height] of [[844, 390], [1280, 800], [390, 844]]) {
+  test(`home tiles ${width}x${height}: the astronauts' helmets are not cropped by the tile`, { timeout: 30000 }, async t => {
+    const { page } = await launch(t, { width, height });
+    // Pixels in the top two canvas rows would mean the helmet or antenna touches the canvas edge.
+    const touching = await page.evaluate(() => ['homeRunArt', 'homeArenaArt'].map(id => {
+      const c = document.getElementById(id), d = c.getContext('2d').getImageData(0, 0, c.width, 2).data;
+      let max = 0; for (let i = 3; i < d.length; i += 4) max = Math.max(max, d[i]);
+      return { id, max };
+    }));
+    // The tile backdrop is transparent at the top; only avatar pixels could reach it.
+    for (const t of touching) assert.ok(t.max < 40, t.id + ' keeps clear of the top edge');
+  });
+}

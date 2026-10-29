@@ -123,7 +123,7 @@
   .home-play-actions { margin-top: 13px; gap: 9px; }
   #ovAttract .home-play-actions .btn { min-height: 54px; font-size: 14px; padding: 11px; border-radius: 13px; }
   .home-arcade { margin-top: 14px; }.home-section-heading { margin-bottom: 6px; }.home-section-heading h2 { font-size: 12px; }.home-section-heading > span { font-size: calc(10px * var(--ui-scale, 1)); }
-  #ovAttract .launch-modes { gap: 8px; }.home-mode { border-radius: 12px; }.home-mode canvas { height: 67px; object-fit: cover; }
+  #ovAttract .launch-modes { gap: 8px; }.home-mode { border-radius: 12px; }.home-mode canvas { height: 67px; object-fit: cover; object-position: 50% 8%; }
   #ovAttract .home-mode .mode-link { font-size: calc(11px * var(--ui-scale, 1)); min-height: 44px; padding-inline: 3px; }.home-mode > span:not(.mode-link) { font-size: calc(10px * var(--ui-scale, 1)); }
   #ovAttract #btnDaily { margin-top: 8px; min-height: 53px; }
   .home-footer { padding-top: 0; border: 0; justify-content: center; gap: 2px; }.home-footer-note { display: none; }
@@ -134,7 +134,7 @@
   #ovAttract .home-stage { gap: 12px; }.home-wordmark { font-size: 20px; }
   #homeHero { height: 137px; width: 220px; }.home-adventure h2 { font-size: 25px; }.home-adventure p { font-size: calc(11px * var(--ui-scale, 1)); }
   #ovAttract .home-play-actions .btn { font-size: 12px; gap: 7px; }.home-arcade { margin-top: 22px; }
-  .home-mode canvas { height: 55px; }#ovAttract .home-mode .mode-link { font-size: calc(10px * var(--ui-scale, 1)); }.home-mode > span:not(.mode-link) { font-size: calc(10px * var(--ui-scale, 1)); }
+  .home-mode canvas { height: 55px; object-position: 50% 8%; }#ovAttract .home-mode .mode-link { font-size: calc(10px * var(--ui-scale, 1)); }.home-mode > span:not(.mode-link) { font-size: calc(10px * var(--ui-scale, 1)); }
 }
 @media (max-height: 560px) {
   #ovAttract { --home-pad-x: 14px; --home-pad-y: 10px; }
