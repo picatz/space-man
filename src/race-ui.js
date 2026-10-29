@@ -878,6 +878,15 @@
       if (e.code === "KeyF" || e.code === "KeyJ") return "item";
       return undefined;
     }
+    // One line of input help that follows the device in use: keyboard text by
+    // default, controller text while a pad is connected (body.gamepad-active),
+    // nothing on touch. Visibility is pure CSS (space-theme.css [data-for]).
+    function inputHint(tag, className, keys, pad) {
+      const hint = el(tag, className), k = el("span", "", keys), g = el("span", "", pad);
+      k.dataset.for = "key"; g.dataset.for = "pad";
+      hint.append(k, g);
+      return hint;
+    }
     function focusables() {
       return Array.from(
         (modal.hidden ? hud : modal).querySelectorAll(
@@ -1222,10 +1231,11 @@
       speedWrap.append(driveFeedback);
       rootEl.append(
         speedWrap,
-        el(
+        inputHint(
           "div",
           "race-hint",
           "← → STEER · ↓ + TURN DRIFT · F / J ITEM",
+          "STICK STEER · B DRIFT · A BOOST · X RESCUE · R1 ITEM",
         ),
       );
       minimap = el("canvas", "race-minimap");
@@ -1415,6 +1425,7 @@
       launchBar.append(
         launch,
         el("p", "race-local-note", "3 laps · You + 4 CPU pilots"),
+        inputHint("p", "race-input-hint", "← ↑ ↓ → choose · Enter launch · Esc back", "D-PAD CHOOSE · A LAUNCH · B BACK"),
       );
       roomUtilities = el("div", "race-utilities");
       const preferences = el("section", "race-preferences");
@@ -1452,6 +1463,7 @@
       const pausePreferences = el("div", "race-menu-preferences");
       perspective?.panel(pausePreferences);
       pausePanel.append(pausePreferences);
+      pausePanel.append(inputHint("p", "race-input-hint", "↑ ↓ choose · Enter select · Esc resume", "D-PAD CHOOSE · A SELECT · MENU RESUME"));
 
       resultPanel = el("div", "race-dialog race-compact race-result-panel");
       resultPanel.setAttribute("role", "dialog");
@@ -1488,6 +1500,7 @@
       againCancel.id = "raceAgainCancel";
       againCancel.hidden = true;
       resultPanel.append(againNote, againCancel);
+      resultPanel.append(inputHint("p", "race-input-hint", "↑ ↓ choose · Enter select · Esc circuits", "D-PAD CHOOSE · A SELECT · B CIRCUITS"));
       pausePanel.querySelectorAll("button")[0].id = "raceResume";
       pausePanel.querySelectorAll("button")[1].id = "raceRestart";
       pausePanel.querySelectorAll("button")[2].id = "raceLobby";
