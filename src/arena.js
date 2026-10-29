@@ -42,6 +42,18 @@
     CHARGE_MIN: 18, CHARGE_MAX: 36, CHARGE_AUTO: 60, CHARGE_MOVE: 0.45,
     CHARGED_WINDUP: 10, CHARGED_TICKS: 32, CHARGE_DAMAGE: 0.5, CHARGE_KNOCKBACK: 0.7,
     LAND_MIN_IMPACT: 3,
+    // Opt-in item drops (create({ items: true })). Cells fall onto platform
+    // tops on a seeded timer; walking into one claims it.
+    ITEM_FIRST_TICKS: 600, ITEM_GAP_MIN: 540, ITEM_GAP_SPAN: 360, ITEM_MAX: 2,
+    ITEM_LIFE_TICKS: 900, ITEM_SIZE: 20, ITEM_HEAL: 30, ITEM_SHIELD_TICKS: 240,
+    SURGE_TICKS: 720, SURGE_DAMAGE: 1.5, SURGE_KNOCKBACK: 1.25,
+  });
+  // Item kinds are data: add a row here (and a renderer swatch) to add a drop.
+  // weight biases the seeded draw; apply(actor) runs on pickup.
+  const itemKinds = freeze({
+    heal: { id: 'heal', name: 'Repair Core', weight: 3, apply(actor) { actor.damage = Math.max(0, actor.damage - constants.ITEM_HEAL); } },
+    shield: { id: 'shield', name: 'Aegis Cell', weight: 2, apply(actor) { actor.invulnerable = Math.max(actor.invulnerable, constants.ITEM_SHIELD_TICKS); } },
+    surge: { id: 'surge', name: 'Surge Cell', weight: 2, apply(actor) { actor.surge = constants.SURGE_TICKS; } },
   });
   const profiles = freeze([
     { id: 'nova', name: 'Nova', color: '#38E1FF', accent: '#9FF1FF', suit: '#F4F7FF' },
@@ -211,6 +223,7 @@
       arenaId: arena.id, format, difficulty, seed, rngState: seed,
       actors: [], events: [], result: null,
     };
+    if (opts.items === true && !encounter) state.items = { nextTick: constants.ITEM_FIRST_TICKS, serial: 0, list: [] };
     if (encounter) {
       state.encounter = encounter;
       state.countdownTicks = encounter.countdownTicks;
@@ -319,8 +332,12 @@
     return elapsed + 1 >= windup && elapsed + 1 < windup + constants.ATTACK_ACTIVE ? windup + constants.ATTACK_ACTIVE - elapsed : 0;
   }
   function chargeLevel(charge) { return charge >= constants.CHARGE_MIN ? Math.min(constants.CHARGE_MAX, Math.floor(charge)) : 0; }
-  function pulseDamage(actor) { return constants.ATTACK_DAMAGE + (actor && actor.attackCharge > 0 ? Math.round(actor.attackCharge * constants.CHARGE_DAMAGE) : 0); }
-  function pulseKnockback(actor) { return 1 + (actor && actor.attackCharge > 0 ? actor.attackCharge / constants.CHARGE_MAX * constants.CHARGE_KNOCKBACK : 0); }
+  function surged(actor) { return !!actor && actor.surge > 0; }
+  function pulseDamage(actor) {
+    const base = constants.ATTACK_DAMAGE + (actor && actor.attackCharge > 0 ? Math.round(actor.attackCharge * constants.CHARGE_DAMAGE) : 0);
+    return surged(actor) ? Math.round(base * constants.SURGE_DAMAGE) : base;
+  }
+  function pulseKnockback(actor) { return (1 + (actor && actor.attackCharge > 0 ? actor.attackCharge / constants.CHARGE_MAX * constants.CHARGE_KNOCKBACK : 0)) * (surged(actor) ? constants.SURGE_KNOCKBACK : 1); }
   // The exact collision rectangle is also the telegraph: renderers never have
   // to guess where a special will land. Once charging starts it cannot track.
   function bossAttackBox(actor) {
@@ -611,6 +628,43 @@
     };
     state.events.push({ type: 'finish', actorId: state.result.winnerIds[0] || 0, x: 480, y: 300, reason });
   }
+  // Item drops: a seeded timer places one cell at a time on a free platform
+  // top; an alive fighter overlapping a cell claims it. Runs only when the
+  // match was created with items, so every other state is untouched.
+  function pickItemKind(state) {
+    const kinds = Object.values(itemKinds);
+    let roll = random(state) * kinds.reduce((sum, kind) => sum + kind.weight, 0);
+    for (const kind of kinds) { roll -= kind.weight; if (roll < 0) return kind.id; }
+    return kinds[kinds.length - 1].id;
+  }
+  function tickItems(state, arena) {
+    const items = state.items;
+    for (const actor of state.actors) if (actor.surge > 0) actor.surge--;
+    for (const item of items.list.slice()) {
+      const box = { x: item.x, y: item.y, w: constants.ITEM_SIZE, h: constants.ITEM_SIZE };
+      const taker = state.actors.find((actor) => !actor.boss && actor.stocks > 0 && !actor.respawnTicks && overlap(box, actor));
+      if (taker) {
+        itemKinds[item.kind].apply(taker);
+        items.list.splice(items.list.indexOf(item), 1);
+        emit(state, 'item-pickup', taker, { itemId: item.id, kind: item.kind, x: item.x + constants.ITEM_SIZE / 2, y: item.y + constants.ITEM_SIZE / 2 });
+      } else if (--item.ttl <= 0) {
+        items.list.splice(items.list.indexOf(item), 1);
+        state.events.push({ type: 'item-expire', actorId: null, itemId: item.id, kind: item.kind, x: item.x + constants.ITEM_SIZE / 2, y: item.y + constants.ITEM_SIZE / 2 });
+      }
+    }
+    if (state.tick < items.nextTick) return;
+    items.nextTick = state.tick + constants.ITEM_GAP_MIN + Math.floor(random(state) * constants.ITEM_GAP_SPAN);
+    if (items.list.length >= constants.ITEM_MAX) return;
+    const taken = new Set(items.list.map((item) => item.platformId));
+    const free = arena.platforms.filter((platform) => !taken.has(platform.id) && platform.w >= 100);
+    if (!free.length) return;
+    const platform = free[Math.floor(random(state) * free.length)];
+    const kind = pickItemKind(state);
+    const x = Math.round(platform.x + 20 + random(state) * (platform.w - 40 - constants.ITEM_SIZE));
+    const item = { id: ++items.serial, kind, platformId: platform.id, x, y: platform.y - constants.ITEM_SIZE - 2, ttl: constants.ITEM_LIFE_TICKS };
+    items.list.push(item);
+    state.events.push({ type: 'item-spawn', actorId: null, itemId: item.id, kind, x: x + constants.ITEM_SIZE / 2, y: item.y + constants.ITEM_SIZE / 2 });
+  }
   function step(state, commandsById) {
     state.events = [];
     if (state.phase === 'over') return state;
@@ -634,6 +688,7 @@
     for (const actor of state.actors) tickBoss(state, actor, normalizeCommand(commands[actor.id]));
     resolveAttacks(state);
     resolveBossAttacks(state);
+    if (state.items) tickItems(state, arena);
     for (const actor of state.actors) {
       if (actor.stocks > 0 && !actor.respawnTicks && outOfBounds(actor, arena.bounds)) loseStock(state, actor);
     }
@@ -925,9 +980,22 @@
         else if (!Number.isInteger(actor[key]) || actor[key] < 0 || actor[key] > 255) throw new TypeError('Invalid arena snapshot number');
       }
     }
+    if (saved.items !== undefined) {
+      const it = saved.items, arena = getArena(saved.arenaId);
+      if (saved.encounter || !it || !Number.isInteger(it.nextTick) || !Number.isInteger(it.serial) || it.serial < 0 || !Array.isArray(it.list) || it.list.length > constants.ITEM_MAX) throw new TypeError('Invalid arena snapshot items');
+      const seen = new Set();
+      for (const item of it.list) {
+        const platform = item && arena.platforms.find((p) => p.id === item.platformId);
+        if (!platform || !Object.hasOwn(itemKinds, item.kind) || !Number.isInteger(item.id) || item.id < 1 || item.id > it.serial || seen.has(item.platformId) || !Number.isFinite(item.x) || item.x < platform.x || item.x + constants.ITEM_SIZE > platform.x + platform.w || item.y !== platform.y - constants.ITEM_SIZE - 2 || !Number.isInteger(item.ttl) || item.ttl < 0 || item.ttl > constants.ITEM_LIFE_TICKS) throw new TypeError('Invalid arena snapshot item');
+        seen.add(item.platformId);
+      }
+    }
+    for (const actor of saved.actors) {
+      if (actor.surge !== undefined && (!Number.isInteger(actor.surge) || actor.surge < 0 || actor.surge > constants.SURGE_TICKS || !saved.items)) throw new TypeError('Invalid arena snapshot surge');
+    }
     if (bossEncounter && saved.actors.filter((actor) => actor.boss).length !== 1) throw new TypeError('Invalid arena snapshot boss roster');
     return snapshot(saved);
   }
 
-  return freeze({ feel, pulseDamage, pulseKnockback, dashLockTicks, constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, createActionBuffer, step, cpuInput, attackBox, bossAttackBox, snapshot, restore });
+  return freeze({ feel, itemKinds, pulseDamage, pulseKnockback, dashLockTicks, constants, profiles, difficulties, arenas, getArena, create, normalizeCommand, createActionBuffer, step, cpuInput, attackBox, bossAttackBox, snapshot, restore });
 });

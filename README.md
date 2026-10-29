@@ -93,6 +93,12 @@ edge of space. Double jump and dash to recover; each spacefarer has three lives.
   The visible movement pod matches its touch area. Controls mirror for left-handed
   play, clear safely on rotation/interruption and leave Pause directly accessible
 
+**Item drops (local matches).** Every 9-15 seconds a cell lands on a platform top (two
+at most, seeded so replays match): green **Repair Core** heals 30%, cyan **Aegis Cell**
+grants four seconds of shielding, amber **Surge Cell** powers pulses (+50% damage, +25%
+knockback) for twelve seconds. Walk into one to claim it; unclaimed cells expire. Items are
+opt-in in the engine (`create({ items: true })`) and are not yet enabled in online rooms.
+
 **2 Players (same device, offline).** In the arena setup pick **2 Players**, then
 P2 opts in with a join prompt (press `.` or `/`, or A on a controller). It works
 with all three formats: **2P Duel** (P1 vs P2), **free-for-all** (P1 + P2 + two CPUs)
