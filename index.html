@@ -2767,6 +2767,35 @@ function spawnP(x, y, vx, vy, life, size, color, grav, bounce, kind) {
   p.size = size; p.color = color; p.grav = grav || 0; p.bounce = !!bounce; p.kind = kind || 0;
   return p;
 }
+// Feel: dust that answers the feet. All three draw on the decor stream, never the gameplay rng, so courses, rooms and
+// replays are untouched; they are skipped outright under Reduce Motion's calmer frame.
+function footPuff(p) {   // a small kick of dust behind the planted foot, every stride at speed
+  if (lessMotion()) return;
+  const back = -Math.sign(p.vx) || -1, fx = p.x + p.w / 2 + back * 5, fy = p.y + p.h;
+  for (let i = 0; i < 2; i++) spawnP(fx, fy - 1, back * (0.5 + G.decorRng() * 0.9), -(0.2 + G.decorRng() * 0.5), 14 + G.decorRng() * 8, 1.6 + G.decorRng(), frostDust(palNow().trailDim), 0.03, false, 0);
+}
+function takeoffPuff(p) {   // the push-off: a low fan of dust both ways from the feet
+  if (lessMotion()) return;
+  const fx = p.x + p.w / 2, fy = p.y + p.h;
+  for (let i = 0; i < 6; i++) { const d = i % 2 ? 1 : -1; spawnP(fx + d * 3, fy - 1, d * (0.8 + G.decorRng() * 1.4) - p.vx * 0.15, -(0.1 + G.decorRng() * 0.6), 16 + G.decorRng() * 8, 1.8 + G.decorRng() * 1.2, frostDust(palNow().trailMid), 0.04, false, 0); }
+}
+const landRings = [];   // render-side shock rings from heavy landings: { x, y, t0 (G.time), k }
+function landingSpray(p, impact) {   // dust sprays sideways along the deck, harder the bigger the drop; a big one rings
+  if (lessMotion()) return;
+  const k = clamp((impact - 4) / 10, 0, 1), fx = p.x + p.w / 2, fy = p.y + p.h, n = 4 + Math.round(k * 8);
+  for (let i = 0; i < n; i++) { const d = i % 2 ? 1 : -1; spawnP(fx + d * (4 + G.decorRng() * 6), fy - 1, d * (1 + k * 2.6) * (0.5 + G.decorRng() * 0.7), -(0.2 + G.decorRng() * (0.6 + k)), 18 + G.decorRng() * 10, 2 + G.decorRng() * 1.4, frostDust(palNow().trailMid), 0.06, false, 0); }
+  if (k > 0.6 && landRings.length < 4) landRings.push({ x: fx, y: fy, t0: G.time, k });
+}
+function drawLandRings() {
+  for (let i = landRings.length - 1; i >= 0; i--) {
+    const r = landRings[i], u = (G.time - r.t0) / 0.32;
+    if (u >= 1 || u < 0) { landRings.splice(i, 1); continue; }
+    const e = 1 - (1 - u) * (1 - u), w = 14 + e * (34 + 26 * r.k);
+    ctx.globalAlpha = (1 - u) * 0.55; ctx.strokeStyle = palNow().trailHot; ctx.lineWidth = 2 * (1 - u) + 0.5;
+    ctx.beginPath(); ctx.ellipse(r.x, r.y, w, w * 0.18, 0, 0, TAU); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
 function burst(x, y, n, spd, life, size, color, grav, kind) {
   for (let i = 0; i < n; i++) {
     const a = rng() * TAU, s = spd * (0.4 + rng() * 0.6);
@@ -3493,7 +3522,7 @@ function updatePlayer() {
   if (p.buffer > 0 && p.coyote > 0 && !p.jumping) {
     p.vy = CFG.jumpVel; p.jumping = true; p.onGround = false; p.coyote = 0; p.buffer = 0;
     p.sqX = 0.8; p.sqY = 1.2;
-    if (G.mode === 'play') { Audio.sfx.jump(false); buzz('light'); }
+    if (G.mode === 'play') { Audio.sfx.jump(false); buzz('select'); takeoffPuff(p); }
     flags.taughtJump = true;
     p.airFrames = 0; p.jumpStartX = p.x; p.jumpPlat = p.groundPlat;
     jumpedThisFrame = true;
@@ -3530,7 +3559,7 @@ function updatePlayer() {
         p.sqX = 1.2; p.sqY = 0.8; p.landDip = clamp(impact / 14, 0, 1) * 3;   // feet-anchored squash owns the contact read now
         if (impact > 11) G.trauma = Math.max(G.trauma, 0.12);   // heavy landing = smooth thud, not jitter
         burst(p.x, p.y + p.h, 6 + (impact > 8 ? 4 : 0), 1.5, 16, 2.5, frostDust(palNow().trailHot), 0.08, 0);
-        if (G.mode === 'play') { Audio.sfx.land(impact); if (impact > 9) buzz('light'); }
+        if (G.mode === 'play') { Audio.sfx.land(impact); buzz(impact > 12.5 ? 'heavy' : impact > 8 ? 'light' : 'select'); landingSpray(p, impact); }
         if (DELIGHT && G.mode === 'play') {
           // silk landings: three feather touches in a row (impact < 6, no death between)
           if (impact < 6) {
@@ -3596,7 +3625,9 @@ function updatePlayer() {
 
   p.sqX += (1 - p.sqX) * 0.2; p.sqY += (1 - p.sqY) * 0.2; p.landDip *= 0.8;
   p.pose += ((p.vy < 0 ? -4 : 4) - p.pose) * 0.15;   // eased airborne tuck→trail, no single-frame flip at apex
+  const stride = Math.floor(p.runCycle / Math.PI);
   p.runCycle += Math.abs(p.vx) * 0.06;
+  if (G.mode === 'play' && p.onGround && Math.abs(p.vx) > 3 && Math.floor(p.runCycle / Math.PI) !== stride) footPuff(p);
   p.idle = (Math.abs(p.vx) < 0.3 && p.onGround) ? p.idle + STEP : 0;
   p.glint += STEP;
   if (Math.abs(p.vx) > 1) flags.taughtRun = true;
@@ -4908,6 +4939,7 @@ function render(alpha) {
   ctx.fillStyle = voidGrad;
   ctx.fillRect(iCamX - 40, G.groundY + 60, view.w + 80, 600);
   drawPlatforms(iCamX);
+  if (landRings.length) drawLandRings();
   drawPickups(iCamX);
   POW.drawWorld(iCamX);
   drawPBFlag();
