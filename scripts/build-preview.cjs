@@ -1,6 +1,7 @@
 // Trusted static packager. PR files are copied as data, never required/evaluated.
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { createHash } = require('node:crypto');
 
 const ROOT_FILES = ['index.html', 'service-worker.js', 'manifest.json', 'favicon.png', 'CNAME', 'LICENSE', 'README.md'];
 const DIRECTORIES = { src: /^[a-z0-9-]+\.(js|css)$/, icons: /^[a-z0-9-]+\.png$/, screenshots: /^[a-z0-9-]+\.png$/, docs: /^[a-z0-9-]+\.md$/ };
@@ -14,6 +15,24 @@ async function copyFile(source, output, relative, optional = false) {
   await fs.copyFile(from, to);
   return stat.size;
 }
+// The worker's cache name must change whenever an asset the app shell serves
+// changes, and only then. Contributors never bump it by hand: the deployed copy
+// gets the source VERSION plus a hash of every shipped shell file, so two PRs
+// can't conflict on it and an unchanged build never forces a reinstall.
+const SHELL_ASSET = /^(index\.html|manifest\.json|favicon\.png|(src|icons)\/.+)$/;
+const VERSION_LINE = /const VERSION = '([^'\\]*)';/g;
+async function stampVersion(output, files) {
+  const hash = createHash('sha256');
+  for (const relative of files.filter((f) => SHELL_ASSET.test(f)).sort()) {
+    hash.update(relative + '\0'); hash.update(await fs.readFile(path.join(output, relative))); hash.update('\0');
+  }
+  const worker = path.join(output, 'service-worker.js'), text = await fs.readFile(worker, 'utf8');
+  const lines = [...text.matchAll(VERSION_LINE)];
+  if (lines.length !== 1) throw new Error('service-worker.js must declare exactly one const VERSION');
+  const version = lines[0][1].replace(/-[a-f0-9]{12}$/, '') + '-' + hash.digest('hex').slice(0, 12);
+  await fs.writeFile(worker, text.replace(lines[0][0], `const VERSION = '${version}';`));
+  return version;
+}
 async function copyProduction(source, output) {
   source = path.resolve(source); output = path.resolve(output);
   if (source === output || source.startsWith(output + path.sep) || output.startsWith(source + path.sep)) {
@@ -24,7 +43,11 @@ async function copyProduction(source, output) {
   await fs.mkdir(output, { recursive: true });
   if ((await fs.readdir(output)).length) throw new Error('Output must be empty');
   let bytes = 0;
-  for (const file of ROOT_FILES) bytes += (await copyFile(source, output, file, ['CNAME', 'LICENSE', 'README.md'].includes(file))) || 0;
+  const copied = [];
+  for (const file of ROOT_FILES) {
+    const size = await copyFile(source, output, file, ['CNAME', 'LICENSE', 'README.md'].includes(file));
+    if (size !== undefined) { bytes += size; copied.push(file); }
+  }
   if (bytes > 20 * 1024 * 1024) throw new Error('Static build exceeds 20 MiB');
   let total = 0;
   for (const [dir, allow] of Object.entries(DIRECTORIES)) {
@@ -35,11 +58,12 @@ async function copyProduction(source, output) {
     for (const name of await fs.readdir(from)) {
       if (!allow.test(name)) throw new Error('Unexpected static path: ' + dir + '/' + name);
       if (++total > 250) throw new Error('Too many static files');
-      bytes += await copyFile(source, output, dir + '/' + name);
+      bytes += await copyFile(source, output, dir + '/' + name); copied.push(dir + '/' + name);
       if (bytes > 20 * 1024 * 1024) throw new Error('Static build exceeds 20 MiB');
     }
   }
   await fs.writeFile(path.join(output, '.nojekyll'), '');
+  return stampVersion(output, copied);
 }
 async function buildPreview({ source, output, pr, sha, buildSha }) {
   pr = Number(pr);
