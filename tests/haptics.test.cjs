@@ -281,3 +281,16 @@ test('on an iPhone every control is armed with a tap-haptic overlay that never d
     assert.equal(c.run("document.body.classList.contains('no-haptics')"), true);
   } finally { c.close(); }
 });
+
+test('the Arena is handed the shared buzz, so its hits and KOs obey the haptics switch and strength', (t) => {
+  const { c, buzzes } = solo(t);
+  c.run(`window.SpaceManArenaUI = { create(options) { window.arenaOptions = options; return { active: false, open() {} }; } }; $('btnArena').onclick()`);
+  assert.equal(c.run("typeof arenaOptions.buzz"), 'function');
+  c.run('settings.haptics = true; settings.hapticsStrength = 1; settings.hapticsSaver = true; batteryLow = false;');
+  c.run("arenaOptions.buzz('heavy')");
+  assert.deepEqual(buzzes, [18]);
+  buzzes.length = 0;
+  c.run('settings.haptics = false');
+  c.run("arenaOptions.buzz('heavy')");
+  assert.deepEqual(buzzes, [], 'silent when haptics are off');
+});
