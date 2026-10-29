@@ -612,7 +612,7 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 @media (max-width: 760px) {
   .race-root .race-track { min-height: 52px; gap: 8px; padding: 5px 8px; }
   .race-root .race-track canvas { width: 54px; height: 33px; flex-basis: 54px; }
-  .race-root .race-track strong { font-size: 11px; }
+  .race-root .race-track strong { font-size: calc(11px * var(--ui-scale, 1)); }
 }
 @media (orientation: landscape) and (max-height: 560px) and (min-width: 600px) {
   .race-root .race-track-list { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
