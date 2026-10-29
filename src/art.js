@@ -38,11 +38,14 @@
   // Sky dome colors for a circuit (SpaceManRender3D scene.sky): the region's
   // gradient, a horizon glow lit by its accent and darker space below. haze is
   // the fog color, so distant track sinks into the sky instead of into black.
-  function circuitSky(course) {
+  // A lantern season (SpaceManSeasons state) floats lanterns over the horizon.
+  function circuitSky(course, season = root.SpaceManSeasons && root.SpaceManSeasons.current()) {
     const region = REGIONS[CIRCUIT_REGIONS[course && course.id]] || REGIONS.orbital;
     const top = unitRgb(region.skyTop), horizon = unitRgb(region.horizon), accent = unitRgb(region.accent);
+    const lamp = root.SpaceManSeasons && season ? root.SpaceManSeasons.lanternColor(season) : null;
     return Object.freeze({ region: region.name, top, horizon, glow: mixRgb(horizon, accent, 0.16),
-      ground: top, haze: mixRgb(horizon, top, 0.5), stars: 320 });
+      ground: top, haze: mixRgb(horizon, top, 0.5), stars: 320,
+      lanterns: lamp ? 44 : 0, lanternColor: lamp ? unitRgb(lamp) : null });
   }
 
   // Render-only Circuit design tokens. Physics retains its authored course data.
@@ -594,6 +597,39 @@ const characterHats = {
     c.restore();
   }
 
+  // A floating paper lantern: warm body, dark cap and foot, a short string and a
+  // cached glow. x/y is the body's centre; size is its height in pixels.
+  function lantern(c, x, y, size, color, glowColor = '#FFD08A') {
+    const w = size * .72, h = size;
+    c.save();
+    c.globalAlpha *= .55; c.drawImage(glow(32, glowColor, .1), x - size * 1.6, y - size * 1.6, size * 3.2, size * 3.2); c.globalAlpha /= .55;
+    c.strokeStyle = '#2A1A22'; c.lineWidth = Math.max(1, size * .06);
+    c.beginPath(); c.moveTo(x, y - h * .5); c.lineTo(x, y - h * .95); c.stroke();
+    c.fillStyle = color; rrPath(c, x - w / 2, y - h / 2, w, h, w * .45); c.fill();
+    c.fillStyle = 'rgba(255,240,200,.45)'; rrPath(c, x - w * .18, y - h * .36, w * .2, h * .6, w * .1); c.fill();
+    c.fillStyle = '#2A1A22'; c.fillRect(x - w * .32, y - h * .58, w * .64, h * .12); c.fillRect(x - w * .26, y + h * .46, w * .52, h * .1);
+    c.restore();
+  }
+  // Static seasonal decor for cached backdrops (Arena, previews): lanterns for
+  // Dusk and Lantern Week, snow for the Long Night, petals for the equinox.
+  // season is a SpaceManSeasons state; hashing the index keeps it deterministic.
+  function seasonBackdrop(c, w, h, season) {
+    if (!season) return;
+    const seasons = root.SpaceManSeasons, M = seasons ? seasons.MOTIFS : null;
+    if (!M) return;
+    const rand = (i) => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+    c.save();
+    const lit = seasons.lanternColor(season);
+    if (lit) for (let i = 0; i < 9; i++) {
+      const size = Math.max(9, Math.min(w, h) * (.022 + rand(i + 3) * .02));
+      c.globalAlpha = .55 + rand(i + 7) * .35;
+      lantern(c, w * (.06 + i * .11 + rand(i) * .05), h * (.12 + rand(i + 11) * .42), size, lit, M.lanterns.glow);
+    }
+    if (season.frost) { c.fillStyle = M.snow.color; for (let i = 0; i < 90; i++) { c.globalAlpha = .25 + rand(i + 40) * .45; c.beginPath(); c.arc(rand(i + 50) * w, rand(i + 60) * h, .8 + rand(i + 70) * 1.6, 0, TAU); c.fill(); } }
+    if (season.blossom) { c.fillStyle = M.petals.color; for (let i = 0; i < 26; i++) { c.globalAlpha = .35 + rand(i + 80) * .4; c.beginPath(); c.ellipse(rand(i + 90) * w, rand(i + 100) * h, 3.2, 1.8, rand(i + 110) * TAU, 0, TAU); c.fill(); } }
+    c.restore();
+  }
+
   // Easing set shared by render code (and mirrored by the CSS --ease tokens).
   const ease = {
     outCubic: (t) => 1 - Math.pow(1 - t, 3),
@@ -602,7 +638,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { REGIONS, circuitSky, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { REGIONS, circuitSky, lantern, seasonBackdrop, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

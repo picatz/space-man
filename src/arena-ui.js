@@ -970,6 +970,7 @@
         for (let x = 0; x <= width + 20; x += 20) { const y = height * (.87 + layer * .04) + Math.sin(x / (width * .21) + layer * 2) * height * .03 + Math.sin(x / 39 + layer) * 8; g.lineTo(x, y); } g.lineTo(width, height); g.closePath(); g.fill();
       }
       stageSilhouette(g, a, t);
+      if (art && art.seasonBackdrop) art.seasonBackdrop(g, width, height, root.SpaceManSeasons && root.SpaceManSeasons.current());
       g.globalAlpha = 1; return bg;
     }
     // Per-stage backdrop silhouette, cached with the background so it costs
@@ -1697,6 +1698,9 @@
         const receipt = onlineActive() ? root.SpaceManCosmetics.roundReceipt('arena', opts.net.info().roomId, Number(rootEl.dataset.epoch)) : cosmeticSession + ':' + cosmeticRound;
         const found = receipt ? opts.onReward({ type: 'arena', id: receipt }) || [] : [];
         if (found.length) resultText.textContent += ' Found: ' + found.map(id => root.SpaceManCosmetics.item(id)?.name || '').join(', ') + '.';
+        root.SpaceManLogbook?.stampSeason();
+        const flawless = won && !result.tie && human.deaths === 0 && root.SpaceManLogbook ? root.SpaceManLogbook.discover('flawless') : null;
+        if (flawless) resultText.textContent += ' Logbook: ' + flawless.name + '.';
       }
       syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent);
     }
