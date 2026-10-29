@@ -238,11 +238,27 @@ test('a hard landing kicks dust and a shock ring, and Reduce Motion keeps the de
     try {
       const r = JSON.parse(c.run(`startRun(); G.mode = 'play'; settings.reduceMotion = ${calm};
         const p = G.player, pl = G.platforms[0]; pl.w = 4000; p.x = pl.x + 400; p.y = pl.y - p.h - 260; p.vy = 0; p.onGround = false;
-        landRings.length = 0; let rang = 0;
-        for (let f = 0; f < 90 && !p.onGround; f++) { update(); rang = Math.max(rang, landRings.length); }
+        runFx.length = 0; let rang = 0;
+        for (let f = 0; f < 90 && !p.onGround; f++) { update(); rang = Math.max(rang, runFx.filter((f) => f.kind === 'ring').length); }
         JSON.stringify({ landed: p.onGround, rang })`));
       assert.ok(r.landed, 'the drop came down on the deck');
       assert.equal(r.rang > 0, !calm, calm ? 'Reduce Motion drew a shock ring' : 'a 260 px drop landed without a shock ring');
     } finally { c.close(); }
   }
+});
+
+test('Run paints its big moments with the shared FX kit: stomp hits, star and power pickups, landing dust', () => {
+  const { client, relay } = require('./harness.cjs');
+  const c = client(relay(), { width: 844, height: 390 });
+  try {
+    const r = JSON.parse(c.run(`startRun(); G.mode = 'play'; runFx.length = 0;
+      const pl = G.platforms[0], e = patrolAt(pl, pl.x + pl.w - 60, -1, 1); G.enemies.push(e); killEnemy(e, 'stomp');
+      const p = G.player; G.pickups.push({ type: 'shard', x: p.x + p.w / 2, y: p.y + p.h / 2, grabbed: false, bob: 0 }); collisions();
+      landingSpray(p, 14);
+      JSON.stringify({ kinds: runFx.map((f) => f.kind), known: runFx.every((f) => f.kind === 'ring' || SpaceManFX.KINDS.includes(f.kind)) })`));
+    for (const k of ['hit', 'pickup', 'land', 'ring']) assert.ok(r.kinds.includes(k), 'missing ' + k + ' in ' + r.kinds);
+    assert.ok(r.known, 'every kit moment is a kind the kit paints');
+    const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'src', 'powerups.js'), 'utf8');
+    assert.match(html, /fxAt\('pickup', it\.x, it\.y, INFO\[it\.type\]\.color\)/, 'power pickups sparkle in the power color');
+  } finally { c.close(); }
 });
