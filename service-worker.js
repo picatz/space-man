@@ -1,6 +1,8 @@
 // Space Man 2.0 service worker.
-// Bump VERSION in the same commit as any asset change or clients keep the old build.
-const VERSION = 'v3.55.0-dusk-lanterns';
+// VERSION is stamped at deploy (scripts/build-preview.cjs) with a hash of the shipped
+// shell, so a changed asset always installs a new build. Do not bump it by hand; change
+// the base only to force every client to reinstall.
+const VERSION = 'v3';
 // 'sm2-app-' marks a complete, versioned app shell. Workers before v3.3 used
 // 'sm2-shell-' and served ./src/ cache-first next to a network-first page, which
 // paired a fresh index.html with stale scripts after a deploy.

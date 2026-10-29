@@ -39,10 +39,13 @@ test('preview packager pins source and builder, keeps relative assets, and omits
 
 test('production package preserves game files and excludes repository/test internals', async (t) => {
   const dir = await tmp(t), output = path.join(dir, 'production');
-  await copyProduction(ROOT, output);
-  for (const file of ['index.html', 'service-worker.js', 'CNAME']) {
+  const version = await copyProduction(ROOT, output);
+  for (const file of ['index.html', 'CNAME']) {
     assert.equal(await fs.readFile(path.join(output, file), 'utf8'), await fs.readFile(path.join(ROOT, file), 'utf8'));
   }
+  // The worker is the one file the packager edits: only its VERSION, to the shell hash.
+  const worker = await fs.readFile(path.join(ROOT, 'service-worker.js'), 'utf8');
+  assert.equal(await fs.readFile(path.join(output, 'service-worker.js'), 'utf8'), worker.replace(/const VERSION = '[^']*';/, `const VERSION = '${version}';`));
   for (const file of ['.git', '.github', 'tests', 'scripts', 'preview-build.json']) {
     await assert.rejects(fs.access(path.join(output, file)), { code: 'ENOENT' });
   }
