@@ -7913,8 +7913,8 @@ async function acceptInvite(role) {
   joinOverride = false;                                    // override consumed (single-use)
   if (isOffline()) { setJoinState(OFFLINE_TOGETHER); return; }
   if (peek && peek.mode === 'journey') { hideAllOverlays(); await getJourneyUI().joinInvite(joinPayload, role); stripInviteHash(); return; }
-  if (peek && peek.mode === 'race') { $('btnRace').onclick(); if (raceUI && raceUI.active) { hideAllOverlays(); await raceUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
-  if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role); stripInviteHash(); } return; }
+  if (peek && peek.mode === 'race') { $('btnRace').onclick(); if (raceUI && raceUI.active) { hideAllOverlays(); await raceUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
+  if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
   $('joinChoices').style.display = 'none';
   // Cancel stays reachable the whole time: a slow relay or a host who never answers must not
@@ -9072,9 +9072,15 @@ $('btnArena').onclick = () => {
 };
 // SOC-03: the last room code a join resolved, kept on this device for 20 minutes (public capability only).
 const lastRoomStore = window.SpaceManRoomSocial.createLastRoomStore({ key: BUILD.storageKey('sm2.lastroom.v1') });
+// Arena and Star Circuit guests keep the same tab-scoped seat token as Run Together, so a reload (or a phone that
+// evicted the tab) rejoins under the same key and the host hands back the reserved seat. Hosts have none yet.
+const arcadeResume = {
+  save() { if (SHOT || !TRANSPORT) return; try { const t = TRANSPORT.resumeToken(); if (t && !t.host) sessionStorage.setItem(RESUME_KEY, JSON.stringify(t)); else clearResume(); } catch (e) {} },
+  clear: clearResume,
+};
 function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
-    storageKey: BUILD.storageKey('sm2.arena.v1'), lastRoom: lastRoomStore,
+    storageKey: BUILD.storageKey('sm2.arena.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions: relayHostOptions,
@@ -9095,7 +9101,7 @@ $('btnRace').onclick = () => {
 };
 function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
-    storageKey: BUILD.storageKey('sm2.race.v1'), lastRoom: lastRoomStore,
+    storageKey: BUILD.storageKey('sm2.race.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions: relayHostOptions,

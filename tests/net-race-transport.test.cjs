@@ -43,7 +43,8 @@ test('race mode is explicit; runner codecs stay protocol-6 byte compatible', asy
   assert.equal(host.net.info().cap, 4); assert.equal(host.net.info().specCap, 4);
   assert.equal(host.net.peekInvite(invite).mode, 'race');
   assert.equal(host.net._n1.invite.decodeInvite(invite).inv.flags & H.INV_RACE, H.INV_RACE);
-  assert.equal(host.net.resumeToken(), null); assert.equal(guest.net.resumeToken(), null);
+  assert.equal(host.net.resumeToken(), null, 'a race host cannot be restored yet');
+  assert.equal(guest.net.resumeToken().mode, 'race', 'a guest keeps a seat token for a reload');
   const hello = F.encHello(F.makeScratch(), { tag: 'ABC', suit: 0, hat: 0, wantP: 0, proof16: new Uint8Array(16) });
   assert.equal(hello.length, 43); assert.equal(F.decHello(hello).mode, 0);
   assert.equal(F.decHello(hello).caps, host.net._room.CAPS);
@@ -388,11 +389,18 @@ test('race invite rotation preserves mode and a host relay reconnect preserves e
   assert.equal(newcomer.net.info().mode, 'race');
 });
 
-test('race page reload restoration is refused before reusing any persisted keys', async (t) => {
+test('a race guest reload rejoins under its own key; a host restore is still refused', async (t) => {
   const { hub, host, invite } = await room(t, { players: 0 });
-  const c = client(hub, { game: false }); t.after(() => c.close());
-  await assert.rejects(c.net.acceptJoin(invite, { mode: 'race', resumeKey: '00'.repeat(32) }), /fresh identity/);
-  assert.equal(c.net._n1.session(), null);
+  const g = client(hub, { game: false }), again = client(hub, { game: false }), c = client(hub, { game: false });
+  t.after(() => { g.close(); again.close(); c.close(); });
+  await g.net.acceptJoin(invite, { mode: 'race' });
+  const p = g.net.info().myP, token = JSON.parse(JSON.stringify(g.net.resumeToken()));
+  assert.equal(token.role, 0);
+  g.close();                                                         // the tab reloads: the socket just drops
+  await until(() => [...host.net._n1.session().roster.values()].some((r) => r.absent), 'seat held');
+  await again.net.acceptJoin(token.invite, { mode: 'race', role: token.role, resumeKey: token.priv });
+  assert.equal(again.net.info().myP, p, 'same seat, not the next free one');
+  assert.equal(host.net.info().players, 2);
   await assert.rejects(c.net.openRoom({ mode: 'race', relayHost: 'relay.test', code: false, resume: {} }), /cannot be restored/);
   assert.equal(c.net._n1.session(), null);
   assert.equal(host.net.resumeToken(), null);

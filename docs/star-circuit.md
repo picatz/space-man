@@ -132,7 +132,8 @@ The host's pause applies to everyone. A guest's menu only releases their own
 controls. Keep the host tab open; a suspended host pauses the race and closing
 it ends the room. New mid-race arrivals (and anyone who finds the grid full) watch with a place in
 a first-come queue and take a free racer seat as soon as the room is back in its lobby. There is no
-host migration or page-reload race restoration. Local CPU racing still works
+host migration or host page-reload race restoration; a guest's reload rejoins its
+reserved seat automatically under the same key. Local CPU racing still works
 without a connection. The shared room has no voice or text chat.
 
 Verification: Node authority/codec/transport/coordinator tests and separate

@@ -694,6 +694,7 @@
         hostOptions: opts.hostOptions,
         baseUrl: opts.baseUrl,
         lastRoom: opts.lastRoom,
+        resume: opts.resume,
         onAutoStart: () => { if (room?.isHost) start(); },
         onChange: roomChanged,
         onSnapshot: networkSnapshot,
@@ -2614,11 +2615,11 @@
       closeSharedSession,
       close,
       destroy,
-      joinInvite(payload, role) {
+      joinInvite(payload, role, resumeKey) {
         if (!active) open();
         if (!room) return Promise.resolve(false);
         roomDetails.open = true;
-        return room.join(payload, role, true);
+        return room.join(payload, role, true, resumeKey);
       },
       roomStatus() {
         const s = room?.status();

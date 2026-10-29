@@ -87,8 +87,11 @@ authoritative online rooms, so they cannot desynchronize anyone.
 - Host connection loss pauses authority; Resume/Start stay disabled until connected
 - A hidden/paused host freezes the match; no automatic host migration occurs
 - Explicit host leave ends the room for everyone; guest leave does not
-- Host reload ends the match. Arena does not persist a running match or room key
-  in browser storage. Reopening an invite joins the next available role
+- Host reload ends the match. Arena does not persist a running match or the host's
+  room key. A guest's reload (or a phone that evicts the tab) rejoins automatically
+  under the same key from a tab-scoped seat token, so within the reserve window
+  the host hands back the same fighter mid-match; later it is an ordinary join,
+  queued for the next lobby. Leaving on purpose clears the token
 - Leaving/cancelling removes arena listeners and timers, releases inputs, and
   restores the runner without changing its records or actor
 

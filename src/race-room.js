@@ -134,6 +134,7 @@
       changed();
     }
     function cleanup(leave = true) {
+      if (opts.resume) opts.resume.clear();
       if (votes) votes.reset();
       serial++;
       active = false;
@@ -270,7 +271,7 @@
         return false;
       }
     }
-    async function join(target, role, trustedPayload = false) {
+    async function join(target, role, trustedPayload = false, resumeKey) {
       if (active || busy || net.active) return false;
       const mine = ++serial;
       busy = true;
@@ -323,11 +324,12 @@
           Object.assign(
             {},
             typeof opts.identity === "function" ? opts.identity() : {},
-            { mode: "race", role: role === 1 ? 1 : 0 },
+            { mode: "race", role: role === 1 ? 1 : 0, resumeKey: resumeKey || undefined },
           ),
         );
         if (mine !== serial) return false;
         if (codeRoom && lastRoom) lastRoom.save(codeRoom);
+        if (opts.resume) opts.resume.save();
         active = true;
         busy = false;
         lastReceived = now();

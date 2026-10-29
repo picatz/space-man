@@ -2668,7 +2668,9 @@
       const pt = appearancePacket(0, valid); if (!pt || (S.pair.sealPending || 0) >= SEAL_QUEUE_MAX - 2) return false;
       sealApp(S.pair, pt).then(w => { if (!S.closed && S.byed == null) S.relay.send(S.inv.hostPub, w); }).catch(() => {}); return true;
     };
-    S.resumeToken = () => arcadeMode(S) ? null : ({ v: 1, host: false, invite: S.payload || '', priv: S.keys ? hex(S.keys.priv) : '', role: S.role,
+    // An arcade guest's reload comes back under the same key, so the host hands back the same seat while it is still
+    // reserved; past that it is an ordinary join (queued for a seat if a match is running). It asks for the seat it wanted.
+    S.resumeToken = () => ({ v: 1, host: false, mode: S.mode, invite: S.payload || '', priv: S.keys ? hex(S.keys.priv) : '', role: arcadeMode(S) ? S.wantRole : S.role,
       tag: S.tag, suit: S.suit, hat: S.hat, adjIdx: S.adjIdx, nounIdx: S.nounIdx });
     // Link probe + dead-socket watchdog, every TUNE.pingMs of real time while in the room.
     function pingTick() {
@@ -2919,7 +2921,6 @@
 
     S.join = async () => {
       if (inviteMode(inv) !== S.mode) throw modeError();
-      if (arcadeMode(S) && opts.resumeKey) throw new Error('Arena and racing page reloads must join with a fresh identity.');
       S.keys = opts.resumeKey && isHex(opts.resumeKey, 32) ? keypairFromRaw(unhex(opts.resumeKey)) : await genKeypair();   // same key = the host seats us in the same place
       const region = regionOf(S.inv.region);
       const hosts = (S.inv.flags & 2) ? [S.inv.relayHost] : (region ? region.hosts : null);

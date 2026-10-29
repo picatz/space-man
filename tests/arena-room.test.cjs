@@ -145,7 +145,7 @@ test('invalid invites leave coordinator reusable without runner state', async t 
   assert.equal(await guest.room.join(host.net.info().link, 1), true);
   guest.room.close();
   assert.equal(guest.room.status().error, ''); assert.equal(guest.room.status().connection, '');
-  assert.equal(guest.room.current, null); assert.equal(guest.net.resumeToken(), null);
+  assert.equal(guest.room.current, null);
   assert.equal(await guest.room.hosting({ format: 'ffa' }), true);
 });
 
@@ -193,4 +193,29 @@ test('an Arena join explains how to open a Star Circuit invite', async t => {
   assert.match(guest.room.status().error, /Star Circuit/);
   assert.equal(guest.net.active, false);
   assert.equal(guest.room.busy, false);
+});
+
+test('a guest who reloads mid-match comes back to the same fighter, and a deliberate leave forgets the seat', { timeout: 20000 }, async t => {
+  const { host, join, peer, step } = await setup(t), player = await join();
+  player.room.close(); // rebuild the guest coordinator with a resume store, as index.html wires it
+  player.run(`window.__saved=[];window.room=SpaceManArenaRoom.create({net:SpaceManNet,resume:{save(){__saved.push(SpaceManNet.resumeToken());},clear(){__saved.push(null);}}});`);
+  player.room = player.context.room;
+  await until(() => host.net.roster().length === 1, 'deliberate leave freed the old seat');
+  assert.equal(await player.room.join(host.net.info().link, 0), true);
+  await until(() => host.net.roster().length === 2, 'rejoined');
+  const token = JSON.parse(JSON.stringify(player.context.__saved.at(-1)));
+  assert.equal(token.mode, 'arena'); assert.equal(token.host, false);
+  const p = player.net.info().myP;
+  assert.equal(host.room.start(5), true);
+  await until(() => seat(host, p)?.connected, 'seated in the match');
+  const actorId = seat(host, p).actorId;
+  player.close(); // the tab reloads: no room.close, the socket just drops
+  await until(() => seat(host, p)?.connected === false, 'seat reserved while away');
+  const back = peer();
+  assert.equal(await back.room.join(token.invite, token.role, true, token.priv), true);
+  await until(() => seat(host, p)?.connected, 'same seat reconnected', 9000);
+  assert.equal(back.net.info().myP, p); assert.equal(back.net.info().role, 0);
+  assert.equal(seat(host, p).actorId, actorId, 'same fighter');
+  await step(10);
+  assert.equal(host.room.current.status, 'running', 'the match never stopped for anyone else');
 });

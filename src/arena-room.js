@@ -32,7 +32,7 @@
     // Friends who joined mid-match (or found every seat taken) take free fighter slots whenever the room is in its lobby.
     function seatLate(){if(host&&host.status==='lobby')net.seatWaiting(host.state.actors.filter(a=>!a.boss).length);}
     function sync(){if(host){seatLate();host.syncRoster(roster(),now());publish(true);}if(votes)votes.evaluate();changed();}
-    function cleanup(leave=true){if(votes)votes.reset();serial++;active=false;busy=false;pending=null;connection='';host=null;client=online.createClient();if(timer){root.clearInterval(timer);timer=null;}if(off){off();off=null;}if(leave)net.leave();}
+    function cleanup(leave=true){if(opts.resume)opts.resume.clear();if(votes)votes.reset();serial++;active=false;busy=false;pending=null;connection='';host=null;client=online.createClient();if(timer){root.clearInterval(timer);timer=null;}if(off){off();off=null;}if(leave)net.leave();}
     function subscribe(){
       ensureVotes();
       off=net.onEvent((event,data)=>{
@@ -59,7 +59,7 @@
         if(mine!==serial)return false;host=online.createHost(config);active=true;busy=false;host.syncRoster(roster(),now());publish(true);changed();return true;
       }catch(e){if(mine===serial){error=e&&e.message||'Could not reach the room relay.';cleanup();changed();}return false;}
     }
-    async function join(target,role,trustedPayload=false){
+    async function join(target,role,trustedPayload=false,resumeKey){
       if(active||busy||net.active)return false;const mine=++serial;busy=true;error='';closedReason='';connection='';client=online.createClient();subscribe();changed();
       let codeRoom=null;
       try{
@@ -70,8 +70,8 @@
         if(peek.err)throw new Error(peek.err==='expired'?'This arena invite has expired.':'This invite is not compatible. Refresh both games.');
         if(peek.mode!=='arena')throw new Error(peek.mode==='race'?'That is a Star Circuit room. Join it from Star Circuit.':'That is a Run Together room. Join it from the runner.');
         if(net.blocklist().some(b=>b.pubkey===peek.hostHex))throw new Error('This host is blocked. Manage blocked hosts in the runner settings first.');
-        await net.acceptJoin(payload,Object.assign({},typeof opts.identity==='function'?opts.identity():{},{mode:'arena',role:role===1?1:0}));
-        if(mine!==serial)return false;if(codeRoom&&lastRoom)lastRoom.save(codeRoom);active=true;busy=false;lastReceived=now();if(client.current)present(client.current);changed();return true;
+        await net.acceptJoin(payload,Object.assign({},typeof opts.identity==='function'?opts.identity():{},{mode:'arena',role:role===1?1:0,resumeKey:resumeKey||undefined}));
+        if(mine!==serial)return false;if(codeRoom&&lastRoom)lastRoom.save(codeRoom);if(opts.resume)opts.resume.save();active=true;busy=false;lastReceived=now();if(client.current)present(client.current);changed();return true;
       }catch(e){if(mine===serial){error=e&&e.message||'Could not join this arena.';cleanup();changed();}return false;}
     }
     function submit(command,time=now()){
