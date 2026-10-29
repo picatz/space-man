@@ -204,3 +204,8 @@ test('controller neutral reacquisition and menu/control gates cannot queue a hel
   y.press(true);assert.equal(y.q.sample(false),false);assert.equal(y.q.sample(false),false,`${gate} cannot bank an Item request`);
  }
 });
+test('race events map to haptic kinds the shared buzz() understands, and unknown events stay silent',()=>{
+ const {hapticFor}=context.window.SpaceManRaceUI,known=new Set(['select','tap','light','heavy','success','warn','celebrate','sector']);
+ for(const t of['pad','hit','block','coin','land','item','pulse','recover','lap','finish'])assert.ok(known.has(hapticFor(t)),t);
+ assert.equal(hapticFor('hit'),'heavy');assert.equal(hapticFor('go'),null);assert.equal(hapticFor('constructor'),null);
+});

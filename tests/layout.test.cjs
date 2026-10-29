@@ -230,3 +230,19 @@ test('an ordinary full jump never drags the camera up and back down', () => {
     } finally { c.close(); }
   }
 });
+
+test('a hard landing kicks dust and a shock ring, and Reduce Motion keeps the deck still', () => {
+  const { client, relay } = require('./harness.cjs');
+  for (const calm of [false, true]) {
+    const c = client(relay(), { width: 844, height: 390 });
+    try {
+      const r = JSON.parse(c.run(`startRun(); G.mode = 'play'; settings.reduceMotion = ${calm};
+        const p = G.player, pl = G.platforms[0]; pl.w = 4000; p.x = pl.x + 400; p.y = pl.y - p.h - 260; p.vy = 0; p.onGround = false;
+        landRings.length = 0; let rang = 0;
+        for (let f = 0; f < 90 && !p.onGround; f++) { update(); rang = Math.max(rang, landRings.length); }
+        JSON.stringify({ landed: p.onGround, rang })`));
+      assert.ok(r.landed, 'the drop came down on the deck');
+      assert.equal(r.rang > 0, !calm, calm ? 'Reduce Motion drew a shock ring' : 'a 260 px drop landed without a shock ring');
+    } finally { c.close(); }
+  }
+});

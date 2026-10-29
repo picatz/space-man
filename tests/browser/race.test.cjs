@@ -170,7 +170,7 @@ test(
     );
     await page.keyboard.press("Escape");
     await menu(page, "Choose a circuit");
-    for (const id of ["ember", "bloom", "prism"]) {
+    for (const id of ["ember", "bloom", "prism", "aurora", "neon", "nebula"]) {
       await page.locator(`[data-track="${id}"]`).click();
       await page.locator(".race-launch").click();
       await playing(page);
