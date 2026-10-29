@@ -3,7 +3,8 @@
 Arcade space PWA (Endless Run, Orbital Arena, Star Circuit, online rooms). No build step, no bundler,
 no runtime dependencies: `index.html` loads `src/*.js` as plain `<script>` tags in order, and
 `service-worker.js` precaches the shell. Read `README.md` for features and `docs/` for design notes
-(`docs/wire-protocol.md` is the authoritative netcode spec). Audit findings live in the project
+(`docs/wire-protocol.md` is the authoritative netcode spec, `docs/art-direction.md` the art, lore and
+style contract every mode and screen follows). Audit findings live in the project
 files under `audit/`, not in this repo.
 
 ## Run it
