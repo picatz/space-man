@@ -293,6 +293,8 @@
     // Presentation-only game feel. Nothing here reaches the simulation or wire:
     // hit-stop and KO slow-mo run in local matches only, shake/flash/squash
     // everywhere, all through the pure helpers in SpaceManArena.feel.
+    // The countdown is the one moment every new pilot is looking at the screen: state the goal.
+    const COUNTDOWN_GOAL = { duel: 'DUEL · KNOCK THEM OFF THE EDGE', ffa: 'BRAWL · LAST PILOT STANDING', teams: 'TEAM-UP · KNOCK RIVALS OFF' };
     const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {}, lastLand: -1 };
     function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {} }); }
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
@@ -970,6 +972,7 @@
         for (let x = 0; x <= width + 20; x += 20) { const y = height * (.87 + layer * .04) + Math.sin(x / (width * .21) + layer * 2) * height * .03 + Math.sin(x / 39 + layer) * 8; g.lineTo(x, y); } g.lineTo(width, height); g.closePath(); g.fill();
       }
       stageSilhouette(g, a, t);
+      if (art && art.seasonBackdrop) art.seasonBackdrop(g, width, height, root.SpaceManSeasons && root.SpaceManSeasons.current());
       g.globalAlpha = 1; return bg;
     }
     // Per-stage backdrop silhouette, cached with the background so it costs
@@ -1468,8 +1471,8 @@
       pulseButton.classList.toggle('arena-cooling', human.attackTicks > 0 || human.attackCooldown > 0); pulseButton.classList.toggle('arena-charging', human.charge > 0); dashButton.classList.toggle('arena-cooling', human.dashCooldown > 0 || (!human.onGround && !human.airDashAvailable));
       pulseButton.style.setProperty('--ready', attackReady); dashButton.style.setProperty('--ready', dashReady);
       let label = '', sub = '';
-      if (state.phase === 'countdown') { label = String(Math.ceil(state.countdownTicks / 60)); sub = FORMATS.find(f => f.id === state.format).name.toUpperCase() + ' · GET READY'; }
-      else if (state.phase === 'playing' && state.tick < (state.encounter ? state.encounter.countdownTicks : arena.constants.COUNTDOWN_TICKS) + 35) { label = 'GO!'; sub = 'MAKE SOME SPACE'; }
+      if (state.phase === 'countdown') { label = String(Math.ceil(state.countdownTicks / 60)); sub = state.encounter ? FORMATS.find(f => f.id === state.format).name.toUpperCase() + ' · GET READY' : COUNTDOWN_GOAL[state.format] || 'GET READY'; }
+      else if (state.phase === 'playing' && state.tick < (state.encounter ? state.encounter.countdownTicks : arena.constants.COUNTDOWN_TICKS) + 35) { label = 'GO!'; sub = state.encounter ? 'MAKE SOME SPACE' : 'HIGHER % FLIES FARTHER'; }
       countdownEl.hidden = !label; statusEl.textContent = label; statusSub.textContent = sub;
       if (label && label !== lastCountdown) { announce(label === 'GO!' ? 'Go! Match started.' : 'Match starts in ' + label); sfx(label === 'GO!' ? 'start' : 'countdown'); lastCountdown = label; }
     }
@@ -1697,6 +1700,9 @@
         const receipt = onlineActive() ? root.SpaceManCosmetics.roundReceipt('arena', opts.net.info().roomId, Number(rootEl.dataset.epoch)) : cosmeticSession + ':' + cosmeticRound;
         const found = receipt ? opts.onReward({ type: 'arena', id: receipt }) || [] : [];
         if (found.length) resultText.textContent += ' Found: ' + found.map(id => root.SpaceManCosmetics.item(id)?.name || '').join(', ') + '.';
+        root.SpaceManLogbook?.stampSeason();
+        const flawless = won && !result.tie && human.deaths === 0 && root.SpaceManLogbook ? root.SpaceManLogbook.discover('flawless') : null;
+        if (flawless) resultText.textContent += ' Logbook: ' + flawless.name + '.';
       }
       syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent);
     }
