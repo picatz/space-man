@@ -11,7 +11,9 @@ const ROOT = path.resolve(__dirname, '../..');
 const STEP_MS = 45000;
 
 test('arena reload: guest resumes its seat and a reloaded host reopens the same room', { timeout: 180000 }, async t => {
-  const { chromium } = require('playwright');
+  const playwright = require('playwright');
+  const engineName = process.env.SPACE_MAN_ARENA_BROWSER || 'chromium';
+  assert.ok(['chromium', 'webkit'].includes(engineName), 'SPACE_MAN_ARENA_BROWSER must be chromium or webkit');
   const hub = require('../harness.cjs').relay();
   const clients = []; let browser, server;
   t.after(async () => {
@@ -31,8 +33,8 @@ test('arena reload: guest resumes its seat and a reloaded host reopens the same 
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const baseURL = `http://127.0.0.1:${server.address().port}/`;
-  browser = await chromium.launch({ headless: process.env.SPACE_MAN_HEADED !== '1',
-    ...(process.env.SPACE_MAN_CHROMIUM_PATH ? { executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : {}) });
+  browser = await playwright[engineName].launch({ headless: process.env.SPACE_MAN_HEADED !== '1',
+    ...(engineName === 'chromium' && process.env.SPACE_MAN_CHROMIUM_PATH ? { executablePath: process.env.SPACE_MAN_CHROMIUM_PATH } : {}) });
 
   async function client(name) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: 'block' });
