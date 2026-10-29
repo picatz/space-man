@@ -65,7 +65,9 @@ test('play together: host Arena from the hub, a friend scans the QR and joins', 
     window.BarcodeDetector = class { constructor(o) { this.formats = o && o.formats; } async detect() { return window.__qr ? [{ rawValue: window.__qr, format: 'qr_code' }] : []; } };
     const fake = async () => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); let n = 0;
       setInterval(() => { g.fillStyle = n++ % 2 ? '#123' : '#456'; g.fillRect(0, 0, 64, 64); }, 50); return c.captureStream(15); };
-    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: fake } });
+    // WebKit's navigator.mediaDevices may not be redefinable; patch the method on it instead.
+    try { Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: fake } }); } catch (_) {}
+    if (navigator.mediaDevices.getUserMedia !== fake) try { navigator.mediaDevices.getUserMedia = fake; } catch (_) {}
   };
   const host = await client('host'), guest = await client('guest', camera), plain = await client('no-detector');
   try {

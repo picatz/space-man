@@ -145,7 +145,8 @@
         if (closed) return;
         timer = root.setTimeout(function () {
           timer = 0;
-          if (closed || busy || video.readyState < 2) { scan(); return; }
+          // A frame that is not ready yet makes detect() reject; the catch below just tries again.
+          if (closed || busy) { scan(); return; }
           busy = true;
           detector.detect(video).then(function (codes) {
             busy = false;
