@@ -426,3 +426,33 @@ test('all opaque hulls precede view-depth-sorted wakes independent of input orde
  assert.deepEqual(order,[frontHull.vertices,farHull.vertices,nearWake.vertices,farWake.vertices],'reversing the eye reverses effect depth, not the roster');
  r.dispose();
 });
+
+test('sky dome is a deterministic gradient from ground through a horizon glow to the zenith, with stars above', () => {
+  const sky = { top: [0, 0, .1], horizon: [0, .2, .3], glow: [.1, .5, .5], ground: [0, 0, 0], stars: 40 };
+  const a = Render3D.skyDome(sky), b = Render3D.skyDome(sky), plain = Render3D.skyDome({ ...sky, stars: 0 });
+  assert.deepEqual(a, b, 'no randomness');
+  assert.equal((a.length - plain.length) / 9, 40 * 6, 'each star is one two-triangle diamond');
+  const colorAt = (vertices, test) => { for (let i = 0; i < vertices.length; i += 9) if (test(vertices[i + 1])) return [...vertices.slice(i + 6, i + 9)]; };
+  closeArray(colorAt(plain, y => y > .9999), sky.top);
+  closeArray(colorAt(plain, y => Math.abs(y) < 1e-6), sky.glow);
+  closeArray(colorAt(plain, y => y < -.9999), sky.ground);
+  for (let i = plain.length; i < a.length; i += 9) assert.ok(a[i + 1] > .05, 'stars stay above the horizon');
+});
+
+test('scene.sky draws first, camera-centred, without depth or fog, and uploads once per sky', () => {
+  const h = harness(), renderer = Render3D.create(h.canvas), sky = { top: [0, 0, .1], horizon: [0, .2, .3], stars: 10 };
+  const scene = { sky, camera: { eye: [500, 40, 500], target: [500, 40, 400] }, meshes: [{ vertices: triangle() }] };
+  assert.equal(renderer.draw(scene), true); assert.equal(renderer.draw(scene), true);
+  assert.equal(renderer.draw({ ...scene, sky: { ...sky } }), true, 'an equal copy reuses the buffer');
+  const skyUploads = h.calls.filter(c => c[0] === 'bufferData' && c[2] instanceof Float32Array && c[2].length > 27);
+  assert.equal(skyUploads.length, 1);
+  const draws = h.calls.map((c, i) => [c, i]).filter(([c]) => c[0] === 'drawArrays');
+  const firstDraw = draws[0][1], depthOff = h.calls.findIndex(c => c[0] === 'disable' && c[1] === 2929);
+  assert.ok(depthOff >= 0 && depthOff < firstDraw, 'sky ignores depth');
+  assert.equal(draws[0][0][3], skyUploads[0][2].length / 9, 'sky is the first draw');
+  const eyes = h.calls.filter(c => c[0] === 'uniform3fv' && c[1] === 'uEye');
+  assert.ok(eyes.some(c => c[2].every(n => n === 0)), 'sky is centred on the camera');
+  assert.ok(h.calls.some(c => c[0] === 'uniform2f' && c[1] === 'uFogRange' && c[2] >= 1e6), 'sky is never fogged');
+  const after = h.calls.slice(firstDraw);
+  assert.ok(after.some(c => c[0] === 'enable' && c[1] === 2929), 'world geometry is depth tested again');
+});
