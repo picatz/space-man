@@ -93,6 +93,10 @@
       },
     });
   }
+  // Race events the followed pilot feels in the hands, as buzz() kinds. Pads and
+  // the drift-release boost are the satisfying ones; a hit is the only heavy tap.
+  const HAPTIC_EVENTS = Object.freeze({ pad: "success", hit: "heavy", block: "light", coin: "select", land: "heavy", item: "tap", pulse: "light", recover: "warn", lap: "sector", finish: "celebrate" });
+  function hapticFor(type) { return Object.hasOwn(HAPTIC_EVENTS, type) ? HAPTIC_EVENTS[type] : null; }
   function sourceBearingArrow(sx, sy) {
     return ["→","↘","↓","↙","←","↖","↑","↗"][(Math.round(Math.atan2(sy,sx)/(Math.PI/4))+8)%8];
   }
@@ -1885,6 +1889,8 @@
         const fresh = serial ? serial > noticeSerial : state.tick !== noticeTick;
         noticeSerial = Math.max(noticeSerial, serial);
         if (!fresh || event.id !== actor?.id) continue;
+        const haptic = hapticFor(event.type);
+        if (haptic && typeof opts.haptic === "function") opts.haptic(haptic);
         const message = event.type === "item" && actor.item ? actor.item.toUpperCase() + " READY" : messages[event.type];
         if (message) { noticeText = message; noticeUntil = state.tick + 60; }
       }
@@ -2623,5 +2629,5 @@
       },
     });
   }
-  root.SpaceManRaceUI = Object.freeze({ create, createWarningReceipt, createItemRequest, pulseGuide, sourceBearingArrow });
+  root.SpaceManRaceUI = Object.freeze({ create, createWarningReceipt, createItemRequest, pulseGuide, sourceBearingArrow, hapticFor });
 })(typeof window !== "undefined" ? window : globalThis);

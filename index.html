@@ -9100,6 +9100,7 @@ function getRaceUI() {
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
+    haptic: buzz,
     onAudioSettings(changes) {
       for (const key of ['muted', 'music', 'musicVol', 'sfxVol'])
         if (Object.prototype.hasOwnProperty.call(changes, key)) settings[key] = changes[key];
