@@ -6,6 +6,8 @@
   const TAU = Math.PI * 2;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const lerp = (a, b, t) => a + (b - a) * t;
+  // Sim event to shared effect kind (src/fx.js); the effect list stores the kind.
+  const FX_KIND = { hit: 'hit', ringout: 'ko', respawn: 'spawn', jump: 'land' };
   const hash = (n) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
   const FORMATS = [
     { id: 'duel', name: 'Duel', tag: 'YOU + 1 CPU', detail: 'A little space. A worthy rival.', icon: '◉ : ◉' },
@@ -1350,13 +1352,9 @@
           ctx.strokeText(e.text, 0, 0); ctx.fillStyle = e.color; ctx.fillText(e.text, 0, 0); ctx.restore(); continue;
         }
         if (e.type === 'dust') { ctx.globalAlpha = .55 * (e.life / e.max); ctx.fillStyle = e.color; const size = 2 + 2 * (1 - e.life / e.max); ctx.fillRect(e.x - size / 2, e.y - size / 2, size, size); continue; }
-        const k = 1 - e.life / e.max, radius = e.type === 'ringout' ? 18 + k * 56 : e.type === 'dodge' ? 12 + k * 34 : 7 + k * 20;
-        ctx.globalAlpha = (1 - k) * .85; ctx.strokeStyle = e.color; ctx.lineWidth = 2;
-        if (calm()) { ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, 5, 0, TAU); ctx.fill(); }
-        else {
-          ctx.beginPath(); ctx.arc(e.x, e.y, radius, 0, TAU); ctx.stroke();
-          if (!saver() && (e.type === 'hit' || e.type === 'ringout')) for (let i = 0; i < 6; i++) { const angle = i * TAU / 6 + e.x; const r = radius * 1.4; ctx.fillStyle = e.color; ctx.fillRect(e.x + Math.cos(angle) * r - 1.5, e.y + Math.sin(angle) * r - 1.5, 3, 3); }
-        }
+        // The shared kit (src/fx.js) paints hits, ring-outs, arrivals, pickups,
+        // launches and near misses with the same look as every other mode.
+        root.SpaceManFX.draw(ctx, e.type, e.x, e.y, 1 - e.life / e.max, { color: e.color, calm: calm(), saver: saver(), seed: e.x });
       }
       ctx.globalAlpha = 1; ctx.restore();
       drawKoEffects(c);
@@ -1570,9 +1568,9 @@
     }
     function itemEvents(event, focusId) {
       const st = ITEM_STYLE[event.kind] || ITEM_STYLE.surge, name = arena.itemKinds[event.kind] ? arena.itemKinds[event.kind].name : 'Cell';
-      if (event.type === 'item-spawn') { effects.push({ type: 'respawn', x: event.x, y: event.y, color: st.color, life: 20, max: 20 }); sfx('drop'); announce(name + ' dropped.'); }
+      if (event.type === 'item-spawn') { effects.push({ type: 'spawn', x: event.x, y: event.y, color: st.color, life: 20, max: 20 }); sfx('drop'); announce(name + ' dropped.'); }
       else if (event.type === 'item-pickup') {
-        effects.push({ type: 'respawn', x: event.x, y: event.y, color: st.color, life: 24, max: 24 });
+        effects.push({ type: 'pickup', x: event.x, y: event.y, color: st.color, life: root.SpaceManFX.LIFE.pickup, max: root.SpaceManFX.LIFE.pickup });
         sfx(event.actorId === focusId ? 'pickup' : 'drop');
         if (event.actorId === focusId) { announce(name + ' claimed.'); buzz('success'); }
       }
@@ -1583,7 +1581,11 @@
         const who = state.actors.find(a => a.id === event.actorId), type = event.type;
         const focus = watchedActor(), focusId = focus ? focus.id : 0;
         if (type === 'item-spawn' || type === 'item-pickup') itemEvents(event, focusId);
-        if (['hit', 'ringout', 'respawn', 'jump'].includes(type)) effects.push({ type, x: event.x, y: event.y, color: who ? actorColor(who) : '#FFE59A', life: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14, max: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14 });
+        if (FX_KIND[type]) {
+          // A ground jump kicks dust from the feet; a double jump rings the air.
+          const kind = type === 'jump' && event.double ? 'dodge' : FX_KIND[type], life = root.SpaceManFX.LIFE[kind];
+          effects.push({ type: kind, x: event.x, y: event.y + (type === 'jump' && !event.double && who ? (who.h || 34) / 2 : 0), color: who ? actorColor(who) : '#FFE59A', life, max: life });
+        }
         if (type === 'boss-warning') { announce(event.move === 'shockwave' ? 'Guardian charging a ground wave. Jump!' : 'Guardian aiming. Dash out of the warning!'); sfx('countdown'); }
         else if (type === 'boss-exposed') announce('Guardian core exposed. Pulse now!');
         else if (type === 'boss-defeated') { announce('Guardian defeated!'); sfx('win'); }
