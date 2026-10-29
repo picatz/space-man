@@ -438,7 +438,7 @@
       // sound that matters to the player.
       if (far) { if (now - lastFar < .16) return; lastFar = now; }
       else { if (now - lastSfx < 0.055 && kind !== 'win') return; lastSfx = now; }
-      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13] };
+      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13], pickup: [620, 1180, .12], drop: [880, 520, .06] };
       const v = values[kind]; if (!v) return;
       const o = audio.createOscillator(), g = audio.createGain();
       o.type = kind === 'hit' || far ? 'triangle' : 'sine'; o.frequency.setValueAtTime(v[0], now); o.frequency.exponentialRampToValueAtTime(v[1], now + v[2]);
@@ -1296,6 +1296,7 @@
       ctx.strokeStyle = t.accent; ctx.globalAlpha = .055; ctx.lineWidth = 1 / c.scale; ctx.beginPath(); ctx.ellipse(a.width / 2, 420, 445, 130, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
       drawBlastBounds(a, t, c);
       a.platforms.forEach(p => platform(ctx, p, a, false));
+      if (state.items) drawItems(ctx, state.tick);
       for (const actor of state.actors) {
         const warning = actor.boss && arena.bossAttackBox && arena.bossAttackBox(actor);
         if (warning) {
@@ -1332,7 +1333,7 @@
           }
         }
         astronaut(ctx, actor, x, y, state.tick, false);
-
+        drawSurge(actor, x, y, state.tick);
       }
       for (const e of effects) {
         if (e.type === 'kotext' || e.type === 'koflash') continue; // screen-space, drawn after the world
@@ -1515,11 +1516,48 @@
         }
       }
     }
+    // Item cells share one silhouette (a bobbing capsule on a platform top)
+    // and differ by hue and glyph, so a new kind only needs a row here.
+    const ITEM_STYLE = { heal: { color: '#4EF07A', glyph: 'cross' }, shield: { color: '#38E1FF', glyph: 'ring' }, surge: { color: '#FFB454', glyph: 'bolt' } };
+    function drawItems(c, tick) {
+      const size = arena.constants.ITEM_SIZE;
+      for (const item of state.items.list) {
+        const st = ITEM_STYLE[item.kind] || ITEM_STYLE.surge, bob = calm() ? 0 : Math.sin((tick + item.id * 13) / 14) * 3;
+        const cx = item.x + size / 2, cy = item.y + size / 2 + bob;
+        const fading = item.ttl < 180 && Math.floor(item.ttl / 8) % 2 === 0;
+        c.save(); c.globalAlpha = fading ? .45 : 1;
+        c.globalAlpha *= .25; c.fillStyle = st.color; c.beginPath(); c.arc(cx, cy, size * .95, 0, TAU); c.fill();
+        c.globalAlpha = fading ? .45 : 1;
+        c.fillStyle = '#0B1627'; c.strokeStyle = st.color; c.lineWidth = 2.5; c.beginPath(); c.arc(cx, cy, size * .5, 0, TAU); c.fill(); c.stroke();
+        c.strokeStyle = c.fillStyle = st.color; c.lineWidth = 2.6; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath();
+        if (st.glyph === 'cross') { c.moveTo(cx - 4, cy); c.lineTo(cx + 4, cy); c.moveTo(cx, cy - 4); c.lineTo(cx, cy + 4); c.stroke(); }
+        else if (st.glyph === 'ring') { c.arc(cx, cy, 4.2, 0, TAU); c.stroke(); }
+        else { c.moveTo(cx + 1.5, cy - 5.5); c.lineTo(cx - 3, cy + .5); c.lineTo(cx + .5, cy + .5); c.lineTo(cx - 1.5, cy + 5.5); c.lineTo(cx + 3.5, cy - 1); c.lineTo(cx, cy - 1); c.closePath(); c.fill(); }
+        c.restore();
+      }
+    }
+    function drawSurge(actor, x, y, tick) {
+      if (!(actor.surge > 0)) return;
+      const lowFlicker = actor.surge < 120 && Math.floor(actor.surge / 6) % 2 === 0;
+      const pulse = calm() ? 0 : Math.sin(tick / 5) * 2;
+      ctx.save(); ctx.globalAlpha = lowFlicker ? .25 : .6; ctx.strokeStyle = '#FFB454'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.ellipse(x + actor.w / 2, y + actor.h / 2, actor.w * .85 + pulse, actor.h * .72 + pulse, 0, 0, TAU); ctx.stroke(); ctx.restore();
+    }
+    function itemEvents(event, focusId) {
+      const st = ITEM_STYLE[event.kind] || ITEM_STYLE.surge, name = arena.itemKinds[event.kind] ? arena.itemKinds[event.kind].name : 'Cell';
+      if (event.type === 'item-spawn') { effects.push({ type: 'respawn', x: event.x, y: event.y, color: st.color, life: 20, max: 20 }); sfx('drop'); announce(name + ' dropped.'); }
+      else if (event.type === 'item-pickup') {
+        effects.push({ type: 'respawn', x: event.x, y: event.y, color: st.color, life: 24, max: 24 });
+        sfx(event.actorId === focusId ? 'pickup' : 'drop');
+        if (event.actorId === focusId) { announce(name + ' claimed.'); buzz('success'); }
+      }
+    }
     function consumeEvents() {
       dodgeFeel();
       for (const event of state.events || []) {
         const who = state.actors.find(a => a.id === event.actorId), type = event.type;
         const focus = watchedActor(), focusId = focus ? focus.id : 0;
+        if (type === 'item-spawn' || type === 'item-pickup') itemEvents(event, focusId);
         if (['hit', 'ringout', 'respawn', 'jump'].includes(type)) effects.push({ type, x: event.x, y: event.y, color: who ? actorColor(who) : '#FFE59A', life: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14, max: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14 });
         if (type === 'boss-warning') { announce(event.move === 'shockwave' ? 'Guardian charging a ground wave. Jump!' : 'Guardian aiming. Dash out of the warning!'); sfx('countdown'); }
         else if (type === 'boss-exposed') announce('Guardian core exposed. Pulse now!');
@@ -1592,7 +1630,7 @@
       // Seed ownership belongs to the pure simulation. No gameplay randomness
       // comes from frame time or presentation effects.
       matchSerial++; const seed = localSession ? localSession.seed : ((Date.now() >>> 0) ^ Math.imul(matchSerial, 2654435761)) >>> 0;
-      state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty, ...(!localSession && playerCount === 2 && p2Joined ? { localPlayers: 2 } : {}) });
+      state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty, ...(!localSession ? { items: true } : {}), ...(!localSession && playerCount === 2 && p2Joined ? { localPlayers: 2 } : {}) });
       local2 = state.actors.filter(a => a.controller === 'human').length === 2 ? makeLocal2() : null;
       rootEl.dataset.players = local2 ? '2' : '1';
       if (legendEl) legendEl.textContent = local2 ? 'P1  A/D move · W jump · F pulse · G or L-Shift dash\nP2  ←/→ move · ↑ jump · . pulse · / or R-Shift dash' : 'A / D  move    SPACE  double jump';
