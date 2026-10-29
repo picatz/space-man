@@ -181,6 +181,10 @@ same everywhere.
   player never leaves the universe.
 - Primary actions are warm gold (`--sm-gold`) with a 4 px bottom lip; one per
   screen. Alternatives are quiet outlined slate.
+- **Every action looks like a button at rest**, without hover: a fill, a border, or
+  both, plus a 44 px target. Touch and gamepad players never see a hover state, so
+  bare text is never an action. The quietest tier (back, "All games", "Choose a
+  match", share, leave) is a ghost: a faint cyan wash and a 1 px slate border.
 - Lobby heroes show the actual crew in the mode's pose (running, brawling,
   piloting), drawn by the shared renderer, never a static image.
 - Results celebrate the player first: their pilot with happy eyes, then the
@@ -240,6 +244,7 @@ same three tiers (light pickup, medium hit, heavy knock-out).
 4. Does the grayscale screenshot read: pilot brightest, hazards obvious?
 5. Do hit, pickup, boost and knock-out use the shared FX vocabulary?
 6. Is motion eased, alive, and calm under reduced motion and battery saver?
-7. Is the HUD in the shared construction and corners?
+7. Is the HUD in the shared construction and corners? Does every action read as a
+   button without hover?
 8. Screenshot it at 390x844, 844x390, 820x1180 and 1280x800 next to another mode.
    Same universe?
