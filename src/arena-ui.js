@@ -295,8 +295,8 @@
     // everywhere, all through the pure helpers in SpaceManArena.feel.
     // The countdown is the one moment every new pilot is looking at the screen: state the goal.
     const COUNTDOWN_GOAL = { duel: 'DUEL · KNOCK THEM OFF THE EDGE', ffa: 'BRAWL · LAST PILOT STANDING', teams: 'TEAM-UP · KNOCK RIVALS OFF' };
-    const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {}, lastLand: -1 };
-    function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {} }); }
+    const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {}, lastLand: -1, combo: {} };
+    function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {}, combo: {} }); }
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
     // Couch play. local2 exists only while a same-device 2P match is loaded.
     let local2 = null, playerCount = 1, p2Joined = false, joinPadPrev = false, lobbyTick = 0, playersGroup, playerButtons = [], playersNote, joinButton, legendEl;
@@ -440,7 +440,7 @@
       // sound that matters to the player.
       if (far) { if (now - lastFar < .16) return; lastFar = now; }
       else { if (now - lastSfx < 0.055 && kind !== 'win') return; lastSfx = now; }
-      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13], pickup: [620, 1180, .12], drop: [880, 520, .06] };
+      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13], combo: [760, 1240, .1], pickup: [620, 1180, .12], drop: [880, 520, .06] };
       const v = values[kind]; if (!v) return;
       const o = audio.createOscillator(), g = audio.createGain();
       o.type = kind === 'hit' || far ? 'triangle' : 'sine'; o.frequency.setValueAtTime(v[0], now); o.frequency.exponentialRampToValueAtTime(v[1], now + v[2]);
@@ -1343,6 +1343,12 @@
       }
       for (const e of effects) {
         if (e.type === 'kotext' || e.type === 'koflash') continue; // screen-space, drawn after the world
+        if (e.type === 'combotext') {
+          const k = 1 - e.life / e.max, pop = calm() ? 1 : 1 + .5 * Math.max(0, 1 - k * 5) ** 2;
+          ctx.save(); ctx.globalAlpha = k < .7 ? 1 : 1 - (k - .7) / .3; ctx.translate(e.x, e.y - (calm() ? 0 : k * 22)); ctx.scale(pop, pop);
+          ctx.font = '900 20px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = '#071522';
+          ctx.strokeText(e.text, 0, 0); ctx.fillStyle = e.color; ctx.fillText(e.text, 0, 0); ctx.restore(); continue;
+        }
         if (e.type === 'dust') { ctx.globalAlpha = .55 * (e.life / e.max); ctx.fillStyle = e.color; const size = 2 + 2 * (1 - e.life / e.max); ctx.fillRect(e.x - size / 2, e.y - size / 2, size, size); continue; }
         const k = 1 - e.life / e.max, radius = e.type === 'ringout' ? 18 + k * 56 : e.type === 'dodge' ? 12 + k * 34 : 7 + k * 20;
         ctx.globalAlpha = (1 - k) * .85; ctx.strokeStyle = e.color; ctx.lineWidth = 2;
@@ -1486,8 +1492,21 @@
     }
     // Haptics belong to the host page (strength, battery saver and rumble routing live there); an absent hook is silent.
     const buzz = kind => { if (typeof opts.buzz === 'function') { try { opts.buzz(kind); } catch (_) {} } };
+    // Combo read: consecutive hits by one fighter on the same victim inside
+    // COMBO_WINDOW ticks. Derived from the event stream only, so it needs no
+    // sim state and behaves the same in local and online matches.
+    const COMBO_WINDOW = 75;
+    function comboFeel(event, involved) {
+      const prev = feel.combo[event.actorId], n = prev && prev.victim === event.targetId && state.tick - prev.tick <= COMBO_WINDOW ? prev.n + 1 : 1;
+      feel.combo[event.actorId] = { victim: event.targetId, tick: state.tick, n };
+      if (n < 2) return;
+      const who = state.actors.find(a => a.id === event.actorId);
+      effects.push({ type: 'combotext', x: event.x, y: event.y - 26, color: who ? actorColor(who) : '#FFE59A', life: 42, max: 42, text: n + ' HIT' });
+      if (involved) { sfx('combo'); if (n >= 3) announce(n + ' hit combo!'); if (shakeOn()) feel.trauma = arena.feel.addTrauma(feel.trauma, Math.min(.3, .06 * n)); }
+    }
     function hitFeel(event, victim, involved) {
       const F = arena.feel;
+      comboFeel(event, involved);
       if (victim && !calm()) feel.flash[victim.id] = 5;
       if (shakeOn()) {
         feel.trauma = F.addTrauma(feel.trauma, F.traumaFor(event, involved));
