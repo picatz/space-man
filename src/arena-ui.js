@@ -1084,7 +1084,48 @@
       heroTimer = root.setInterval(() => {
         if (!active || activeModal !== lobby || !lobbyArtEl || !lobbyArtEl.isConnected || document.hidden || calm() || lobby.closest('[inert]')) { stopHero(); return; }
         paintHero(lobbyArtEl, (performance.now() - heroStart) / 1000);
-      }, 50);
+      }, 40);
+    }
+    // Lobby hero choreography: a pure function of time so it is deterministic,
+    // frame-rate independent and testable. Two pilots trade lunges on a 4.4 s
+    // loop (each half: wind-up squash, fast swoop, pulse burst, springy recoil
+    // on the other). Lean and stretch come from velocity sampled a few frames
+    // back, which gives the whole body follow-through instead of a rigid float.
+    const HERO_LOOP = 4.4, HERO_BASE = { hero: { x: 150, y: 165 }, rival: { x: 440, y: 85 } };
+    const easeOut3 = (x) => 1 - Math.pow(1 - clamp(x, 0, 1), 3), easeInOut = (x) => { x = clamp(x, 0, 1); return x * x * (3 - 2 * x); };
+    // 0 at rest, slightly negative during the wind-up, 1 at the strike, back to 0.
+    function heroLunge(u) {
+      if (u < .06) return -.14 * easeInOut(u / .06);
+      if (u < .2) return -.14 + 1.14 * easeOut3((u - .06) / .14);
+      if (u < .32) return 1;
+      if (u < .56) return 1 - easeInOut((u - .32) / .24);
+      return 0;
+    }
+    function heroRecoil(sec) { return sec < 0 ? 0 : Math.exp(-3.4 * sec) * Math.sin(sec * 15); }
+    function heroOffset(t, who) {
+      const mine = who === 'hero', phase = mine ? 0 : .5, other = mine ? 'rival' : 'hero';
+      const cycle = t / HERO_LOOP, u = ((cycle - phase) % 1 + 1) % 1;
+      const a = HERO_BASE[who], b = HERO_BASE[other], dx = b.x - a.x, dy = b.y - a.y;
+      const reach = mine ? .5 : .42, lunge = heroLunge(u) * reach;
+      // The other pilot's lunge lands at u = .2 of their half; recoil follows it along the same line.
+      const hitSec = ((((cycle - (mine ? .5 : 0)) % 1 + 1) % 1) - .2) * HERO_LOOP, kick = heroRecoil(hitSec) * 34;
+      const len = Math.hypot(dx, dy) || 1, nx = dx / len, ny = dy / len;
+      const w = TAU / HERO_LOOP, idle = mine ? { x: Math.sin(t * w * 2) * 9, y: Math.sin(t * w * 3) * 6 } : { x: Math.sin(t * w * 2 + 1.3) * 7, y: Math.sin(t * w * 3 + .6) * 7 };
+      return { x: a.x + idle.x + dx * lunge - nx * kick, y: a.y + idle.y + dy * lunge - ny * kick, u, windup: u < .06 ? u / .06 : u < .14 ? 1 - (u - .06) / .08 : 0, hitSec };
+    }
+    function heroPose(time) {
+      const out = {};
+      for (const who of ['hero', 'rival']) {
+        const now = heroOffset(time, who), before = heroOffset(time - .07, who), vx = (now.x - before.x) / .07, vy = (now.y - before.y) / .07;
+        const speed = Math.min(1, Math.hypot(vx, vy) / 700), heading = Math.atan2(vy, vx), dir = who === 'hero' ? 1 : -1;
+        const squash = now.windup * .14;
+        out[who] = {
+          x: now.x, y: now.y, rot: clamp(vx / 800, -.4, .4) * .55 + (who === 'hero' ? -.12 : .18) + (now.hitSec > 0 ? heroRecoil(now.hitSec) * .45 * -dir : 0),
+          heading, stretch: speed * .2, squash,
+        };
+      }
+      const hitFrom = (time / HERO_LOOP) % 1, burst = [{ who: 'hero', at: .2 }, { who: 'rival', at: .7 }].map(h => { const age = (((hitFrom - h.at) % 1 + 1) % 1) * HERO_LOOP; return { ...h, age }; }).find(h => h.age < .45) || null;
+      return { ...out, burst };
     }
     function paintHero(target, time = 0) {
       const g = target.getContext('2d'), art = root.SpaceManArt, still = !time; g.clearRect(0, 0, target.width, target.height);
@@ -1094,15 +1135,30 @@
       // each with a pulse blaster raised toward the other.
       if (art && art.drawAvatar) {
         const mine = typeof opts.appearance === 'function' ? opts.appearance() : null;
-        const lift = Math.sin(time * 1.6) * 5, drift = Math.sin(time * 1.1 + 1.3) * 6;
-        g.save(); g.translate(150, 165 + lift); g.rotate(-.12 + Math.sin(time * .9) * .02); art.drawAvatar(g, 0, 0, 250, mine, { reduceMotion: still, time, blaster: '#38E1FF', lookX: .5, lookY: -.2 }); g.restore();
-        g.save(); g.translate(440, 85 + drift); g.rotate(.18 + Math.sin(time * 1.2) * .03); g.scale(-1, 1); art.drawAvatar(g, 0, 0, 160, { ...(mine || {}), suit: 'rose', hat: 'none', eyes: 'determined' }, { reduceMotion: still, time: time + 2, blaster: '#FFB454', lookX: .5, lookY: .1 }); g.restore();
+        const pose = still ? null : heroPose(time);
+        const body = (who, size, appearance, blaster, look, t) => {
+          const p = pose ? pose[who] : { x: HERO_BASE[who].x, y: HERO_BASE[who].y, rot: who === 'hero' ? -.12 : .18, heading: 0, stretch: 0, squash: 0 };
+          g.save(); g.translate(p.x, p.y); g.rotate(p.rot);
+          // Squash and stretch about the body's own centre: long along travel, short and wide in the wind-up.
+          g.rotate(p.heading); g.scale(1 + p.stretch + p.squash, 1 - p.stretch * .6 - p.squash * .8); g.rotate(-p.heading);
+          if (who === 'rival') g.scale(-1, 1);
+          art.drawAvatar(g, 0, 0, size, appearance, { reduceMotion: still, time: t, blaster, lookX: .5, lookY: look });
+          g.restore();
+        };
+        body('hero', 250, mine, '#38E1FF', -.2, time);
+        body('rival', 160, { ...(mine || {}), suit: 'rose', hat: 'none', eyes: 'determined' }, '#FFB454', .1, time + 2);
+        // Pulse burst where the lunge lands: expanding ring plus a spray of sparks, in the attacker's colour.
+        if (pose && pose.burst) {
+          const hit = pose.burst, victim = pose[hit.who === 'hero' ? 'rival' : 'hero'], k = hit.age / .45, color = hit.who === 'hero' ? '#38E1FF' : '#FFB454';
+          g.save(); g.translate(victim.x, victim.y); g.strokeStyle = color; g.lineWidth = 4 * (1 - k) + 1; g.globalAlpha = (1 - k) * .9;
+          g.beginPath(); g.arc(0, 0, 18 + k * 70, 0, TAU); g.stroke(); g.fillStyle = '#FFFFFF';
+          for (let i = 0; i < 8; i++) { const ang = i * TAU / 8 + .3, r = 24 + k * 80; g.fillRect(Math.cos(ang) * r - 2, Math.sin(ang) * r - 2, 4 * (1 - k) + 1, 4 * (1 - k) + 1); }
+          g.restore();
+        }
       }
-      // Pulse rings travel from the hero's blaster toward the rival, a beat apart.
-      const beat = still ? 0 : (time * .9) % 1;
-      for (let k = 0; k < 2; k++) {
-        const u = still ? k * .5 : (beat + k * .5) % 1, r = 28 + u * 34;
-        g.strokeStyle = '#38E1FF'; g.lineWidth = 3; g.globalAlpha = (1 - u) * (k ? .22 : .5); g.beginPath(); g.arc(332 + u * 18, 196 - u * 14, r, -.7, .8); g.stroke();
+      // Resting pulse rings for the still (reduced-motion) frame.
+      if (still) {
+        for (let k = 0; k < 2; k++) { const u = k * .5, r = 28 + u * 34; g.strokeStyle = '#38E1FF'; g.lineWidth = 3; g.globalAlpha = (1 - u) * (k ? .22 : .5); g.beginPath(); g.arc(332 + u * 18, 196 - u * 14, r, -.7, .8); g.stroke(); }
       }
       g.globalAlpha = 1;
       for (let i = 0; i < 6; i++) { const x = 280 + hash(i) * 110, y = 150 + hash(i + 17) * 110, tw = still ? 1 : .55 + .45 * Math.sin(time * 3 + i * 1.7); g.globalAlpha = tw; g.fillStyle = i % 2 ? '#9FF1FF' : '#FFE59A'; g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-2, -2, 4, 4); g.restore(); }
