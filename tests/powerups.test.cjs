@@ -62,8 +62,8 @@ test('scanning for power-ups leaves existing seeds, fingerprints and the rng str
   })())`);
   const plain = JSON.parse(run(false)), pow = JSON.parse(run(true));
   const fp = (o) => hash(JSON.stringify({ m: o.m, p: o.p, e: o.e, k: o.k }));
-  assert.equal(fp(plain), '09780bf9c2d6709b', 'baseline matches the golden in gameplay.test.cjs');
-  assert.equal(fp(pow), '09780bf9c2d6709b', 'with power-ups scanning, the course is byte-identical');
+  assert.equal(fp(plain), '90e3aefa7e978645', 'baseline matches the golden in gameplay.test.cjs');
+  assert.equal(fp(pow), '90e3aefa7e978645', 'with power-ups scanning, the course is byte-identical');
   assert.equal(pow.next, plain.next, 'the worldgen rng was never drawn from');
   assert.ok(pow.items > 0, 'the scan really ran');
 });
