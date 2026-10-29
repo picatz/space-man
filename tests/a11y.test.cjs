@@ -366,7 +366,7 @@ test('Slower flare assist: solo only, flagged, and keeps seeded boards honest', 
   assert.equal(c.run('G.assisted'), false);
   c.run('settings.assistFlare = true; startRun(); G.mode = "play";');
   assert.equal(c.run('G.assisted'), true, 'a solo run with the switch on is marked assisted');
-  const speed = (assist) => c.run(`settings.assistFlare = ${assist}; startRun(); G.mode = "play"; G.flare.speed = bandParams(G.band, G.dist).flare; updateFlare(); G.flare.speed`);
+  const speed = (assist) => c.run(`settings.assistFlare = ${assist}; startRun(); G.mode = "play"; G.flareLive = true; G.flare.speed = bandParams(G.band, G.dist).flare; updateFlare(); G.flare.speed`);
   assert.ok(speed(true) < speed(false), 'assisted flare target is slower');
   const html = read('index.html');
   assert.match(html, /!SHOT && !G\.assisted\) \{/, 'daily record gated');
@@ -374,6 +374,30 @@ test('Slower flare assist: solo only, flagged, and keeps seeded boards honest', 
   assert.match(html, /G\.assisted = !!settings\.assistFlare && !SHOT && SHOT_SEED === null && !netLive\(\)/, 'never in rooms or goldens');
   // Presentation/input side only: the sim and world generator never read the assist.
   for (const f of ['src/arena.js', 'src/race.js', 'src/worldgen.js']) assert.ok(!/assistFlare|\bG\.assisted|cbHud/.test(read(f)), f + ' must not know about the UI assists');
+});
+
+test('a new runner reading the controls is never burned at 0 m: the solo flare waits for the first step', (t) => {
+  const { c } = solo(t);
+  const r = JSON.parse(c.run(`startRun(); G.mode = 'play'; const f0 = G.flare.x;
+    for (let i = 0; i < 900; i++) update();   // 15 s idle on the launch slab
+    const idle = { x: G.flare.x - f0, mode: G.mode };
+    input.right = true; for (let i = 0; i < 60; i++) update(); input.right = false;
+    JSON.stringify({ idle, moved: G.flare.x - f0, live: G.flareLive })`));
+  assert.equal(r.idle.mode, 'play', 'still alive after standing still');
+  assert.equal(r.idle.x, 0, 'the flare held while the runner stood still');
+  assert.ok(r.live && r.moved > 0, 'the chase starts with the first step');
+});
+
+test('keyboard hints name the keys, and a touch on any menu button switches the run to touch controls', (t) => {
+  const { c } = solo(t);
+  const r = JSON.parse(c.run(`input.usingTouch = false; input.usingGamepad = false;
+    const keys = [hintText({ kind: 'move' }), hintText({ kind: 'jump' })];
+    notePointerKind({ pointerType: 'touch' });
+    const touched = input.usingTouch;
+    JSON.stringify({ keys, touched })`));
+  assert.match(r.keys[0], /→ OR D TO RUN/);
+  assert.match(r.keys[1], /SPACE OR W TO JUMP/);
+  assert.equal(r.touched, true, 'a tap on Play in the menu means touch controls from the first frame');
 });
 
 test('Settings gets an Install row that follows the install prompt (UX-05)', (t) => {
