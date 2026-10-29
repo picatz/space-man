@@ -313,14 +313,13 @@
         );
         b.crystal(x + 17, -5, z + 13, 15, 42, accent);
       } else if (c.id === "bloom") {
-        b.box(x, -6, z, 17, 65 + (i % 4) * 15, 17, [0.12, 0.29, 0.27]);
-        b.sphere(
-          x,
-          60 + (i % 4) * 15,
-          z,
-          30 + (i % 3) * 8,
-          shade(rgb(c.planet), 1.25),
-        );
+        // Rooted trees: a soil mound and root flare under the trunk, and a canopy
+        // that wraps the trunk top instead of sitting above it.
+        const trunk = 65 + (i % 4) * 15, canopy = 30 + (i % 3) * 8;
+        b.ellipsoid(x, -2, z, 34, 7, 34, [0.1, 0.2, 0.18], i, 8, 3);
+        b.box(x, -6, z, 25, 10, 25, [0.1, 0.24, 0.22], i);
+        b.box(x, -6, z, 17, trunk, 17, [0.12, 0.29, 0.27]);
+        b.sphere(x, trunk - 8 + canopy * .3, z, canopy, shade(rgb(c.planet), 1.25));
       } else {
         b.box(x, -5, z, 33, 85 + (i % 5) * 27, 30, [0.12, 0.2, 0.31]);
         b.box(x, 55 + (i % 5) * 27, z, 36, 5, 33, shade(edge, 0.8));

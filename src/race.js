@@ -949,7 +949,9 @@
       }
       if (a.padCooldown > 0) a.padCooldown--;
       if (a.padTicks > 0) a.padTicks--;
-      a.boosting = input.boost && a.fuel > 1 && !a.offroad && !input.brake && !a.slowTicks;
+      // Hysteresis: a drained reserve must refill to 20 before a held Boost fires again,
+      // so holding it never strobes between drain and regen every tick.
+      a.boosting = input.boost && a.fuel > (a.boosting ? 1 : 20) && !a.offroad && !input.brake && !a.slowTicks;
       a.fuel = clamp(a.fuel + (a.boosting ? -0.72 : 0.17 * (1 + DRAFT.fuel * finite(a.draft))), 0, 100);
       const speed = Math.hypot(a.vx, a.vy),
         // A small high-speed correction must not become a spin. Low-speed

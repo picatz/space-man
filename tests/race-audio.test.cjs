@@ -382,3 +382,18 @@ test("a newer pause still wins while launch is awaiting an older suspension", as
   assert.equal(ctx.state, "suspended"); assert.equal(h.audio.diagnostics().ready, false);
   assert.equal(h.live().length, 0); assert.equal(h.timers.size, 0);
 });
+
+test("the lobby selection tick plays only after a gesture unlock, rises with the card, and obeys mute and SFX", async () => {
+  const h = harness();
+  h.audio.select(0);
+  assert.equal(h.contexts.length, 0, "no sound before a gesture");
+  assert.equal(await h.audio.unlock(), true);
+  h.audio.select(0); h.advance(200); h.audio.select(3);
+  const oscs = h.contexts[0].oscs.filter((o) => o.started);
+  assert.equal(oscs.length, 2, "one oscillator per tick, in the lobby");
+  assert.ok(oscs[1].frequency.values.at(-1)[0] > oscs[0].frequency.values.at(-1)[0], "later cards sound higher");
+  h.settings.sfx = false; h.advance(200); h.audio.select(2);
+  assert.equal(h.contexts[0].oscs.filter((o) => o.started).length, 2, "SFX off silences it");
+  h.settings.sfx = true; h.settings.muted = true; h.advance(200); h.audio.select(2);
+  assert.equal(h.contexts[0].oscs.filter((o) => o.started).length, 2, "muted silences it");
+});
