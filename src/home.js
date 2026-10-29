@@ -27,8 +27,8 @@
   // One playful, unambiguous non-player companion. d: {lx,ly} gaze, hop 0..1, lean -1..1, t seconds.
   function alien(c,d) {
     const t=d.t,sq=1+.035*Math.sin(t*3.1)+d.hop*.1*Math.sin(Math.min(1,d.hopT)*Math.PI),lift=-26*Math.sin(Math.min(1,d.hopT)*Math.PI)*d.hop;
-    ellipse(c,414,289,14*(1-.25*Math.abs(lift)/26),4,'#182f3f');
-    c.save();c.translate(415,289+lift);c.rotate(d.lean*.1);c.scale(1/sq,sq);c.translate(-415,-289);
+    ellipse(c,414+(d.ox||0),289,14*(1-.25*Math.abs(lift)/26)*(1-Math.min(.7,-(d.oy||0)/220)),4,'#182f3f');
+    c.save();c.translate(415+(d.ox||0),289+lift+(d.oy||0));c.rotate(d.lean*.1);c.scale(1/sq,sq);c.translate(-415,-289);
     ellipse(c,415,272,14,18,'#7fce92');ellipse(c,417,265,12,10,'#a8e4a1');
     const px=d.lx*1.3,py=d.ly*1.2;
     ellipse(c,411,263,3.4,4.6,'#f0fcdb');ellipse(c,423,263,3.4,4.6,'#f0fcdb');ellipse(c,412+px,264+py,1.7,2.8,'#143845');ellipse(c,423+px,264+py,1.7,2.8,'#143845');
@@ -42,6 +42,15 @@
     SPARKS.forEach(([x,y,r,col],i)=>{const k=d?.82+.18*Math.sin(t*2.4+i*1.7):1;star(c,x,y,r*k,col);});
     root.SpaceManArt.drawAvatar(c,320,176,260,appearance,d?{time:t,reduceMotion:false,greeting:d.wave,lookX:d.alx,lookY:d.aly,mood:d.mood}:{reduceMotion:true});
     alien(c,d||{t:0,lx:0,ly:0,hop:0,hopT:0,lean:0});
+    if(d)joy(c,d);
+  }
+  // Moments of joy drawn over the pair: the sparkle the buddy chases and star bursts (high-five, taps).
+  function joy(c,d) {
+    if(d.sparkle)star(c,d.sparkle.x,d.sparkle.y,6+Math.sin(d.t*9)*1.4,'#ffe9a8');
+    for(const b of d.bursts||[]){
+      const k=(d.t-b.t0)/.65;if(k<0||k>=1)continue;
+      for(let i=0;i<6;i++){const a=i*Math.PI/3+b.t0,r=8+k*34;star(c,b.x+Math.cos(a)*r,b.y+Math.sin(a)*r,(1-k)*4.5+.8,i%2?'#fff3c4':b.col);}
+    }
   }
   function hero(c,appearance) { backdrop(c);actors(c,appearance,null); }
   function tile(c,mode,appearance) {
@@ -85,15 +94,33 @@
     const b=root.document?.body?.classList;
     return !!(b&&(b.contains('reduce-motion')||b.contains('battery-saver')))||!!root.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   }
+  // 26 s loop. The first 14 s are the original quiet beats; the rest are the joy beats:
+  // a high-five, the buddy perching on the helmet, a chase after a sparkle, a look around.
+  const LOOP=26,IDLE={gx:0,gy:0,mood:0,wave:0,alienUp:0,hopAt:-1};
+  const at=(x,y,u)=>({x:x*u,y:y*u}),arc=u=>Math.sin(Math.PI*Math.min(1,Math.max(0,u)));
   function choreo(t) {
-    // 14 s loop. Returns the astronaut's gaze target, mood and wave, and the alien's gaze, hop and lean.
-    const k=t%14;
-    if(k<3)return {gx:0,gy:0,mood:0,wave:0,alienUp:0,hopAt:-1};
-    if(k<4.6)return {gx:-.8,gy:-.7,mood:0,wave:0,alienUp:0,hopAt:-1};      // a glance at the gold star
-    if(k<6.4)return {gx:0,gy:0,mood:0,wave:0,alienUp:0,hopAt:-1};
+    // Returns the astronaut's gaze target, mood and wave, the alien's gaze, hop and offset from its spot, and a sparkle when one is in play.
+    const k=t%LOOP;
+    if(k<3)return IDLE;
+    if(k<4.6)return {...IDLE,gx:-.8,gy:-.7};      // a glance at the gold star
+    if(k<6.4)return IDLE;
     if(k<10)return {gx:GAZE_AT_ALIEN.x,gy:GAZE_AT_ALIEN.y,mood:1,wave:0,alienUp:k>7?1:0,hopAt:7.4}; // looks down; the alien looks up and hops
     if(k<11.8)return {gx:.3,gy:0,mood:1,wave:k>10.2?1:0,alienUp:1,hopAt:-1};                         // a little wave
-    return {gx:0,gy:0,mood:0,wave:0,alienUp:0,hopAt:-1};
+    if(k<14)return IDLE;
+    if(k<16.6){                                                                                       // high-five
+      const u=(k-14)/2.6,s=arc(u),o=at(-15,-72,s);
+      return {gx:.55,gy:.2,mood:1,wave:u>.12&&u<.85?1:0,alienUp:1,hopAt:-1,ox:o.x,oy:o.y,five:u};
+    }
+    if(k<20.6){                                                                                       // the buddy perches on the helmet, then hops down
+      const m=k<17.6?(k-16.6):k<19.8?1:1-(k-19.8)/.8,u=Math.min(1,Math.max(0,m)),e=u*u*(3-2*u),hop=k<17.6?arc(u)*-40:k>19.8?arc(u)*-30:0;
+      const sway=k>17.8&&k<19.6?Math.sin((k-17.8)*5)*3:0;
+      return {gx:.25,gy:-.9,mood:1,wave:0,alienUp:0,hopAt:-1,ox:-95*e+sway,oy:-164*e+hop,perch:e};
+    }
+    if(k<23.4){                                                                                       // chase a sparkle along the ground
+      const u=(k-20.6)/2.8,sp={x:392+42*Math.sin(u*Math.PI*3),y:296-18*Math.abs(Math.sin(u*Math.PI*3))};
+      return {gx:.9,gy:.8,mood:1,wave:0,alienUp:0,hopAt:-1,ox:(sp.x-415)*.9,oy:-Math.abs(Math.sin(u*Math.PI*6))*9,sparkle:sp};
+    }
+    return {...IDLE,gx:Math.sin((k-23.4)*2.2)*.85,gy:-.15+.15*Math.sin((k-23.4)*4.4)};               // a look around
   }
   function startLiving() {
     if(live||!root.requestAnimationFrame)return;
@@ -103,16 +130,17 @@
     const back=doc.createElement('canvas');back.width=640*dpr;back.height=400*dpr;
     const bc=back.getContext('2d');if(!bc)return;bc.scale(dpr,dpr);backdrop(bc);
     const c=canvas.getContext('2d');if(!c)return;
-    const st={t:0,last:0,gx:0,gy:0,wave:0,alx:0,aly:0,lx:0,ly:0,mood:0,lean:0,hop:0,hopT:2,lastHop:-99,pointer:null,pointerAt:-99,poke:null,pokeAt:-99,hopSeen:-1};
+    const st={t:0,last:0,gx:0,gy:0,wave:0,alx:0,aly:0,lx:0,ly:0,mood:0,lean:0,hop:0,hopT:2,lastHop:-99,pointer:null,pointerAt:-99,poke:null,pokeAt:-99,hopSeen:-1,fiveSeen:-1,bursts:[],ox:0,oy:0};
     const ease=(v,to,dt,rate)=>v+(to-v)*(1-Math.exp(-rate*dt));
     const clampv=v=>Math.max(-1,Math.min(1,v));
     const toCanvas=e=>{const r=canvas.getBoundingClientRect();return r.width?{x:(e.clientX-r.left)/r.width*640,y:(e.clientY-r.top)/r.height*400}:null;};
     const onMove=e=>{if(e.pointerType==='touch')return;const p=toCanvas(e);if(p){st.pointer=p;st.pointerAt=st.t;}};
     const onDown=e=>{
       const p=toCanvas(e);if(!p||p.x<0||p.y<0||p.x>640||p.y>400)return;
-      const onAlien=Math.hypot(p.x-415,p.y-270)<44;
+      const onAlien=Math.hypot(p.x-415-st.ox,p.y-270-st.oy)<44,onAstro=!onAlien&&Math.hypot(p.x-320,p.y-165)<80;
       st.pointer=p;st.pointerAt=st.t;st.poke=onAlien?'alien':'wave';st.pokeAt=st.t;
-      if(onAlien){st.hopT=0;st.hop=1;}
+      if(onAlien){st.hopT=0;st.hop=1;st.bursts.push({x:415+st.ox,y:240+st.oy,t0:st.t,col:'#b4f2c0'});}
+      else if(onAstro)st.bursts.push({x:p.x,y:Math.min(p.y,120),t0:st.t,col:'#ffe0a0'});
     };
     let rafId=0,watch=null;
     const stop=()=>{live=null;if(rafId&&root.cancelAnimationFrame)root.cancelAnimationFrame(rafId);rafId=0;if(watch)watch.disconnect();doc.removeEventListener('pointermove',onMove);doc.removeEventListener('pointerdown',onDown);c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,640,400);c.drawImage(back,0,0,640,400);actors(c,appearance(),null);};
@@ -127,8 +155,10 @@
       let gx=ch.gx,gy=ch.gy,mood=ch.mood,wave=ch.wave,alienUp=ch.alienUp;
       if(near){gx=clampv((st.pointer.x-HEAD.x)/240);gy=clampv((st.pointer.y-HEAD.y)/170);mood=0;alienUp=Math.hypot(st.pointer.x-415,st.pointer.y-270)<120?1:0;}
       if(poked){if(st.poke==='alien'){gx=GAZE_AT_ALIEN.x;gy=GAZE_AT_ALIEN.y;mood=1;alienUp=1;}else{wave=1;mood=1;}}
+      st.bursts=st.bursts.filter(b=>st.t-b.t0<.7);
       // The alien's hop is triggered by the choreography once per loop.
-      const loopK=st.t%14;if(ch.hopAt>0&&loopK>=ch.hopAt&&st.hopSeen!==Math.floor(st.t/14)){st.hopSeen=Math.floor(st.t/14);st.hopT=0;st.hop=.7;}
+      const loopK=st.t%LOOP,loopN=Math.floor(st.t/LOOP);if(ch.hopAt>0&&loopK>=ch.hopAt&&st.hopSeen!==loopN){st.hopSeen=loopN;st.hopT=0;st.hop=.7;}
+      if(ch.five>.45&&st.fiveSeen!==loopN){st.fiveSeen=loopN;st.bursts.push({x:392,y:186,t0:st.t,col:'#9cf3ed'});}
       st.hopT+=dt*2.4;
       st.gx=ease(st.gx,gx,dt,7);st.gy=ease(st.gy,gy,dt,7);st.wave=ease(st.wave,wave,dt,wave?9:5);st.mood=mood;
       st.lean=ease(st.lean,alienUp?-1:0,dt,5);
@@ -136,7 +166,8 @@
       const tx=alienUp?(near?clampv((st.pointer.x-415)/200):-.7):.2*Math.sin(st.t*.9),ty=alienUp?(near?clampv((st.pointer.y-266)/150):-1):0;
       st.lx=ease(st.lx,tx,dt,8);st.ly=ease(st.ly,ty,dt,8);
       c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,640,400);c.drawImage(back,0,0,640,400);
-      actors(c,appearance(),{t:st.t,alx:st.gx,aly:st.gy,wave:st.wave,mood:st.mood,lx:st.lx,ly:st.ly,lean:st.lean,hop:st.hop,hopT:st.hopT});
+      st.ox=ease(st.ox,ch.ox||0,dt,ch.ox!==undefined?16:8);st.oy=ease(st.oy,ch.oy||0,dt,ch.oy!==undefined?16:8);
+      actors(c,appearance(),{t:st.t,alx:st.gx,aly:st.gy,wave:st.wave,mood:st.mood,lx:st.lx,ly:st.ly,lean:st.lean,hop:st.hop,hopT:st.hopT,ox:st.ox,oy:st.oy,sparkle:ch.sparkle,bursts:st.bursts});
     };
     // Leaving the home screen cancels the pending frame at once instead of one tick later.
     if(home&&root.MutationObserver){watch=new root.MutationObserver(()=>{if(live&&!home.classList.contains('show'))stop();});watch.observe(home,{attributes:true,attributeFilter:['class']});}
