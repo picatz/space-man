@@ -181,6 +181,10 @@ same everywhere.
   player never leaves the universe.
 - Primary actions are warm gold (`--sm-gold`) with a 4 px bottom lip; one per
   screen. Alternatives are quiet outlined slate.
+- **Every action looks like a button at rest**, without hover: a fill, a border, or
+  both, plus a 44 px target. Touch and gamepad players never see a hover state, so
+  bare text is never an action. The quietest tier (back, "All games", "Choose a
+  match", share, leave) is a ghost: a faint cyan wash and a 1 px slate border.
 - Lobby heroes show the actual crew in the mode's pose (running, brawling,
   piloting), drawn by the shared renderer, never a static image.
 - Results celebrate the player first: their pilot with happy eyes, then the
@@ -188,20 +192,27 @@ same everywhere.
 
 ## Seasons and secrets
 
-The Reach keeps a calendar, and every mode celebrates it. `src/seasons.js`
-(`SpaceManSeasons`) is the single table: Turnover (New Year), the Long Night
-(December frost), Lantern Week (Lunar New Year), Bloom Equinox (March) and Dusk
-Week (the last week of October), plus each player's own anniversary of their
-first run. The page computes the season once at boot and on return to the tab;
-modes read `SpaceManSeasons.current()` and only decorate.
+Every mode celebrates real holidays, and a player should recognise each one in a
+second. `src/seasons.js` (`SpaceManSeasons`) is the single table, US holidays
+first: New Year, Valentine's Day, St. Patrick's Day, the Fourth of July,
+Halloween, Thanksgiving and the winter holidays, plus Lunar New Year, the spring
+equinox and each player's own anniversary of their first run. The page computes
+the season once at boot and on return to the tab; modes read
+`SpaceManSeasons.current()` and only decorate.
 
-- **One motif per season, shared by every mode**: lanterns (Dusk Week in amber,
-  Lantern Week in red), snow, petals or fireworks, with colors from
-  `SpaceManSeasons.MOTIFS`. `SpaceManArt.seasonBackdrop` paints the static 2D
+- **The real holiday leads, lore is flavor.** Taglines and logbook stamps say
+  "Halloween", never only "Dusk Week"; each row's `lore` name (Dusk Week, the
+  Long Night, Lantern Week) can appear after it, never instead of it.
+- **Iconic props, not abstract motifs.** Each holiday gets the thing a child
+  would draw: a carved jack-o'-lantern, a turkey, a decorated tree and a Santa
+  hat, a heart balloon, a pot of gold and clovers, red-white-and-blue fireworks.
+  `SpaceManArt.homeSeason` paints them on the home hero in three layers (sky
+  glow in the backdrop, a prop on the pad and things drifting through the scene,
+  and a touch on the alien buddy that hops with it), and `#ovAttract[data-season]`
+  tints the whole home sky. Colors come from `SpaceManSeasons.MOTIFS`.
+- **Every mode joins in.** `SpaceManArt.seasonBackdrop` paints the static 2D
   version for cached backdrops; `circuitSky` floats lanterns over the 3D horizon;
-  the runner keeps its animated versions. The home tagline names the season.
-- **Lore first.** Every event has a name from the Reach and a one-line reason in
-  the present tense ("Old Flare dims and lanterns drift through the Reach").
+  the runner keeps its animated versions.
 - **Decor never changes play.** No season alters physics, scoring, unlocks or
   anything on the wire, and deterministic captures (`#shot`) never see a season.
 - **Secrets** are found, not ground for: a rare lucky alien, a hidden route, a
@@ -214,9 +225,9 @@ modes read `SpaceManSeasons.current()` and only decorate.
   losing a life), Photo Finish (win a Circuit race by 0.15 s or less), and a
   stamp for each season, earned by finishing any game while it is on.
 
-To add an event, add a `CALENDAR` row (flag, name, tag, line, motif, `when`) and
-a test in `tests/seasons.test.cjs`; any mode that already paints the motif picks
-it up for free.
+To add a holiday (another country's included), add a `CALENDAR` row (flag,
+stamp, name, lore, tag, line, motif, `when`), a `DISCOVERIES` stamp, a test in
+`tests/seasons.test.cjs`, and its props in `homeSeason` if the motif is new.
 
 ## Audio and haptics (cross-reference)
 
@@ -233,6 +244,7 @@ same three tiers (light pickup, medium hit, heavy knock-out).
 4. Does the grayscale screenshot read: pilot brightest, hazards obvious?
 5. Do hit, pickup, boost and knock-out use the shared FX vocabulary?
 6. Is motion eased, alive, and calm under reduced motion and battery saver?
-7. Is the HUD in the shared construction and corners?
+7. Is the HUD in the shared construction and corners? Does every action read as a
+   button without hover?
 8. Screenshot it at 390x844, 844x390, 820x1180 and 1280x800 next to another mode.
    Same universe?

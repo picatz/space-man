@@ -50,7 +50,7 @@
     function update(s){
       entry.hidden=s.active;connected.hidden=!s.active;for(const b of[hostButton,joinButton,watchButton])b.disabled=s.busy;
       setText(hint,s.error||s.closedReason||s.connection||(s.stale?'Waiting for the host · controls released':s.busy?'Connecting… You can cancel below.':s.active?s.journey?.phase==='barrier'?'Crew regrouping · the next encounter starts automatically':s.journey?.phase==='lobby'?'Invite your crew, then start together.':s.pendingRole!==null?'Seat change requested for the next encounter.':'Your crew stays together between encounters.':''));
-      const link=s.active&&s.host?s.info.link||'':'';updateQr(link);invite.value=link;invite.hidden=!link;copy.hidden=!link;setText(code,s.info.joinCode|| (link?'Invite link · same game build':'Shared expedition'));
+      const link=s.active&&s.host?s.info.link||'':'';updateQr(link);invite.value=link;invite.hidden=!link;copy.hidden=!link;setText(code,s.info.joinCode||'Shared expedition');
       start.hidden=!s.host||s.journey?.phase!=='lobby';resume.hidden=!s.journey||s.journey.phase==='lobby';setText(role,s.pendingRole===0?'Player seat requested':s.pendingRole===1?'Will watch next encounter':s.info.role===1?'Join next encounter':'Watch next encounter');role.disabled=s.pendingRole!==null;
       setText(leave,s.busy?'Cancel connecting':s.active?s.host?'Close expedition':'Leave expedition':'Back');
       const next=JSON.stringify(s.roster.map(r=>[r.p,r.role,r.callsign]));if(next!==signature){signature=next;members.replaceChildren();for(const r of s.roster){const row=doc.createElement('li');row.textContent=(r.callsign||'PLAYER '+r.p)+(r.you?' · YOU':'')+(r.host?' · HOST':'')+(r.role===1?' · WATCHING':'');members.appendChild(row);}}
