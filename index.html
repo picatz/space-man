@@ -666,16 +666,18 @@
   /* Room card. On short (landscape) viewports the card is taller than the
      screen — cap it and scroll internally so title/link/roster stay reachable. */
   #ovRoom .panel { max-height: calc(100dvh - 32px); overflow-y: auto; }
-  .room-top { display: flex; gap: 14px; align-items: flex-start; margin: 4px 0 10px; text-align: left; }
-  /* QR bumped to a scannable 245px (5px/module at the invite's V6 size) —
-     phone cameras couldn't lock the old 168px grid. Integer-module-friendly. */
-  .room-qr { flex: 0 0 auto; width: 245px; height: 245px; border-radius: 10px; background: #fff; image-rendering: pixelated; }
-  /* On narrow phones the 245px code stacks above the invite so neither is
-     squeezed; side-by-side returns as soon as there's room. */
-  @media (max-width: 430px) {
-    .room-top { flex-direction: column; align-items: center; }
-    .room-invite { width: 100%; }
-  }
+  /* Room lobby (Play Together · Endless Run): the invite leads, big and centred, the crew follows as astronauts,
+     host options fold away, and the connection only speaks up when it is in trouble. */
+  .room-eyebrow { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 3px; text-transform: uppercase; color: var(--orange); margin-bottom: 4px; }
+  .room-top { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 10px 0 14px; padding: 14px 12px;
+    border: 1px solid rgba(56, 225, 255, 0.28); border-radius: 18px; background: linear-gradient(180deg, rgba(15, 44, 68, 0.9), rgba(11, 33, 53, 0.9)); text-align: center; }
+  .room-scan-title { margin: 0; font-weight: 800; font-size: 20px; letter-spacing: 0.5px; color: var(--suit); }
+  .room-qr-tile { padding: 10px; border-radius: 16px; background: #fff; line-height: 0; box-shadow: 0 0 0 3px rgba(56, 225, 255, 0.2), 0 8px 24px rgba(0, 0, 0, 0.5); }
+  /* QR at a scannable 245px (5px/module at the invite's V6 size); never wider than a small phone allows. */
+  .room-qr { display: block; width: min(245px, 62vw); height: auto; aspect-ratio: 1; background: #fff; image-rendering: pixelated; }
+  .room-share { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; width: 100%; }
+  .room-share .btn { flex: 1 1 120px; max-width: 200px; margin: 0; }
+  .sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .room-invite { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
   .invite-block .k { font-size: calc(9px * var(--ui-scale, 1)); letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
   .invite-block .v { font-family: var(--font-num); font-size: 12px; color: var(--suit); word-break: break-all; margin-top: 2px; }
@@ -751,6 +753,32 @@
   .roster-row.pending .who { color: var(--gold); text-transform: none; letter-spacing: 0.3px; }
   .roster-row.pending { color: var(--gold); }
   .roster-row.pending .who { color: var(--gold); }
+  .crew-head { display: flex; justify-content: space-between; align-items: baseline; margin: 4px 2px 0; font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); }
+  .crew-head #roomCounts { letter-spacing: 1px; color: var(--ui); opacity: 0.75; text-transform: none; font-size: 12px; }
+  .crew-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; max-height: none; overflow: visible; }
+  .crew-grid .roster-row { flex-direction: column; justify-content: flex-start; gap: 2px; min-height: 0; padding: 8px 4px 10px; border: 1px solid rgba(207, 227, 255, 0.1);
+    border-radius: 14px; background: rgba(10, 18, 40, 0.7); text-align: center; position: relative; }
+  .crew-grid .roster-row.you { border-color: rgba(56, 225, 255, 0.45); }
+  .crew-grid .roster-row.spectator { opacity: 0.72; }
+  .crew-grid .roster-row .crew-face { width: 64px; height: 64px; }
+  .crew-grid .roster-row .who { flex: none; width: 100%; font-size: 12px; letter-spacing: 0.5px; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
+  .crew-grid .roster-row .tag { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1.5px; text-transform: uppercase; color: var(--cyan-lt); opacity: 0.85; }
+  .crew-grid .roster-row .q { margin: 0; padding: 0; }
+  .crew-grid .roster-row .mini-chip { margin-top: 4px; min-height: 44px; min-width: 64px; background: transparent; border-color: transparent; opacity: 0.8; }
+  .crew-grid .roster-row.pending { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 10px; }
+  .crew-grid .roster-row.pop { animation: crewPop 520ms var(--ease-spring, cubic-bezier(.3,1.6,.5,1)) both; }
+  @keyframes crewPop { 0% { transform: scale(0.4) translateY(10px); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: none; } }
+  body.reduce-motion .crew-grid .roster-row.pop { animation: none; }
+  .room-status { margin: 6px 2px 8px; font-size: 13px; line-height: 1.4; color: var(--ui); text-align: left; }
+  .room-relay:empty, .room-relay[hidden], .crew-sum:empty, #roomCode[hidden] { display: none; }
+  .room-options { text-align: left; margin: 4px 0 8px; border-top: 1px solid rgba(207, 227, 255, 0.08); }
+  .room-options > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 13px; letter-spacing: 1px; color: var(--ui); list-style: none; }
+  .room-options > summary::-webkit-details-marker { display: none; }
+  .room-options > summary::before { content: '⚙'; margin-right: 8px; color: var(--cyan); }
+  .room-lobby .dock { display: flex; gap: 8px; }
+  .room-lobby .dock .btn { flex: 1 1 0; margin: 0; }
+  .room-lobby .dock #btnRoomPlay { flex-grow: 2; }
+  .room-option-note { margin: 4px 2px 8px; font-size: 12px; line-height: 1.4; color: var(--ui); opacity: 0.75; }
 
   /* Join prompt / blocked-host card */
   .stack-btn { display: flex; flex-direction: column; }
@@ -1050,43 +1078,43 @@
 
 <!-- Run Together: room card — attract-anchored so the idle scene stays behind it -->
 <div class="overlay attract-anchor" id="ovRoom">
-  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Room">
+  <div class="panel secondary-panel room-lobby" role="dialog" aria-modal="true" aria-label="Room">
+    <div class="room-eyebrow">Play Together · Endless Run</div>
     <div class="title-lg t-md" id="roomTitle">Room</div>
-    <div class="net-sub" id="roomCounts"></div>
-    <div class="room-codebar invite-block" id="roomCodeBar">
-      <div class="k">Room code · tap to copy</div>
-      <div class="v code" id="roomCode" role="button" tabindex="0" aria-label="Room code. Activate to copy."></div>
-      <div class="code-note" id="roomCodeNote"></div>
-    </div>
     <div class="room-top" id="roomTop">
-      <canvas class="room-qr" id="roomQr" width="245" height="245"></canvas>
-      <div class="room-invite">
-        <div class="invite-block">
-          <div class="k">Link</div>
-          <div class="v" id="roomLink"></div>
-          <div class="chip-row">
-            <button class="mini-chip" id="btnRoomCopy">Copy</button>
-            <button class="mini-chip" id="btnRoomShare" style="display:none;">Share…</button>
-          </div>
-        </div>
+      <p class="room-scan-title">Scan to join</p>
+      <div class="room-qr-tile"><canvas class="room-qr" id="roomQr" width="245" height="245" role="img" aria-label="QR code to join this run with a phone camera"></canvas></div>
+      <div class="room-codebar invite-block" id="roomCodeBar">
+        <div class="v code" id="roomCode" role="button" tabindex="0" aria-label="Room code. Activate to copy."></div>
+        <div class="code-note" id="roomCodeNote"></div>
       </div>
+      <div class="room-share">
+        <button class="btn ghost" id="btnRoomShare" style="display:none;">Share invite</button>
+        <button class="btn ghost" id="btnRoomCopy">Copy link</button>
+      </div>
+      <div class="sr-only"><div class="v" id="roomLink"></div></div>
     </div>
+    <div class="crew-head"><span>Crew</span><span id="roomCounts"></span></div>
+    <div class="roster crew-grid" id="roomRoster"></div>
     <div class="crew-sum" id="roomCrew" role="status"></div>
+    <p class="room-status" id="roomStatus" role="status"></p>
     <div class="room-relay" id="roomRelay"></div>
     <details class="room-log" id="roomLog" style="display:none;">
       <summary id="roomLogSummary"></summary>
       <div id="roomLogLines"></div>
     </details>
-    <div class="roster" id="roomRoster"></div>
-    <p class="room-relay" id="roomStatus" role="status"></p>
-    <div class="toggle-row" id="roomApproveRow">
-      <span>Approve Joins</span>
-      <button class="switch" id="roomApprove" role="switch" aria-label="Approve joins"></button>
-    </div>
-    <div class="row" id="roomHostControls">
-      <button class="btn ghost" id="btnRoomNewLink">New Link</button>
-      <button class="btn ghost" id="btnRoomNewWorld">New Round</button>
-    </div>
+    <details class="room-options" id="roomOptions">
+      <summary>Room options</summary>
+      <div class="toggle-row" id="roomApproveRow">
+        <span>Ask before friends join</span>
+        <button class="switch" id="roomApprove" role="switch" aria-label="Ask before friends join"></button>
+      </div>
+      <div class="row" id="roomHostControls">
+        <button class="btn ghost" id="btnRoomNewLink">New invite link</button>
+        <button class="btn ghost" id="btnRoomNewWorld">New course</button>
+      </div>
+      <p class="room-option-note" id="roomOptionNote">A new invite link retires the old link, code and QR. A new course rerolls the run for everyone.</p>
+    </details>
     <button class="btn ghost coral" id="btnRoomLeave">Leave Room</button>
     <div class="dock">
       <button class="btn" id="btnRoomPlay">Start Together</button>
@@ -7682,37 +7710,53 @@ function resolvePending(pubHex, ok) {
   announce(ok ? 'Admitted a player.' : 'Rejected a join.');
   if (netLive()) renderRoomCard();
 }
+// The crew as astronauts: each member's own suit and helmet, their callsign, and who they are to you.
+// A friend who arrives while the lobby is open pops in with a two-note hello.
+let rosterSeen = null;
+function crewAppearance(r) {
+  if (r.appearance) return r.appearance;
+  return { ...equippedAppearance(), suit: SUIT_ORDER[r.suit | 0] || 'classic', hat: HAT_ORDER[r.hat | 0] || 'none' };
+}
+function crewFace(r) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), canvas = makeCanvas(64 * dpr, 64 * dpr), c = canvas.getContext('2d');
+  canvas.className = 'crew-face'; canvas.setAttribute('aria-hidden', 'true');
+  if (c && ART && ART.drawAvatar) { try { c.scale(dpr, dpr); ART.drawAvatar(c, 32, 30, 56, crewAppearance(r), { reduceMotion: true, greeting: r.you ? 0 : 1 }); } catch (e) {} }
+  return canvas;
+}
 function renderRoster(roster, isHost) {
   const host = $('roomRoster'); host.innerHTML = '';
+  const fresh = rosterSeen ? roster.filter((r) => !r.you && !rosterSeen.has(r.p)) : [];
+  rosterSeen = new Set(roster.map((r) => r.p));
   for (const r of roster) {
     const row = document.createElement('div');
-    row.className = 'roster-row' + (r.unverified ? ' unverified' : '');
-    const pn = document.createElement('span'); pn.className = 'pn'; pn.textContent = 'P' + r.p; row.appendChild(pn);
-    if (r.spectator) { const g = document.createElement('span'); g.className = 'glyph'; g.textContent = '◎'; row.appendChild(g); }
-    else if (r.unverified) { const g = document.createElement('span'); g.className = 'glyph'; g.textContent = '≈'; row.appendChild(g); }
+    row.className = 'roster-row' + (r.unverified ? ' unverified' : '') + (r.you ? ' you' : '') + (r.spectator ? ' spectator' : '') + (fresh.includes(r) ? ' pop' : '');
+    row.appendChild(crewFace(r));
     const who = document.createElement('span'); who.className = 'who';
-    let suffix = '';
-    if (r.you && r.host) suffix = ' (you, host)';
-    else if (r.you) suffix = ' (you)';
-    else if (r.host) suffix = ' (host)';
-    if (r.spectator) suffix += ' (watching)';
-    // No-callsign peers arrive as callsign 'P{n}' (net getter fallback); the P#
-    // column already shows that, so render the blueprint's "PLAYER {n}" grammar
-    // instead of a redundant "P4  P4" (same dedup the ghost badge uses, §4.3).
+    // No-callsign peers arrive as callsign 'P{n}' (net getter fallback); show the blueprint's "PLAYER {n}" grammar instead.
     const rname = (r.callsign && r.callsign !== ('P' + r.p)) ? r.callsign : ('PLAYER ' + r.p);
-    who.textContent = rname + suffix;   // textContent: raw tags never reach DOM (I7)
+    who.textContent = rname;   // textContent: raw tags never reach DOM (I7)
     row.appendChild(who);
-    // Host view: each member's own measured link (reported in its PING), as a small dot.
+    const tag = document.createElement('span'); tag.className = 'tag';
+    tag.textContent = [r.you && r.host ? 'you, host' : r.you ? 'you' : r.host ? 'host' : '', r.spectator ? 'watching' : r.unverified ? 'joining' : ''].filter(Boolean).join(' · ') || 'crew';
+    row.appendChild(tag);
+    row.setAttribute('aria-label', rname + ' (' + tag.textContent + ')');
+    // Host view: each member's own measured link (reported in its PING), shown only when it is struggling.
     const pq = isHost && !r.you && NET.quality ? (NET.quality().peers || []).find((q) => q.p === r.p) : null;
     // The level is visible text (never colour alone) and the element has an accessible name.
-    if (pq) { const d = document.createElement('span'); d.className = 'q q-' + pq.level; d.textContent = LINK_WORD[pq.level] + ' ' + pq.rttMs + 'ms'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', LINK_WORD[pq.level] + ' link, ' + pq.rttMs + ' milliseconds'); d.title = LINK_WORD[pq.level] + ' link · ' + pq.rttMs + ' ms'; row.appendChild(d); }
+    if (pq && pq.level !== 'good' && pq.level !== 'fair') { const d = document.createElement('span'); d.className = 'q q-' + pq.level; d.textContent = LINK_WORD[pq.level] + ' ' + pq.rttMs + 'ms'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', LINK_WORD[pq.level] + ' link, ' + pq.rttMs + ' milliseconds'); d.title = LINK_WORD[pq.level] + ' link · ' + pq.rttMs + ' ms'; row.appendChild(d); }
     if (isHost && !r.you) {
       const k = document.createElement('button'); k.className = 'mini-chip coral'; k.textContent = 'Kick';
+      k.setAttribute('aria-label', 'Kick ' + rname);
       k.onclick = () => kickPlayer(r);
       row.appendChild(k);
     }
     if (!r.you) attachRosterLongPress(row, r);   // 500ms long-press → hide/block/kick sheet (§7)
     host.appendChild(row);
+  }
+  if (fresh.length && $('ovRoom').classList.contains('show')) {
+    const deg = 1 + (fresh[0].p % 5);
+    try { Audio.sfx.boop(deg); setTimeout(() => { try { Audio.sfx.boop(deg + 2); } catch (e) {} }, 110); } catch (e) {}
+    buzz('select');
   }
 }
 function renderRoomCard() {
@@ -7720,27 +7764,33 @@ function renderRoomCard() {
   const info = NET.info(), roster = NET.roster();
   const isHost = !!info.isHost;
   const hostRow = roster.find((r) => r.host) || roster[0] || { p: 1 };
-  const titleName = hostRow.callsign || ('P' + hostRow.p);
-  $('roomTitle').textContent = 'ROOM · ' + titleName + "'S RUN";
-  $('roomCounts').innerHTML = 'players <span class="num">' + info.players + '/' + info.cap +
-    '</span> · spectators <span class="num">' + info.spectators + '/' + info.specCap + '</span>';
+  const titleName = hostRow.callsign && hostRow.callsign !== ('P' + hostRow.p) ? hostRow.callsign : 'Your crew';
+  $('roomTitle').textContent = (titleName + "'s run").toUpperCase();
+  // Counts stay quiet until they matter: how many are here, and a heads-up when the room is nearly full.
+  const full = info.players >= info.cap, near = !full && info.players >= info.cap - 2;
+  $('roomCounts').textContent = (info.players === 1 ? '1 player' : info.players + ' players') + (info.spectators ? ' · ' + info.spectators + ' watching' : '') +
+    (full ? ' · room full' : near ? ' · ' + (info.cap - info.players) + ' seats left' : '');
   // QR / link / code are host-only (guests don't re-share their own invite, §4.4).
   $('roomTop').style.display = isHost ? '' : 'none';
   $('roomCodeBar').style.display = isHost && !BUILD.preview ? '' : 'none';
-  $('roomApproveRow').style.display = isHost ? '' : 'none';
-  $('roomHostControls').style.display = isHost ? '' : 'none';
+  $('roomOptions').style.display = isHost ? '' : 'none';
   if (isHost) {
     $('roomLink').textContent = shortLink(info.link);
     $('roomLink').title = BUILD.preview ? 'Share this exact preview build with your crew' : '';
-    $('roomCode').textContent = info.joinCode || '—';
-    $('roomCodeNote').textContent = info.joinCode ? 'Friends type it under Run Together → Join, or scan the QR.' : 'This room is on a custom relay: friends join with the link or QR.';
+    $('roomCode').textContent = info.joinCode || '';
+    $('roomCode').hidden = !info.joinCode;
+    $('roomCodeNote').textContent = info.joinCode ? 'Or type this code under Play Together → Join. Tap it to copy.' : 'This room is on a custom relay: friends join with the link or QR.';
     drawRoomQr(info.link);
     $('btnRoomShare').style.display = navigator.share ? '' : 'none';
     $('roomApprove').classList.toggle('on', !!settings.netApprove);
     $('roomApprove').setAttribute('aria-checked', String(!!settings.netApprove));
   }
-  $('roomCrew').textContent = window.SpaceManCrew.summary(crewStandings());
-  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(NET.quality ? NET.quality() : null, isHost);
+  // Standings matter once the crew is running; in the lobby the avatars already say who is here.
+  $('roomCrew').textContent = netRoundActive() ? window.SpaceManCrew.summary(crewStandings()) : '';
+  // The connection line only appears when it needs attention (fair or worse, or reconnecting).
+  const q = NET.quality ? NET.quality() : null;
+  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(q, isHost);
+  $('roomRelay').hidden = !q || !/^(poor|reconnecting|connecting)$/.test(q.level);
   renderMobilityLog();
   renderRoster(roster, isHost);
   $('btnRoomPlay').textContent = netRoundActive() ? (info.role === 1 ? 'Watch Round' : 'Join Round') : (isHost ? 'Start Together' : 'Ready to Run');
@@ -7949,6 +7999,7 @@ async function submitJoin() {
   }
 }
 function leaveRoom() {
+  rosterSeen = null;
   clearResume();
   raceReset();
   emTray.open = false; toggleCrew(false);

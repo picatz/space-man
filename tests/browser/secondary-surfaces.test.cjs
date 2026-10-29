@@ -482,6 +482,9 @@ for (const [width, height] of SIZES) test(`secondary room ${width}x${height}: re
     && qrBounds.top >= Math.max(0, qrBounds.panelTop) - 1
     && qrBounds.bottom <= Math.min(qrBounds.viewportHeight, qrBounds.panelBottom, qrBounds.footerTop) + 1,
     `entire room QR is readable above the sticky footer after normal scrolling: ${JSON.stringify(qrBounds)}`);
+  // Host options fold into "Room options" so the lobby leads with the invite and the crew.
+  assert.equal(await page.locator('#roomOptions').evaluate(n => n.open), false, 'host options start folded away');
+  await activate(page, '#roomOptions > summary');
   for (const id of ['btnRoomCopy', 'roomApprove', 'btnRoomNewLink', 'btnRoomNewWorld', 'btnRoomLeave', 'btnRoomPlay', 'btnRoomBack']) await reachable(page, '#' + id);
   await capture(page, `room-${width}x${height}-actions`);
   const socketsBefore = relayClient.sockets;

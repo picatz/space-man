@@ -24,7 +24,6 @@
     '.sm-scan-frame{position:absolute;inset:14%;border:3px solid #9ff1ff;border-radius:16px;box-shadow:0 0 0 999px #0006}' +
     '.sm-scan-line{position:absolute;left:16%;right:16%;top:50%;height:2px;background:#9ff1ff;box-shadow:0 0 12px #46d9ff;animation:sm-scan-sweep 2.2s ease-in-out infinite alternate}' +
     '@keyframes sm-scan-sweep{from{top:17%}to{top:83%}}' +
-    '@media (prefers-reduced-motion:reduce){.sm-scan-line{animation:none}}' +
     '.sm-scan[data-calm=true] .sm-scan-line{animation:none}' +
     '.sm-scan-view[data-found=true] .sm-scan-frame{border-color:#ffd166;box-shadow:0 0 0 999px #0006,0 0 24px #ffd166}' +
     '.sm-scan-msg{margin:0;max-width:26em;color:#bcd6e6}' +
