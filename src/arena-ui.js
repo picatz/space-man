@@ -967,6 +967,7 @@
         for (let x = 0; x <= width + 20; x += 20) { const y = height * (.87 + layer * .04) + Math.sin(x / (width * .21) + layer * 2) * height * .03 + Math.sin(x / 39 + layer) * 8; g.lineTo(x, y); } g.lineTo(width, height); g.closePath(); g.fill();
       }
       stageSilhouette(g, a, t);
+      if (art && art.seasonBackdrop) art.seasonBackdrop(g, width, height, root.SpaceManSeasons && root.SpaceManSeasons.current());
       g.globalAlpha = 1; return bg;
     }
     // Per-stage backdrop silhouette, cached with the background so it costs

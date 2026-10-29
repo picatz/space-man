@@ -113,3 +113,11 @@ test('Aurora, Neon and Nebula each build their own scenery, clear of the physica
   }
   assert.equal(new Set(Object.values(sizes)).size,4,'circuits no longer share a skyline');
 });
+
+test('lantern seasons float lanterns over every circuit, and no season means none', () => {
+  const Seasons = require('../src/seasons.js');
+  const dusk = Seasons.at(new Date(2026, 9, 29, 12)), plain = Seasons.at(new Date(2026, 6, 1, 12));
+  assert.ok(Art.circuitSky(R.course('neon'), dusk).lanterns > 0);
+  assert.deepEqual(Art.circuitSky(R.course('neon'), dusk).lanternColor.map(n => Math.round(n * 255)), [255, 154, 77]);
+  assert.equal(Art.circuitSky(R.course('neon'), plain).lanterns, 0);
+});

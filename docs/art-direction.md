@@ -186,6 +186,33 @@ same everywhere.
 - Results celebrate the player first: their pilot with happy eyes, then the
   numbers. Losses are gentle and point to the next try.
 
+## Seasons and secrets
+
+The Reach keeps a calendar, and every mode celebrates it. `src/seasons.js`
+(`SpaceManSeasons`) is the single table: Turnover (New Year), the Long Night
+(December frost), Lantern Week (Lunar New Year), Bloom Equinox (March) and Dusk
+Week (the last week of October), plus each player's own anniversary of their
+first run. The page computes the season once at boot and on return to the tab;
+modes read `SpaceManSeasons.current()` and only decorate.
+
+- **One motif per season, shared by every mode**: lanterns (Dusk Week in amber,
+  Lantern Week in red), snow, petals or fireworks, with colors from
+  `SpaceManSeasons.MOTIFS`. `SpaceManArt.seasonBackdrop` paints the static 2D
+  version for cached backdrops; `circuitSky` floats lanterns over the 3D horizon;
+  the runner keeps its animated versions. The home tagline names the season.
+- **Lore first.** Every event has a name from the Reach and a one-line reason in
+  the present tense ("Old Flare dims and lanterns drift through the Reach").
+- **Decor never changes play.** No season alters physics, scoring, unlocks or
+  anything on the wire, and deterministic captures (`#shot`) never see a season.
+- **Secrets** are found, not ground for: a rare lucky alien, a hidden route, a
+  pilot who waves back. They reward curiosity with a moment of joy and a
+  logbook line, never power. Each one should be discoverable without a guide
+  and repeatable once found.
+
+To add an event, add a `CALENDAR` row (flag, name, tag, line, motif, `when`) and
+a test in `tests/seasons.test.cjs`; any mode that already paints the motif picks
+it up for free.
+
 ## Audio and haptics (cross-reference)
 
 Sounds are synthesized and share one tonal center per region; impacts are short

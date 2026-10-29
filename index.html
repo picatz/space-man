@@ -1141,6 +1141,7 @@
 <script src="src/enemies.js"></script>
 <script src="src/powerups.js"></script>
 <!-- Presentation only: shared palette + draw helpers, and the character animation rig. -->
+<script src="src/seasons.js"></script>
 <script src="src/art.js"></script>
 <script src="src/home.js"></script>
 <script src="src/anim.js"></script>
@@ -9447,6 +9448,7 @@ document.addEventListener('visibilitychange', () => {
     if (NET && NET.nudge) NET.nudge();   // a socket that died while we were away reconnects now
     if (!modeOverlayActive()) Audio.resume();
     SEASON = computeSeason();   // E13: the date can roll over mid-session
+    applySeasonTagline();
     if (G.mode === 'attract') renderDailyCard();   // …and so can the Daily Course
   }
 });
@@ -9773,31 +9775,24 @@ let runsThisSession = 0, lastRunEnd = -1; // restart-path guard: fresh session o
 let fwList = [], fwIn = 3, bat = null, batIn = 30, petalIn = 2;   // seasonal decor timers (frame-time)
 let bdayShown = false;
 
-function seasonOff() { return { frost: false, dusk: false, lunar: false, blossom: false, fw: false, bday: 0 }; }
+function seasonOff() { return window.SpaceManSeasons.off(); }
+// The Lantern Reach calendar (src/seasons.js) is shared by every mode; the
+// runner keeps its flags (frost, dusk, lunar, blossom, fw, bday) on SEASON.
 function computeSeason() {
-  if (!DELIGHT) return seasonOff();       // SHOT sees no season, ever — goldens hold by construction
-  const nowD = new Date(), m = nowD.getMonth() + 1, d = nowD.getDate(), md = m * 100 + d;
-  const S = seasonOff();
-  S.frost = md >= 1201 || md <= 105;      // deep winter: visor frost + snow-dust
-  S.dusk = m === 10 && d >= 24;           // dusk week: ember nebula + bat flybys
-  S.blossom = m === 3 && d >= 19 && d <= 21;   // equinox: comet blossoms
-  S.fw = md === 1231 || md === 101;       // new year: far-layer firework blooms
-  // Lunar New Year week, dates through 2030 (m*100+d) — lantern postcard art.
-  const LNY = { 2026: 217, 2027: 206, 2028: 126, 2029: 213, 2030: 203 };
-  const lny = LNY[nowD.getFullYear()];
-  if (lny) {
-    const days = Math.floor((nowD - new Date(nowD.getFullYear(), ((lny / 100) | 0) - 1, lny % 100)) / 864e5);
-    S.lunar = days >= 0 && days < 7;
-  }
-  const fr = ach.firstRunDate;            // game anniversary — N years since the very first run
-  if (typeof fr === 'string' && fr.length === 10) {
-    const yrs = nowD.getFullYear() - +fr.slice(0, 4);
-    if (yrs >= 1 && m === +fr.slice(5, 7) && d === +fr.slice(8, 10)) S.bday = yrs;
-  }
-  return S;
+  if (!DELIGHT) return window.SpaceManSeasons.set(seasonOff());   // SHOT sees no season, ever — goldens hold by construction
+  return window.SpaceManSeasons.set(window.SpaceManSeasons.at(new Date(), { firstRunDate: ach.firstRunDate }));
 }
 if (DELIGHT && !ach.firstRunDate) { ach.firstRunDate = new Date().toISOString().slice(0, 10); saveJSON(LS.achievements, ach); }
 let SEASON = computeSeason();
+// The home tagline greets an active season; the everyday line returns after.
+function applySeasonTagline() {
+  const el = document.querySelector('.home-tagline'), e = window.SpaceManSeasons.headline(SEASON);
+  if (!el) return;
+  el.textContent = e ? e.tag : 'Small suit. Big universe.';
+  el.title = e ? e.line : '';
+  el.classList.toggle('is-season', !!e);
+}
+applySeasonTagline();
 function frostDust(c) { return SEASON.frost ? 'rgba(216,240,255,0.7)' : c; }
 // Welcome back: ≥7 days since the last recorded play day — one wave, one hello,
 // no streak-shaming. Computed once at boot, consumed by the first attract.
