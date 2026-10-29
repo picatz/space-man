@@ -580,7 +580,8 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
   .arena-root .arena-format-card { min-height: 0; padding: 9px 10px; gap: 4px; }
   .arena-root .arena-format-card { justify-content: flex-start; }
   .arena-root .arena-format-card > * { overflow-wrap: anywhere; }
-  .arena-root .arena-launch { position: sticky; bottom: 0; z-index: 2; }
+  /* The pinned Launch carries a panel-coloured cushion so options scrolling beneath it never peek out around the button. */
+  .arena-root .arena-launch { position: sticky; bottom: 0; z-index: 2; box-shadow: 0 -12px 12px 6px #0b1627, 0 10px 0 8px #0b1627; }
   .arena-root .arena-controls-help { margin-top: 8px; padding-top: 2px; }
   .arena-root .arena-controls-help summary,
   .arena-root .arena-online-panel summary { min-height: 36px; padding-block: 4px; }
@@ -623,3 +624,9 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 .arena-root .arena-stage-card { min-height: 0; padding-bottom: 9px; }
 .arena-root .arena-stage-name { padding-top: 7px; }
 .arena-root .arena-format-copy small { white-space: nowrap; }
+
+/* Short landscape phones: orbit cards drop their thumbnails so CPU skill and Launch both fit in the panel. */
+@media (orientation: landscape) and (max-height: 450px) {
+  .arena-root .arena-stage-preview, .arena-root .arena-stage-number { display: none; }
+  .arena-root .arena-stage-card { min-height: 0; }
+}

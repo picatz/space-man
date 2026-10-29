@@ -248,3 +248,15 @@ test('arena lobby: the friends drawer title uses the app font and stays on one l
   assert.match(m.font, /^ui-rounded/, 'uses the app body font, not the browser default');
   assert.ok(m.h < 56, `one line tall, got ${m.h}`);
 });
+
+test('arena lobby on a landscape phone: CPU skill is not hidden behind the pinned Launch button', { timeout: 30000 }, async t => {
+  const { page } = await launch(t, { width: 844, height: 390 });
+  await page.locator('#btnArena').click();
+  await page.locator('#arenaStart').waitFor();
+  const m = await page.evaluate(() => {
+    const r = s => document.querySelector(s).getBoundingClientRect();
+    return { skill: r('.arena-difficulty').bottom, launchTop: r('#arenaStart').top, launchBottom: r('#arenaStart').bottom, inner: innerHeight };
+  });
+  assert.ok(m.skill <= m.launchTop + 1, 'the CPU skill row sits above Launch');
+  assert.ok(m.launchBottom <= m.inner, 'Launch is on screen');
+});

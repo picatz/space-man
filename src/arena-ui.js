@@ -1034,11 +1034,12 @@
         g.fillStyle = color; g.globalAlpha = .45; rounded(g, -w * 1.7, -5, w * 1.1, 5, 2); g.fill(); g.globalAlpha = .22; rounded(g, -w * 2.1, 3, w * 1.4, 4, 2); g.fill(); g.globalAlpha = 1;
       }
       const stride = actor.onGround ? Math.sin(phase) * speed * 4 : actor.vy < 0 ? -3 : 2;
-      g.strokeStyle = P.legB; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(3, 7); g.lineTo(5 + stride, h / 2 - 2); g.stroke();
-      g.strokeStyle = P.legF; g.beginPath(); g.moveTo(-3, 7); g.lineTo(-5 - stride, h / 2 - 2); g.stroke();
-      g.fillStyle = '#415D78'; rounded(g, -w / 2 - 3, -6 + bob, 8, 15, 3); g.fill(); g.fillStyle = color; g.fillRect(-w / 2 - 2, -3 + bob, 3, 6);
-      g.strokeStyle = P.legB; g.lineWidth = 4.5; g.beginPath(); g.moveTo(-5, bob); g.lineTo(-10, 6 + bob); g.stroke();
-      g.fillStyle = P.suit; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill();
+      const limb = art.limbKit(g, style);
+      limb.tube(3, 7, 4 + stride / 2, 11.5, 5 + stride, h / 2 - 1.5, P.legB, P.legB, 4.6); limb.boot(5 + stride, h / 2 - 1.5, true);
+      limb.tube(-3, 7, -4 - stride / 2, 11.5, -5 - stride, h / 2 - 1.5, P.legF, P.legB, 4.6); limb.boot(-5 - stride, h / 2 - 1.5, false);
+      g.fillStyle = '#415D78'; g.strokeStyle = P.legB; g.lineWidth = .7; rounded(g, -w / 2 - 3, -6 + bob, 8, 15, 3); g.fill(); g.stroke(); g.fillStyle = color; g.fillRect(-w / 2 - 2, -3 + bob, 3, 6);
+      limb.arm(-6.6, -.4 + bob, -11.8, 2.6 + bob, -11.6, 7.4 + bob, true);
+      g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill(); g.stroke();
       art.suitDetails(g, 0, bob, style);
       if (boss) {
         // Broader armored shoulders and three charge cells distinguish the
@@ -1051,7 +1052,10 @@
         mood: reaction, lookX: Math.min(speed, .8), lookY: actor.onGround ? 0 : (actor.vy < 0 ? -.5 : .5) };
       const helmetStyle = boss?.phase === 'charging' ? { ...style, appearance: { ...style.appearance, eyes: 'determined' } } : style;
       art.characterHelmet(g, 0, -9 + bob, helmetStyle, face);
-      g.strokeStyle = P.arm; g.lineWidth = 4.5; g.beginPath(); g.moveTo(6, -1 + bob); g.lineTo(attack ? 14 : 10, attack ? -3 + bob : 5 + bob); g.stroke();
+      // The near arm carries the pulse emitter: the shared sleeve, with the team-coloured emitter in place of the mitten.
+      const ex = attack ? 14 : 10, ey = attack ? -3 + bob : 5 + bob;
+      limb.tube(6.6, -.4 + bob, 11.8, attack ? -2 + bob : 2.6 + bob, ex, ey, P.arm, P.legB, 4);
+      g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; g.beginPath(); g.arc(6.6, -.4 + bob, 3.1, 0, TAU); g.fill(); g.stroke();
       g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
       // Victim hit flash: a brief additive white silhouette over the body.
       const flash = !hero && !calm() ? feel.flash[actor.id] : 0;
