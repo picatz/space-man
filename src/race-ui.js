@@ -607,6 +607,27 @@
       roomButtons = [host, join, watch];
       const joins = el("div", "race-online-actions");
       joins.append(join, watch);
+      if (root.SpaceManQRScan) {
+        const scan = button("Scan QR code", "race-text", () =>
+          root.SpaceManQRScan.open({
+            calm: calm(),
+            accept: (text) => {
+              try {
+                const kind = opts.net?.parseJoin ? opts.net.parseJoin(text).kind : "invite";
+                return kind === "invite" || kind === "code";
+              } catch (_) {
+                return false;
+              }
+            },
+            onResult: (text) => {
+              roomInput.value = text;
+              room.join(text, 0);
+            },
+          }),
+        );
+        scan.id = "raceScan";
+        joins.append(scan);
+      }
       roomRejoin = button("Rejoin last room", "race-text", () => {
         const r = lastRoomEntry();
         if (!r) return;
@@ -2645,6 +2666,15 @@
         if (!room) return Promise.resolve(false);
         roomDetails.open = true;
         return room.join(payload, role, true, resumeKey);
+      },
+      // Play Together hub: open the lobby with a fresh friend room already
+      // hosting (or the current one).
+      hostRoom() {
+        if (!active) open();
+        if (!room) return Promise.resolve(false);
+        roomDetails.open = true;
+        if (room.active || room.busy) return Promise.resolve(!!room.active);
+        return room.hosting(selected);
       },
       // A host's page reload: reopen the same room (same invite, same code) in
       // its lobby with the saved rules.

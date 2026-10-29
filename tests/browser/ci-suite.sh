@@ -58,7 +58,8 @@ case "$suite" in
   simulated-relay)
     node --test race-online.test.cjs
     node --test race-live.test.cjs
-    node --test room-reload.test.cjs ;;
+    node --test room-reload.test.cjs
+    node --test play-together.test.cjs ;;
   track-features) node --test starlight-features.test.cjs ;;
   theme-browser)
     # Before/after screenshots compare against the base checkout when present.
