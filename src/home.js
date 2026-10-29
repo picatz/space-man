@@ -50,11 +50,11 @@
       ellipse(c,214,99,44,55,'#b97c4944');ellipse(c,225,105,33,42,'#ffc87444');
       line(c,[[14,115],[82,115]],'#23434f',17);line(c,[[14,109],[82,109]],'#78d5d2',5);
       line(c,[[130,135],[250,135]],'#23434f',20);line(c,[[130,126],[250,126]],'#b2d3a0',5);
-      root.SpaceManArt.drawAvatar(c,112,54,98,appearance,{reduceMotion:true});star(c,174,67,7,'#ffd887');
+      root.SpaceManArt.drawAvatar(c,112,62,92,appearance,{reduceMotion:true});star(c,174,67,7,'#ffd887');
     } else if(mode==='arena') {
       ellipse(c,131,108,105,23,'#193847');ellipse(c,131,101,105,17,'#6ca4a8');ellipse(c,131,99,91,9,'#376979');
-      root.SpaceManArt.drawAvatar(c,92,44,91,appearance,{reduceMotion:true});
-      root.SpaceManArt.drawAvatar(c,179,49,77,{...appearance,suit:'rose',hat:'none',eyes:'determined'},{reduceMotion:true});star(c,140,65,13,'#ffcc80');
+      root.SpaceManArt.drawAvatar(c,92,62,84,appearance,{reduceMotion:true});
+      root.SpaceManArt.drawAvatar(c,179,66,72,{...appearance,suit:'rose',hat:'none',eyes:'determined'},{reduceMotion:true});star(c,140,65,13,'#ffcc80');
     } else {
       c.strokeStyle='#94cab444';c.lineWidth=31;c.beginPath();c.ellipse(127,102,110,50,-.2,0,TAU);c.stroke();
       c.strokeStyle='#add5b455';c.lineWidth=2;c.beginPath();c.ellipse(127,102,110,50,-.2,0,TAU);c.stroke();
