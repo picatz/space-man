@@ -210,3 +210,39 @@ test('a trackpad pinch cannot magnify the page and crop the frame', () => {
   assert.match(html, /addEventListener\('wheel', \(e\) => \{ if \(e\.ctrlKey\) e\.preventDefault\(\); \}, \{ passive: false \}\)/);
   assert.match(html, /\['gesturestart', 'gesturechange'\]/);
 });
+
+test('an ordinary full jump never drags the camera up and back down', () => {
+  const { client, relay } = require('./harness.cjs');
+  // On a 360-tall phone the frame used to chase every hop ~80 px up and back: the whole world bobbed under the runner.
+  for (const [w, h] of [[844, 390], [667, 375], [1336, 860], [1180, 820], [390, 844]]) {
+    const c = client(relay(), { width: w, height: h });
+    try {
+      const r = JSON.parse(c.run(`startRun(); G.mode = 'play'; const p = G.player, pl = G.platforms[0];
+        pl.w = 4000; p.x = pl.x + 400; p.y = pl.y - p.h;   // a long flat run so the jump lands where it took off
+        for (let i = 0; i < 120; i++) updateCamera();
+        const cam0 = G.camY; let lo = 0, hi = 0, top = 1;
+        input.jumpPressed = true; input.jumpHeld = true;
+        for (let f = 0; f < 70; f++) { update(); lo = Math.min(lo, G.camY - cam0); hi = Math.max(hi, G.camY - cam0); top = Math.min(top, (p.y - G.camY) / view.h); }
+        JSON.stringify({ lo, hi, top, landed: p.onGround })`));
+      assert.ok(r.landed, `${w}x${h}: the jump came back down`);
+      assert.ok(r.lo > -1 && r.hi < 1, `${w}x${h}: camera moved ${r.lo.toFixed(1)}..${r.hi.toFixed(1)} px during a flat jump`);
+      assert.ok(r.top > 0.05, `${w}x${h}: the runner peaked at ${(r.top * 100).toFixed(0)}% from the top`);
+    } finally { c.close(); }
+  }
+});
+
+test('a hard landing kicks dust and a shock ring, and Reduce Motion keeps the deck still', () => {
+  const { client, relay } = require('./harness.cjs');
+  for (const calm of [false, true]) {
+    const c = client(relay(), { width: 844, height: 390 });
+    try {
+      const r = JSON.parse(c.run(`startRun(); G.mode = 'play'; settings.reduceMotion = ${calm};
+        const p = G.player, pl = G.platforms[0]; pl.w = 4000; p.x = pl.x + 400; p.y = pl.y - p.h - 260; p.vy = 0; p.onGround = false;
+        landRings.length = 0; let rang = 0;
+        for (let f = 0; f < 90 && !p.onGround; f++) { update(); rang = Math.max(rang, landRings.length); }
+        JSON.stringify({ landed: p.onGround, rang })`));
+      assert.ok(r.landed, 'the drop came down on the deck');
+      assert.equal(r.rang > 0, !calm, calm ? 'Reduce Motion drew a shock ring' : 'a 260 px drop landed without a shock ring');
+    } finally { c.close(); }
+  }
+});

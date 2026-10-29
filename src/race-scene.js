@@ -254,19 +254,55 @@
         for(const side of [-1,1]) panel(22,2.5,side*(half-5),edge);
       }
     }
-    // Other courses retain their existing biome silhouettes.
-    for (let i = 0; !styled && i < 32; i++) {
-      const p = at(c, (i * c.length) / 32),
+    // Each biome has its own silhouette so no two circuits share a skyline.
+    const themed = { aurora: 40, neon: 34, nebula: 36, forge: 48 };
+    const landmarks = themed[c.id] || 32, tint = (k) => shade(rgb(c.planet), k);
+    for (let i = 0; !styled && i < landmarks; i++) {
+      const p = at(c, (i * c.length) / landmarks),
         side = i % 2 ? -1 : 1,
         dist = half + 180 + (i % 4) * 55,
         x = p.x - p.ty * dist * side,
         z = p.y + p.tx * dist * side;
-      const radius = c.id === "ember" ? 60 : c.id === "bloom" ? 48 : 26;
+      const radius = c.id === "ember" ? 60 : c.id === "bloom" ? 48 : themed[c.id] ? 56 : 26;
       // Clearance is measured against EVERY track segment, including the far
       // side of a hairpin. A local tangent offset does not imply a safe site.
       if (TrackMesh.distance(c, x, z) < half + radius + clearance) continue;
       clearances.push({ x, z, radius, type: "landmark" });
-      if (c.id === "ember") {
+      if (c.id === "aurora") {
+        // Glacial spires: a tall prism flanked by shorter mint shards on a snow shelf.
+        b.box(x, -6, z, 74, 12, 46, tint(1.5), i);
+        b.crystal(x, 6, z, 24 + (i % 3) * 8, 130 + (i % 5) * 34, tint(1.35), 5);
+        b.crystal(x + 22, 6, z + 10, 13, 62 + (i % 4) * 14, accent, 5);
+        b.crystal(x - 20, 6, z - 12, 11, 48 + (i % 3) * 16, edge, 5);
+      } else if (c.id === "neon") {
+        // City towers: setback blocks ringed with lit bands and an antenna.
+        const h = 110 + (i % 6) * 34, w = 36 + (i % 3) * 6;
+        b.box(x, -5, z, w, h, w * .8, [0.1, 0.07, 0.19], i);
+        b.box(x, h - 5, z, w * .66, 40, w * .52, [0.14, 0.1, 0.25], i);
+        for (let band = 1; band <= 3; band++)
+          b.box(x, band * h / 4, z, w + 2, 3, w * .8 + 2, band % 2 ? edge : accent, i);
+        b.crystal(x, h + 33, z, 3.5, 36, accent, 4);
+      } else if (c.id === "nebula") {
+        // Floating orb gates: a glowing core, a ring of studs, and a low gas bank.
+        const y = 90 + (i % 4) * 20;
+        b.ellipsoid(x, 4, z, 70, 14, 52, tint(.7), 0, 8, 3);
+        b.crystal(x, -4, z, 6, y - 10, shade(edge, .6), 4);
+        b.sphere(x, y, z, 21, accent, 8, 5);
+        for (let k = 0; k < 6; k++) {
+          const a = k * Math.PI / 3;
+          b.box(x + Math.cos(a) * 40, y + Math.sin(a) * 9, z + Math.sin(a) * 40, 7, 4, 7, k % 2 ? edge : shade(edge, .6), a);
+        }
+      } else if (c.id === "forge") {
+        // Smelter stacks: a tapering chimney with a molten collar, a glowing slag
+        // pool at its foot and a drifting cinder shard.
+        const h = 120 + (i % 5) * 36;
+        b.ellipsoid(x, 2, z, 66, 8, 48, shade(accent, .55), i, 8, 3);
+        b.box(x, -5, z, 30, h, 30, [0.2, 0.12, 0.1], i);
+        b.box(x, h * .55, z, 22, h * .45, 22, [0.26, 0.15, 0.12], i);
+        b.box(x, h * .5, z, 34, 6, 34, accent, i);
+        b.box(x, h - 8, z, 26, 8, 26, edge, i);
+        b.crystal(x + 38, 70 + (i % 4) * 22, z - 14, 8, 22, shade(accent, .8), 4);
+      } else if (c.id === "ember") {
         b.crystal(
           x,
           -9,
@@ -419,6 +455,37 @@
     } else {
       sky.sphere(2000, 900, 2000, 500, rgb(c.planet));
       sky.sphere(-1000, 520, 1200, 240, shade(accent, 0.6));
+    }
+    if (c.id === "aurora") {
+      // Aurora curtains: wavy vertical ribbons far out, softened by the fog.
+      for (let k = 0; k < 6; k++) {
+        const a0 = k * 1.05, color = shade(k % 2 ? accent : edge, .55);
+        for (let j = 0; j < 8; j++) {
+          const u = a0 + j * .07, v = u + .07, wob = (t) => 380 + Math.sin(t * 9 + k) * 90;
+          const at2 = (t, y) => [900 + Math.cos(t) * 2900, y, 750 + Math.sin(t) * 2900];
+          const q = [at2(u, wob(u)), at2(v, wob(v)), at2(v, wob(v) + 620), at2(u, wob(u) + 620)];
+          sky.quad(...q, color); sky.quad(q[3], q[2], q[1], q[0], color);
+        }
+      }
+    } else if (c.id === "neon") {
+      // Distant skyline silhouette and its lit rooftops.
+      for (let k = 0; k < 48; k++) {
+        const a = k * .1309 + (k % 3) * .02, h = 160 + ((k * 53) % 9) * 55;
+        sky.box(900 + Math.cos(a) * 2900, h / 2 - 20, 750 + Math.sin(a) * 2900, 70, h, 60, shade(rgb(c.sky), 1.9), a);
+        sky.box(900 + Math.cos(a) * 2900, h - 12, 750 + Math.sin(a) * 2900, 72, 5, 62, k % 2 ? edge : accent, a);
+      }
+    } else if (c.id === "forge") {
+      // A ring of low furnace glows on the horizon, brighter than the dark sky.
+      for (let k = 0; k < 36; k++) {
+        const a = k * Math.PI / 18 + (k % 3) * .03, h = 40 + ((k * 37) % 6) * 22;
+        sky.box(900 + Math.cos(a) * 3000, h / 2 - 20, 750 + Math.sin(a) * 3000, 90, h, 70, shade(accent, k % 2 ? .45 : .3), a);
+      }
+    } else if (c.id === "nebula") {
+      // A banded ring around the sky planet, tilted so it reads from the road.
+      for (let k = 0; k < 40; k++) {
+        const a = k * Math.PI / 20;
+        sky.box(2000 + Math.cos(a) * 820, 900 + Math.cos(a) * 240, 2000 + Math.sin(a) * 820, 70, 8, 70, k % 3 ? shade(accent, .7) : edge, a);
+      }
     }
     // Star diamonds at a stable world distance; they move only with the view.
     for (let i = 0; i < 160; i++) {

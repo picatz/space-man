@@ -3,7 +3,7 @@ const R=require('../src/race'),O=require('../src/race-online'),Scene=require('..
 const c=R.course('prism'),catalog=R.features(c);
 const commands=s=>Object.fromEntries(s.actors.map(a=>[a.id,R.cpuInput(s,a)]));
 test('Prism appends wire ID 3 with a medium, genuinely wider physical route and bounded catalog',()=>{
-  assert.deepEqual(R.tracks.map(t=>t.id),['starlight','ember','bloom','prism','aurora','neon','nebula']);
+  assert.deepEqual(R.tracks.map(t=>t.id),['starlight','ember','bloom','prism','aurora','neon','nebula','forge']);
   assert.ok(c.length>4200&&c.length<4400);assert.equal(c.width,208);
   assert.ok(c.segments.every(s=>s.length>0&&Number.isFinite(s.tx+s.ty)));
   assert.equal(catalog.ramps.length,1);assert.equal(catalog.coins.length,6);assert.equal(catalog.rows.length,1);

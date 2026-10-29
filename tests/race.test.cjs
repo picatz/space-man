@@ -811,7 +811,7 @@ test('every circuit is long enough, non-crossing and leaves room between road pa
     assert.ok(c.length > 3500, `${def.id}: lap too short`);
     assert.ok(def.pads.every((p) => p > 0 && p < 1), `${def.id}: pad fractions`);
   }
-  for (const id of ['aurora', 'neon', 'nebula']) assert.ok(Race.course(id).length > 5500, `${id} is a longer lap`);
+  for (const id of ['aurora', 'neon', 'nebula', 'forge']) assert.ok(Race.course(id).length > 5500, `${id} is a longer lap`);
 });
 
 test('projectedFinish extrapolates a rival still racing and refuses DNFs and unstarted karts', () => {
@@ -829,7 +829,7 @@ test('projectedFinish extrapolates a rival still racing and refuses DNFs and uns
 });
 
 test("debris hazards slow a kart that drives through them, shields absorb them, and the new courses carry some", () => {
-  for (const id of ["aurora", "neon", "nebula"]) {
+  for (const id of ["aurora", "neon", "nebula", "forge"]) {
     const catalog = Race.features(id), c = Race.course(id);
     assert.ok(catalog.hazards.length >= 4, id + " has hazards");
     for (const h of catalog.hazards) assert.ok(Math.abs(h.d) < c.width / 2 - 30, id + " hazard stays on the road");
@@ -854,7 +854,7 @@ test("debris hazards slow a kart that drives through them, shields absorb them, 
 });
 
 test("lane strips pay out only inside their narrow lane, and the original tracks have none", () => {
-  for (const id of ["aurora", "neon", "nebula"]) {
+  for (const id of ["aurora", "neon", "nebula", "forge"]) {
     const c = Race.course(id);
     assert.ok(c.strips.length >= 4, id + " has strips");
     for (const [f, d] of c.strips) assert.ok(Math.abs(d) + 30 < c.width / 2, id + " strip stays on the road");
