@@ -104,6 +104,7 @@
 .arena-segment[aria-pressed=true]{background:#20354C;color:#DEF0FF;border-color:#3D5870}
 .arena-launch{width:100%;font-size:14px}
 .arena-local-note{font:400 calc(10px * var(--ui-scale, 1))/1.6 system-ui,sans-serif;color:#7F9BB5;text-align:center;margin:16px auto 0;max-width:300px}
+.arena-help-grid p[data-help]{display:none;overflow-wrap:anywhere}body[data-input=keys] .arena-help-grid p[data-help=keys],body[data-input=pad] .arena-help-grid p[data-help=pad],body[data-input=touch] .arena-help-grid p[data-help=touch]{display:block}body:not([data-input]) .arena-help-grid p[data-help]{display:block}.arena-controls-help,.arena-online-panel{box-sizing:border-box;max-width:100%}
 .arena-controls-help{font:400 calc(11px * var(--ui-scale, 1))/1.6 system-ui,sans-serif;color:#8DAAC5;margin-top:24px;border-top:1px solid rgba(122,166,205,.13);padding-top:12px}
 .arena-controls-help summary{cursor:pointer;min-height:34px;width:fit-content;padding:5px 0;color:#B3CEE4}
 .arena-help-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px;padding-bottom:8px}
@@ -364,7 +365,7 @@
       modal.hidden = !panel;
       [lobby, pausePanel, resultPanel].forEach(p => { p.hidden = p !== panel; });
       rootEl.dataset.screen = panel === lobby ? 'lobby' : panel === pausePanel ? 'pause' : panel === resultPanel ? 'results' : 'match';
-      if (panel === lobby) { queueLobbyFit(); if (lobbyArtEl) { paintHero(lobbyArtEl); startHero(); } } else stopHero();
+      if (panel === lobby) { if (lobby.querySelector('.arena-controls-help')) lobby.querySelector('.arena-controls-help').open = false; queueLobbyFit(); if (lobbyArtEl) { paintHero(lobbyArtEl); startHero(); } } else stopHero();
       if (panel) {
         panel.setAttribute('aria-modal', 'true');
         const target = focusTarget || panel.querySelector('button:not([disabled])');
@@ -948,7 +949,9 @@
       setup.append(el('p', 'arena-local-note', 'Just you and the CPUs. Your sound, motion & power settings carry over.'));
       lobbyGrid.append(intro, setup);
       const controls = el('details', 'arena-controls-help'); const summary = el('summary', '', 'How to play · keyboard, controller & touch'); const help = el('div', 'arena-help-grid');
-      help.append(el('p', '', 'KEYBOARD · A/D or ←/→ move. Space/W/↑ jumps twice. F/J pulses. Shift/K dashes. Esc pauses.'), el('p', '', 'CONTROLLER · Stick or D-pad moves. A jumps. X pulses. B or either trigger dashes. Menu pauses.'), el('p', '', 'TOUCH · Drag the floating stick to move. Use JUMP, PULSE and DASH. Aim a pulse with the stick. Land to restore your jumps.'), el('p', '', '2 PLAYERS · One screen, offline. P1 uses A/D/W/S, F pulse, G dash; P2 uses the arrows, . pulse, / dash; pad 1 and pad 2 drive P1 and P2. It needs a keyboard or two controllers, so it is hidden on touch-only devices until two controllers connect.'));
+      // Only the current input's hints show (body[data-input]); a touch phone never sees keyboard or 2-player text.
+      const tip = (kind, text) => { const p = el('p', '', text); p.dataset.help = kind; return p; };
+      help.append(tip('keys', 'KEYBOARD · A/D or ←/→ move. Space/W/↑ jumps twice. F/J pulses. Shift/K dashes. Esc pauses.'), tip('pad', 'CONTROLLER · Stick or D-pad moves. A jumps. X pulses. B or either trigger dashes. Menu pauses.'), tip('touch', 'TOUCH · Drag the floating stick to move. Use JUMP, PULSE and DASH. Aim a pulse with the stick. Land to restore your jumps.'), tip('keys', '2 PLAYERS · One screen, offline. P1 uses A/D/W/S, F pulse, G dash; P2 uses the arrows, . pulse, / dash; pad 1 and pad 2 drive P1 and P2. It needs a keyboard or two controllers, so it is hidden on touch-only devices until two controllers connect.'));
       mirrorButton = button('Mirror touch controls', 'arena-text-button', () => { leftyOverride = !(rootEl.dataset.lefty === 'true'); updatePrefs(); }); mirrorButton.setAttribute('aria-pressed', 'false'); help.append(mirrorButton); controls.append(summary, help);
       lobby.append(lobbyTop, lobbyGrid, controls);
       lobbyFit = el('div', 'arena-lobby-fit'); lobbyFit.append(...lobby.childNodes); lobby.append(lobbyFit); modal.append(lobby);

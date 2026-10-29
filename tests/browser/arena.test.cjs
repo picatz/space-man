@@ -652,7 +652,10 @@ test('arena 2 players is not offered on a touch-only phone without two controlle
   await page.locator('#btnArena').tap(); await screen(page, 'lobby');
   assert.equal(await page.locator('.arena-players-group').isHidden(), true, 'no 2 Players option on touch alone');
   await page.locator('.arena-controls-help summary').tap();
-  assert.match(await page.locator('.arena-help-grid').innerText(), /2 PLAYERS[^]*hidden on touch-only devices/);
+  // Touch-only phones see just the touch hints: no keyboard or 2-player text to wade through.
+  const help = await page.locator('.arena-help-grid').innerText();
+  assert.match(help, /TOUCH · Drag the floating stick/);
+  assert.doesNotMatch(help, /KEYBOARD|CONTROLLER|2 PLAYERS/);
   await page.evaluate(() => {
     const pad = i => ({ connected: true, mapping: 'standard', index: i, id: 'Standard test controller', axes: [0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) });
     Object.defineProperty(navigator, 'getGamepads', { configurable: true, value: () => [pad(0), pad(1)] });
