@@ -260,3 +260,13 @@ test('arena lobby on a landscape phone: CPU skill is not hidden behind the pinne
   assert.ok(m.skill <= m.launchTop + 1, 'the CPU skill row sits above Launch');
   assert.ok(m.launchBottom <= m.inner, 'Launch is on screen');
 });
+
+test('home: the controller hint appears only once a pad is in use and stays on screen', { timeout: 30000 }, async t => {
+  const { page } = await launch(t, { width: 1024, height: 768 });
+  const hint = page.locator('.home-pad-hint');
+  assert.equal(await hint.isVisible(), false, 'hidden before a controller is used');
+  await page.evaluate(() => { document.body.dataset.input = 'pad'; });
+  assert.equal(await hint.isVisible(), true, 'shown for a controller');
+  const b = await hint.boundingBox();
+  assert.ok(b && b.y + b.height <= 768 && b.x >= 0 && b.x + b.width <= 1024, 'inside the viewport');
+});
