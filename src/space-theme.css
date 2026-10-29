@@ -636,3 +636,8 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 @media (orientation: landscape) and (max-height: 560px) and (min-width: 760px) {
   .race-root .race-track-list { grid-template-columns: repeat(4, minmax(0,1fr)); }
 }
+@media (max-width: 340px) {
+  .race-root .race-track-list { grid-template-columns: minmax(0,1fr); }
+  .race-root .race-track { min-height: 46px; }
+  .race-root .race-track canvas { width: 54px; height: 33px; flex-basis: 54px; }
+}
