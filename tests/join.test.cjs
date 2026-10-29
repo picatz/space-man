@@ -436,3 +436,16 @@ test('the join box shows a complete typed or pasted code the way it is read alou
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
   assert.match(src.match(/<input[^>]*id="joinInput"[^>]*>/s)[0], /placeholder="NYC-COMET-ORBIT-42"/);
 });
+
+test('a host restored from its reload token keeps the room code friends were reading out', async (t) => {
+  const { hub, host, guest } = await hostWithCode(t);
+  const code = host.net.info().joinCode, token = JSON.parse(JSON.stringify(host.net.resumeToken()));
+  const s = host.net._n1.session(); if (s.snapTimer) s.snapTimer.stop(); s.relay.close(); if (s.codeRelay) s.codeRelay.close();
+  const reborn = client(hub); t.after(() => reborn.close());
+  const live = new Promise((resolve) => reborn.net.onEvent((e) => { if (e === 'code-live') resolve(); }));
+  await reborn.net.openRoom({ region: 'nyc', resume: token });
+  await live;
+  assert.equal(reborn.net.info().joinCode, code, 'same code');
+  const found = await guest.net.lookupCode(code);
+  assert.equal(guest.net.parseJoin(reborn.net.info().link).payload, found.invite, 'the code finds the restored room');
+});

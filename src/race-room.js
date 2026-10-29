@@ -9,7 +9,8 @@
       sim = root.SpaceManRace;
     const social = root.SpaceManRoomSocial,
       lastRoom = opts.lastRoom || null;
-    let votes = null;
+    let votes = null,
+      config = null;
     let host = null,
       client = online.createClient(),
       active = false,
@@ -124,12 +125,18 @@
     function seatLate() {
       if (host && host.status === "lobby") net.seatWaiting();
     }
+    // The tab-scoped seat token (a guest's key, or a host's room plus its
+    // rules) follows every roster change.
+    function remember() {
+      if (opts.resume && active) opts.resume.save(host ? config : undefined);
+    }
     function sync() {
       if (host) {
         seatLate();
         host.syncRoster(roster(), now());
         publish(true);
       }
+      remember();
       if (votes) votes.evaluate();
       changed();
     }
@@ -179,6 +186,11 @@
               changed();
             }
           }
+        } else if (event === "welcomed" && !host && data && data.restarted) {
+          // The host reloaded: its authority restarts in the lobby.
+          client = online.createClient();
+          connection = "";
+          sync();
         } else if (
           [
             "join",
@@ -228,7 +240,7 @@
         if (active && !host && now() - lastReceived > 1500) changed();
       }, 50);
     }
-    async function hosting(config) {
+    async function hosting(rules, resumeToken) {
       if (active || busy || net.active) return false;
       const mine = ++serial;
       busy = true;
@@ -252,14 +264,19 @@
                   ? opts.baseUrl()
                   : opts.baseUrl,
             },
+            resumeToken
+              ? { resume: resumeToken, region: resumeToken.region || undefined, relayHost: resumeToken.relayHost || undefined }
+              : {},
           ),
         );
         if (mine !== serial) return false;
-        host = online.createHost(config);
+        config = Object.assign({}, rules);
+        host = online.createHost(rules);
         active = true;
         busy = false;
         host.syncRoster(roster(), now());
         publish(true);
+        remember();
         changed();
         return true;
       } catch (e) {
@@ -386,9 +403,13 @@
         }
       }
     }
-    function configure(config) {
+    function configure(next) {
       if (!host) return false;
-      const ok = host.configure(config);
+      const ok = host.configure(next);
+      if (ok) {
+        config = Object.assign({}, config, next);
+        remember();
+      }
       publish(true);
       return ok;
     }

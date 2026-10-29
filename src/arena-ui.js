@@ -1723,7 +1723,9 @@
       syncChoices(); startMatch(); return true;
     }
     function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
-    return Object.freeze({ open, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role, resumeKey) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true, resumeKey); }, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
+    return Object.freeze({ open, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role, resumeKey) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true, resumeKey); },
+      // A host's page reload: reopen the same room (same invite, same code) in its lobby with the saved rules.
+      restoreHost(token) { if (!active) open(); if (!room || !token) return Promise.resolve(false); const g = token.game || {}; selections = { arenaId: arena.getArena(g.arenaId).id, format: ['duel', 'ffa', 'teams'].includes(g.format) ? g.format : selections.format, difficulty: ['easy', 'normal', 'hard'].includes(g.difficulty) ? g.difficulty : selections.difficulty }; syncChoices(); roomDetails.open = true; return room.hosting(selections, token); }, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
   }
   root.SpaceManArenaUI = Object.freeze({ create, localKeys: LOCAL_KEYS, assignPads });
 })(typeof window !== 'undefined' ? window : globalThis);

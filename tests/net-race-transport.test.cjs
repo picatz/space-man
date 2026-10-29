@@ -43,7 +43,7 @@ test('race mode is explicit; runner codecs stay protocol-6 byte compatible', asy
   assert.equal(host.net.info().cap, 4); assert.equal(host.net.info().specCap, 4);
   assert.equal(host.net.peekInvite(invite).mode, 'race');
   assert.equal(host.net._n1.invite.decodeInvite(invite).inv.flags & H.INV_RACE, H.INV_RACE);
-  assert.equal(host.net.resumeToken(), null, 'a race host cannot be restored yet');
+  assert.equal(host.net.resumeToken().mode, 'race', 'a race host keeps a room token for a reload');
   assert.equal(guest.net.resumeToken().mode, 'race', 'a guest keeps a seat token for a reload');
   const hello = F.encHello(F.makeScratch(), { tag: 'ABC', suit: 0, hat: 0, wantP: 0, proof16: new Uint8Array(16) });
   assert.equal(hello.length, 43); assert.equal(F.decHello(hello).mode, 0);
@@ -389,7 +389,7 @@ test('race invite rotation preserves mode and a host relay reconnect preserves e
   assert.equal(newcomer.net.info().mode, 'race');
 });
 
-test('a race guest reload rejoins under its own key; a host restore is still refused', async (t) => {
+test('a race guest reload rejoins under its own key; a host token only restores a room of its own mode', async (t) => {
   const { hub, host, invite } = await room(t, { players: 0 });
   const g = client(hub, { game: false }), again = client(hub, { game: false }), c = client(hub, { game: false });
   t.after(() => { g.close(); again.close(); c.close(); });
@@ -401,9 +401,11 @@ test('a race guest reload rejoins under its own key; a host restore is still ref
   await again.net.acceptJoin(token.invite, { mode: 'race', role: token.role, resumeKey: token.priv });
   assert.equal(again.net.info().myP, p, 'same seat, not the next free one');
   assert.equal(host.net.info().players, 2);
-  await assert.rejects(c.net.openRoom({ mode: 'race', relayHost: 'relay.test', code: false, resume: {} }), /cannot be restored/);
+  await assert.rejects(c.net.openRoom({ mode: 'race', relayHost: 'relay.test', code: false, resume: {} }), /different game mode/);
   assert.equal(c.net._n1.session(), null);
-  assert.equal(host.net.resumeToken(), null);
+  const raceToken = JSON.parse(JSON.stringify(host.net.resumeToken()));
+  await assert.rejects(c.net.openRoom({ mode: 'arena', relayHost: 'relay.test', code: false, resume: raceToken }), /different game mode/);
+  assert.equal(c.net._n1.session(), null);
 });
 
 test('race short codes resolve to the same explicit invite on the existing encrypted rendezvous', async (t) => {

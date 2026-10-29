@@ -123,8 +123,9 @@ the next lobby, where they can request a player seat.
 The host browser runs all combat. Guests send inputs and display authoritative
 snapshots, so relay latency affects guest responsiveness. Host pause or connection
 loss freezes the shared match; guest menus release controls while play continues.
-Same-tab reconnect, or a guest's page reload, keeps a seat for a short grace period. Host leave/reload ends
-the room; no host migration is claimed. [Rules, limits and tests](docs/arena-online.md).
+Same-tab reconnect, or a guest's page reload, keeps a seat for a short grace period. A host's reload brings
+the same room back in its lobby and the crew reconnects on its own; host leave ends the room and no host
+migration is claimed. [Rules, limits and tests](docs/arena-online.md).
 
 Run Together continues to be the existing shared-course runner. Leave its room
 explicitly before opening Arena. Arena matches do not affect runner scores or
@@ -172,7 +173,7 @@ the five-kart grid. The host owns laps, collisions and results, and pauses the
 whole race when stepping away. Guests can take a local pit-stop menu. A lost
 connection releases controls and reserves the seat for ten seconds, then marks
 it unfinished. A guest's page reload rejoins that seat automatically. New arrivals watch the current race and
-take the next free seat when it ends. There is no host migration or host page-reload restoration. Racing does not change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
+take the next free seat when it ends. A host's reload reopens the room in its lobby. There is no host migration. Racing does not change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
 
 ## Daily Course and challenges
 

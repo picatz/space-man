@@ -57,7 +57,8 @@ case "$suite" in
     node --test race-handling-audio.test.cjs ;;
   simulated-relay)
     node --test race-online.test.cjs
-    node --test race-live.test.cjs ;;
+    node --test race-live.test.cjs
+    node --test room-reload.test.cjs ;;
   track-features) node --test starlight-features.test.cjs ;;
   theme-browser)
     # Before/after screenshots compare against the base checkout when present.

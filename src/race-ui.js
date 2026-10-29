@@ -2621,6 +2621,19 @@
         roomDetails.open = true;
         return room.join(payload, role, true, resumeKey);
       },
+      // A host's page reload: reopen the same room (same invite, same code) in
+      // its lobby with the saved rules.
+      restoreHost(token) {
+        if (!active) open();
+        if (!room || !token) return Promise.resolve(false);
+        const g = token.game || {};
+        selected = Object.assign({}, selected, {
+          trackId: R.course(g.trackId).id,
+          difficulty: ["easy", "normal", "hard"].includes(g.difficulty) ? g.difficulty : selected.difficulty,
+        });
+        roomDetails.open = true;
+        return room.hosting(selected, token);
+      },
       roomStatus() {
         const s = room?.status();
         return s ? JSON.parse(JSON.stringify(s)) : null;

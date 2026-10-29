@@ -1546,6 +1546,7 @@
   const ROUND_PREROLL = 3000;  // New-Round pre-roll (ms): a synchronized 3-2-1 so every screen starts together
   const ABSENT_GRACE = 300000; // ms an absent (transport-dropped) row keeps its P# for a reconnect: long enough for a phone call or a closed lid
   const PENDING_TTL = 35000;   // ms a held approve-mode join waits (guest gives up at 30 s)
+  const ARCADE_RESTORE_SKIP = 4096;   // counter ranges a restored arcade host skips past its saved base (admission attempts after the last save)
   const HOST_GONE_GRACE = 120000; // ms after the relay reports the host gone before a guest leaves. A host's tab sent to the background or a phone locked is not a closed room; a host that really leaves says BYE, which ends it at once
   const PRES_STALE = 2500;     // ms without a fresh PRES → stop fanning the row out (paused/backgrounded peers hide promptly)
   // Shared arena/race opaque, lossy latest-value lane. A session has exactly one
@@ -2332,11 +2333,20 @@
       // A page reload, a crash or a Back swipe must not end the room: the host's identity is kept for the tab's session
       // (see resumeToken) and handed back here, so the same invite keeps working and guests reconnect to the same host.
       const rs = opts.resume;
-      if (rs && (arcadeMode(S) || arcadeMode(rs))) throw new Error('Arena and racing rooms cannot be restored after a page reload. Join a fresh invite.');
+      if (rs && modeName(rs) !== S.mode) throw new Error('This saved room is for a different game mode.');
       if (rs && isHex(rs.priv, 32) && isHex(rs.roomId, 8) && isHex(rs.secret, 16)) {
         S.keys = keypairFromRaw(unhex(rs.priv)); S.roomId = unhex(rs.roomId); S.secret = unhex(rs.secret);
         S.epoch = rs.epoch & 0xff; S.seed = rs.seed >>> 0; S.runId = Math.max(1, rs.runId | 0); S.self.runId = S.runId;
         S.expiryMin = rs.expiryMin | 0; S.restored = true;
+        if (arcadeMode(S)) {
+          // Every admission spends a fresh 2^32 range of host→guest counters under keys the guests still hold, so the
+          // restored page starts past the last range the old page saved, with room for attempts it never got to save.
+          // A bumped host epoch tells guests the authority restarted (its match state starts over in the lobby).
+          const base = Number(rs.arenaBase);
+          S.arenaCounterBase = (Number.isSafeInteger(base) && base > 0 ? base : 0) + ARCADE_RESTORE_SKIP * 4294967296;
+          if (S.arenaCounterBase + ARCADE_RESTORE_SKIP * 4294967296 >= Number.MAX_SAFE_INTEGER) throw new Error('This saved room is too old to restore. Start a new room.');
+          S.hostEpoch = ((rs.hostEpoch | 0) + 1) & 0xff;
+        }
       } else {
         S.keys = await genKeypair();
         S.roomId = rand(8);
@@ -2385,7 +2395,9 @@
         setTimeout(() => { if (!settled) { settled = true; reject(new Error('relay connect failed')); } }, T_CONNECT + T_HANDSHAKE);
       });
       if (opts.code !== false) {
-        S.code = randomCode();
+        // A restored room keeps the code its friends were already reading out (the old page is gone, so nobody else
+        // answers for it); a fresh room mints one.
+        S.code = rs && typeof rs.code === 'string' && /^[A-Z]{4,6}-[A-Z]{4,6}-\d\d$/.test(rs.code) ? rs.code : randomCode();
         S.codeKeys = codeKeypair(S.region, S.code);
         S.codeRelay = RelayClient(relayHost, S.codeKeys, {
           onOpen: () => S.ev.emit('code-live', { code: S.code }),
@@ -2398,7 +2410,7 @@
     };
     // Everything needed to stand this room back up after a reload. Secret material: the caller keeps it in the tab's own
     // sessionStorage (gone when the tab closes), never in anything that syncs, and clears it when the room is left.
-    S.resumeToken = () => arcadeMode(S) ? null : ({ v: 1, host: true, pub: hex(S.keys.pub), priv: hex(S.keys.priv), roomId: hex(S.roomId), secret: hex(S.secret), epoch: S.epoch, seed: S.seed >>> 0,
+    S.resumeToken = () => ({ v: 1, host: true, mode: S.mode, arenaBase: S.arenaCounterBase || 0, hostEpoch: S.hostEpoch, code: S.code || '', pub: hex(S.keys.pub), priv: hex(S.keys.priv), roomId: hex(S.roomId), secret: hex(S.secret), epoch: S.epoch, seed: S.seed >>> 0,
       runId: S.runId, expiryMin: S.expiryMin, region: S.region, relayHost: opts.relayHost || '', approve: !!S.approveJoins,
       tag: S.tag, suit: S.suit, hat: S.hat, adjIdx: S.adjIdx, nounIdx: S.nounIdx, role: S.role });
     S.setPresence = (x, y, vx, state, chain, score, dist, t, vy) => {
@@ -2781,6 +2793,7 @@
           if (S.pingTimer) { stopTick(S.pingTimer); S.pingTimer = null; }
           S.ev.emit('bye', { reason: 3, detail: modeRejection(S, w.mode), modeMismatch: true }); return;
         }
+        const restarted = !!S.welcomed && w.hostEpoch > S.hostEpoch;   // the host's page came back from a reload
         S.welcomed = w; S.p = w.yourP; S.caps = w.caps; S.welcomeGen++;
         if (arcadeMode(S)) { S.playerCap = w.playerCap; S.spectatorCap = w.spectatorCap; S.arenaRx = null; S.arenaMinCtr = res.ctr; }
         startPing();
@@ -2790,7 +2803,7 @@
         if (w.hostEpoch > S.hostEpoch) S.hostEpoch = w.hostEpoch;
         if (w.hostEpoch > S.gate.epoch) S.gate.epoch = w.hostEpoch;
         S.setAppearance(S.appearance);
-        S.ev.emit('welcomed', { p: w.yourP, seed: w.seed, runId: w.runId, hostTag: w.hostTag, rosterN: w.rosterN, caps: w.caps, hostEpoch: w.hostEpoch });
+        S.ev.emit('welcomed', { p: w.yourP, seed: w.seed, runId: w.runId, hostTag: w.hostTag, rosterN: w.rosterN, caps: w.caps, hostEpoch: w.hostEpoch, restarted });
         return;
       }
       if (pt[0] === A_ROSTER) {                                  // roster with roles + callsigns (addenda A/C)

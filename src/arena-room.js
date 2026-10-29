@@ -6,7 +6,7 @@
     const opts=options||{},net=opts.net,online=root.SpaceManArenaOnline,sim=root.SpaceManArena;
     let host=null,client=online.createClient(),active=false,busy=false,serial=0,timer=null,off=null;
     const social=root.SpaceManRoomSocial,lastRoom=opts.lastRoom||null;
-    let votes=null;
+    let votes=null,config=null;
     let lastPublish=-Infinity,lastInput=-Infinity,lastReceived=0,steps=0,pending=null,error='',closedReason='',connection='';
     const now=()=>root.performance.now(),info=()=>net.info();
     function roster(){return net.roster().map(r=>Object.assign({},r,{identity:r.p===1?'host':r.pubHex||('peer-'+r.p)}));}
@@ -31,7 +31,9 @@
     }
     // Friends who joined mid-match (or found every seat taken) take free fighter slots whenever the room is in its lobby.
     function seatLate(){if(host&&host.status==='lobby')net.seatWaiting(host.state.actors.filter(a=>!a.boss).length);}
-    function sync(){if(host){seatLate();host.syncRoster(roster(),now());publish(true);}if(votes)votes.evaluate();changed();}
+    // The tab-scoped seat token (a guest's key, or a host's room plus its rules) follows every roster change.
+    function remember(){if(opts.resume&&active)opts.resume.save(host?config:undefined);}
+    function sync(){if(host){seatLate();host.syncRoster(roster(),now());publish(true);}remember();if(votes)votes.evaluate();changed();}
     function cleanup(leave=true){if(opts.resume)opts.resume.clear();if(votes)votes.reset();serial++;active=false;busy=false;pending=null;connection='';host=null;client=online.createClient();if(timer){root.clearInterval(timer);timer=null;}if(off){off();off=null;}if(leave)net.leave();}
     function subscribe(){
       ensureVotes();
@@ -42,7 +44,8 @@
         if(event==='arena-data'){
           if(host)host.receive(data.p,data.p===1?'host':data.pubHex,data.bytes,now());
           else{const snapshot=client.accept(data.bytes,data.p);if(snapshot){lastReceived=now();connection='';present(snapshot);changed();}}
-        }else if(['join','rejoin','roster','role','leave','kick','banned','welcomed','ok'].includes(event))sync();
+        }else if(event==='welcomed'&&!host&&data&&data.restarted){client=online.createClient();connection='';sync();} // the host reloaded: its authority restarts in the lobby
+        else if(['join','rejoin','roster','role','leave','kick','banned','welcomed','ok'].includes(event))sync();
         else if(event==='reconnecting'||event==='hostaway'){connection=host?'Connection lost · match paused':'Reconnecting · controls released';pending=null;if(host)host.pause(true);publish(true);changed();}
         else if(event==='reconnected'||event==='hostback'){connection='';sync();}
         else if(event==='bye'){
@@ -52,11 +55,11 @@
       });
       timer=root.setInterval(()=>{publish(false);if(active&&!host&&now()-lastReceived>1500)changed();},50);
     }
-    async function hosting(config){
+    async function hosting(rules,resumeToken){
       if(active||busy||net.active)return false;const mine=++serial;busy=true;error='';closedReason='';connection='';client=online.createClient();subscribe();changed();
       try{
-        await net.openRoom(Object.assign({},typeof opts.hostOptions==='function'?opts.hostOptions():{},typeof opts.identity==='function'?opts.identity():{},{mode:'arena',code:!(opts.build&&opts.build.preview),baseUrl:typeof opts.baseUrl==='function'?opts.baseUrl():opts.baseUrl}));
-        if(mine!==serial)return false;host=online.createHost(config);active=true;busy=false;host.syncRoster(roster(),now());publish(true);changed();return true;
+        await net.openRoom(Object.assign({},typeof opts.hostOptions==='function'?opts.hostOptions():{},typeof opts.identity==='function'?opts.identity():{},{mode:'arena',code:!(opts.build&&opts.build.preview),baseUrl:typeof opts.baseUrl==='function'?opts.baseUrl():opts.baseUrl},resumeToken?{resume:resumeToken,region:resumeToken.region||undefined,relayHost:resumeToken.relayHost||undefined}:{}));
+        if(mine!==serial)return false;config=Object.assign({},rules);host=online.createHost(rules);active=true;busy=false;host.syncRoster(roster(),now());publish(true);remember();changed();return true;
       }catch(e){if(mine===serial){error=e&&e.message||'Could not reach the room relay.';cleanup();changed();}return false;}
     }
     async function join(target,role,trustedPayload=false,resumeKey){
@@ -83,7 +86,7 @@
       if(host && !connection){host.step(time);steps++;present({state:host.state,seats:host.seats,status:host.status,epoch:host.epoch,revision:host.revision});if(steps%3===0)publish(false);}
     }
     function release(){if(active){submit(sim.normalizeCommand(),now());if(pending){net.sendArena(pending).catch(()=>{});pending=null;}}}
-    function configure(config){if(!host)return false;const ok=host.configure(config);if(ok){seatLate();host.syncRoster(roster(),now());}publish(true);return ok;}
+    function configure(next){if(!host)return false;const ok=host.configure(next);if(ok){config=Object.assign({},config,next);seatLate();host.syncRoster(roster(),now());remember();}publish(true);return ok;}
     function setTeam(p,team){if(!host)return false;const ok=host.setTeam(p,team);publish(true);return ok;}
     function start(seed){if(!host || connection)return false;host.syncRoster(roster(),now());const ok=host.start(seed);if(ok){net.setArenaRoleLock(true);if(votes)votes.reset();publish(true);}return ok;}
     function pause(on){release();if(host && !on && connection)return false;if(host){host.pause(on);publish(true);}return!!host;}

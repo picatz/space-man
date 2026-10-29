@@ -246,3 +246,36 @@ test('Item readiness is exposed for host loopback and guests only after a neutra
   host.room.pause(true); assert.equal(host.room.itemReady(), false);
   await until(() => guest.room.current.status === 'paused'); assert.equal(guest.room.itemReady(), false);
 });
+test("a race host who reloads gets the same room back, and the grid is carried in", { timeout: 30000 }, async (t) => {
+  const { hub, host, join, peer } = await setup(t),
+    player = await join();
+  host.room.close();
+  await until(() => !player.room.active, "old room closed");
+  host.run(`window.__saved=[];window.room=SpaceManRaceRoom.create({net:SpaceManNet,hostOptions:()=>({relayHost:'relay.test',code:false}),resume:{save(game){const t=SpaceManNet.resumeToken();__saved.push(t&&t.host?Object.assign({},t,{game}):t);},clear(){__saved.push(null);}}});`);
+  host.room = host.context.room;
+  assert.equal(await host.room.hosting({ trackId: "ember", difficulty: "hard" }), true);
+  const link = host.net.info().link;
+  assert.equal(await player.room.join(link, 0), true);
+  await until(() => host.net.roster().length === 2, "racer joined");
+  assert.equal(host.room.start(), true);
+  await until(() => player.room.current?.status === "running", "race running");
+  const token = JSON.parse(JSON.stringify(host.context.__saved.at(-1)));
+  assert.equal(token.mode, "race");
+  assert.equal(token.game.trackId, "ember");
+  const s = host.net._n1.session();
+  if (s.snapTimer) s.snapTimer.stop();
+  s.relay.close();
+  const reborn = peer();
+  assert.equal(await reborn.room.hosting(token.game, token), true);
+  assert.equal(reborn.net.info().link, link);
+  assert.equal(reborn.room.current.state.trackId, "ember");
+  for (let i = 0; i < 400 && reborn.net.info().players < 2; i++) {
+    hub.advance(300);
+    await sleep(25);
+  }
+  assert.equal(reborn.net.info().players, 2);
+  await until(
+    () => player.room.current?.status === "lobby" && player.room.current.epoch === reborn.room.current.epoch,
+    "racer follows the restarted authority",
+  );
+});

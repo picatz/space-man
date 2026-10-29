@@ -219,3 +219,33 @@ test('a guest who reloads mid-match comes back to the same fighter, and a delibe
   await step(10);
   assert.equal(host.room.current.status, 'running', 'the match never stopped for anyone else');
 });
+
+test('a host who reloads gets the same room back in its lobby, and the crew is carried in without touching anything', { timeout: 30000 }, async t => {
+  const { hub, host, join, peer } = await setup(t), player = await join();
+  // Rebuild the host coordinator with a resume store, as index.html wires it.
+  host.room.close(); await until(() => !player.room.active, 'old room closed');
+  host.run(`window.__saved=[];window.room=SpaceManArenaRoom.create({net:SpaceManNet,hostOptions:()=>({relayHost:'relay.test',code:false}),resume:{save(game){const t=SpaceManNet.resumeToken();__saved.push(t&&t.host?Object.assign({},t,{game}):t);},clear(){__saved.push(null);}}});`);
+  host.room = host.context.room;
+  assert.equal(await host.room.hosting({ format: 'ffa', arenaId: 'orbital-dock' }), true);
+  const link = host.net.info().link;
+  assert.equal(await player.room.join(link, 0), true);
+  await until(() => host.net.roster().length === 2, 'crew joined');
+  assert.equal(host.room.start(9), true);
+  await until(() => player.room.current?.status === 'running', 'match running');
+  const token = JSON.parse(JSON.stringify(host.context.__saved.at(-1)));
+  assert.equal(token.host, true); assert.equal(token.mode, 'arena'); assert.equal(token.game.format, 'ffa');
+  const s = host.net._n1.session(); if (s.snapTimer) s.snapTimer.stop(); s.relay.close();   // the tab is gone, nothing said
+  const reborn = peer();
+  reborn.run(`window.room=SpaceManArenaRoom.create({net:SpaceManNet,hostOptions:()=>({relayHost:'relay.test',code:false})});`);
+  reborn.room = reborn.context.room;
+  assert.equal(await reborn.room.hosting(token.game, token), true);
+  assert.equal(reborn.net.info().link, link, 'the invite everyone holds still works');
+  assert.equal(reborn.room.current.state.format, 'ffa', 'saved rules come back');
+  for (let i = 0; i < 400 && reborn.net.info().players < 2; i++) { hub.advance(300); await sleep(25); }
+  assert.equal(reborn.net.info().players, 2, 'the guest found the restored host');
+  await until(() => player.room.current?.status === 'lobby' && player.room.current.epoch === reborn.room.current.epoch, 'guest follows the restarted authority into its lobby');
+  assert.equal(player.room.status().connection, '');
+  assert.ok(reborn.room.current.seats.some(seat => seat.p === player.net.info().myP), 'seated as a fighter again');
+  assert.equal(reborn.room.start(10), true);
+  await until(() => player.room.current.status === 'running', 'next match starts for both');
+});

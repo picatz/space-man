@@ -43,7 +43,7 @@ test('arena mode is explicit; runner codecs stay protocol-6 byte compatible', as
   assert.equal(host.net.info().cap, 4); assert.equal(host.net.info().specCap, 4);
   assert.equal(host.net.peekInvite(invite).mode, 'arena');
   assert.equal(host.net._n1.invite.decodeInvite(invite).inv.flags & H.INV_ARENA, H.INV_ARENA);
-  assert.equal(host.net.resumeToken(), null, 'an arena host cannot be restored yet');
+  assert.equal(host.net.resumeToken().mode, 'arena', 'an arena host keeps a room token for a reload');
   assert.equal(guest.net.resumeToken().mode, 'arena', 'a guest keeps a seat token for a reload');
   const hello = F.encHello(F.makeScratch(), { tag: 'ABC', suit: 0, hat: 0, wantP: 0, proof16: new Uint8Array(16) });
   assert.equal(hello.length, 43); assert.equal(F.decHello(hello).mode, 0);
