@@ -207,7 +207,7 @@
         if (dx * dx + dy * dy < M.reach * M.reach) { it.x += dx * M.pull; it.y += dy * M.pull; }
       }
       const dx = it.x - cx, dy = it.y - cy;
-      if (dx * dx + dy * dy < R * R) { it.taken = true; it.t = 0; grant(it.type); }
+      if (dx * dx + dy * dy < R * R) { it.taken = true; it.t = 0; grant(it.type); if (typeof fxAt === 'function') fxAt('pickup', it.x, it.y, INFO[it.type].color); }   // the shared pickup sparkle, in the power's color
     }
     for (const rg of S.rings) {
       if (rg.taken) { rg.t++; continue; }   // a collected ring finishes its animation even if the pack has since run out
