@@ -56,7 +56,7 @@
 .arena-button:disabled{opacity:.5;cursor:default}
 .arena-primary{background:#FFC66B;border-color:#FFD998;color:#1A1724;min-height:54px;box-shadow:0 4px 0 #8A6137,0 10px 28px rgba(255,180,84,.13)}
 .arena-primary:hover{background:#FFD793;border-color:#FFF0C1}
-.arena-text-button{background:transparent;border-color:transparent;box-shadow:none;color:#AFCCE7;font:600 12px/1.35 system-ui,sans-serif;min-height:44px;padding:10px 12px}
+.arena-text-button{background:rgba(56,225,255,.045);border-color:rgba(143,197,230,.3);box-shadow:none;color:#C6DDF0;font:600 12px/1.35 system-ui,sans-serif;min-height:44px;padding:10px 12px}
 .arena-text-button:hover{background:rgba(56,225,255,.08);border-color:rgba(56,225,255,.16);color:#ECF8FF}
 .arena-eyebrow{font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.17em;font-weight:800;color:#8EAAC5;line-height:1.5}
 .arena-pill{display:inline-flex;align-items:center;align-self:flex-start;gap:7px;border:1px solid rgba(56,225,255,.28);border-radius:999px;padding:6px 10px;font:700 calc(9px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;letter-spacing:.15em;background:rgba(56,225,255,.06);color:#9FF1FF}
