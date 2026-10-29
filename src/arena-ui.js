@@ -360,7 +360,7 @@
       modal.hidden = !panel;
       [lobby, pausePanel, resultPanel].forEach(p => { p.hidden = p !== panel; });
       rootEl.dataset.screen = panel === lobby ? 'lobby' : panel === pausePanel ? 'pause' : panel === resultPanel ? 'results' : 'match';
-      if (panel === lobby) { queueLobbyFit(); if (lobbyArtEl) paintHero(lobbyArtEl); }
+      if (panel === lobby) { queueLobbyFit(); if (lobbyArtEl) { paintHero(lobbyArtEl); startHero(); } } else stopHero();
       if (panel) {
         panel.setAttribute('aria-modal', 'true');
         const target = focusTarget || panel.querySelector('button:not([disabled])');
@@ -1035,8 +1035,8 @@
       }
       const stride = actor.onGround ? Math.sin(phase) * speed * 4 : actor.vy < 0 ? -3 : 2;
       const limb = art.limbKit(g, style);
-      limb.tube(3, 7, 4 + stride / 2, 11.5, 5 + stride, h / 2 - 1.5, P.legB, P.legB, 4.6); limb.boot(5 + stride, h / 2 - 1.5, true);
-      limb.tube(-3, 7, -4 - stride / 2, 11.5, -5 - stride, h / 2 - 1.5, P.legF, P.legB, 4.6); limb.boot(-5 - stride, h / 2 - 1.5, false);
+      limb.tube(3, 7, 4 + stride / 2, 11.5, 5 + stride, h / 2 - 1.5, P.legB, P.legB, 3.8); limb.boot(5 + stride, h / 2 - 1.5, true);
+      limb.tube(-3, 7, -4 - stride / 2, 11.5, -5 - stride, h / 2 - 1.5, P.legF, P.legB, 3.8); limb.boot(-5 - stride, h / 2 - 1.5, false);
       g.fillStyle = '#415D78'; g.strokeStyle = P.legB; g.lineWidth = .7; rounded(g, -w / 2 - 3, -6 + bob, 8, 15, 3); g.fill(); g.stroke(); g.fillStyle = color; g.fillRect(-w / 2 - 2, -3 + bob, 3, 6);
       limb.arm(-6.6, -.4 + bob, -11.8, 2.6 + bob, -11.6, 7.4 + bob, true);
       g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill(); g.stroke();
@@ -1047,16 +1047,17 @@
         g.fillStyle = P.legB; rounded(g, -12, -4 + bob, 6, 7, 2); g.fill(); rounded(g, 6, -4 + bob, 6, 7, 2); g.fill();
         g.fillStyle = color; for (let i = 0; i < 3; i++) g.fillRect(-3 + i * 2.5, 7 + bob, 1.5, 2);
       }
+      // The near arm carries the pulse emitter: the shared sleeve, with the team-coloured emitter in place of the mitten.
+      // It paints before the helmet so no shoulder or sleeve ever shows over the visor.
+      const ex = attack ? 14 : 10, ey = attack ? -3 + bob : 5 + bob;
+      limb.tube(6.6, -.4 + bob, 11.8, attack ? -2 + bob : 2.6 + bob, ex, ey, P.arm, P.legB, 3.1);
+      g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; g.beginPath(); g.arc(6.6, -.4 + bob, 2.4, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
       const reaction = art.arenaMood(actor);
       const face = { tick: hero ? 20 : tick, id: actor.id, calm: calm() || hero,
         mood: reaction, lookX: Math.min(speed, .8), lookY: actor.onGround ? 0 : (actor.vy < 0 ? -.5 : .5) };
       const helmetStyle = boss?.phase === 'charging' ? { ...style, appearance: { ...style.appearance, eyes: 'determined' } } : style;
       art.characterHelmet(g, 0, -9 + bob, helmetStyle, face);
-      // The near arm carries the pulse emitter: the shared sleeve, with the team-coloured emitter in place of the mitten.
-      const ex = attack ? 14 : 10, ey = attack ? -3 + bob : 5 + bob;
-      limb.tube(6.6, -.4 + bob, 11.8, attack ? -2 + bob : 2.6 + bob, ex, ey, P.arm, P.legB, 4);
-      g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; g.beginPath(); g.arc(6.6, -.4 + bob, 3.1, 0, TAU); g.fill(); g.stroke();
-      g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
       // Victim hit flash: a brief additive white silhouette over the body.
       const flash = !hero && !calm() ? feel.flash[actor.id] : 0;
       if (flash > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = .6 * Math.min(1, flash / 5); g.fillStyle = '#FFFFFF'; g.beginPath(); g.ellipse(0, 0, 11, 16, 0, 0, TAU); g.fill(); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; }
@@ -1067,18 +1068,39 @@
       for (let i = 0; i < 16; i++) { g.fillStyle = i % 3 ? '#8FAFCA' : t.accent; g.globalAlpha = .4; g.fillRect(hash(i + 3) * preview.width, hash(i + 42) * preview.height, 1, 1); } g.globalAlpha = 1;
       g.save(); g.scale(preview.width / a.width, preview.height / a.height); a.platforms.forEach(p => platform(g, p, a, true)); g.fillStyle = t.accent; for (const sp of a.spawns.slice(0, 2)) { g.beginPath(); g.arc(sp.x + 12, sp.y + 8, 13, 0, TAU); g.fill(); } g.restore();
     }
-    function paintHero(target) {
-      const g = target.getContext('2d'), art = root.SpaceManArt; g.clearRect(0, 0, target.width, target.height);
+    // The lobby pair idles, blink and drift while the lobby is on screen. A plain interval (not a frame
+    // chain) keeps this off the match loop, and it stops with the lobby, a hidden tab or reduced motion.
+    let heroTimer = 0, heroStart = 0;
+    function stopHero() { if (heroTimer) { root.clearInterval(heroTimer); heroTimer = 0; } }
+    function startHero() {
+      if (heroTimer || calm() || saver() || !root.setInterval) return;
+      heroStart = performance.now();
+      heroTimer = root.setInterval(() => {
+        if (!active || activeModal !== lobby || !lobbyArtEl || !lobbyArtEl.isConnected || document.hidden || calm() || lobby.closest('[inert]')) { stopHero(); return; }
+        paintHero(lobbyArtEl, (performance.now() - heroStart) / 1000);
+      }, 50);
+    }
+    function paintHero(target, time = 0) {
+      const g = target.getContext('2d'), art = root.SpaceManArt, still = !time; g.clearRect(0, 0, target.width, target.height);
       if (art) { g.globalAlpha = .4; g.drawImage(art.glow(120, '#38E1FF', .04), 42, 50, 290, 290); g.globalAlpha = .16; g.drawImage(art.glow(120, '#FFB454', .04), 320, 0, 290, 290); g.globalAlpha = 1; }
       g.strokeStyle = 'rgba(56,225,255,.17)'; g.lineWidth = 1.5; g.save(); g.translate(300, 210); g.rotate(-.2); g.beginPath(); g.ellipse(0, 0, 264, 80, 0, 0, TAU); g.stroke(); g.restore();
-      // The same drawn astronaut as the home hero and wardrobe, so the lobby shows the pilot's own suit.
+      // The same drawn astronaut as the home hero and wardrobe, so the lobby shows the pilot's own suit,
+      // each with a pulse blaster raised toward the other.
       if (art && art.drawAvatar) {
         const mine = typeof opts.appearance === 'function' ? opts.appearance() : null;
-        g.save(); g.translate(150, 165); g.rotate(-.12); art.drawAvatar(g, 0, 0, 250, mine, { reduceMotion: true, greeting: 0 }); g.restore();
-        g.save(); g.translate(440, 85); g.rotate(.18); art.drawAvatar(g, 0, 0, 160, { ...(mine || {}), suit: 'rose', hat: 'none', eyes: 'determined' }, { reduceMotion: true }); g.restore();
+        const lift = Math.sin(time * 1.6) * 5, drift = Math.sin(time * 1.1 + 1.3) * 6;
+        g.save(); g.translate(150, 165 + lift); g.rotate(-.12 + Math.sin(time * .9) * .02); art.drawAvatar(g, 0, 0, 250, mine, { reduceMotion: still, time, blaster: '#38E1FF', lookX: .5, lookY: -.2 }); g.restore();
+        g.save(); g.translate(440, 85 + drift); g.rotate(.18 + Math.sin(time * 1.2) * .03); g.scale(-1, 1); art.drawAvatar(g, 0, 0, 160, { ...(mine || {}), suit: 'rose', hat: 'none', eyes: 'determined' }, { reduceMotion: still, time: time + 2, blaster: '#FFB454', lookX: .5, lookY: .1 }); g.restore();
       }
-      g.strokeStyle = '#38E1FF'; g.lineWidth = 3; g.globalAlpha = .5; g.beginPath(); g.arc(332, 196, 38, -.7, .8); g.stroke(); g.globalAlpha = .2; g.beginPath(); g.arc(332, 196, 51, -.7, .8); g.stroke(); g.globalAlpha = 1;
-      for (let i = 0; i < 6; i++) { const x = 280 + hash(i) * 110, y = 150 + hash(i + 17) * 110; g.fillStyle = i % 2 ? '#9FF1FF' : '#FFE59A'; g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-2, -2, 4, 4); g.restore(); }
+      // Pulse rings travel from the hero's blaster toward the rival, a beat apart.
+      const beat = still ? 0 : (time * .9) % 1;
+      for (let k = 0; k < 2; k++) {
+        const u = still ? k * .5 : (beat + k * .5) % 1, r = 28 + u * 34;
+        g.strokeStyle = '#38E1FF'; g.lineWidth = 3; g.globalAlpha = (1 - u) * (k ? .22 : .5); g.beginPath(); g.arc(332 + u * 18, 196 - u * 14, r, -.7, .8); g.stroke();
+      }
+      g.globalAlpha = 1;
+      for (let i = 0; i < 6; i++) { const x = 280 + hash(i) * 110, y = 150 + hash(i + 17) * 110, tw = still ? 1 : .55 + .45 * Math.sin(time * 3 + i * 1.7); g.globalAlpha = tw; g.fillStyle = i % 2 ? '#9FF1FF' : '#FFE59A'; g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-2, -2, 4, 4); g.restore(); }
+      g.globalAlpha = 1;
     }
     function resize() {
       if (!active || !rootEl) return;
@@ -1455,6 +1477,8 @@
       for (const id of Object.keys(feel.flash)) if ((feel.flash[id] -= ticks) <= 0) delete feel.flash[id];
       for (const id of Object.keys(feel.land)) if ((feel.land[id].age += ticks) >= arena.feel.LAND_SQUASH_TICKS) delete feel.land[id];
     }
+    // Haptics belong to the host page (strength, battery saver and rumble routing live there); an absent hook is silent.
+    const buzz = kind => { if (typeof opts.buzz === 'function') { try { opts.buzz(kind); } catch (_) {} } };
     function hitFeel(event, victim, involved) {
       const F = arena.feel;
       if (victim && !calm()) feel.flash[victim.id] = 5;
@@ -1463,6 +1487,7 @@
         if (involved) { const k = F.kickFor(event, victim); feel.kick = { x: k.x, y: k.y, at: performance.now() / 1000 }; }
       }
       // A local sim can pause for a beat; an authoritative room never can.
+      if (involved) buzz(victim && victim.id === localActor()?.id ? 'heavy' : 'light');
       if (involved && !onlineActive() && !paused) feel.freezeLeft = Math.max(feel.freezeLeft, F.hitstopTicksFor(event) / 60);
     }
     function koFeel(event, who, involved) {
@@ -1470,7 +1495,7 @@
       effects.push({ type: 'kotext', x: event.x, y: event.y, color, life: 54, max: 54, text: who.stocks > 0 ? 'KO' : 'OUT' });
       if (calm()) return;
       effects.push({ type: 'koflash', x: event.x, y: event.y, color, life: F.KO_FLASH_TICKS, max: F.KO_FLASH_TICKS });
-      if (involved) { feel.koLeft = F.KO_SLOW_TICKS; feel.koPoint = { x: event.x, y: event.y }; }
+      if (involved) { feel.koLeft = F.KO_SLOW_TICKS; feel.koPoint = { x: event.x, y: event.y }; buzz(who.id === localActor()?.id ? 'death' : 'success'); }
       if (shakeOn()) feel.trauma = F.addTrauma(feel.trauma, involved ? .55 : .2);
     }
     // Close-call beat (runner graze treatment): white ring, bent chirp and a
