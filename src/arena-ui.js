@@ -263,7 +263,7 @@
 
 .arena-ready-row{display:grid;gap:8px}.arena-ready-row[hidden],.arena-ready-row>[hidden]{display:none!important}.arena-auto-label{display:flex;gap:8px;align-items:center;font:13px system-ui;min-height:44px}.arena-auto-label input{width:22px;height:22px;flex:none}.arena-vote-note:empty{display:none}.arena-vote-note{margin:0;font:13px/1.5 system-ui;color:#bfd4e8}
 .arena-watch-tools{position:absolute;z-index:6;bottom:calc(var(--arena-safe-bottom) + 22px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px;background:#071527ed;border:1px solid #36526d;border-radius:14px;max-width:calc(100% - 24px)}
-.arena-watch-tools span{font:700 calc(10px * var(--ui-scale, 1)) system-ui;text-align:center;min-width:110px}.arena-root button:disabled{opacity:.48;cursor:default}
+.arena-watch-tools span{font:700 calc(10px * var(--ui-scale, 1)) system-ui;text-align:center;flex:1 1 110px;min-width:0;overflow-wrap:anywhere}.arena-watch-tools>button{flex:0 0 auto}.arena-root button:disabled{opacity:.48;cursor:default}
 `;
   function create(options) {
     const opts = options || {};
