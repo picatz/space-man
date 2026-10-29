@@ -320,7 +320,7 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
     try {
       await fs.mkdir(process.env.SPACE_MAN_RACE_SCREENSHOTS, {recursive:true});
       await c.page.screenshot({ path:path.join(process.env.SPACE_MAN_RACE_SCREENSHOTS, `race-online-${name}-${suffix}.png`), timeout:5000,
-        mask:[c.page.locator('#raceInvite'),c.page.locator('#raceRoomInput'),c.page.locator('.race-room-qr'),c.page.locator('.race-room-code')] });
+        mask:[c.page.locator('#raceInvite'),c.page.locator('#raceRoomInput'),c.page.locator('.race-room-qr'),c.page.locator('.sm-invite-code'),c.page.locator('.race-room-code')] });
     } catch { t.diagnostic('Optional simulated-relay screenshot unavailable: ' + suffix); }
   }
   async function open(c) {

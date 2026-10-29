@@ -27,6 +27,15 @@
   background-image: radial-gradient(2px 2px at 71px 63px, #e6faff 50%, #0000), radial-gradient(1.5px 1.5px at 301px 233px, #ffe3b0 50%, #0000), radial-gradient(1.5px 1.5px at 409px 391px, #c9f2ff 50%, #0000);
   background-size: 457px 443px; opacity: .45; animation: homeDrift 90s linear infinite, homeTwinkle 5s ease-in-out infinite alternate;
 }
+/* Seasons (src/seasons.js motif on #ovAttract) warm or cool the whole home sky. */
+#ovAttract[data-season="pumpkins"] { background: radial-gradient(70% 46% at 50% 100%, #ff8a3d30 0, #ff8a3d00 72%), radial-gradient(50% 40% at 16% 26%, #6b3a5a66 0, #6b3a5a00 72%), radial-gradient(40% 34% at 90% 10%, #ff9a4d22 0, #ff9a4d00 70%), linear-gradient(180deg, #1b1733, #0b0a1d 80%); }
+#ovAttract[data-season="lanterns"] { background: radial-gradient(70% 46% at 50% 100%, #ff5a4e2c 0, #ff5a4e00 72%), radial-gradient(50% 40% at 16% 26%, #5a2a4a66 0, #5a2a4a00 72%), linear-gradient(180deg, #1c1430, #0c0a1c 80%); }
+#ovAttract[data-season="harvest"] { background: radial-gradient(70% 46% at 50% 100%, #e8a33a26 0, #e8a33a00 72%), radial-gradient(50% 40% at 16% 26%, #5a3a2a66 0, #5a3a2a00 72%), linear-gradient(180deg, #1a1830, #0c0b1a 80%); }
+#ovAttract[data-season="hearts"] { background: radial-gradient(70% 46% at 50% 100%, #ff5a7a26 0, #ff5a7a00 72%), radial-gradient(50% 40% at 16% 26%, #5a2a5a66 0, #5a2a5a00 72%), linear-gradient(180deg, #1a1434, #0c0a1e 80%); }
+#ovAttract[data-season="clovers"] { background: radial-gradient(70% 46% at 50% 100%, #3fbf6224 0, #3fbf6200 72%), radial-gradient(50% 40% at 16% 26%, #1f5a4a 0, #1f5a4a00 72%), linear-gradient(180deg, #0b1d30, #071220 80%); }
+#ovAttract[data-season="snow"] { background: radial-gradient(60% 45% at 50% 0%, #a9d8ff26 0, #a9d8ff00 72%), radial-gradient(55% 45% at 16% 28%, #1f5a7d 0, #1f5a7d00 72%), linear-gradient(180deg, #0c1d3a, #071023 80%); }
+#ovAttract[data-season="petals"] { background: radial-gradient(60% 45% at 50% 100%, #ffbed624 0, #ffbed600 72%), radial-gradient(55% 45% at 16% 28%, #4a3f78 0, #4a3f7800 72%), linear-gradient(180deg, #14183a, #090b1f 80%); }
+#ovAttract[data-season="fireworks"] { background: radial-gradient(45% 35% at 20% 18%, #ffc93c1c 0, #ffc93c00 70%), radial-gradient(45% 35% at 82% 12%, #9ff1ff1c 0, #9ff1ff00 70%), radial-gradient(45% 40% at 88% 86%, #3b2f7a59 0, #3b2f7a00 70%), linear-gradient(180deg, #0d1534, #060b1a 80%); }
 @keyframes homeDrift { to { transform: translateY(240px); } }
 @keyframes homeTwinkle { from { opacity: .2; } to { opacity: .55; } }
 #ovAttract .home-shell {
@@ -90,7 +99,7 @@
 #ovAttract .home-mode .mode-link::before { display: none; content: none; }
 #ovAttract .home-mode .mode-link::after { display: none; }
 .home-mode > span:not(.mode-link) { position: absolute; left: 3px; right: 3px; bottom: 8px; color: #a7c3d5; font: 450 calc(11px * var(--ui-scale, 1))/1.1 var(--sm-font-body); text-align: center; pointer-events: none; }
-#ovAttract .home-run-together { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; padding: 10px 1px 3px; background: transparent; border: 0; color: #bcdbe8; font: 650 calc(11px * var(--ui-scale, 1))/1.4 var(--sm-font-body); text-align: left; cursor: pointer; }
+#ovAttract .home-run-together { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 44px; margin-top: 10px; padding: 9px 14px; background: #8fd8ff0b; border: 1px solid #9ecce530; border-radius: 12px; color: #bcdbe8; font: 650 calc(11px * var(--ui-scale, 1))/1.4 var(--sm-font-body); text-align: left; cursor: pointer; }
 .home-run-together span { color: #8fabbf; font-weight: 450; }.home-run-together b { margin-left: auto; color: #c4e4ef; font-size: 16px; }
 #ovAttract #btnDaily { display: flex; align-items: center; gap: 10px; width: 100%; margin: 14px 0 0; min-height: 56px; padding: 11px 0; border: 0; border-top: 1px solid #9abfd529; border-bottom: 1px solid #9abfd529; border-radius: 0; background: transparent; color: #dbeaf5; font: 650 12px/1.4 var(--sm-font-body); text-align: left; box-shadow: none; }
 #ovAttract #btnDaily .home-daily-icon { font-size: 29px; color: #ffd084; width: 29px; flex-shrink: 0; }
@@ -100,7 +109,7 @@
 #ovAttract .daily-blurb { display: none !important; }
 .home-footer { grid-area: footer; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 20px; padding-top: 12px; border-top: 1px solid #81b2c91a; }
 #ovAttract #attractRow { display: flex; gap: 18px; }
-#ovAttract #attractRow .btn { display: flex; align-items: center; gap: 7px; width: auto; min-width: 0; min-height: 44px; margin: 0; padding: 7px 0; border: 0; border-radius: 6px; background: transparent; color: #acc8da; box-shadow: none; font: 650 12px/1.4 var(--sm-font-body); }
+#ovAttract #attractRow .btn { display: flex; align-items: center; gap: 7px; width: auto; min-width: 0; min-height: 44px; margin: 0; padding: 7px 13px; border: 1px solid #9ecce52a; border-radius: 999px; background: #8fd8ff0b; color: #acc8da; box-shadow: none; font: 650 12px/1.4 var(--sm-font-body); }
 .home-footer-note { color: #7f9eb2; font: 450 calc(11px * var(--ui-scale, 1))/1.5 var(--sm-font-body); }
 #ovAttract #offlineNote { flex-basis: 100%; color: #c0d5e4; margin: 0; }
 #ovAttract [hidden] { display: none !important; }
@@ -108,7 +117,8 @@
   #ovAttract .home-mode:hover:not(:active) { transform: translateY(-3px); border-color: #a3d6ec70; }
   #ovAttract #btnExpedition:hover { background: #ffe0a2; box-shadow: 0 4px 0 #9e713c,0 8px 28px #ffbe5f28; }
   #ovAttract #btnExpeditionFriends:hover,#ovAttract #btnWardrobe:hover { background: #28435a; }
-  #ovAttract #btnDaily:hover,#ovAttract #attractRow .btn:hover,#ovAttract .home-run-together:hover { color: #effbff; background: transparent; box-shadow: none; }
+  #ovAttract #btnDaily:hover { color: #effbff; background: transparent; box-shadow: none; }
+  #ovAttract #attractRow .btn:hover,#ovAttract .home-run-together:hover { color: #effbff; background: #8fd8ff18; border-color: #9ecce55a; box-shadow: none; }
 }
 @media (max-width: 759px) and (min-height: 561px) {
   #ovAttract { --home-pad-x: 20px; --home-pad-y: 8px; }

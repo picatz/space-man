@@ -630,6 +630,184 @@ const characterHats = {
     c.restore();
   }
 
+  // A carved pumpkin lantern: Dusk Week falls on Halloween, so the Reach's
+  // lanterns there are jack-o'-lanterns.
+  function pumpkin(c, x, y, r, lit = 1) {
+    c.save();
+    c.globalAlpha *= .5 * lit; c.drawImage(glow(32, '#FFB25A', .1), x - r * 2.4, y - r * 2.4, r * 4.8, r * 4.8); c.globalAlpha /= .5 * lit;
+    c.fillStyle = '#E0662A'; c.beginPath(); c.ellipse(x - r * .42, y, r * .62, r * .86, 0, 0, TAU); c.ellipse(x + r * .42, y, r * .62, r * .86, 0, 0, TAU); c.fill();
+    c.fillStyle = '#FF8A3D'; c.beginPath(); c.ellipse(x, y, r * .62, r * .9, 0, 0, TAU); c.fill();
+    c.fillStyle = '#4E6B34'; c.fillRect(x - r * .1, y - r * 1.12, r * .2, r * .3);
+    c.fillStyle = '#FFE08A';
+    for (const side of [-1, 1]) { c.beginPath(); c.moveTo(x + side * r * .18, y - r * .08); c.lineTo(x + side * r * .52, y - r * .08); c.lineTo(x + side * r * .35, y - r * .4); c.closePath(); c.fill(); }
+    c.beginPath(); c.moveTo(x - r * .5, y + r * .2);
+    for (let i = 1; i <= 6; i++) c.lineTo(x - r * .5 + i * r / 6, y + r * (i % 2 ? .44 : .26));
+    c.lineTo(x, y + r * .56); c.closePath(); c.fill();
+    c.restore();
+  }
+  // Little holiday props, in hero units (the home hero is 640 x 400).
+  function heart(c, x, y, r, color) {
+    c.fillStyle = color; c.beginPath(); c.moveTo(x, y + r * .9);
+    c.bezierCurveTo(x - r * 1.5, y - r * .1, x - r * .7, y - r * 1.2, x, y - r * .45);
+    c.bezierCurveTo(x + r * .7, y - r * 1.2, x + r * 1.5, y - r * .1, x, y + r * .9); c.fill();
+  }
+  function clover(c, x, y, r, color, a = 0) {
+    c.save(); c.translate(x, y); c.rotate(a); c.fillStyle = color;
+    for (let i = 0; i < 3; i++) { c.save(); c.rotate(i * TAU / 3); heart(c, 0, -r * .55, r * .55, color); c.restore(); }
+    c.strokeStyle = color; c.lineWidth = Math.max(1, r * .16); c.lineCap = 'round'; c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(r * .2, r * .6, r * .5, r * 1.1); c.stroke();
+    c.restore();
+  }
+  function leaf(c, x, y, r, color, a) {
+    c.save(); c.translate(x, y); c.rotate(a); c.fillStyle = color;
+    c.beginPath(); c.moveTo(0, -r); c.quadraticCurveTo(r * .9, -r * .2, 0, r); c.quadraticCurveTo(-r * .9, -r * .2, 0, -r); c.fill();
+    c.strokeStyle = 'rgba(60,30,20,.45)'; c.lineWidth = .8; c.beginPath(); c.moveTo(0, -r * .8); c.lineTo(0, r * 1.2); c.stroke();
+    c.restore();
+  }
+  // A round little turkey with a fanned tail: Thanksgiving, readable at 40 px.
+  function turkey(c, x, y, s, colors, t) {
+    const bob = Math.sin(t * 3) * 1.2 * s;
+    for (let i = 0; i < 7; i++) { const a = -Math.PI / 2 + (i - 3) * .36; c.fillStyle = colors[i % colors.length]; c.beginPath(); c.ellipse(x + Math.cos(a) * 15 * s, y - 8 * s + Math.sin(a) * 15 * s, 4.6 * s, 11 * s, a + Math.PI / 2, 0, TAU); c.fill(); }
+    c.fillStyle = '#7A4A2E'; c.beginPath(); c.ellipse(x, y - 6 * s, 11 * s, 10 * s, 0, 0, TAU); c.fill();
+    c.fillStyle = '#9A6240'; c.beginPath(); c.ellipse(x + 6 * s, y - 16 * s + bob, 5.4 * s, 6 * s, 0, 0, TAU); c.fill();
+    c.fillStyle = '#FFC93C'; c.beginPath(); c.moveTo(x + 10.5 * s, y - 17 * s + bob); c.lineTo(x + 15 * s, y - 15.5 * s + bob); c.lineTo(x + 10.5 * s, y - 14 * s + bob); c.fill();
+    c.fillStyle = '#E2524A'; c.beginPath(); c.ellipse(x + 10 * s, y - 12 * s + bob, 1.6 * s, 3 * s, 0, 0, TAU); c.fill();
+    c.fillStyle = '#10202C'; c.beginPath(); c.arc(x + 7.5 * s, y - 17.5 * s + bob, 1.3 * s, 0, TAU); c.fill();
+    c.strokeStyle = '#E8A33A'; c.lineWidth = 1.6 * s; c.lineCap = 'round'; c.beginPath(); c.moveTo(x - 3 * s, y + 3 * s); c.lineTo(x - 4 * s, y + 7 * s); c.moveTo(x + 3 * s, y + 3 * s); c.lineTo(x + 4 * s, y + 7 * s); c.stroke();
+  }
+  // A small decorated tree with a star: the winter holidays.
+  function tree(c, x, y, s, t) {
+    c.fillStyle = '#6B4A34'; c.fillRect(x - 3 * s, y - 6 * s, 6 * s, 6 * s);
+    [[0, 30, 24], [12, 24, 19], [23, 18, 14]].forEach(([up, w, h]) => { c.fillStyle = '#2F8F5B'; c.beginPath(); c.moveTo(x - w / 2 * s, y - (6 + up) * s); c.lineTo(x + w / 2 * s, y - (6 + up) * s); c.lineTo(x, y - (6 + up + h) * s); c.closePath(); c.fill(); });
+    [[-7, -12, '#FF5A4E'], [6, -16, '#FFC93C'], [-3, -24, '#9FF1FF'], [5, -30, '#FF5A4E'], [-1, -37, '#FFC93C']].forEach(([dx, dy, col], i) => {
+      c.globalAlpha = .75 + .25 * Math.sin(t * 3 + i * 1.7); c.fillStyle = col; c.beginPath(); c.arc(x + dx * s, y + dy * s, 1.9 * s, 0, TAU); c.fill();
+    });
+    c.globalAlpha = 1; star4(c, x, y - 49 * s, 5 * s, '#FFE08A');
+  }
+  function star4(c, x, y, r, color) {
+    c.fillStyle = color; c.beginPath();
+    for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i * Math.PI / 4, d = i % 2 ? r * .42 : r; c.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); }
+    c.closePath(); c.fill();
+  }
+  // A pot of gold for St. Patrick's Day.
+  function potOfGold(c, x, y, s, t) {
+    [[-6, -15], [0, -18], [6, -15], [-3, -21], [3, -21]].forEach(([dx, dy], i) => { c.fillStyle = i % 2 ? '#FFE08A' : '#FFC93C'; c.beginPath(); c.ellipse(x + dx * s, y + dy * s, 4.2 * s, 3 * s, 0, 0, TAU); c.fill(); });
+    c.fillStyle = '#1E2630'; c.beginPath(); c.ellipse(x, y - 7 * s, 13 * s, 10 * s, 0, 0, TAU); c.fill();
+    c.fillStyle = '#2E3A46'; c.fillRect(x - 13 * s, y - 15 * s, 26 * s, 4 * s);
+    c.globalAlpha = .7 + .3 * Math.sin(t * 4); star4(c, x + 8 * s, y - 24 * s, 3.4 * s, '#FFF4C2'); c.globalAlpha = 1;
+  }
+  // Seasons on the home hero. layer 'back' paints once into the cached backdrop;
+  // 'mid' runs before the characters and 'buddy' inside the alien's transform
+  // (so a prop hops with it), both every living frame with t in seconds (t
+  // null: a still pose for reduced motion and first paint). The headline event
+  // picks the look, so each holiday reads as itself. No Math.random: a still
+  // frame is the same on every device.
+  function homeSeason(c, layer, season, t) {
+    const seasons = root.SpaceManSeasons, M = seasons && seasons.MOTIFS, s = season || (seasons && seasons.current());
+    const e = seasons && seasons.headline(s);
+    if (!M || !e) return false;
+    const motif = e.motif, still = !(t >= 0), time = still ? 0 : t;
+    const rand = (i) => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+    const warm = motif === 'pumpkins' ? M.pumpkins.glow : motif === 'lanterns' ? M.lanterns.lunar : motif === 'hearts' ? M.hearts.color : motif === 'harvest' ? M.harvest.colors[1] : motif === 'clovers' ? M.clovers.gold : null;
+    // Things that rise or fall through the scene: lanes keep the astronaut clear.
+    const drift = (n, speed, paint, fall) => {
+      for (let i = 0; i < n; i++) {
+        const lane = [42, 118, 186, 470, 538, 606, 150, 520, 84, 572][i % 10], span = 470, v = speed * (.75 + rand(i) * .6);
+        const p = (time * v + rand(i + 9) * span) % span, y = fall ? p - 40 : 420 - p, x = lane + Math.sin(time * .6 + i * 1.9) * 8;
+        const fade = Math.max(0, Math.min(1, (420 - y) / 50, (y + 40) / 70));
+        if (fade > 0) { c.globalAlpha = fade; paint(x, y, i); }
+      }
+    };
+    c.save();
+    if (layer === 'back') {
+      if (warm) { c.globalAlpha = .4; c.drawImage(glow(64, warm, .05), 140, 210, 360, 180); }
+      if (motif === 'snow' || s.frost) {
+        // Snow settled on the pad rim and the ringed planet's cap.
+        c.globalAlpha = .92; c.fillStyle = M.snow.color;
+        c.beginPath(); c.ellipse(320, 296, 106, 9, 0, Math.PI, TAU); c.fill();
+        c.beginPath(); c.ellipse(482, 70, 22, 8, -.25, Math.PI * .95, Math.PI * 2.05); c.fill();
+      }
+      if (motif === 'petals') { c.globalAlpha = .3; c.drawImage(glow(64, M.petals.color, .05), 150, 220, 340, 160); }
+    } else if (layer === 'mid') {
+      if (motif === 'pumpkins') {
+        drift(7, 11, (x, y, i) => { c.globalAlpha *= .85 + .15 * Math.sin(time * 2.1 + i); if (i % 2) lantern(c, x, y, 13 + rand(i + 3) * 7, M.lanterns.dusk, M.lanterns.glow); else pumpkin(c, x, y, 8 + rand(i + 3) * 4); });
+        // A big carved pumpkin on the pad, flickering like a real candle.
+        c.globalAlpha = 1; pumpkin(c, 236, 278, 19, .85 + .15 * Math.sin(time * 7) * Math.sin(time * 3.1));
+      } else if (motif === 'lanterns') {
+        drift(8, 12, (x, y, i) => { c.globalAlpha *= .8 + .2 * Math.sin(time * 2.1 + i); lantern(c, x, y, 14 + rand(i + 3) * 8, M.lanterns.lunar, M.lanterns.glow); });
+      } else if (motif === 'harvest') {
+        drift(9, 16, (x, y, i) => leaf(c, x, y, 5 + rand(i + 3) * 3, M.harvest.colors[i % 4], time * (1 + rand(i)) + i), true);
+        c.globalAlpha = 1; turkey(c, 236, 296, 1.25, M.harvest.colors, time);
+      } else if (motif === 'hearts') {
+        drift(9, 13, (x, y, i) => heart(c, x, y, 6 + rand(i + 3) * 5, i % 3 ? M.hearts.color : M.hearts.light));
+      } else if (motif === 'clovers') {
+        drift(8, 14, (x, y, i) => clover(c, x, y, 7 + rand(i + 3) * 4, M.clovers.color, time * .8 + i), true);
+        c.globalAlpha = 1; potOfGold(c, 236, 296, 1.15, time);
+      } else if (motif === 'petals') {
+        c.fillStyle = M.petals.color;
+        drift(10, 12, (x, y, i) => { c.beginPath(); c.ellipse(x, y, 3.8, 2.1, time * (1 + rand(i)) + i, 0, TAU); c.fill(); }, true);
+      } else if (motif === 'fireworks') {
+        const colors = s.july4 ? M.fireworks.july4 : M.fireworks.colors;
+        [[128, 70], [520, 52], [574, 196], [76, 214]].forEach(([x, y], b) => {
+          const k = still ? .38 : ((time + b * 1.1) % 3.4) / 3.4;
+          if (k > .62) return;
+          const ease = 1 - Math.pow(1 - k / .62, 3), r = 14 + 40 * ease;
+          c.fillStyle = colors[b % colors.length]; c.globalAlpha = 1 - k / .62;
+          for (let i = 0; i < 16; i++) { const a = i * TAU / 16 + b; c.beginPath(); c.arc(x + Math.cos(a) * r, y + Math.sin(a) * r + 9 * ease * ease, 2.6 * (1 - k * .8), 0, TAU); c.fill(); }
+        });
+      }
+      if (motif === 'snow' || s.frost) {
+        c.fillStyle = M.snow.color;
+        for (let i = 0; i < 52; i++) {
+          const y = ((rand(i + 20) * 420 + time * (14 + rand(i) * 18)) % 420) - 10, x = rand(i + 40) * 640 + Math.sin(time * .8 + i) * 6;
+          c.globalAlpha = .35 + rand(i + 60) * .5; c.beginPath(); c.arc(x, y, 1.1 + rand(i + 80) * 1.9, 0, TAU); c.fill();
+        }
+        if (motif === 'snow') { c.globalAlpha = 1; tree(c, 238, 298, 1.05, time); }
+      }
+    } else if (layer === 'buddy') {
+      // The alien's own touch. Head top is about (417, 254); the antenna is at x 408.
+      const sway = still ? 0 : Math.sin(time * 2.4) * .16;
+      const stick = (paint) => {
+        c.strokeStyle = '#D9C9A0'; c.lineWidth = 2; c.lineCap = 'round';
+        c.beginPath(); c.moveTo(427, 282); c.lineTo(441, 244); c.stroke();
+        const hx = 441 + Math.sin(sway) * 8, hy = 244 + Math.cos(sway) * 8;
+        c.lineWidth = 1.2; c.beginPath(); c.moveTo(441, 244); c.lineTo(hx, hy); c.stroke(); paint(hx, hy);
+      };
+      if (motif === 'pumpkins') stick((x, y) => pumpkin(c, x, y + 7, 7.5));
+      else if (motif === 'lanterns') stick((x, y) => lantern(c, x, y + 8, 14, M.lanterns.lunar, M.lanterns.glow));
+      else if (motif === 'hearts') {
+        // A heart balloon on a string.
+        const bx = 444 + Math.sin(time * 1.3) * 3, by = 222 + Math.sin(time * 1.9) * 2;
+        c.strokeStyle = '#F6E9EE'; c.lineWidth = 1; c.beginPath(); c.moveTo(428, 280); c.quadraticCurveTo(440, 252, bx, by + 9); c.stroke();
+        heart(c, bx, by, 10, M.hearts.color); c.globalAlpha = .55; heart(c, bx - 3, by - 3, 3, '#FFFFFF');
+      } else if (motif === 'snow') {
+        // A Santa hat, tipped away from the antenna, and a little scarf.
+        c.fillStyle = '#E2524A'; c.beginPath(); c.ellipse(415, 281, 13, 3.6, 0, 0, TAU); c.fill(); c.fillRect(419, 281, 4.5, 11);
+        c.save(); c.translate(422, 255); c.rotate(.42 + sway * .3);
+        c.fillStyle = '#E2524A'; c.beginPath(); c.moveTo(-8, 0); c.quadraticCurveTo(-2, -16, 9, -14); c.lineTo(8, 0); c.closePath(); c.fill();
+        c.fillStyle = '#F6F2EA'; c.fillRect(-9, -2.5, 18, 4.5); c.beginPath(); c.arc(9, -14, 3, 0, TAU); c.fill(); c.restore();
+      } else if (motif === 'clovers') {
+        c.save(); c.translate(423, 254); c.rotate(.3 + sway * .3);
+        c.fillStyle = '#2E9A50'; c.fillRect(-9, -2, 18, 3); c.fillRect(-6, -13, 12, 11);
+        c.fillStyle = '#FFC93C'; c.fillRect(-6, -5, 12, 2.4); c.restore();
+      } else if (motif === 'harvest') leaf(c, 425, 252, 6, M.harvest.colors[0], .9 + sway);
+      else if (motif === 'petals') {
+        c.fillStyle = M.petals.color;
+        for (let i = 0; i < 5; i++) { const a = i * TAU / 5; c.beginPath(); c.ellipse(427 + Math.cos(a) * 3.6, 255 + Math.sin(a) * 3.6, 2.8, 2, a, 0, TAU); c.fill(); }
+        c.fillStyle = '#FFE08A'; c.beginPath(); c.arc(427, 255, 2, 0, TAU); c.fill();
+      } else if (motif === 'fireworks') {
+        if (s.july4) stick((x, y) => { for (let r = 0; r < 5; r++) { c.fillStyle = r % 2 ? '#FFFFFF' : '#FF4F5E'; c.fillRect(x, y - 8 + r * 2.2, 16, 2.2); } c.fillStyle = '#3D5AB8'; c.fillRect(x, y - 8, 7, 6.6); });
+        else {
+          // A party hat.
+          c.translate(424, 254); c.rotate(.35 + sway * .3);
+          c.fillStyle = '#9FF1FF'; c.beginPath(); c.moveTo(-7, 0); c.lineTo(7, 0); c.lineTo(0, -17); c.closePath(); c.fill();
+          c.fillStyle = '#FFC93C'; c.fillRect(-4.5, -6, 9, 2.4); c.beginPath(); c.arc(0, -17, 2.6, 0, TAU); c.fill();
+        }
+      }
+    }
+    c.restore();
+    return true;
+  }
+
   // Easing set shared by render code (and mirrored by the CSS --ease tokens).
   const ease = {
     outCubic: (t) => 1 - Math.pow(1 - t, 3),
@@ -638,7 +816,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { REGIONS, circuitSky, lantern, seasonBackdrop, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { REGIONS, circuitSky, lantern, pumpkin, homeSeason, seasonBackdrop, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

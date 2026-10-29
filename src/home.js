@@ -22,6 +22,7 @@
     [[106,139],[210,60],[553,171],[448,42],[383,292],[118,271],[546,69],[239,159]].forEach(([x,y],i)=>ellipse(c,x,y,i%3===0?2:1.3,i%3===0?2:1.3,'#b6d9e377'));
     ellipse(c,320,323,135,29,'#081727');ellipse(c,320,310,115,28,'#26455c');ellipse(c,320,306,115,20,'#3b6175');ellipse(c,320,300,109,16,'#60909c');ellipse(c,320,301,84,9,'#8fbbbc');
     line(c,[[226,310],[242,315]],'#a8efdf',3);line(c,[[399,314],[412,310]],'#a8efdf',3);
+    root.SpaceManArt.homeSeason?.(c,'back');
   }
   const SPARKS=[[160,92,9,'#ffda8b'],[450,221,7,'#9cf3ed'],[390,55,5,'#bbeaff'],[217,244,4,'#d6edff'],[516,262,4,'#d6edff']];
   // One playful, unambiguous non-player companion. d: {lx,ly} gaze, hop 0..1, lean -1..1, t seconds.
@@ -35,13 +36,15 @@
     const sway=Math.sin(t*2.2)*1.6+d.lean*2+d.hop*Math.sin(t*22)*1.2;
     c.strokeStyle='#9ce6ac';c.lineWidth=2;c.lineCap='round';c.beginPath();c.moveTo(410,248);c.quadraticCurveTo(409+sway*.4,245,408+sway,242-d.hop*2);c.stroke();
     ellipse(c,408+sway,241-d.hop*2,3,3,'#c8f5b4');
+    root.SpaceManArt.homeSeason?.(c,'buddy',null,d.still?null:t);
     c.restore();
   }
   function actors(c,appearance,d) {
     const t=d?d.t:0;
+    root.SpaceManArt.homeSeason?.(c,'mid',null,d?t:null);
     SPARKS.forEach(([x,y,r,col],i)=>{const k=d?.82+.18*Math.sin(t*2.4+i*1.7):1;star(c,x,y,r*k,col);});
     root.SpaceManArt.drawAvatar(c,320,176,260,appearance,d?{time:t,reduceMotion:false,greeting:d.wave,lookX:d.alx,lookY:d.aly,mood:d.mood}:{reduceMotion:true});
-    alien(c,d||{t:0,lx:0,ly:0,hop:0,hopT:0,lean:0});
+    alien(c,d||{t:0,lx:0,ly:0,hop:0,hopT:0,lean:0,still:1});
   }
   function hero(c,appearance) { backdrop(c);actors(c,appearance,null); }
   function tile(c,mode,appearance) {
