@@ -35,6 +35,7 @@ const SHELL = [
   './src/powerups.js',
   './src/seasons.js',
   './src/art.js',
+  './src/fx.js',
   './src/anim.js',
   './src/arena.js',
   './src/arena-online.js',

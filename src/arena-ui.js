@@ -6,6 +6,8 @@
   const TAU = Math.PI * 2;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const lerp = (a, b, t) => a + (b - a) * t;
+  // Sim event to shared effect kind (src/fx.js); the effect list stores the kind.
+  const FX_KIND = { hit: 'hit', ringout: 'ko', respawn: 'spawn', jump: 'land' };
   const hash = (n) => { const v = Math.sin(n * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
   const FORMATS = [
     { id: 'duel', name: 'Duel', tag: 'YOU + 1 CPU', detail: 'A little space. A worthy rival.', icon: '◉ : ◉' },
@@ -58,7 +60,7 @@
 .arena-button:disabled{opacity:.5;cursor:default}
 .arena-primary{background:#FFC66B;border-color:#FFD998;color:#1A1724;min-height:54px;box-shadow:0 4px 0 #8A6137,0 10px 28px rgba(255,180,84,.13)}
 .arena-primary:hover{background:#FFD793;border-color:#FFF0C1}
-.arena-text-button{background:transparent;border-color:transparent;box-shadow:none;color:#AFCCE7;font:600 12px/1.35 system-ui,sans-serif;min-height:44px;padding:10px 12px}
+.arena-text-button{background:rgba(56,225,255,.045);border-color:rgba(143,197,230,.3);box-shadow:none;color:#C6DDF0;font:600 12px/1.35 system-ui,sans-serif;min-height:44px;padding:10px 12px}
 .arena-text-button:hover{background:rgba(56,225,255,.08);border-color:rgba(56,225,255,.16);color:#ECF8FF}
 .arena-eyebrow{font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.17em;font-weight:800;color:#8EAAC5;line-height:1.5}
 .arena-pill{display:inline-flex;align-items:center;align-self:flex-start;gap:7px;border:1px solid rgba(56,225,255,.28);border-radius:999px;padding:6px 10px;font:700 calc(9px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;letter-spacing:.15em;background:rgba(56,225,255,.06);color:#9FF1FF}
@@ -297,8 +299,8 @@
     // everywhere, all through the pure helpers in SpaceManArena.feel.
     // The countdown is the one moment every new pilot is looking at the screen: state the goal.
     const COUNTDOWN_GOAL = { duel: 'DUEL · KNOCK THEM OFF THE EDGE', ffa: 'BRAWL · LAST PILOT STANDING', teams: 'TEAM-UP · KNOCK RIVALS OFF' };
-    const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {}, lastLand: -1 };
-    function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {} }); }
+    const feel = { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {}, lastLand: -1, combo: {} };
+    function resetFeel() { Object.assign(feel, { freezeLeft: 0, holdAlpha: 1, trauma: 0, kick: null, koLeft: 0, dodgeLeft: 0, dodgeSeen: {}, koPoint: null, flash: {}, land: {}, combo: {} }); }
     let held = new Map(), touches = new Map(), stick = null, moveX = 0, moveY = 0, jumpEdge = false, attackEdge = false, dashEdge = false;
     // Couch play. local2 exists only while a same-device 2P match is loaded.
     let local2 = null, playerCount = 1, p2Joined = false, joinPadPrev = false, lobbyTick = 0, playersGroup, playerButtons = [], playersNote, joinButton, legendEl;
@@ -442,7 +444,7 @@
       // sound that matters to the player.
       if (far) { if (now - lastFar < .16) return; lastFar = now; }
       else { if (now - lastSfx < 0.055 && kind !== 'win') return; lastSfx = now; }
-      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13], pickup: [620, 1180, .12], drop: [880, 520, .06] };
+      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13], combo: [760, 1240, .1], pickup: [620, 1180, .12], drop: [880, 520, .06] };
       const v = values[kind]; if (!v) return;
       const o = audio.createOscillator(), g = audio.createGain();
       o.type = kind === 'hit' || far ? 'triangle' : 'sine'; o.frequency.setValueAtTime(v[0], now); o.frequency.exponentialRampToValueAtTime(v[1], now + v[2]);
@@ -1354,14 +1356,16 @@
       }
       for (const e of effects) {
         if (e.type === 'kotext' || e.type === 'koflash') continue; // screen-space, drawn after the world
-        if (e.type === 'dust') { ctx.globalAlpha = .55 * (e.life / e.max); ctx.fillStyle = e.color; const size = 2 + 2 * (1 - e.life / e.max); ctx.fillRect(e.x - size / 2, e.y - size / 2, size, size); continue; }
-        const k = 1 - e.life / e.max, radius = e.type === 'ringout' ? 18 + k * 56 : e.type === 'dodge' ? 12 + k * 34 : 7 + k * 20;
-        ctx.globalAlpha = (1 - k) * .85; ctx.strokeStyle = e.color; ctx.lineWidth = 2;
-        if (calm()) { ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, 5, 0, TAU); ctx.fill(); }
-        else {
-          ctx.beginPath(); ctx.arc(e.x, e.y, radius, 0, TAU); ctx.stroke();
-          if (!saver() && (e.type === 'hit' || e.type === 'ringout')) for (let i = 0; i < 6; i++) { const angle = i * TAU / 6 + e.x; const r = radius * 1.4; ctx.fillStyle = e.color; ctx.fillRect(e.x + Math.cos(angle) * r - 1.5, e.y + Math.sin(angle) * r - 1.5, 3, 3); }
+        if (e.type === 'combotext') {
+          const k = 1 - e.life / e.max, pop = calm() ? 1 : 1 + .5 * Math.max(0, 1 - k * 5) ** 2;
+          ctx.save(); ctx.globalAlpha = k < .7 ? 1 : 1 - (k - .7) / .3; ctx.translate(e.x, e.y - (calm() ? 0 : k * 22)); ctx.scale(pop, pop);
+          ctx.font = '900 20px system-ui,sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; ctx.lineWidth = 5; ctx.strokeStyle = '#071522';
+          ctx.strokeText(e.text, 0, 0); ctx.fillStyle = e.color; ctx.fillText(e.text, 0, 0); ctx.restore(); continue;
         }
+        if (e.type === 'dust') { ctx.globalAlpha = .55 * (e.life / e.max); ctx.fillStyle = e.color; const size = 2 + 2 * (1 - e.life / e.max); ctx.fillRect(e.x - size / 2, e.y - size / 2, size, size); continue; }
+        // The shared kit (src/fx.js) paints hits, ring-outs, arrivals, pickups,
+        // launches and near misses with the same look as every other mode.
+        root.SpaceManFX.draw(ctx, e.type, e.x, e.y, 1 - e.life / e.max, { color: e.color, calm: calm(), saver: saver(), seed: e.x });
       }
       ctx.globalAlpha = 1; ctx.restore();
       drawKoEffects(c);
@@ -1497,8 +1501,21 @@
     }
     // Haptics belong to the host page (strength, battery saver and rumble routing live there); an absent hook is silent.
     const buzz = kind => { if (typeof opts.buzz === 'function') { try { opts.buzz(kind); } catch (_) {} } };
+    // Combo read: consecutive hits by one fighter on the same victim inside
+    // COMBO_WINDOW ticks. Derived from the event stream only, so it needs no
+    // sim state and behaves the same in local and online matches.
+    const COMBO_WINDOW = 75;
+    function comboFeel(event, involved) {
+      const prev = feel.combo[event.actorId], n = prev && prev.victim === event.targetId && state.tick - prev.tick <= COMBO_WINDOW ? prev.n + 1 : 1;
+      feel.combo[event.actorId] = { victim: event.targetId, tick: state.tick, n };
+      if (n < 2) return;
+      const who = state.actors.find(a => a.id === event.actorId);
+      effects.push({ type: 'combotext', x: event.x, y: event.y - 26, color: who ? actorColor(who) : '#FFE59A', life: 42, max: 42, text: n + ' HIT' });
+      if (involved) { sfx('combo'); if (n >= 3) announce(n + ' hit combo!'); if (shakeOn()) feel.trauma = arena.feel.addTrauma(feel.trauma, Math.min(.3, .06 * n)); }
+    }
     function hitFeel(event, victim, involved) {
       const F = arena.feel;
+      comboFeel(event, involved);
       if (victim && !calm()) feel.flash[victim.id] = 5;
       if (shakeOn()) {
         feel.trauma = F.addTrauma(feel.trauma, F.traumaFor(event, involved));
@@ -1562,9 +1579,9 @@
     }
     function itemEvents(event, focusId) {
       const st = ITEM_STYLE[event.kind] || ITEM_STYLE.surge, name = arena.itemKinds[event.kind] ? arena.itemKinds[event.kind].name : 'Cell';
-      if (event.type === 'item-spawn') { effects.push({ type: 'respawn', x: event.x, y: event.y, color: st.color, life: 20, max: 20 }); sfx('drop'); announce(name + ' dropped.'); }
+      if (event.type === 'item-spawn') { effects.push({ type: 'spawn', x: event.x, y: event.y, color: st.color, life: 20, max: 20 }); sfx('drop'); announce(name + ' dropped.'); }
       else if (event.type === 'item-pickup') {
-        effects.push({ type: 'respawn', x: event.x, y: event.y, color: st.color, life: 24, max: 24 });
+        effects.push({ type: 'pickup', x: event.x, y: event.y, color: st.color, life: root.SpaceManFX.LIFE.pickup, max: root.SpaceManFX.LIFE.pickup });
         sfx(event.actorId === focusId ? 'pickup' : 'drop');
         if (event.actorId === focusId) { announce(name + ' claimed.'); buzz('success'); }
       }
@@ -1575,7 +1592,11 @@
         const who = state.actors.find(a => a.id === event.actorId), type = event.type;
         const focus = watchedActor(), focusId = focus ? focus.id : 0;
         if (type === 'item-spawn' || type === 'item-pickup') itemEvents(event, focusId);
-        if (['hit', 'ringout', 'respawn', 'jump'].includes(type)) effects.push({ type, x: event.x, y: event.y, color: who ? actorColor(who) : '#FFE59A', life: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14, max: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14 });
+        if (FX_KIND[type]) {
+          // A ground jump kicks dust from the feet; a double jump rings the air.
+          const kind = type === 'jump' && event.double ? 'dodge' : FX_KIND[type], life = root.SpaceManFX.LIFE[kind];
+          effects.push({ type: kind, x: event.x, y: event.y + (type === 'jump' && !event.double && who ? (who.h || 34) / 2 : 0), color: who ? actorColor(who) : '#FFE59A', life, max: life });
+        }
         if (type === 'boss-warning') { announce(event.move === 'shockwave' ? 'Guardian charging a ground wave. Jump!' : 'Guardian aiming. Dash out of the warning!'); sfx('countdown'); }
         else if (type === 'boss-exposed') announce('Guardian core exposed. Pulse now!');
         else if (type === 'boss-defeated') { announce('Guardian defeated!'); sfx('win'); }

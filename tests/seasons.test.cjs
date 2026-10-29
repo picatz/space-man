@@ -3,13 +3,13 @@ const Seasons = require('../src/seasons.js');
 const on = (y, m, d, opts) => Seasons.at(new Date(y, m - 1, d, 12), opts);
 const active = s => s.events.map(e => e.flag);
 
-test('the Lantern Reach calendar keeps every runner season on its dates', () => {
+test('the calendar keeps every runner season on its dates', () => {
   assert.deepEqual(active(on(2026, 10, 23)), []);
   assert.deepEqual(active(on(2026, 10, 24)), ['dusk']);
   assert.deepEqual(active(on(2026, 10, 31)), ['dusk']);
   assert.deepEqual(active(on(2026, 11, 1)), []);
   assert.deepEqual(active(on(2026, 12, 1)), ['frost']);
-  assert.deepEqual(active(on(2026, 12, 31)), ['fw', 'frost'], 'Turnover headlines the Long Night');
+  assert.deepEqual(active(on(2026, 12, 31)), ['fw', 'frost'], 'New Year headlines the winter holidays');
   assert.deepEqual(active(on(2027, 1, 5)), ['frost']);
   assert.deepEqual(active(on(2027, 1, 6)), []);
   assert.deepEqual(active(on(2026, 3, 20)), ['blossom']);
@@ -19,6 +19,21 @@ test('the Lantern Reach calendar keeps every runner season on its dates', () => 
   assert.deepEqual(active(on(2031, 2, 1)), [], 'no lunar table, no guess');
   const s = on(2026, 10, 29);
   assert.equal(s.dusk, true); assert.equal(s.frost, false); assert.equal(s.bday, 0);
+});
+
+test('US holidays lead with their real names and land on the right days', () => {
+  assert.deepEqual(active(on(2026, 7, 4)), ['july4']);
+  assert.equal(on(2026, 7, 4).fw, true, 'the runner fireworks fly on the Fourth too');
+  assert.deepEqual(active(on(2026, 7, 5)), []);
+  // Thanksgiving is the fourth Thursday of November: Nov 26 2026, Nov 25 2027, Nov 23 2028.
+  assert.equal(Seasons.thanksgiving(2026).getDate(), 26); assert.equal(Seasons.thanksgiving(2027).getDate(), 25); assert.equal(Seasons.thanksgiving(2028).getDate(), 23);
+  assert.deepEqual(active(on(2026, 11, 25)), ['harvest']); assert.deepEqual(active(on(2026, 11, 29)), ['harvest']);
+  assert.deepEqual(active(on(2026, 11, 24)), []); assert.deepEqual(active(on(2026, 11, 30)), []);
+  assert.deepEqual(active(on(2027, 2, 14)), ['hearts']); assert.deepEqual(active(on(2027, 2, 15)), []);
+  assert.deepEqual(active(on(2027, 3, 17)), ['clover']); assert.deepEqual(active(on(2027, 3, 18)), []);
+  assert.equal(Seasons.headline(on(2026, 10, 29)).name, 'Halloween');
+  assert.equal(Seasons.headline(on(2026, 12, 20)).name, 'Winter holidays');
+  for (const row of Seasons.CALENDAR) assert.ok(row.tag.startsWith(row.name) || /^Happy /.test(row.tag), row.tag + ' leads with the holiday');
 });
 
 test('the anniversary counts whole years since the first run, on that day only', () => {

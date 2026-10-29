@@ -103,7 +103,7 @@
   const CSS = `
 .race-root{position:fixed;inset:0 auto auto 0;width:100%;height:100dvh;background:#080f24;color:#eef7fb;z-index:1000;isolation:isolate;overflow:hidden;font:14px/1.45 ui-rounded,system-ui,sans-serif;touch-action:none;user-select:none;color-scheme:dark;--race-top:max(0px,calc(var(--game-ui-top,env(safe-area-inset-top,0px)) - var(--race-vv-top,0px)));--race-bottom:max(0px,calc(var(--game-ui-bottom,env(safe-area-inset-bottom,0px)) - var(--race-vv-bottom,0px)));--race-left:max(0px,calc(var(--game-ui-left,env(safe-area-inset-left,0px)) - var(--race-vv-left,0px)));--race-right:max(0px,calc(var(--game-ui-right,env(safe-area-inset-right,0px)) - var(--race-vv-right,0px)))}
 .race-root,.race-root *{box-sizing:border-box}.race-root[hidden],.race-root [hidden]{display:none!important}.race-root :focus-visible{outline:3px solid #fff09d;outline-offset:-3px}.race-root button{-webkit-tap-highlight-color:transparent;appearance:none;cursor:pointer;font:inherit}.race-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}.race-canvas:focus-visible{outline:2px solid #73ecff50!important;outline-offset:-2px!important}
-.race-button{min-height:46px;padding:10px 17px;color:#d9edf8;border:1px solid #38536b;border-radius:13px;background:#192f45;font-weight:700;font-size:12px;line-height:1.4;max-width:100%}.race-button:hover{background:#26445b}.race-button:active,.race-pressed{transform:translateY(2px);background:#38617b!important}.race-primary{background:#c7f47d;color:#152b30;border-color:#deffae;min-height:54px;box-shadow:0 4px 0 #53783d;font-size:14px}.race-primary:hover{background:#e0ffa9}.race-text{border-color:transparent;background:transparent;color:#9eb9cc}.race-small{padding:8px 12px;min-height:44px}.race-kicker{font-size:calc(10px * var(--ui-scale, 1));font-weight:800;letter-spacing:.18em;color:#90acbf}.race-tag{color:#c7f47d;font-size:calc(10px * var(--ui-scale, 1));font-weight:800;letter-spacing:.12em}.race-pill{padding:7px 11px;border:1px solid #628754;border-radius:20px;background:#172d2e;display:inline-block;color:#d3f9a6;font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.12em;font-weight:750}
+.race-button{min-height:46px;padding:10px 17px;color:#d9edf8;border:1px solid #38536b;border-radius:13px;background:#192f45;font-weight:700;font-size:12px;line-height:1.4;max-width:100%}.race-button:hover{background:#26445b}.race-button:active,.race-pressed{transform:translateY(2px);background:#38617b!important}.race-primary{background:#c7f47d;color:#152b30;border-color:#deffae;min-height:54px;box-shadow:0 4px 0 #53783d;font-size:14px}.race-primary:hover{background:#e0ffa9}.race-text{border-color:#38536b99;background:#192f4566;color:#c3d9e8}.race-small{padding:8px 12px;min-height:44px}.race-kicker{font-size:calc(10px * var(--ui-scale, 1));font-weight:800;letter-spacing:.18em;color:#90acbf}.race-tag{color:#c7f47d;font-size:calc(10px * var(--ui-scale, 1));font-weight:800;letter-spacing:.12em}.race-pill{padding:7px 11px;border:1px solid #628754;border-radius:20px;background:#172d2e;display:inline-block;color:#d3f9a6;font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.12em;font-weight:750}
 .race-modal{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:calc(var(--race-top) + 20px) calc(var(--race-right) + 24px) calc(var(--race-bottom) + 20px) calc(var(--race-left) + 24px);background:linear-gradient(110deg,#080f24ed,#080f2466);overflow:hidden}.race-dialog{width:min(1060px,100%);max-height:100%;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#38617b transparent;min-width:0}.race-lobby-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px}.race-grid{display:grid;grid-template-columns:1fr 1.12fr;align-items:center;gap:48px}.race-intro{min-width:0}.race-title{font-size:clamp(42px,5vw,68px);font-weight:950;letter-spacing:-.06em;line-height:.95;margin:20px 0}.race-title span{display:block;color:#c7f47d}.race-lede{max-width:310px;color:#a9bed0;font-size:14px;line-height:1.65}.race-hero{width:100%;height:auto;display:block;max-width:390px;margin:-8px 0}.race-facts{display:flex;gap:18px;color:#9eb8ca;font-size:calc(11px * var(--ui-scale, 1));flex-wrap:wrap}.race-facts strong{color:#eef7fb;display:block;font-size:15px}
 .race-setup{padding:23px;border:1px solid #344e64;border-radius:22px;background:linear-gradient(130deg,#172b41ef,#0e1e33ef);min-width:0}.race-label{margin:0 0 10px;color:#a9bed0;font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.12em;font-weight:800}.race-track-list{display:grid;gap:8px;max-height:min(332px,34vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#38617b transparent;padding-right:2px}.race-track{width:100%;display:flex;align-items:center;gap:13px;text-align:left;min-height:78px;padding:9px 12px;background:#0d1e32;min-width:0}.race-track[aria-pressed=true]{border-color:#c7f47d;background:#203b3d}.race-track canvas{width:95px;height:57px;flex:0 0 95px}.race-track strong{display:block;font-size:12px;color:#eff9ff;letter-spacing:-.01em}.race-track small{font-size:calc(9px * var(--ui-scale, 1));font-weight:800;letter-spacing:.15em;color:#8faaBE}.race-track-description{color:#91aabf;font-size:calc(11px * var(--ui-scale, 1));min-height:30px;margin:10px 0 14px}.race-options{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 20px}.race-segments{display:flex;gap:3px;background:#0b1a2b;border:1px solid #2a4258;padding:3px;border-radius:10px}.race-segment{background:transparent;border-color:transparent;min-height:36px;padding:7px 12px;font-size:calc(11px * var(--ui-scale, 1))}.race-segment[aria-pressed=true]{background:#35516a;color:#fff}.race-launch{width:100%}.race-local-note{font-size:calc(10px * var(--ui-scale, 1));color:#92aabf;text-align:center;margin:15px 0 0}.race-help{border-top:1px solid #293f56;padding-top:10px;margin-top:17px;color:#a4bdcf;font-size:calc(11px * var(--ui-scale, 1))}.race-help summary{min-height:35px;cursor:pointer;color:#c4d9e7;padding:7px 0}.race-help p{margin:5px 0 12px}
 .race-hud{position:absolute;left:calc(var(--race-left) + 20px);right:calc(var(--race-right) + 20px);top:calc(var(--race-top) + 16px);z-index:3;pointer-events:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.race-hud-box{display:flex;align-items:center;gap:18px;background:#091727df;border:1px solid #426174;border-radius:15px;padding:11px 15px;box-shadow:0 4px 24px #0004;min-width:0}.race-position{font-size:39px;font-weight:900;line-height:1;color:#c7f47d;letter-spacing:-.05em}.race-position small{font-size:14px;color:#8facbf}.race-metric{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}.race-metric strong{font-size:17px}.race-metric span{font-size:calc(9px * var(--ui-scale, 1));color:#93adbf;font-weight:700;letter-spacing:.14em}.race-hud-left{display:grid;gap:6px;min-width:0;max-width:190px}.race-identity{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 4px;background:transparent;border:0;border-radius:0;color:#EAF7FF;text-shadow:0 1px 3px #071522}.race-identity canvas{width:30px;height:30px;flex:0 0 30px;background:transparent;border-radius:0}.race-identity-copy{display:flex;flex-direction:column;min-width:0;line-height:1.25}.race-identity-role{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.08em;font-weight:700}.race-identity-name{font-size:calc(11px * var(--ui-scale, 1));font-weight:650;color:#eef7fb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-hud-right{display:flex;gap:8px;align-items:center}.race-pause{pointer-events:auto;width:48px;height:48px;padding:10px;font-size:19px;background:#112a3ee8}.race-time{color:#e7f3fb;font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;background:#091727df;border:1px solid #344e64;border-radius:12px;padding:10px 13px}.race-speed{position:absolute;left:calc(var(--race-left) + 23px);bottom:calc(var(--race-bottom) + 22px);z-index:3;color:#e5f6ff;pointer-events:none;background:#091727d9;border:1px solid #34505d80;border-radius:10px;padding:8px 10px}.race-speed strong{font-size:29px;line-height:1;font-variant-numeric:tabular-nums}.race-speed span{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.1em;color:#94b7ca}.race-drive-feedback{font-size:calc(10px * var(--ui-scale, 1));font-weight:900;letter-spacing:.08em;color:#8ceaff;margin-top:6px}.race-drive-feedback[data-kind=boost]{color:#d6ff96}.race-boostbar{width:130px;height:5px;background:#2d4456;border-radius:9px;overflow:hidden;margin-top:7px}.race-boostfill{height:100%;background:#c7f47d;transform-origin:left}.race-hint{position:absolute;bottom:calc(var(--race-bottom) + 23px);left:50%;transform:translateX(-50%);padding:6px 10px;background:#091727d9;color:#a8c7d9;z-index:3;font-size:calc(10px * var(--ui-scale, 1));white-space:nowrap;border-radius:8px;pointer-events:none}.race-minimap{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 20px);width:170px;height:120px;background:#091727a9;border:1px solid #426174;border-radius:14px;z-index:3;pointer-events:none}.race-banner{position:absolute;left:50%;top:26%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:4;color:#eefaff;font-size:72px;font-weight:950;text-shadow:0 5px 0 #122c42}.race-banner small{display:block;font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.18em;color:#c7f47d;background:#091727c9;border-radius:18px;padding:7px 12px;text-shadow:none}.race-warning{position:absolute;top:calc(var(--race-top) + 142px);left:50%;transform:translateX(-50%);background:#543421e0;border:1px solid #c18c5e;border-radius:20px;padding:6px 14px;font-size:calc(10px * var(--ui-scale, 1));color:#ffe0b5;z-index:3;pointer-events:none;white-space:nowrap}
@@ -186,6 +186,8 @@
       perspective = null,
       previousPose = null,
       renderDt = 1 / 60,
+      heroId = 0,
+      records = {},
       renderFrame = 0,
       itemRequest = createItemRequest(),
       displayedWarnings = Array(5).fill(0),
@@ -1210,14 +1212,22 @@
           String(b.dataset.difficulty === selected.difficulty),
         ),
       );
-      setText(description, R.course(selected.trackId).subtitle);
+      const course = R.course(selected.trackId);
+      setText(description, course.subtitle + " Lap " + (course.length / 1000).toFixed(1) + "k" + recordText(selected.trackId, " · Best "));
+      for (const b of trackButtons) {
+        const t = R.course(b.dataset.track), best = records[t.id];
+        const label = b.querySelector("small");
+        if (label) setText(label, t.difficulty + (best ? " · " + fmt(best.time) : ""));
+        if (best) b.dataset.medal = MEDALS[best.position] || ""; else delete b.dataset.medal;
+      }
       save();
-      drawHero();
+      startHero();
       syncRoomChoices();
     }
     function build() {
       if (built) return;
       if (!R) throw Error("Race simulation is unavailable");
+      loadRecords();
       load();
       rootEl = el("section", "race-root");
       rootEl.id = "raceRoot";
@@ -1742,6 +1752,11 @@
           ? root.SpaceManLogbook.discover("photo") : null;
         if (photo) resultRows.append(el("p", "race-cosmetic-reward", "Logbook: " + photo.name));
       }
+      if (me?.finished && me.time !== null && state.laps === 3 && !onlineActive()) {
+        const faster = recordBest(state.trackId, me.time, me.position);
+        if (faster) resultRows.append(el("p", "race-cosmetic-reward", "New personal best on " + R.course(state.trackId).name + ": " + fmt(me.time)));
+        syncChoices();
+      }
       setPanel(resultPanel);
       announce(
         "Race complete. You placed " +
@@ -2028,26 +2043,80 @@
       if(a.shieldTicks > 0){ctx.strokeStyle="#98eaff";ctx.lineWidth=3;ctx.beginPath();for(let i=0;i<6;i++){const a=i*TAU/6;if(i)ctx.lineTo(Math.cos(a)*37,Math.sin(a)*30);else ctx.moveTo(Math.cos(a)*37,Math.sin(a)*30);}ctx.closePath();ctx.stroke();}
       ctx.restore();
     }
-    function drawHero() {
+    const MEDALS = { 1: "gold", 2: "silver", 3: "bronze" };
+    function recordsKey() { return (opts.storageKey || "sm2.race.v1") + ".best"; }
+    function loadRecords() {
+      try {
+        const raw = JSON.parse(root.localStorage.getItem(recordsKey()) || "{}");
+        for (const t of R.tracks) {
+          const r = raw[t.id];
+          if (r && Number.isFinite(r.time) && r.time > 0 && Number.isInteger(r.position)) records[t.id] = { time: r.time, position: r.position };
+        }
+      } catch (_) {}
+    }
+    // A personal best is a finished three-lap race; the medal is the best place.
+    function recordBest(trackId, time, position) {
+      const old = records[trackId], faster = !old || time < old.time;
+      records[trackId] = { time: faster ? time : old.time, position: Math.min(position, old?.position ?? position) };
+      try { root.localStorage.setItem(recordsKey(), JSON.stringify(records)); } catch (_) {}
+      return faster;
+    }
+    function recordText(trackId, lead) {
+      const r = records[trackId];
+      return r ? lead + fmt(r.time) + " · " + (MEDALS[r.position] || "finisher") : "";
+    }
+    // The lobby stage: the chosen circuit in its own colors with a small field
+    // flying it, so changing circuit visibly changes the place.
+    function startHero() {
+      if (heroId || !hero || !active || view !== "lobby" || document.hidden) return;
+      heroId = root.requestAnimationFrame(heroTick);
+    }
+    function heroTick(now) {
+      heroId = 0;
+      if (!active || view !== "lobby" || document.hidden) return;
+      drawHero(now);
+      if (!calm()) heroId = root.requestAnimationFrame(heroTick);
+    }
+    function drawHero(now = 0) {
       if (!hero) return;
-      const h = hero.getContext("2d");
-      h.clearRect(0, 0, 780, 340);
-      const c = R.course(selected.trackId);
-      h.strokeStyle = c.edge + "33";
-      h.lineWidth = 3;
+      const h = hero.getContext("2d"), W = 780, H = 340, c = R.course(selected.trackId);
+      h.clearRect(0, 0, W, H);
+      // Region glow behind the circuit, tinted by the course's planet.
+      const glow = h.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, W / 2);
+      glow.addColorStop(0, c.planet + "40"); glow.addColorStop(1, c.planet + "00");
+      h.fillStyle = glow; h.fillRect(0, 0, W, H);
+      for (let i = 0; i < 28; i++) {
+        const tw = calm() ? .6 : .45 + .35 * Math.sin(now / 700 + i * 1.7);
+        h.fillStyle = "rgba(220,238,255," + tw.toFixed(2) + ")";
+        h.fillRect((i * 137) % W, (i * 61) % H, i % 5 ? 1.5 : 2.5, i % 5 ? 1.5 : 2.5);
+      }
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const g of c.segments) { x0 = Math.min(x0, g.x); x1 = Math.max(x1, g.x); y0 = Math.min(y0, g.y); y1 = Math.max(y1, g.y); }
+      const pad = 46, k = Math.min((W - pad * 2) / (x1 - x0), (H - pad * 2) / (y1 - y0)),
+        ox = (W - (x1 - x0) * k) / 2 - x0 * k, oy = (H - (y1 - y0) * k) / 2 - y0 * k,
+        map = (p) => [p.x * k + ox, p.y * k + oy];
       h.beginPath();
-      h.ellipse(390, 195, 290, 78, -0.14, 0, TAU);
-      h.stroke();
-      kart(
-        h,
-        { x: 413, y: 159, heading: -0.25, color: "#73ecff", boosting: true },
-        4.4,
-        true,
-      );
-      kart(h, { x: 150, y: 234, heading: -0.18, color: "#ffbb69" }, 1.7, true);
-      h.fillStyle = "#c7f47d";
-      h.font = "700 16px system-ui";
-      h.fillText("01", 508, 204);
+      c.segments.forEach((g, n) => h[n ? "lineTo" : "moveTo"](...map(g)));
+      h.closePath();
+      h.lineJoin = "round";
+      h.lineWidth = 18; h.strokeStyle = c.edge + "30"; h.stroke();
+      h.lineWidth = 8; h.strokeStyle = c.edge + "aa"; h.stroke();
+      h.lineWidth = 2; h.strokeStyle = "#eaf7ff55"; h.stroke();
+      const [sx, sy] = map(c.segments[0]);
+      h.fillStyle = c.accent; h.fillRect(sx - 3, sy - 14, 6, 28);
+      // Three pilots at different speeds, with a boost trail behind each.
+      const lap = now / (c.length < 5000 ? 5200 : 9000);
+      const field = [["#73ecff", 0, 1, 1.7], ["#ffbb69", .12, .93, 1.3], ["#c7f47d", .27, .88, 1.2]];
+      for (const [color, offset, speed, scale] of field.slice().reverse()) {
+        const f = calm() ? offset + .04 : offset + lap * speed;
+        for (let t = 7; t >= 0; t--) {
+          const p = R.at(c, c.length * (f - t * .006)), [tx, ty] = map(p);
+          h.fillStyle = color + Math.round(150 - t * 18).toString(16).padStart(2, "0");
+          h.beginPath(); h.arc(tx, ty, Math.max(1, 4.5 - t * .5), 0, TAU); h.fill();
+        }
+        const p = R.at(c, c.length * f), [px, py] = map(p);
+        kart(h, { x: px, y: py, heading: Math.atan2(p.ty, p.tx), color, boosting: true }, scale, true);
+      }
     }
     function updateIdentity(actor) {
       const own = actor.id === ownActor()?.id;
@@ -2511,6 +2580,7 @@
       } else {
         resize();
         ensureFrame();
+        startHero();
       }
     }
     function blur(e) {
