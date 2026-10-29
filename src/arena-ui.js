@@ -360,7 +360,7 @@
       modal.hidden = !panel;
       [lobby, pausePanel, resultPanel].forEach(p => { p.hidden = p !== panel; });
       rootEl.dataset.screen = panel === lobby ? 'lobby' : panel === pausePanel ? 'pause' : panel === resultPanel ? 'results' : 'match';
-      if (panel === lobby) { queueLobbyFit(); if (lobbyArtEl) paintHero(lobbyArtEl); }
+      if (panel === lobby) { queueLobbyFit(); if (lobbyArtEl) { paintHero(lobbyArtEl); startHero(); } } else stopHero();
       if (panel) {
         panel.setAttribute('aria-modal', 'true');
         const target = focusTarget || panel.querySelector('button:not([disabled])');
@@ -438,7 +438,7 @@
       // sound that matters to the player.
       if (far) { if (now - lastFar < .16) return; lastFar = now; }
       else { if (now - lastSfx < 0.055 && kind !== 'win') return; lastSfx = now; }
-      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13] };
+      const values = { attack: [540, 220, .11], hit: [190, 90, .09], hitFar: [150, 85, .06], land: [130, 70, .06], charged: [260, 90, .2], dash: [280, 740, .13], jump: [340, 560, .09], ko: [170, 65, .25], start: [520, 900, .18], win: [520, 1040, .4], countdown: [660, 650, .055], graze: [980, 1480, .13], pickup: [620, 1180, .12], drop: [880, 520, .06] };
       const v = values[kind]; if (!v) return;
       const o = audio.createOscillator(), g = audio.createGain();
       o.type = kind === 'hit' || far ? 'triangle' : 'sine'; o.frequency.setValueAtTime(v[0], now); o.frequency.exponentialRampToValueAtTime(v[1], now + v[2]);
@@ -1038,8 +1038,8 @@
       }
       const stride = actor.onGround ? Math.sin(phase) * speed * 4 : actor.vy < 0 ? -3 : 2;
       const limb = art.limbKit(g, style);
-      limb.tube(3, 7, 4 + stride / 2, 11.5, 5 + stride, h / 2 - 1.5, P.legB, P.legB, 4.6); limb.boot(5 + stride, h / 2 - 1.5, true);
-      limb.tube(-3, 7, -4 - stride / 2, 11.5, -5 - stride, h / 2 - 1.5, P.legF, P.legB, 4.6); limb.boot(-5 - stride, h / 2 - 1.5, false);
+      limb.tube(3, 7, 4 + stride / 2, 11.5, 5 + stride, h / 2 - 1.5, P.legB, P.legB, 3.8); limb.boot(5 + stride, h / 2 - 1.5, true);
+      limb.tube(-3, 7, -4 - stride / 2, 11.5, -5 - stride, h / 2 - 1.5, P.legF, P.legB, 3.8); limb.boot(-5 - stride, h / 2 - 1.5, false);
       g.fillStyle = '#415D78'; g.strokeStyle = P.legB; g.lineWidth = .7; rounded(g, -w / 2 - 3, -6 + bob, 8, 15, 3); g.fill(); g.stroke(); g.fillStyle = color; g.fillRect(-w / 2 - 2, -3 + bob, 3, 6);
       limb.arm(-6.6, -.4 + bob, -11.8, 2.6 + bob, -11.6, 7.4 + bob, true);
       g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill(); g.stroke();
@@ -1050,16 +1050,17 @@
         g.fillStyle = P.legB; rounded(g, -12, -4 + bob, 6, 7, 2); g.fill(); rounded(g, 6, -4 + bob, 6, 7, 2); g.fill();
         g.fillStyle = color; for (let i = 0; i < 3; i++) g.fillRect(-3 + i * 2.5, 7 + bob, 1.5, 2);
       }
+      // The near arm carries the pulse emitter: the shared sleeve, with the team-coloured emitter in place of the mitten.
+      // It paints before the helmet so no shoulder or sleeve ever shows over the visor.
+      const ex = attack ? 14 : 10, ey = attack ? -3 + bob : 5 + bob;
+      limb.tube(6.6, -.4 + bob, 11.8, attack ? -2 + bob : 2.6 + bob, ex, ey, P.arm, P.legB, 3.1);
+      g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; g.beginPath(); g.arc(6.6, -.4 + bob, 2.4, 0, TAU); g.fill(); g.stroke();
+      g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
       const reaction = art.arenaMood(actor);
       const face = { tick: hero ? 20 : tick, id: actor.id, calm: calm() || hero,
         mood: reaction, lookX: Math.min(speed, .8), lookY: actor.onGround ? 0 : (actor.vy < 0 ? -.5 : .5) };
       const helmetStyle = boss?.phase === 'charging' ? { ...style, appearance: { ...style.appearance, eyes: 'determined' } } : style;
       art.characterHelmet(g, 0, -9 + bob, helmetStyle, face);
-      // The near arm carries the pulse emitter: the shared sleeve, with the team-coloured emitter in place of the mitten.
-      const ex = attack ? 14 : 10, ey = attack ? -3 + bob : 5 + bob;
-      limb.tube(6.6, -.4 + bob, 11.8, attack ? -2 + bob : 2.6 + bob, ex, ey, P.arm, P.legB, 4);
-      g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; g.beginPath(); g.arc(6.6, -.4 + bob, 3.1, 0, TAU); g.fill(); g.stroke();
-      g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
       // Victim hit flash: a brief additive white silhouette over the body.
       const flash = !hero && !calm() ? feel.flash[actor.id] : 0;
       if (flash > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = .6 * Math.min(1, flash / 5); g.fillStyle = '#FFFFFF'; g.beginPath(); g.ellipse(0, 0, 11, 16, 0, 0, TAU); g.fill(); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; }
@@ -1070,18 +1071,39 @@
       for (let i = 0; i < 16; i++) { g.fillStyle = i % 3 ? '#8FAFCA' : t.accent; g.globalAlpha = .4; g.fillRect(hash(i + 3) * preview.width, hash(i + 42) * preview.height, 1, 1); } g.globalAlpha = 1;
       g.save(); g.scale(preview.width / a.width, preview.height / a.height); a.platforms.forEach(p => platform(g, p, a, true)); g.fillStyle = t.accent; for (const sp of a.spawns.slice(0, 2)) { g.beginPath(); g.arc(sp.x + 12, sp.y + 8, 13, 0, TAU); g.fill(); } g.restore();
     }
-    function paintHero(target) {
-      const g = target.getContext('2d'), art = root.SpaceManArt; g.clearRect(0, 0, target.width, target.height);
+    // The lobby pair idles, blink and drift while the lobby is on screen. A plain interval (not a frame
+    // chain) keeps this off the match loop, and it stops with the lobby, a hidden tab or reduced motion.
+    let heroTimer = 0, heroStart = 0;
+    function stopHero() { if (heroTimer) { root.clearInterval(heroTimer); heroTimer = 0; } }
+    function startHero() {
+      if (heroTimer || calm() || saver() || !root.setInterval) return;
+      heroStart = performance.now();
+      heroTimer = root.setInterval(() => {
+        if (!active || activeModal !== lobby || !lobbyArtEl || !lobbyArtEl.isConnected || document.hidden || calm() || lobby.closest('[inert]')) { stopHero(); return; }
+        paintHero(lobbyArtEl, (performance.now() - heroStart) / 1000);
+      }, 50);
+    }
+    function paintHero(target, time = 0) {
+      const g = target.getContext('2d'), art = root.SpaceManArt, still = !time; g.clearRect(0, 0, target.width, target.height);
       if (art) { g.globalAlpha = .4; g.drawImage(art.glow(120, '#38E1FF', .04), 42, 50, 290, 290); g.globalAlpha = .16; g.drawImage(art.glow(120, '#FFB454', .04), 320, 0, 290, 290); g.globalAlpha = 1; }
       g.strokeStyle = 'rgba(56,225,255,.17)'; g.lineWidth = 1.5; g.save(); g.translate(300, 210); g.rotate(-.2); g.beginPath(); g.ellipse(0, 0, 264, 80, 0, 0, TAU); g.stroke(); g.restore();
-      // The same drawn astronaut as the home hero and wardrobe, so the lobby shows the pilot's own suit.
+      // The same drawn astronaut as the home hero and wardrobe, so the lobby shows the pilot's own suit,
+      // each with a pulse blaster raised toward the other.
       if (art && art.drawAvatar) {
         const mine = typeof opts.appearance === 'function' ? opts.appearance() : null;
-        g.save(); g.translate(150, 165); g.rotate(-.12); art.drawAvatar(g, 0, 0, 250, mine, { reduceMotion: true, greeting: 0 }); g.restore();
-        g.save(); g.translate(440, 85); g.rotate(.18); art.drawAvatar(g, 0, 0, 160, { ...(mine || {}), suit: 'rose', hat: 'none', eyes: 'determined' }, { reduceMotion: true }); g.restore();
+        const lift = Math.sin(time * 1.6) * 5, drift = Math.sin(time * 1.1 + 1.3) * 6;
+        g.save(); g.translate(150, 165 + lift); g.rotate(-.12 + Math.sin(time * .9) * .02); art.drawAvatar(g, 0, 0, 250, mine, { reduceMotion: still, time, blaster: '#38E1FF', lookX: .5, lookY: -.2 }); g.restore();
+        g.save(); g.translate(440, 85 + drift); g.rotate(.18 + Math.sin(time * 1.2) * .03); g.scale(-1, 1); art.drawAvatar(g, 0, 0, 160, { ...(mine || {}), suit: 'rose', hat: 'none', eyes: 'determined' }, { reduceMotion: still, time: time + 2, blaster: '#FFB454', lookX: .5, lookY: .1 }); g.restore();
       }
-      g.strokeStyle = '#38E1FF'; g.lineWidth = 3; g.globalAlpha = .5; g.beginPath(); g.arc(332, 196, 38, -.7, .8); g.stroke(); g.globalAlpha = .2; g.beginPath(); g.arc(332, 196, 51, -.7, .8); g.stroke(); g.globalAlpha = 1;
-      for (let i = 0; i < 6; i++) { const x = 280 + hash(i) * 110, y = 150 + hash(i + 17) * 110; g.fillStyle = i % 2 ? '#9FF1FF' : '#FFE59A'; g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-2, -2, 4, 4); g.restore(); }
+      // Pulse rings travel from the hero's blaster toward the rival, a beat apart.
+      const beat = still ? 0 : (time * .9) % 1;
+      for (let k = 0; k < 2; k++) {
+        const u = still ? k * .5 : (beat + k * .5) % 1, r = 28 + u * 34;
+        g.strokeStyle = '#38E1FF'; g.lineWidth = 3; g.globalAlpha = (1 - u) * (k ? .22 : .5); g.beginPath(); g.arc(332 + u * 18, 196 - u * 14, r, -.7, .8); g.stroke();
+      }
+      g.globalAlpha = 1;
+      for (let i = 0; i < 6; i++) { const x = 280 + hash(i) * 110, y = 150 + hash(i + 17) * 110, tw = still ? 1 : .55 + .45 * Math.sin(time * 3 + i * 1.7); g.globalAlpha = tw; g.fillStyle = i % 2 ? '#9FF1FF' : '#FFE59A'; g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-2, -2, 4, 4); g.restore(); }
+      g.globalAlpha = 1;
     }
     function resize() {
       if (!active || !rootEl) return;
@@ -1277,6 +1299,7 @@
       ctx.strokeStyle = t.accent; ctx.globalAlpha = .055; ctx.lineWidth = 1 / c.scale; ctx.beginPath(); ctx.ellipse(a.width / 2, 420, 445, 130, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 1;
       drawBlastBounds(a, t, c);
       a.platforms.forEach(p => platform(ctx, p, a, false));
+      if (state.items) drawItems(ctx, state.tick);
       for (const actor of state.actors) {
         const warning = actor.boss && arena.bossAttackBox && arena.bossAttackBox(actor);
         if (warning) {
@@ -1313,7 +1336,7 @@
           }
         }
         astronaut(ctx, actor, x, y, state.tick, false);
-
+        drawSurge(actor, x, y, state.tick);
       }
       for (const e of effects) {
         if (e.type === 'kotext' || e.type === 'koflash') continue; // screen-space, drawn after the world
@@ -1458,6 +1481,8 @@
       for (const id of Object.keys(feel.flash)) if ((feel.flash[id] -= ticks) <= 0) delete feel.flash[id];
       for (const id of Object.keys(feel.land)) if ((feel.land[id].age += ticks) >= arena.feel.LAND_SQUASH_TICKS) delete feel.land[id];
     }
+    // Haptics belong to the host page (strength, battery saver and rumble routing live there); an absent hook is silent.
+    const buzz = kind => { if (typeof opts.buzz === 'function') { try { opts.buzz(kind); } catch (_) {} } };
     function hitFeel(event, victim, involved) {
       const F = arena.feel;
       if (victim && !calm()) feel.flash[victim.id] = 5;
@@ -1466,6 +1491,7 @@
         if (involved) { const k = F.kickFor(event, victim); feel.kick = { x: k.x, y: k.y, at: performance.now() / 1000 }; }
       }
       // A local sim can pause for a beat; an authoritative room never can.
+      if (involved) buzz(victim && victim.id === localActor()?.id ? 'heavy' : 'light');
       if (involved && !onlineActive() && !paused) feel.freezeLeft = Math.max(feel.freezeLeft, F.hitstopTicksFor(event) / 60);
     }
     function koFeel(event, who, involved) {
@@ -1473,7 +1499,7 @@
       effects.push({ type: 'kotext', x: event.x, y: event.y, color, life: 54, max: 54, text: who.stocks > 0 ? 'KO' : 'OUT' });
       if (calm()) return;
       effects.push({ type: 'koflash', x: event.x, y: event.y, color, life: F.KO_FLASH_TICKS, max: F.KO_FLASH_TICKS });
-      if (involved) { feel.koLeft = F.KO_SLOW_TICKS; feel.koPoint = { x: event.x, y: event.y }; }
+      if (involved) { feel.koLeft = F.KO_SLOW_TICKS; feel.koPoint = { x: event.x, y: event.y }; buzz(who.id === localActor()?.id ? 'death' : 'success'); }
       if (shakeOn()) feel.trauma = F.addTrauma(feel.trauma, involved ? .55 : .2);
     }
     // Close-call beat (runner graze treatment): white ring, bent chirp and a
@@ -1493,11 +1519,48 @@
         }
       }
     }
+    // Item cells share one silhouette (a bobbing capsule on a platform top)
+    // and differ by hue and glyph, so a new kind only needs a row here.
+    const ITEM_STYLE = { heal: { color: '#4EF07A', glyph: 'cross' }, shield: { color: '#38E1FF', glyph: 'ring' }, surge: { color: '#FFB454', glyph: 'bolt' } };
+    function drawItems(c, tick) {
+      const size = arena.constants.ITEM_SIZE;
+      for (const item of state.items.list) {
+        const st = ITEM_STYLE[item.kind] || ITEM_STYLE.surge, bob = calm() ? 0 : Math.sin((tick + item.id * 13) / 14) * 3;
+        const cx = item.x + size / 2, cy = item.y + size / 2 + bob;
+        const fading = item.ttl < 180 && Math.floor(item.ttl / 8) % 2 === 0;
+        c.save(); c.globalAlpha = fading ? .45 : 1;
+        c.globalAlpha *= .25; c.fillStyle = st.color; c.beginPath(); c.arc(cx, cy, size * .95, 0, TAU); c.fill();
+        c.globalAlpha = fading ? .45 : 1;
+        c.fillStyle = '#0B1627'; c.strokeStyle = st.color; c.lineWidth = 2.5; c.beginPath(); c.arc(cx, cy, size * .5, 0, TAU); c.fill(); c.stroke();
+        c.strokeStyle = c.fillStyle = st.color; c.lineWidth = 2.6; c.lineCap = 'round'; c.lineJoin = 'round'; c.beginPath();
+        if (st.glyph === 'cross') { c.moveTo(cx - 4, cy); c.lineTo(cx + 4, cy); c.moveTo(cx, cy - 4); c.lineTo(cx, cy + 4); c.stroke(); }
+        else if (st.glyph === 'ring') { c.arc(cx, cy, 4.2, 0, TAU); c.stroke(); }
+        else { c.moveTo(cx + 1.5, cy - 5.5); c.lineTo(cx - 3, cy + .5); c.lineTo(cx + .5, cy + .5); c.lineTo(cx - 1.5, cy + 5.5); c.lineTo(cx + 3.5, cy - 1); c.lineTo(cx, cy - 1); c.closePath(); c.fill(); }
+        c.restore();
+      }
+    }
+    function drawSurge(actor, x, y, tick) {
+      if (!(actor.surge > 0)) return;
+      const lowFlicker = actor.surge < 120 && Math.floor(actor.surge / 6) % 2 === 0;
+      const pulse = calm() ? 0 : Math.sin(tick / 5) * 2;
+      ctx.save(); ctx.globalAlpha = lowFlicker ? .25 : .6; ctx.strokeStyle = '#FFB454'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.ellipse(x + actor.w / 2, y + actor.h / 2, actor.w * .85 + pulse, actor.h * .72 + pulse, 0, 0, TAU); ctx.stroke(); ctx.restore();
+    }
+    function itemEvents(event, focusId) {
+      const st = ITEM_STYLE[event.kind] || ITEM_STYLE.surge, name = arena.itemKinds[event.kind] ? arena.itemKinds[event.kind].name : 'Cell';
+      if (event.type === 'item-spawn') { effects.push({ type: 'respawn', x: event.x, y: event.y, color: st.color, life: 20, max: 20 }); sfx('drop'); announce(name + ' dropped.'); }
+      else if (event.type === 'item-pickup') {
+        effects.push({ type: 'respawn', x: event.x, y: event.y, color: st.color, life: 24, max: 24 });
+        sfx(event.actorId === focusId ? 'pickup' : 'drop');
+        if (event.actorId === focusId) { announce(name + ' claimed.'); buzz('success'); }
+      }
+    }
     function consumeEvents() {
       dodgeFeel();
       for (const event of state.events || []) {
         const who = state.actors.find(a => a.id === event.actorId), type = event.type;
         const focus = watchedActor(), focusId = focus ? focus.id : 0;
+        if (type === 'item-spawn' || type === 'item-pickup') itemEvents(event, focusId);
         if (['hit', 'ringout', 'respawn', 'jump'].includes(type)) effects.push({ type, x: event.x, y: event.y, color: who ? actorColor(who) : '#FFE59A', life: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14, max: type === 'ringout' ? 44 : type === 'hit' ? 19 : 14 });
         if (type === 'boss-warning') { announce(event.move === 'shockwave' ? 'Guardian charging a ground wave. Jump!' : 'Guardian aiming. Dash out of the warning!'); sfx('countdown'); }
         else if (type === 'boss-exposed') announce('Guardian core exposed. Pulse now!');
@@ -1570,7 +1633,7 @@
       // Seed ownership belongs to the pure simulation. No gameplay randomness
       // comes from frame time or presentation effects.
       matchSerial++; const seed = localSession ? localSession.seed : ((Date.now() >>> 0) ^ Math.imul(matchSerial, 2654435761)) >>> 0;
-      state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty, ...(!localSession && playerCount === 2 && p2Joined ? { localPlayers: 2 } : {}) });
+      state = arena.create({ ...(localSession ? localSession.config : {}), arenaId: selections.arenaId, format: selections.format, seed, difficulty: selections.difficulty, ...(!localSession ? { items: true } : {}), ...(!localSession && playerCount === 2 && p2Joined ? { localPlayers: 2 } : {}) });
       local2 = state.actors.filter(a => a.controller === 'human').length === 2 ? makeLocal2() : null;
       rootEl.dataset.players = local2 ? '2' : '1';
       if (legendEl) legendEl.textContent = local2 ? 'P1  A/D move · W jump · F pulse · G or L-Shift dash\nP2  ←/→ move · ↑ jump · . pulse · / or R-Shift dash' : 'A / D  move    SPACE  double jump';

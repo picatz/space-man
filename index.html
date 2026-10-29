@@ -9097,7 +9097,7 @@ function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
     storageKey: BUILD.storageKey('sm2.arena.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
     net: TRANSPORT, build: BUILD, identity: netIdentity, baseUrl: appBaseUrl,
-    appearance: equippedAppearance, onReward: earnCosmeticEvent,
+    appearance: equippedAppearance, onReward: earnCosmeticEvent, buzz,
     hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
     onClose() { closeModeOverlay('btnArena'); },

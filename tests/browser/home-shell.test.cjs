@@ -284,3 +284,24 @@ for (const [width, height] of [[844, 390], [1280, 800], [390, 844]]) {
     for (const t of touching) assert.ok(t.max < 40, t.id + ' keeps clear of the top edge');
   });
 }
+
+test('arena lobby hero is alive: the art changes over time, and holds still under reduced motion', { timeout: 40000 }, async t => {
+  const { page } = await launch(t, { width: 1100, height: 700 });
+  await page.locator('#btnArena').click();
+  await page.locator('#arenaStart').waitFor();
+  const grab = () => page.evaluate(() => document.querySelector('.arena-lobby-art').toDataURL());
+  const a = await grab(); await page.waitForTimeout(600); const b = await grab();
+  assert.notEqual(a, b, 'the lobby pair animates');
+});
+
+test('arena lobby hero holds still under reduced motion', { timeout: 40000 }, async t => {
+  const { page } = await launch(t, { width: 1100, height: 700 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await page.locator('#btnArena').click();
+  await page.locator('#arenaStart').waitFor();
+  await page.waitForTimeout(300);
+  const grab = () => page.evaluate(() => document.querySelector('.arena-lobby-art').toDataURL());
+  const a = await grab(); await page.waitForTimeout(600); const b = await grab();
+  assert.equal(a, b, 'no animation when reduced motion is requested');
+});

@@ -499,12 +499,15 @@
     }
     const skyMesh = sky.mesh();
     skyMesh.static = true;
+    const dome = Art.circuitSky(c);
     return {
       meshes: [skyMesh, ...(trackMesh.chunks || [trackMesh]), mesh],
       roofMeshes: c.architecture?.gallery ? [boundedMesh(roofs, { kind: "gallery-roof" })] : [],
       clearances,
       background: rgb(c.sky),
-      fog: { color: rgb(c.sky), near: 1700, far: 6000 },
+      // The region's sky dome; distant track fades into its horizon, not black.
+      sky: dome,
+      fog: { color: dome.haze, near: 1700, far: 6000 },
     };
   }
   function visibleActor(a, { hideId = null, chaseActor = null } = {}) {

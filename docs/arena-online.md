@@ -77,6 +77,14 @@ Hit-stop, screen shake, KO slow-motion, squash and the edge-danger cue are local
 presentation only: hit-stop and slow-motion run in local matches, never in
 authoritative online rooms, so they cannot desynchronize anyone.
 
+## Item drops (not yet online)
+
+`Arena.create({ items: true })` adds `state.items = { nextTick, serial, list }` and an
+optional `surge` tick counter on actors; `restore()` validates both strictly and rejects
+them on states created without items. Online rooms do not pass the option, so the wire
+format and snapshots are unchanged. Enabling items in a room needs the host to carry the
+flag in its start config (a protocol version decision) and clients to render `item-*` events.
+
 ## Disconnects and lifecycle
 
 - Lost guest input becomes neutral; same-tab socket reconnection retains identity

@@ -20,6 +20,31 @@
   // Semantic roles for gameplay reads — keep hazards warm, friends cool, rewards gold.
   const ROLE = Object.freeze({ hazard: C.coral, friend: C.cyan, reward: C.gold, enemy: C.green, text: C.ui, power: '#B87BFF' });
 
+  // The shared regions of the Lantern Reach (docs/art-direction.md). A mode that
+  // visits a place takes its sky and accent from here, so Bloom reads as Bloom
+  // whether you run, brawl or race there.
+  const REGIONS = Object.freeze({
+    orbital: Object.freeze({ name: 'Orbital Dock', skyTop: '#060818', horizon: '#18264A', accent: '#38E1FF' }),
+    bloom: Object.freeze({ name: 'Bloom', skyTop: '#061817', horizon: '#173C36', accent: '#4EF07A' }),
+    ember: Object.freeze({ name: 'Ember', skyTop: '#1A0C20', horizon: '#46202D', accent: '#FFB454' }),
+    prism: Object.freeze({ name: 'Prism', skyTop: '#12152B', horizon: '#2B2A4A', accent: '#B4A6E8' }),
+    aurora: Object.freeze({ name: 'Aurora', skyTop: '#0B1D33', horizon: '#1D3C55', accent: '#9FF1FF' }),
+    neon: Object.freeze({ name: 'Neon', skyTop: '#150A2B', horizon: '#32124A', accent: '#FF5FD2' }),
+    nebula: Object.freeze({ name: 'Nebula', skyTop: '#1A0D2E', horizon: '#3A2052', accent: '#B87BFF' }),
+  });
+  const CIRCUIT_REGIONS = Object.freeze({ starlight: 'orbital', ember: 'ember', bloom: 'bloom', prism: 'prism', aurora: 'aurora', neon: 'neon', nebula: 'nebula' });
+  const unitRgb = (hex) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const mixRgb = (a, b, t) => a.map((n, i) => n + (b[i] - n) * t);
+  // Sky dome colors for a circuit (SpaceManRender3D scene.sky): the region's
+  // gradient, a horizon glow lit by its accent and darker space below. haze is
+  // the fog color, so distant track sinks into the sky instead of into black.
+  function circuitSky(course) {
+    const region = REGIONS[CIRCUIT_REGIONS[course && course.id]] || REGIONS.orbital;
+    const top = unitRgb(region.skyTop), horizon = unitRgb(region.horizon), accent = unitRgb(region.accent);
+    return Object.freeze({ region: region.name, top, horizon, glow: mixRgb(horizon, accent, 0.16),
+      ground: top, haze: mixRgb(horizon, top, 0.5), stars: 320 });
+  }
+
   // Render-only Circuit design tokens. Physics retains its authored course data.
   const STARLIGHT_MATERIALS = Object.freeze({ road: '#294052', edge: '#86cdbf',
     curb: '#9aadaf', apron: '#172935', outerEdge: '#42646d', accent: '#bdeca2',
@@ -419,31 +444,31 @@ const characterHats = {
     // Cuff then mitten (hand) or boot (foot), drawn in the limb's own frame: +y points away from the body.
     const cuff = (x, y, angle, far) => {
       c.save(); c.translate(x, y); c.rotate(angle);
-      c.fillStyle = P.legB; rrPath(c, -2.6, -2.3, 5.2, 2.6, 1.1); c.fill();
-      c.fillStyle = style.accent; c.fillRect(-2.1, -1.5, 4.2, .8);
+      c.fillStyle = P.legB; rrPath(c, -2.1, -2, 4.2, 2.3, 1); c.fill();
+      c.fillStyle = style.accent; c.fillRect(-1.7, -1.3, 3.4, .7);
       c.restore();
     };
     const mitten = (x, y, angle, far) => {
       c.save(); c.translate(x, y); c.rotate(angle);
       c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
-      c.beginPath(); c.ellipse(0, 1.9, 2.7, 3, 0, 0, TAU); c.fill(); c.stroke();
-      c.beginPath(); c.ellipse(-2.2, 1.4, 1.1, 1.7, -.4, 0, TAU); c.fill(); c.stroke();
-      if (far) { c.fillStyle = FAR; c.beginPath(); c.ellipse(0, 1.9, 2.7, 3, 0, 0, TAU); c.fill(); }
+      c.beginPath(); c.ellipse(0, 1.6, 2.1, 2.4, 0, 0, TAU); c.fill(); c.stroke();
+      c.beginPath(); c.ellipse(-1.8, 1.2, .8, 1.3, -.4, 0, TAU); c.fill(); c.stroke();
+      if (far) { c.fillStyle = FAR; c.beginPath(); c.ellipse(0, 1.6, 2.1, 2.4, 0, 0, TAU); c.fill(); }
       c.restore();
     };
     const boot = (x, y, far) => {
       cuff(x, y - 1.5, 0, far);
       c.save(); c.translate(x, y);
       c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
-      c.beginPath(); c.ellipse(1.2, .9, 3.2, 1.9, 0, 0, TAU); c.fill(); c.stroke();
-      if (far) { c.fillStyle = FAR; c.beginPath(); c.ellipse(1.2, .9, 3.2, 1.9, 0, 0, TAU); c.fill(); }
+      c.beginPath(); c.ellipse(1.1, .8, 2.8, 1.6, 0, 0, TAU); c.fill(); c.stroke();
+      if (far) { c.fillStyle = FAR; c.beginPath(); c.ellipse(1.1, .8, 2.8, 1.6, 0, 0, TAU); c.fill(); }
       c.restore();
     };
     const arm = (sx, sy, ex, ey, hx, hy, far) => {
-      tube(sx, sy, ex, ey, hx, hy, far ? P.legB : P.arm, P.legB, 4);
-      if (far) { c.strokeStyle = FAR; c.lineWidth = 4; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(ex, ey, hx, hy); c.stroke(); }
-      c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(sx, sy, 3.1, 0, TAU); c.fill(); c.stroke();
-      if (far) { c.fillStyle = FAR; c.beginPath(); c.arc(sx, sy, 3.1, 0, TAU); c.fill(); }
+      tube(sx, sy, ex, ey, hx, hy, far ? P.legB : P.arm, P.legB, 3.1);
+      if (far) { c.strokeStyle = FAR; c.lineWidth = 3.1; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(ex, ey, hx, hy); c.stroke(); }
+      c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); c.stroke();
+      if (far) { c.fillStyle = FAR; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); }
       const wrist = Math.atan2(hy - ey, hx - ex) - Math.PI / 2;
       cuff(hx, hy, wrist, far); mitten(hx, hy, wrist, far);
     };
@@ -451,7 +476,7 @@ const characterHats = {
   }
   // Full appearance preview with no dependency on a running game or player.
   // x/y is the slot center; size is the total headwear-to-boot height in pixels.
-  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0, lookX = 0, lookY = 0, mood = null } = {}) {
+  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0, lookX = 0, lookY = 0, mood = null, blaster = null } = {}) {
     const style = characterStyle(appearance), P = style.palette;
     const bob = reduceMotion ? 0 : Math.sin(time * 2) * .65;
     const hello = reduceMotion ? 0 : clamp(greeting, 0, 1);
@@ -460,8 +485,8 @@ const characterHats = {
     c.fillStyle = '#0005'; c.beginPath(); c.ellipse(0, 18, 12, 2.8, 0, 0, TAU); c.fill();
     const { tube, boot, arm } = limbKit(c, style);
     // Legs: far leg first, then the near one, each ending in the same boot.
-    tube(3, 7, 4, 11.5, 5, 15.8, P.legB, P.legB, 4.6); boot(5, 15.8, true);
-    tube(-3, 7, -4, 11.5, -5, 15.8, P.legF, P.legB, 4.6); boot(-5, 15.8, false);
+    tube(3, 7, 4, 11.5, 5, 15.8, P.legB, P.legB, 3.8); boot(5, 15.8, true);
+    tube(-3, 7, -4, 11.5, -5, 15.8, P.legF, P.legB, 3.8); boot(-5, 15.8, false);
     c.fillStyle = '#415D78'; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -14, -5 + bob, 7, 15, 3); c.fill(); c.stroke();
     c.fillStyle = style.accent; c.fillRect(-13, -2 + bob, 2, 6);
     // The far arm hangs behind the torso from the pack side, mirroring the near arm.
@@ -469,7 +494,12 @@ const characterHats = {
     c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -8, -5 + bob, 16, 17, 6); c.fill(); c.stroke(); suitDetails(c, 0, bob, style);
     // The near shoulder starts beneath the neck seal. The helmet paints last, so no
     // limb can pop over the face during idle or the brief equip greeting.
-    arm(6.6, -.4 + bob, 11.8 + hello * 1.2, 2.6 + bob - hello * 5, 11.6 + hello * 2.6, 7.4 + bob - hello * 14, false);
+    if (blaster) {
+      // Pulse blaster raised: the sleeve reaches forward and the emitter sits where the mitten would, as in a match.
+      tube(6.6, -.4 + bob, 11.8, -2 + bob, 14, -3 + bob, P.arm, P.legB, 3.1);
+      c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(6.6, -.4 + bob, 2.4, 0, TAU); c.fill(); c.stroke();
+      c.fillStyle = blaster; rrPath(c, 12, -7 + bob, 7, 7, 2.5); c.fill(); c.fillStyle = '#E7FEFF'; c.beginPath(); c.arc(16, -3.5 + bob, 1.7, 0, TAU); c.fill();
+    } else arm(6.6, -.4 + bob, 11.8 + hello * 1.2, 2.6 + bob - hello * 5, 11.6 + hello * 2.6, 7.4 + bob - hello * 14, false);
     characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: mood ?? (hello > .15 ? 1 : 0), lookX, lookY });
     c.restore();
   }
@@ -572,7 +602,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { REGIONS, circuitSky, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
