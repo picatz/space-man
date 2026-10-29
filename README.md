@@ -96,8 +96,9 @@ edge of space. Double jump and dash to recover; each spacefarer has three lives.
 **Item drops (local matches).** Every 9-15 seconds a cell lands on a platform top (two
 at most, seeded so replays match): green **Repair Core** heals 30%, cyan **Aegis Cell**
 grants four seconds of shielding, amber **Surge Cell** powers pulses (+50% damage, +25%
-knockback) for twelve seconds. Walk into one to claim it; unclaimed cells expire. Items are
-opt-in in the engine (`create({ items: true })`) and are not yet enabled in online rooms.
+knockback) for twelve seconds. Walk into one to claim it; unclaimed cells expire. Online friend
+rooms drop them too (older clients get a snapshot variant without drops); the engine option is
+`create({ items: true })`.
 
 **2 Players (same device, offline).** In the arena setup pick **2 Players**, then
 P2 opts in with a join prompt (press `.` or `/`, or A on a controller). It works

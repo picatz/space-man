@@ -8,7 +8,9 @@ const C = Arena.constants;
 const HEADER = 27, EVENT = 18;
 const rows = (count = 2) => Array.from({ length: count }, (_, i) => ({ p: i + 1, role: 0, identity: `key-${i + 1}` }));
 function setup(format = 'duel', count = format === 'duel' ? 2 : 4) {
-  const host = Online.createHost({ format });
+  // The generic layout tests below pin the plain (flagless, 499-byte) snapshot every older client decodes;
+  // item drops have their own cases further down.
+  const host = Online.createHost({ format, items: false });
   host.syncRoster(rows(count), 0);
   assert.equal(host.start(42), true);
   const client = Online.createClient();
@@ -50,7 +52,8 @@ test('online authority module works in browser and Node without clocks, DOM, or 
 
 test('lobby configuration sanitizes values and can only change before a round', () => {
   const host = Online.createHost({ arenaId: 'bad', format: 'bad', difficulty: 'toString' });
-  assert.deepEqual(Online.configuration(null), { arenaId: Arena.arenas[0].id, format: 'duel', difficulty: 'normal' });
+  assert.deepEqual(Online.configuration(null), { arenaId: Arena.arenas[0].id, format: 'duel', difficulty: 'normal', items: true }); // standard rules carry item drops
+  assert.deepEqual(Online.configuration({ items: false, encounter: 'boss' }).items, undefined, 'encounters never have drops');
   assert.equal(host.status, 'lobby');
   assert.equal(host.state.difficulty, 'normal');
   host.syncRoster(rows(4), 0);
@@ -568,4 +571,107 @@ test('snapshot sizes stay inside the documented 499-byte duel/four-fighter budge
   assert.equal(actorBytes(b), 64);
   assert.equal(b.length, HEADER + 4 * 64 + 12 * EVENT);
   assert.ok(b.length <= 499 && b.length <= Online.MAX_BYTES);
+});
+
+// Online item drops: the flagged snapshot and the flagless variant older clients decode.
+function dropsHost(format = 'duel', count = 2) {
+  const host = Online.createHost({ format });
+  host.syncRoster(rows(count), 0);
+  assert.equal(host.start(7), true);
+  assert.ok(host.state.items, 'standard online rules carry item drops');
+  for (let n = 0; n < C.COUNTDOWN_TICKS + C.ITEM_FIRST_TICKS + 5 && !host.state.items.list.length; n++) host.step(n * 1000 / 60);
+  assert.ok(host.state.items.list.length > 0, 'a cell dropped after ITEM_FIRST_TICKS');
+  return host;
+}
+const itemEvent = (host) => host.events.find((e) => e.type === 'item-spawn');
+
+test('item drops and surge round-trip through the flagged snapshot', () => {
+  const host = dropsHost();
+  host.state.actors[0].surge = 500; host.state.actors[1].surge = C.SURGE_TICKS;
+  assert.ok(itemEvent(host), 'the spawn event entered the event ring');
+  const b = host.packet();
+  assert.equal(b[0], Online.VERSION, 'item drops keep wire version 3');
+  assert.equal(b[25] & Online.ITEM_FLAG, Online.ITEM_FLAG);
+  const d = Online.decodeSnapshot(b); assert.ok(d);
+  assert.deepEqual(d.state.items, JSON.parse(JSON.stringify(host.state.items)));
+  assert.deepEqual(d.state.actors.map(a => a.surge), [500, C.SURGE_TICKS]);
+  assert.doesNotThrow(() => Arena.restore(Arena.snapshot(d.state)), 'decoded state validates as an items state');
+  const spawn = d.state.events.find((e) => e.type === 'item-spawn'), src = itemEvent(host);
+  assert.deepEqual([spawn.itemId, spawn.kind, spawn.actorId, spawn.x, spawn.y], [src.itemId, src.kind, null, src.x, src.y]);
+  const client = Online.createClient(); assert.ok(client.accept(b));
+  assert.ok(client.current.state.items.list.length > 0);
+  // A pickup keeps the taker, kind and a 16-bit item id.
+  host.events.push({ serial: 9000, type: 'item-pickup', actorId: 2, itemId: 300, kind: 'shield', x: 5, y: 6 });
+  const pick = Online.decodeSnapshot(host.packet()).state.events.find((e) => e.type === 'item-pickup');
+  assert.deepEqual([pick.actorId, pick.itemId, pick.kind, pick.damage, pick.stocks], [2, 300, 'shield', 0, 0]);
+});
+
+test('snapshot worst case with drops stays inside the byte budget', () => {
+  const host = dropsHost('ffa', 4), list = host.state.items.list;
+  for (const [i, platform] of Arena.getArena(host.state.arenaId).platforms.filter(p => p.w >= 100).slice(0, C.ITEM_MAX).entries()) {
+    if (list[i]) continue;
+    list.push({ id: i + 9, kind: 'surge', platformId: platform.id, x: platform.x + 20, y: platform.y - C.ITEM_SIZE - 2, ttl: C.ITEM_LIFE_TICKS });
+  }
+  list.length = C.ITEM_MAX;
+  host.state.items.serial = 20; host.state.actors.forEach(a => { a.surge = C.SURGE_TICKS; });
+  host.events.length = 0;
+  for (let n = 0; n < 12; n++) host.events.push(n % 2 ? { serial: 1000 + n, type: 'item-pickup', actorId: 1, itemId: 9, kind: 'heal', x: 1, y: 1 } : { serial: 1000 + n, type: 'hit', actorId: 1, targetId: 2, x: 1, y: 1, damage: 30 });
+  const b = host.packet();
+  assert.equal(list.length, C.ITEM_MAX);
+  assert.equal(b.length, HEADER + 4 * 64 + 12 * EVENT + 7 + C.ITEM_MAX * 14 + 4 * 2);
+  assert.ok(b.length <= Online.MAX_BYTES, `${b.length} bytes`);
+  assert.ok(Online.decodeSnapshot(b));
+  assert.equal(Online.decodeSnapshot(b.subarray(0, b.length - 1)), null);
+  assert.equal(Online.decodeSnapshot(Uint8Array.from([...b, 0])), null);
+});
+
+test('the legacy variant is a plain snapshot: no flag, no drops, no item events, same revision', () => {
+  const host = dropsHost();
+  host.state.actors[0].surge = 100; host.events.push({ serial: 9100, type: 'item-expire', actorId: null, itemId: 1, kind: 'heal', x: 3, y: 4 });
+  const full = host.packet(), legacy = host.legacyPacket();
+  assert.equal(host.revision, 1);
+  assert.equal(new DataView(legacy.buffer).getUint32(2, true), new DataView(full.buffer).getUint32(2, true), 'same revision');
+  assert.equal(legacy[25] & Online.ITEM_FLAG, 0); assert.ok(legacy[25] <= 6, 'what a pre-drop decoder accepts');
+  const d = Online.decodeSnapshot(legacy); assert.ok(d);
+  assert.equal(d.state.items, undefined); assert.ok(d.state.actors.every(a => a.surge === undefined));
+  assert.ok(d.state.events.every(e => !e.type.startsWith('item-')));
+  assert.equal(legacy.length, HEADER + 2 * 64 + EVENT * legacy[26], 'exact pre-drop length');
+  assert.ok(full.length > legacy.length);
+  // Without drops in the state, both packets are identical.
+  const plain = Online.createHost({ format: 'duel', items: false }); plain.syncRoster(rows(2), 0); plain.start(1);
+  const flagless = plain.packet(); assert.deepEqual(plain.legacyPacket(), flagless);
+  const kept = plain.revision; plain.legacyPacket(); assert.equal(plain.revision, kept, 'legacy encoding never advances the revision');
+});
+
+test('earlier event indices are unchanged and item events need the drops flag', () => {
+  const host = Online.createHost({ format: 'duel', items: false }); host.syncRoster(rows(2), 0); host.start(3);
+  const order = ['jump', 'attack', 'hit', 'ringout', 'respawn', 'finish', 'land'];
+  host.events.push(...order.map((type, n) => ({ serial: n + 1, type, actorId: 1, targetId: 0, x: 1, y: 1, impact: 8, damage: 1 })));
+  const b = host.packet(), start = HEADER + 2 * 64;
+  assert.deepEqual(Array.from({ length: 7 }, (_, n) => b[start + n * EVENT + 4]), [0, 1, 2, 3, 4, 5, 6]);
+  const withDrops = dropsHost(); withDrops.events.length = 0;
+  withDrops.events.push(...['item-spawn', 'item-pickup', 'item-expire'].map((type, n) => ({ serial: n + 1, type, actorId: type === 'item-pickup' ? 1 : null, itemId: n + 1, kind: 'heal', x: 1, y: 1 })));
+  const f = withDrops.packet(), at = HEADER + 2 * 64;
+  assert.deepEqual([0, 1, 2].map(n => f[at + n * EVENT + 4]), [7, 8, 9]);
+  assert.ok(Online.decodeSnapshot(f));
+  const stripped = clone(f); stripped[25] &= ~Online.ITEM_FLAG;
+  assert.equal(Online.decodeSnapshot(stripped), null, 'flagless packets cannot carry drops');
+  const kind = clone(f); kind[at + 15] = 9; assert.equal(Online.decodeSnapshot(kind), null, 'unknown item kind');
+  const journey = clone(f); journey[0] = Online.JOURNEY_VERSION; assert.equal(Online.decodeSnapshot(journey, { journey: true }), null);
+});
+
+test('malformed item blocks are rejected', () => {
+  const host = dropsHost(), b = host.packet(), at = b.length - 2 * 2 - 14 * host.state.items.list.length - 7;
+  const item = at + 7, v = (x) => view(x);
+  const mutate = (fn, why) => { const bad = clone(b); fn(bad); assert.equal(Online.decodeSnapshot(bad), null, why); };
+  mutate((x) => { x[at + 6] = 3; }, 'count above ITEM_MAX');
+  mutate((x) => { x[at + 6] = 0; }, 'count disagrees with length');
+  mutate((x) => { v(x).setUint32(at, 99999, true); }, 'nextTick far in the future');
+  mutate((x) => { v(x).setUint16(at + 4, 0, true); }, 'serial below item id');
+  mutate((x) => { x[item + 2] = 7; }, 'unknown kind');
+  mutate((x) => { x[item + 3] = 250; }, 'unknown platform');
+  mutate((x) => { v(x).setFloat32(item + 4, NaN, true); }, 'nonfinite x');
+  mutate((x) => { v(x).setFloat32(item + 8, 1, true); }, 'y off the platform top');
+  mutate((x) => { v(x).setUint16(item + 12, C.ITEM_LIFE_TICKS + 1, true); }, 'ttl too large');
+  mutate((x) => { v(x).setUint16(b.length - 2, C.SURGE_TICKS + 1, true); }, 'surge too large');
 });

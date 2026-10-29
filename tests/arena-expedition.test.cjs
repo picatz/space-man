@@ -303,7 +303,8 @@ test('standalone authority ignores expedition rules and preserves the standalone
     teams: '618d72b98cc97f0f6847d5c356a389e5cc8ced48a36b1bce156db63b13f11c17',
   };
   for (const format of ['duel', 'ffa', 'teams']) {
-    const host = Online.createHost({ arenaId: 'ember-foundry', format, difficulty: 'hard', encounter: 'boss', crewCount: 4, stocks: 1, countdownTicks: 0 });
+    const host = Online.createHost({ arenaId: 'ember-foundry', format, difficulty: 'hard', encounter: 'boss', crewCount: 4, stocks: 1, countdownTicks: 0, items: false });
+    // items: false pins the flagless layout recorded in the hashes (what the legacy variant also emits); drops are covered in arena-online.test.cjs.
     assert.equal(host.state.encounter, undefined); assert.equal(host.state.format, format);
     host.syncRoster([{ p: 1, identity: 'a', role: 0 }, { p: 2, identity: 'b', role: 0 }], 0);
     host.start(47);

@@ -77,13 +77,32 @@ Hit-stop, screen shake, KO slow-motion, squash and the edge-danger cue are local
 presentation only: hit-stop and slow-motion run in local matches, never in
 authoritative online rooms, so they cannot desynchronize anyone.
 
-## Item drops (not yet online)
+## Item drops
 
-`Arena.create({ items: true })` adds `state.items = { nextTick, serial, list }` and an
-optional `surge` tick counter on actors; `restore()` validates both strictly and rejects
-them on states created without items. Online rooms do not pass the option, so the wire
-format and snapshots are unchanged. Enabling items in a room needs the host to carry the
-flag in its start config (a protocol version decision) and clients to render `item-*` events.
+Standard (non-encounter) online rules carry `items: true`, so friend rooms drop the same
+Repair, Aegis and Surge cells as local matches; there is no toggle. Boss and skirmish
+encounters never have drops. The host simulation stays authoritative: guests only render.
+
+**Snapshot (still wire version 3).** When the host state has `state.items`, header byte 25
+sets bit 3 (`0x08`); bits 0..2 remain the result. After the events comes an items block:
+`nextTick u32`, `serial u16`, `count u8` (at most `ITEM_MAX`), then per item `id u16`,
+`kind u8` (index into `Object.keys(Arena.itemKinds)`, append-only), `platform u8` (index
+into the arena's platform list), `x f32`, `y f32`, `ttl u16` (14 bytes), then one `surge u16`
+per actor in actor order (at most `SURGE_TICKS`). Event codes 7/8/9 are `item-spawn`,
+`item-pickup`, `item-expire`, appended after `land` so every earlier index is unchanged.
+Item events reuse the 18-byte row: kind in the stocks byte, the item id in the double (high)
+and damage (low) bytes; the taker is the actor id (`item-pickup` only). The decoder rejects
+the flag on journey packets, item events without the flag, unknown kinds or platforms,
+items off their platform top, and any state `Arena.restore` would refuse. Worst case (four
+fighters, 12 events, two cells) is 542 bytes against the 1024-byte limit.
+
+**Older clients.** Transport capability bit 15 (`CAP_ARENA_ITEMS`) is advertised by Arena
+hosts and guests and exposed as `caps` on host `roster()` rows. A pre-drop decoder rejects
+the flagged header, so while `host.state.items` exists `publish()` sends every connected
+non-host member lacking the bit a legacy variant instead: same revision, no flag, no items
+block, item events filtered out, byte-for-byte what a pre-drop host sends. The host client
+and capable members get the full packet. Old guests therefore see the fight without the
+drops, and nothing about admission changes (the Arena mode bit alone still gates joining).
 
 ## Disconnects and lifecycle
 
