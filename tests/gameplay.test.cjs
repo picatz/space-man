@@ -71,8 +71,10 @@ test('endgame ramp is gentle, capped, monotonic and keyed only on distance', (t)
 // goldens, shared seeds). If you intentionally change early worldgen, update these.
 // World gen 2 replaced the scatter for NEW courses; gen 1 must stay reachable and
 // byte-identical so every link and daily shared before it still means the same course.
-const EARLY = { 1: '09780bf9c2d6709b', 123456: '6ee88a2e931006a8', 12648430: '6ecf9e0734886187' };
-const EARLY_ROOM = 'db8264476b48282d';
+// Re-captured when the launch slab grew 360 px to the LEFT of spawn (run opens on solid ground): only platform 0's
+// x and w changed; the spawn point and every platform, enemy and pickup ahead of it are the same as before.
+const EARLY = { 1: '90e3aefa7e978645', 123456: '5c540703fe95616e', 12648430: 'c2f7b8effad7a2d4' };
+const EARLY_ROOM = 'e57a7237026f3e96';
 function earlyCourse(c, seed) {
   return c.run(`JSON.stringify((() => {
     stats.mercy=false; stats.deadStreak=0; resetRun(${seed}, false, { gen: 1 });

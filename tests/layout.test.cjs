@@ -191,3 +191,22 @@ test('the runner frame shows well over a jump of course ahead on every screen sh
     } finally { c.close(); }
   }
 });
+
+test('a run opens on solid ground that reaches past the left edge of the frame', () => {
+  const { client, relay } = require('./harness.cjs');
+  for (const [w, h] of [[1336, 860], [1920, 1080], [844, 390], [390, 844]]) {
+    const c = client(relay(), { width: w, height: h });
+    try {
+      const r = JSON.parse(c.run('startRun(); JSON.stringify({ left: G.platforms[0].x, camX: G.camX, spawn: G.player.x, start: G.startX, onGround: G.player.groundPlat === G.platforms[0] })'));
+      assert.ok(r.left < r.camX - 40, `${w}x${h}: the launch slab starts ${(r.left - r.camX).toFixed(0)} px into the frame`);
+      assert.equal(r.spawn, 30, 'the spawn point (and the seeded course ahead of it) does not move');
+      assert.equal(r.start, r.spawn);
+      assert.ok(r.onGround);
+    } finally { c.close(); }
+  }
+});
+
+test('a trackpad pinch cannot magnify the page and crop the frame', () => {
+  assert.match(html, /addEventListener\('wheel', \(e\) => \{ if \(e\.ctrlKey\) e\.preventDefault\(\); \}, \{ passive: false \}\)/);
+  assert.match(html, /\['gesturestart', 'gesturechange'\]/);
+});

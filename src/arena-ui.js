@@ -10,7 +10,7 @@
   const FORMATS = [
     { id: 'duel', name: 'Duel', tag: 'YOU + 1 CPU', detail: 'A little space. A worthy rival.', icon: '◉ : ◉' },
     { id: 'ffa', name: 'Free-for-all', tag: 'YOU + 3 CPU', detail: 'Four suits. One last astronaut.', icon: '◉ ◉ ◉ ◉' },
-    { id: 'teams', name: 'Team up', tag: '2 vs 2 · CPU ALLY', detail: 'You and a wingmate take on two.', icon: '◉◉ : ◉◉' },
+    { id: 'teams', name: 'Team up', tag: '2v2 · CPU ally', detail: 'You and a wingmate take on two.', icon: '◉◉ : ◉◉' },
   ];
   const PLAYER_COLORS = ['#38E1FF', '#FFB454', '#B99AFF', '#8AECAB'];
   // Same-device couch play. Keys are KeyboardEvent.code values, so a layout or
@@ -277,6 +277,7 @@
       if (r) roomRejoin.textContent = 'Rejoin ' + social().lastRoomText(r);
     }
     let active = false, built = false, destroyed = false, rootEl, canvas, ctx, modal, lobby, pausePanel, resultPanel;
+    let lobbyFit = null, lobbyArtEl = null, lobbyFitQueued = false;
     let live, timerEl, rosterEl, rosterRect = null, rosterFaded = false, canvasLeft = 0, canvasTop = 0, statusEl, statusSub, matchTitle, touchEl, stickZone, stickBase, stickKnob, pulseButton, dashButton;
     let pulseMeter, dashMeter, countdownEl, pauseButton, launchButton, resultTitle, resultText, resultRoster;
     let formatButtons = [], stageButtons = [], difficultyButtons = [], mirrorButton, stageDescription;
@@ -339,11 +340,27 @@
         }
       } catch (_) { /* A corrupt preference never prevents a launch. */ }
     }
+    // Zoom the lobby down (never below 70%) when a short or zoomed-in window cannot
+    // hold it, so Launch, the tip line and Play with friends all stay on one screen.
+    function fitLobby() {
+      lobbyFitQueued = false;
+      if (!lobbyFit || !lobby || !rootEl || rootEl.dataset.screen !== 'lobby') return;
+      lobbyFit.style.zoom = ''; lobbyFit.style.width = ''; lobbyFit.style.marginInline = '';
+      if (roomDetails && roomDetails.open) return;   // an opened drawer scrolls instead of shrinking the page
+      if (root.innerWidth < 760 || root.innerHeight < 420 || !root.getComputedStyle) return;
+      const cs = root.getComputedStyle(lobby), pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      const need = lobbyFit.offsetHeight, room = lobby.clientHeight - pad;
+      if (!(need > 0) || !(room > 0) || need <= room) return;
+      lobbyFit.style.width = lobbyFit.offsetWidth + 'px'; lobbyFit.style.marginInline = 'auto';
+      lobbyFit.style.zoom = String(Math.max(.7, Math.floor(room / need * 100) / 100));
+    }
+    function queueLobbyFit() { if (lobbyFitQueued || !root.requestAnimationFrame) return; lobbyFitQueued = true; root.requestAnimationFrame(fitLobby); }
     function setModal(panel, focusTarget) {
       activeModal = panel;
       modal.hidden = !panel;
       [lobby, pausePanel, resultPanel].forEach(p => { p.hidden = p !== panel; });
       rootEl.dataset.screen = panel === lobby ? 'lobby' : panel === pausePanel ? 'pause' : panel === resultPanel ? 'results' : 'match';
+      if (panel === lobby) { queueLobbyFit(); if (lobbyArtEl) paintHero(lobbyArtEl); }
       if (panel) {
         panel.setAttribute('aria-modal', 'true');
         const target = focusTarget || panel.querySelector('button:not([disabled])');
@@ -359,7 +376,7 @@
       const a = selectedArena();
       if (stageDescription) stageDescription.textContent = a.description;
       if (launchButton) launchButton.textContent = 'Launch ' + (selections.format === 'teams' ? 'team match' : selections.format === 'ffa' ? 'free-for-all' : 'duel') + '  ↗';
-      syncRoomChoices(); syncPlayers();
+      syncRoomChoices(); syncPlayers(); queueLobbyFit();
     }
     function padList() {
       try { const g = root.navigator.getGamepads && root.navigator.getGamepads(); return g ? Array.from(g).filter(q => q && q.connected) : []; } catch (_) { return []; }   // pads with mapping "" are tried with the standard indices; the page announces them
@@ -832,7 +849,7 @@
       roomAutoCancel=button('Cancel auto-start','arena-text-button',()=>room.cancelAuto());roomAutoCancel.id='arenaAutoCancel';roomAutoCancel.hidden=true;
       roomReadyRow.append(roomReady,roomVotes,roomAutoLabel,roomAutoCancel);
       roomBox.append(roomCode,roomMembers,roomReadyRow,roomInvite,shareRow,roomQRDetails);
-      roomHint=el('p','arena-local-note');roomHint.id='arenaRoomHint';roomHint.setAttribute('role','status');roomLeave=button('Leave arena room','arena-text-button',leaveArenaRoom);roomLeave.id='arenaRoomLeave';roomLeave.hidden=true;roomDetails.append(roomEntry,roomBox,roomHint,roomLeave);roomDetails.addEventListener('toggle',paintRejoin);lobby.append(roomDetails);
+      roomHint=el('p','arena-local-note');roomHint.id='arenaRoomHint';roomHint.setAttribute('role','status');roomLeave=button('Leave arena room','arena-text-button',leaveArenaRoom);roomLeave.id='arenaRoomLeave';roomLeave.hidden=true;roomDetails.append(roomEntry,roomBox,roomHint,roomLeave);roomDetails.addEventListener('toggle',paintRejoin);roomDetails.addEventListener('toggle',queueLobbyFit);(lobbyFit || lobby).append(roomDetails);
       watchTools=el('div','arena-watch-tools');watchTools.hidden=true;const prev=button('←','arena-icon-button',()=>cycleWatch(-1));prev.id='arenaWatchPrevious';prev.setAttribute('aria-label','Watch previous fighter');const next=button('→','arena-icon-button',()=>cycleWatch(1));next.id='arenaWatchNext';next.setAttribute('aria-label','Watch next fighter');watchName=el('span','','WATCHING');watchTools.append(prev,watchName,next);rootEl.append(watchTools);
       room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,lastRoom:opts.lastRoom,onAutoStart:()=>{if(room&&room.isHost)startMatch();},canStart:()=>!(selections.format==='duel'&&roomStatus&&roomStatus.info.players>2),onChange:roomChanged,onSnapshot:networkSnapshot});
     }
@@ -917,7 +934,8 @@
       const controls = el('details', 'arena-controls-help'); const summary = el('summary', '', 'How to play · keyboard, controller & touch'); const help = el('div', 'arena-help-grid');
       help.append(el('p', '', 'KEYBOARD · A/D or ←/→ move. Space/W/↑ jumps twice. F/J pulses. Shift/K dashes. Esc pauses.'), el('p', '', 'CONTROLLER · Stick or D-pad moves. A jumps. X pulses. B or either trigger dashes. Menu pauses.'), el('p', '', 'TOUCH · Drag the floating stick to move. Use JUMP, PULSE and DASH. Aim a pulse with the stick. Land to restore your jumps.'), el('p', '', '2 PLAYERS · One screen, offline. P1 uses A/D/W/S, F pulse, G dash; P2 uses the arrows, . pulse, / dash; pad 1 and pad 2 drive P1 and P2. It needs a keyboard or two controllers, so it is hidden on touch-only devices until two controllers connect.'));
       mirrorButton = button('Mirror touch controls', 'arena-text-button', () => { leftyOverride = !(rootEl.dataset.lefty === 'true'); updatePrefs(); }); mirrorButton.setAttribute('aria-pressed', 'false'); help.append(mirrorButton); controls.append(summary, help);
-      lobby.append(lobbyTop, lobbyGrid, controls); modal.append(lobby);
+      lobby.append(lobbyTop, lobbyGrid, controls);
+      lobbyFit = el('div', 'arena-lobby-fit'); lobbyFit.append(...lobby.childNodes); lobby.append(lobbyFit); modal.append(lobby);
       pausePanel = el('div', 'arena-small-panel arena-dialog'); pausePanel.setAttribute('role', 'dialog'); pausePanel.setAttribute('aria-labelledby', 'arena-pause-title');
       const ph = el('h2', 'arena-panel-title', 'Taking a breather'); ph.id = 'arena-pause-title';
       const pauseReason = el('p', 'arena-panel-copy', 'Your match is paused.'); pauseReason.id = 'arena-pause-reason';
@@ -931,7 +949,7 @@
       // Events stop at this overlay, before the runner's window-level handlers.
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel']) rootEl.addEventListener(type, e => e.stopPropagation(), { passive: type.startsWith('touch') || type === 'wheel' });
       rootEl.addEventListener('contextmenu', e => e.preventDefault());
-      lobby.querySelector('.arena-lobby-top button').id = 'arenaBack'; pausePanel.querySelector('.arena-primary').id = 'arenaResume'; resultPanel.querySelector('.arena-primary').id = 'arenaRematch'; resultPanel.querySelectorAll('button')[2].id = 'arenaNext'; pausePanel.querySelectorAll('button')[2].id = 'arenaLobby'; pausePanel.querySelectorAll('button')[3].id = 'arenaExit'; resultPanel.querySelectorAll('button')[4].id = 'arenaResultExit'; buildRoomControls(); document.body.append(rootEl); built = true; syncChoices(); paintHero(lobbyArt);
+      lobby.querySelector('.arena-lobby-top button').id = 'arenaBack'; pausePanel.querySelector('.arena-primary').id = 'arenaResume'; resultPanel.querySelector('.arena-primary').id = 'arenaRematch'; resultPanel.querySelectorAll('button')[2].id = 'arenaNext'; pausePanel.querySelectorAll('button')[2].id = 'arenaLobby'; pausePanel.querySelectorAll('button')[3].id = 'arenaExit'; resultPanel.querySelectorAll('button')[4].id = 'arenaResultExit'; buildRoomControls(); document.body.append(rootEl); built = true; syncChoices(); lobbyArtEl = lobbyArt; paintHero(lobbyArt);
     }
     function makeBackground(a) {
       const bg = document.createElement('canvas'); bg.width = Math.ceil(width); bg.height = Math.ceil(height); const g = bg.getContext('2d'), t = themeFor(a), art = root.SpaceManArt;
@@ -1049,13 +1067,18 @@
       const g = target.getContext('2d'), art = root.SpaceManArt; g.clearRect(0, 0, target.width, target.height);
       if (art) { g.globalAlpha = .4; g.drawImage(art.glow(120, '#38E1FF', .04), 42, 50, 290, 290); g.globalAlpha = .16; g.drawImage(art.glow(120, '#FFB454', .04), 320, 0, 290, 290); g.globalAlpha = 1; }
       g.strokeStyle = 'rgba(56,225,255,.17)'; g.lineWidth = 1.5; g.save(); g.translate(300, 210); g.rotate(-.2); g.beginPath(); g.ellipse(0, 0, 264, 80, 0, 0, TAU); g.stroke(); g.restore();
-      g.save(); g.translate(130, 130); g.rotate(-.12); g.scale(4.2, 4.2); astronaut(g, { id: 1, color: '#38E1FF', w: 24, h: 34, facing: 1, onGround: false, vy: -1, vx: 0, attackTicks: 5 }, 0, 0, 30, true); g.restore();
-      g.save(); g.translate(420, 55); g.rotate(.18); g.scale(3.2, 3.2); astronaut(g, { id: 2, color: '#FFB454', suit: '#FFF0D6', w: 24, h: 34, facing: -1, onGround: false, vy: 1, vx: 0 }, 0, 0, 10, true); g.restore();
+      // The same drawn astronaut as the home hero and wardrobe, so the lobby shows the pilot's own suit.
+      if (art && art.drawAvatar) {
+        const mine = typeof opts.appearance === 'function' ? opts.appearance() : null;
+        g.save(); g.translate(150, 165); g.rotate(-.12); art.drawAvatar(g, 0, 0, 250, mine, { reduceMotion: true, greeting: 0 }); g.restore();
+        g.save(); g.translate(440, 85); g.rotate(.18); art.drawAvatar(g, 0, 0, 160, { ...(mine || {}), suit: 'rose', hat: 'none', eyes: 'determined' }, { reduceMotion: true }); g.restore();
+      }
       g.strokeStyle = '#38E1FF'; g.lineWidth = 3; g.globalAlpha = .5; g.beginPath(); g.arc(332, 196, 38, -.7, .8); g.stroke(); g.globalAlpha = .2; g.beginPath(); g.arc(332, 196, 51, -.7, .8); g.stroke(); g.globalAlpha = 1;
       for (let i = 0; i < 6; i++) { const x = 280 + hash(i) * 110, y = 150 + hash(i + 17) * 110; g.fillStyle = i % 2 ? '#9FF1FF' : '#FFE59A'; g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-2, -2, 4, 4); g.restore(); }
     }
     function resize() {
       if (!active || !rootEl) return;
+      queueLobbyFit();
       const vv = root.visualViewport;
       const layoutWidth = document.documentElement.clientWidth || root.innerWidth || 1;
       const layoutHeight = document.documentElement.clientHeight || root.innerHeight || 1;
