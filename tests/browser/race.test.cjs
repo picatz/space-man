@@ -557,3 +557,35 @@ test(
     );
   },
 );
+
+test(
+  "race lobby fits every circuit and a visible Start at desktop, tablet and phone sizes, and arrows move across the circuit grid",
+  { timeout: 90000 },
+  async (t) => {
+    for (const [width, height] of [[1334, 720], [1180, 820], [820, 1180], [390, 844], [844, 390]]) {
+      const { page } = await launch(t, { viewport: { width, height } });
+      const fit = await page.evaluate(() => {
+        const list = document.querySelector(".race-track-list"),
+          launch = document.querySelector(".race-launch").getBoundingClientRect();
+        return {
+          clipped: list.scrollHeight > list.clientHeight + 1,
+          launchTop: launch.top, launchBottom: launch.bottom,
+          tracks: [...document.querySelectorAll(".race-track")].map(b => b.getBoundingClientRect().height),
+        };
+      });
+      const label = width + "x" + height;
+      assert.equal(fit.clipped, false, label + ": circuit list is not clipped or scrolling");
+      assert.ok(fit.tracks.length === 7 && fit.tracks.every(h => h > 30), label + ": every circuit has a real card");
+      assert.ok(fit.launchTop >= 0 && fit.launchBottom <= height + 1, label + ": Launch race is inside the viewport");
+      await capture(page, "race-lobby-" + label);
+    }
+    const { page } = await launch(t);
+    await page.locator(".race-track").first().focus();
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.track), "ember", "Right moves to the next card in the row");
+    await page.keyboard.press("ArrowDown");
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.track), "prism", "Down moves to the card below");
+    await page.keyboard.press("ArrowLeft");
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.track), "bloom", "Left moves back along the row");
+  },
+);
