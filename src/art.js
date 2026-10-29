@@ -467,11 +467,14 @@ const characterHats = {
       if (far) { c.fillStyle = FAR; c.beginPath(); c.ellipse(1.1, .8, 2.8, 1.6, 0, 0, TAU); c.fill(); }
       c.restore();
     };
-    const arm = (sx, sy, ex, ey, hx, hy, far) => {
+    const arm = (sx, sy, ex, ey, hx, hy, far, cap = true) => {
       tube(sx, sy, ex, ey, hx, hy, far ? P.legB : P.arm, P.legB, 3.1);
       if (far) { c.strokeStyle = FAR; c.lineWidth = 3.1; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(ex, ey, hx, hy); c.stroke(); }
-      c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); c.stroke();
-      if (far) { c.fillStyle = FAR; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); }
+      // The sleeve's round end is the shoulder. A separate white cap reads as a lump beside the helmet, so the near arm omits it.
+      if (cap) {
+        c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); c.stroke();
+        if (far) { c.fillStyle = FAR; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); }
+      }
       const wrist = Math.atan2(hy - ey, hx - ex) - Math.PI / 2;
       cuff(hx, hy, wrist, far); mitten(hx, hy, wrist, far);
     };
@@ -499,10 +502,9 @@ const characterHats = {
     // limb can pop over the face during idle or the brief equip greeting.
     if (blaster) {
       // Pulse blaster raised: the sleeve reaches forward and the emitter sits where the mitten would, as in a match.
-      tube(6.6, -.4 + bob, 11.8, -2 + bob, 14, -3 + bob, P.arm, P.legB, 3.1);
-      c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(6.6, -.4 + bob, 2.4, 0, TAU); c.fill(); c.stroke();
+      tube(6.4, .9 + bob, 11.8, -1.6 + bob, 14, -3 + bob, P.arm, P.legB, 3.1);
       c.fillStyle = blaster; rrPath(c, 12, -7 + bob, 7, 7, 2.5); c.fill(); c.fillStyle = '#E7FEFF'; c.beginPath(); c.arc(16, -3.5 + bob, 1.7, 0, TAU); c.fill();
-    } else arm(6.6, -.4 + bob, 11.8 + hello * 1.2, 2.6 + bob - hello * 5, 11.6 + hello * 2.6, 7.4 + bob - hello * 14, false);
+    } else arm(6.4, .9 + bob, 11.8 + hello * 1.2, 2.6 + bob - hello * 5, 11.6 + hello * 2.6, 7.4 + bob - hello * 14, false, false);
     characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: mood ?? (hello > .15 ? 1 : 0), lookX, lookY });
     c.restore();
   }
