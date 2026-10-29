@@ -403,15 +403,9 @@ const characterHats = {
     if(style.appearance.detail==='stars'){c.fillStyle=accent;c.save();c.translate(18,5);c.rotate(Math.PI/4);c.fillRect(-1.5,-1.5,3,3);c.restore();}
     c.restore();
   }
-  // Full appearance preview with no dependency on a running game or player.
-  // x/y is the slot center; size is the total headwear-to-boot height in pixels.
-  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0, lookX = 0, lookY = 0, mood = null } = {}) {
-    const style = characterStyle(appearance), P = style.palette;
-    const bob = reduceMotion ? 0 : Math.sin(time * 2) * .65;
-    const hello = reduceMotion ? 0 : clamp(greeting, 0, 1);
-    c.save(); c.translate(x, y + size * .13); c.scale(size / 54, size / 54);
-    if (ship) { c.scale(.78, .78); c.rotate(-.18); hoverpod(c, style, { tick: time * 60 + 20, calm: reduceMotion, hero: true }); c.restore(); return; }
-    c.fillStyle = '#0005'; c.beginPath(); c.ellipse(0, 18, 12, 2.8, 0, 0, TAU); c.fill();
+  // One limb language shared by every drawn astronaut (wardrobe/home avatar and the in-match sprite).
+  function limbKit(c, style) {
+    const P = style.palette;
     // One limb language for arms and legs: a hairline outline under a rounded sleeve,
     // a cuff band in the accent colour, and a mitten or boot in suit white. The far
     // side (back leg, back arm) takes the same shapes in the shaded palette, with a
@@ -453,6 +447,18 @@ const characterHats = {
       const wrist = Math.atan2(hy - ey, hx - ex) - Math.PI / 2;
       cuff(hx, hy, wrist, far); mitten(hx, hy, wrist, far);
     };
+    return { tube, cuff, mitten, boot, arm };
+  }
+  // Full appearance preview with no dependency on a running game or player.
+  // x/y is the slot center; size is the total headwear-to-boot height in pixels.
+  function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0, lookX = 0, lookY = 0, mood = null } = {}) {
+    const style = characterStyle(appearance), P = style.palette;
+    const bob = reduceMotion ? 0 : Math.sin(time * 2) * .65;
+    const hello = reduceMotion ? 0 : clamp(greeting, 0, 1);
+    c.save(); c.translate(x, y + size * .13); c.scale(size / 54, size / 54);
+    if (ship) { c.scale(.78, .78); c.rotate(-.18); hoverpod(c, style, { tick: time * 60 + 20, calm: reduceMotion, hero: true }); c.restore(); return; }
+    c.fillStyle = '#0005'; c.beginPath(); c.ellipse(0, 18, 12, 2.8, 0, 0, TAU); c.fill();
+    const { tube, boot, arm } = limbKit(c, style);
     // Legs: far leg first, then the near one, each ending in the same boot.
     tube(3, 7, 4, 11.5, 5, 15.8, P.legB, P.legB, 4.6); boot(5, 15.8, true);
     tube(-3, 7, -4, 11.5, -5, 15.8, P.legF, P.legB, 4.6); boot(-5, 15.8, false);
@@ -566,7 +572,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -287,3 +287,10 @@ body.battery-saver #ovAttract::before, body.battery-saver #ovAttract::after { an
 #ovAttract .home-mode { display: flex; flex-direction: column; }
 #ovAttract .home-mode .mode-link { min-height: 0; padding: 8px 6px 0; text-wrap: balance; overflow-wrap: anywhere; }
 #ovAttract .home-mode > span:not(.mode-link) { position: static; display: block; padding: 2px 6px 12px; line-height: 1.25; text-wrap: balance; overflow-wrap: anywhere; }
+
+/* A controller player sees how to drive the menu; everyone else keeps the tagline. Shown only once a pad has been used. */
+.home-pad-hint { display: none; color: #b8d4e4; font: 450 calc(11px * var(--ui-scale, 1))/1.5 var(--sm-font-body); letter-spacing: .02em; }
+.home-pad-hint b { margin: 0 4px 0 8px; padding: 1px 6px; border: 1px solid #81b2c966; border-radius: 6px; color: #e9f7ff; font-weight: 700; }
+.home-pad-hint b:first-child { margin-left: 0; }
+body[data-input="pad"] .home-pad-hint { display: inline-block; }
+body[data-input="pad"] .home-footer-note { display: none; }
