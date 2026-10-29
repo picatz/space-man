@@ -88,7 +88,7 @@ test('station connections stay beyond runoff and the gantry clears every chase e
 });
 test('Aurora, Neon and Nebula each build their own scenery, clear of the physical corridor',()=>{
   const sizes={};
-  for(const id of ['aurora','neon','nebula']){
+  for(const id of ['aurora','neon','nebula','forge']){
     const c=R.course(id),scene=Scene.course(c,R.at),marks=scene.clearances.filter(x=>x.type==='landmark');
     assert.ok(marks.length>=12,id+' keeps most landmark sites');
     for(const m of marks)assert.ok(Track.distance(c,m.x,m.z)>=c.width/2+m.radius,id+' landmark clears the road');
@@ -96,5 +96,5 @@ test('Aurora, Neon and Nebula each build their own scenery, clear of the physica
     assert.ok(props<12000,id+' props stay inside the triangle budget: '+props);
     sizes[id]=scene.meshes.map(m=>m.vertices.length).join();
   }
-  assert.equal(new Set(Object.values(sizes)).size,3,'circuits no longer share a skyline');
+  assert.equal(new Set(Object.values(sizes)).size,4,'circuits no longer share a skyline');
 });

@@ -98,7 +98,7 @@ test(
   { timeout: 70000 },
   async (t) => {
     const { page } = await launch(t);
-    assert.equal(await page.locator(".race-track").count(), 7);
+    assert.equal(await page.locator(".race-track").count(), 8);
     assert.equal(await page.locator(".race-segment").count(), 3);
     await capture(page, "race-lobby-desktop");
     await page.locator(".race-launch").click();
@@ -170,7 +170,7 @@ test(
     );
     await page.keyboard.press("Escape");
     await menu(page, "Choose a circuit");
-    for (const id of ["ember", "bloom", "prism", "aurora", "neon", "nebula"]) {
+    for (const id of ["ember", "bloom", "prism", "aurora", "neon", "nebula", "forge"]) {
       await page.locator(`[data-track="${id}"]`).click();
       await page.locator(".race-launch").click();
       await playing(page);
@@ -575,7 +575,7 @@ test(
       });
       const label = width + "x" + height;
       assert.equal(fit.clipped, false, label + ": circuit list is not clipped or scrolling");
-      assert.ok(fit.tracks.length === 7 && fit.tracks.every(h => h > 30), label + ": every circuit has a real card");
+      assert.ok(fit.tracks.length === 8 && fit.tracks.every(h => h > 30), label + ": every circuit has a real card");
       assert.ok(fit.launchTop >= 0 && fit.launchBottom <= height + 1, label + ": Launch race is inside the viewport");
       await capture(page, "race-lobby-" + label);
     }
