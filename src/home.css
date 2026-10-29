@@ -90,9 +90,9 @@
 #ovAttract .home-mode .mode-link::before { display: none; content: none; }
 #ovAttract .home-mode .mode-link::after { display: none; }
 .home-mode > span:not(.mode-link) { position: absolute; left: 3px; right: 3px; bottom: 8px; color: #a7c3d5; font: 450 calc(11px * var(--ui-scale, 1))/1.1 var(--sm-font-body); text-align: center; pointer-events: none; }
-#ovAttract .home-run-together { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 62px; margin-top: 10px; padding: 10px 16px 10px 12px; background: linear-gradient(135deg, #17435a 0%, #232e5a 100%); border: 1px solid #5fc3de88; border-radius: 16px; color: #effbff; font: 650 calc(12px * var(--ui-scale, 1))/1.35 var(--sm-font-body); text-align: left; cursor: pointer; box-shadow: 0 8px 22px #02081a66, inset 0 1px 0 #ffffff1c; transition: transform .15s ease, border-color .15s ease; }
+#ovAttract .home-run-together { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; margin-top: 6px; padding: 7px 14px 7px 10px; background: linear-gradient(135deg, #17435a 0%, #232e5a 100%); border: 1px solid #5fc3de88; border-radius: 16px; color: #effbff; font: 650 calc(12px * var(--ui-scale, 1))/1.35 var(--sm-font-body); text-align: left; cursor: pointer; box-shadow: 0 8px 22px #02081a66, inset 0 1px 0 #ffffff1c; transition: transform .15s ease, border-color .15s ease; }
 #ovAttract .home-run-together:hover, #ovAttract .home-run-together:focus-visible { transform: translateY(-1px); border-color: #9ff1ffcc; }
-#ovAttract .home-together-icon { display: grid; place-items: center; flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; background: #9ff1ff24; border: 1px solid #9ff1ff66; }
+#ovAttract .home-together-icon { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: 50%; background: #9ff1ff24; border: 1px solid #9ff1ff66; }
 .home-together-icon svg { width: 22px; height: 22px; fill: none; stroke: #9ff1ff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .home-together-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .home-together-text strong { font: 800 calc(15px * var(--ui-scale, 1))/1.2 var(--sm-font-body); color: #ffffff; }
