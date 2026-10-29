@@ -589,3 +589,29 @@ test(
     assert.equal(await page.evaluate(() => document.activeElement.dataset.track), "bloom", "Left moves back along the row");
   },
 );
+
+test(
+  "race input hints follow the device: keyboard text, controller text with a pad connected, none on touch",
+  { timeout: 60000 },
+  async (t) => {
+    const { page } = await launch(t);
+    const visible = (sel) => page.evaluate((s) =>
+      [...document.querySelectorAll(s)].filter(n => n.getClientRects().length).map(n => n.textContent), sel);
+    assert.deepEqual(await visible(".race-launch-bar [data-for=key]"), ["← ↑ ↓ → choose · Enter launch · Esc back"]);
+    assert.deepEqual(await visible(".race-launch-bar [data-for=pad]"), []);
+    await page.evaluate(() => document.body.classList.add("gamepad-active"));
+    assert.deepEqual(await visible(".race-launch-bar [data-for=key]"), []);
+    assert.deepEqual(await visible(".race-launch-bar [data-for=pad]"), ["D-PAD CHOOSE · A LAUNCH · B BACK"]);
+    await page.evaluate(() => {
+      document.body.classList.remove("gamepad-active");
+      document.querySelector(".race-root").dataset.touch = "true";
+    });
+    assert.deepEqual(await visible(".race-launch-bar .race-input-hint span"), [], "touch shows no key or pad hint");
+    await page.evaluate(() => delete document.querySelector(".race-root").dataset.touch);
+    await page.locator(".race-launch").click();
+    await playing(page);
+    assert.match((await visible(".race-hint [data-for=key]"))[0], /STEER/);
+    await page.evaluate(() => document.body.classList.add("gamepad-active"));
+    assert.match((await visible(".race-hint [data-for=pad]"))[0], /BOOST/);
+  },
+);

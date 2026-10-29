@@ -678,3 +678,15 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 .arena-root .arena-stage-card { min-height: 0; padding-bottom: 9px; }
 .arena-root .arena-stage-name { padding-top: 7px; }
 .arena-root .arena-format-copy small { white-space: nowrap; }
+
+/* Input hints follow the device in use: keyboard text by default, controller
+   text while a gamepad is connected, none on touch. */
+.race-root [data-for=pad] { display: none; }
+body.gamepad-active .race-root [data-for=pad] { display: inline; }
+body.gamepad-active .race-root [data-for=key] { display: none; }
+.race-root .race-input-hint { margin: 6px 0 0; text-align: center; color: var(--sm-copy); font: 650 calc(11px * var(--ui-scale, 1))/1.4 var(--sm-font-body); letter-spacing: .05em; }
+.race-root[data-touch=true] .race-input-hint { display: none; }
+.race-root .race-launch-bar > .race-input-hint { margin-left: auto; }
+@media (orientation: landscape) and (max-height: 560px) and (min-width: 600px) {
+  .race-root .race-launch-bar .race-input-hint { display: none; }
+}
