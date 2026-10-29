@@ -311,7 +311,7 @@
           : "Choose a circuit",
       );
       setText(
-        rootEl.querySelector(".race-setup > .race-local-note"),
+        rootEl.querySelector(".race-launch-bar > .race-local-note"),
         online
           ? "Shared laps, boost and collisions. Empty grid slots get CPUs."
           : "3 laps · You + 4 CPU pilots",
@@ -885,6 +885,27 @@
         ),
       ).filter((n) => n.getClientRects().length);
     }
+    // Directional menu navigation (arrows, D-pad, stick): jump to the nearest
+    // control in that direction so a grid of circuits behaves like a grid, and
+    // fall back to the old linear order when nothing lies that way.
+    function focusDirection(dir) {
+      const nodes = focusables(), cur = document.activeElement;
+      if (!nodes.includes(cur)) { nodes[0]?.focus(); return; }
+      const rect = cur.getBoundingClientRect(),
+        cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2,
+        vertical = dir === "up" || dir === "down", sign = dir === "up" || dir === "left" ? -1 : 1;
+      let best = null, bestScore = Infinity;
+      for (const n of nodes) {
+        if (n === cur) continue;
+        const r = n.getBoundingClientRect(),
+          dx = r.left + r.width / 2 - cx, dy = r.top + r.height / 2 - cy,
+          along = (vertical ? dy : dx) * sign, across = Math.abs(vertical ? dx : dy);
+        if (along < 4) continue;
+        const score = along + across * 2.5;
+        if (score < bestScore) { best = n; bestScore = score; }
+      }
+      if (best) best.focus(); else focusStep(sign);
+    }
     function focusStep(d) {
       const nodes = focusables(),
         i = nodes.indexOf(document.activeElement);
@@ -926,7 +947,7 @@
             document.activeElement.click();
         } else if (e.code.startsWith("Arrow")) {
           e.preventDefault();
-          focusStep(["ArrowLeft", "ArrowUp"].includes(e.code) ? -1 : 1);
+          focusDirection({ ArrowLeft: "left", ArrowUp: "up", ArrowRight: "right", ArrowDown: "down" }[e.code]);
         }
         return;
       }
@@ -1000,8 +1021,7 @@
       const edge = (k) => raw[k] && !padPrevious[k];
       if (edge("pause")) escape();
       else if (!modal.hidden) {
-        if (edge("left") || edge("up")) focusStep(-1);
-        if (edge("right") || edge("down")) focusStep(1);
+        for (const dir of ["left", "up", "right", "down"]) if (edge(dir)) focusDirection(dir);
         if (edge("boost") && modal.contains(document.activeElement))
           document.activeElement.click();
         if (edge("brake")) escape();
@@ -1343,7 +1363,7 @@
         const preview = el("canvas");
         preview.width = 190;
         preview.height = 114;
-        drawMap(preview.getContext("2d"), R.course(t.id), 190, 114);
+        drawPreview(preview.getContext("2d"), R.course(t.id), 190, 114);
         const copy = el("span");
         copy.append(el("small", "", t.difficulty), el("strong", "", t.name));
         b.append(preview, copy);
@@ -1389,12 +1409,12 @@
         list,
         description,
         options,
+      );
+      // Sticky footer of the dialog: Start stays reachable at every size.
+      const launchBar = el("div", "race-launch-bar");
+      launchBar.append(
         launch,
-        el(
-          "p",
-          "race-local-note",
-          "3 laps · You + 4 CPU pilots",
-        ),
+        el("p", "race-local-note", "3 laps · You + 4 CPU pilots"),
       );
       roomUtilities = el("div", "race-utilities");
       const preferences = el("section", "race-preferences");
@@ -1409,7 +1429,7 @@
       preferences.append(help);
       roomUtilities.append(preferences);
       grid.append(intro, setup, roomUtilities);
-      lobby.append(header, grid);
+      lobby.append(header, grid, launchBar);
       pausePanel = el("div", "race-dialog race-compact race-pause-panel");
       pausePanel.setAttribute("role", "dialog");
       pausePanel.setAttribute("aria-modal", "true");
@@ -1971,6 +1991,27 @@
       root.SpaceManArt.characterHelmet(ctx, 0, 0,
         root.SpaceManArt.characterStyle(appearance, actor.color), { calm: true });
       ctx.restore();
+    }
+    // Lobby thumbnail: fits the whole circuit (the newer ones are larger than the
+    // minimap's fixed frame) and draws it bold enough to read at card size.
+    function drawPreview(ctx, c, w, h) {
+      ctx.clearRect(0, 0, w, h);
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const s of c.segments) {
+        x0 = Math.min(x0, s.x); x1 = Math.max(x1, s.x);
+        y0 = Math.min(y0, s.y); y1 = Math.max(y1, s.y);
+      }
+      const pad = 12, scale = Math.min((w - pad * 2) / (x1 - x0), (h - pad * 2) / (y1 - y0));
+      const at = (s) => [(s.x - x0) * scale + (w - (x1 - x0) * scale) / 2, (s.y - y0) * scale + (h - (y1 - y0) * scale) / 2];
+      ctx.beginPath();
+      c.segments.forEach((s, i) => ctx[i ? "lineTo" : "moveTo"](...at(s)));
+      ctx.closePath();
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 15; ctx.strokeStyle = c.edge + "33"; ctx.stroke();
+      ctx.lineWidth = 7; ctx.strokeStyle = c.edge; ctx.stroke();
+      const [sx, sy] = at(c.segments[0]);
+      ctx.fillStyle = "#091727"; ctx.beginPath(); ctx.arc(sx, sy, 11, 0, TAU); ctx.fill();
+      ctx.fillStyle = c.accent; ctx.beginPath(); ctx.arc(sx, sy, 7, 0, TAU); ctx.fill();
     }
     function drawMap(ctx, c, w, h, actors, ranks) {
       ctx.clearRect(0, 0, w, h);
