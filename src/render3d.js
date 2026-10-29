@@ -135,6 +135,43 @@
     '  gl_FragColor = vec4(mix(vColor, uFogColor, fog), alpha);', '}'
   ].join('\n');
 
+  // A unit sky dome: vertex-colored rings from ground haze through a horizon glow
+  // to the zenith, plus small star diamonds. Colors are [r,g,b] in 0..1. Pure and
+  // deterministic (golden-angle stars), so peers and screenshots agree.
+  const SKY_RINGS = [-90, -12, -4, 0, 2, 4, 10, 18, 28, 40, 65, 90];
+  function skyDome(sky) {
+    sky = sky || {};
+    const top = vector(sky.top, [0.024, 0.031, 0.094]), horizon = vector(sky.horizon, top);
+    const glow = vector(sky.glow, horizon), ground = vector(sky.ground, horizon), starColor = vector(sky.starColor, [0.82, 0.9, 1]);
+    const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    const smooth = t => t * t * (3 - 2 * t);
+    const tint = e => e <= 0 ? mix(glow, ground, smooth(Math.min(1, -e / 12)))
+      : e <= 4 ? mix(glow, horizon, smooth(e / 4)) : mix(horizon, top, smooth(Math.min(1, (e - 4) / 36)));
+    const segments = 32, stars = clamp(Math.floor(finite(sky.stars, 0)), 0, 600), out = [];
+    const point = (e, a) => { const r = e * Math.PI / 180, c = Math.cos(r); return [c * Math.cos(a), Math.sin(r), c * Math.sin(a)]; };
+    const push = (p, color) => out.push(p[0], p[1], p[2], -p[0], -p[1], -p[2], color[0], color[1], color[2]);
+    for (let ring = 0; ring < SKY_RINGS.length - 1; ring++) {
+      const e0 = SKY_RINGS[ring], e1 = SKY_RINGS[ring + 1], c0 = tint(e0), c1 = tint(e1);
+      for (let i = 0; i < segments; i++) {
+        const a0 = i / segments * Math.PI * 2, a1 = (i + 1) / segments * Math.PI * 2;
+        const p00 = point(e0, a0), p01 = point(e0, a1), p10 = point(e1, a0), p11 = point(e1, a1);
+        push(p00, c0); push(p10, c1); push(p11, c1);
+        push(p00, c0); push(p11, c1); push(p01, c0);
+      }
+    }
+    for (let i = 0; i < stars; i++) {
+      const lift = 0.07 + 0.9 * ((i * 0.6180339887) % 1), a = i * 2.39996323;
+      const d = [Math.cos(a) * Math.sqrt(1 - lift * lift), lift, Math.sin(a) * Math.sqrt(1 - lift * lift)];
+      const east = normalize(cross([0, 1, 0], d), [1, 0, 0]), north = cross(d, east);
+      const size = i % 11 ? 0.0036 : 0.0068, bright = (0.5 + 0.5 * ((i * 0.7548776662) % 1)) * smooth(clamp((lift - 0.07) / 0.25, 0, 1));
+      const color = mix(tint(Math.asin(lift) * 180 / Math.PI), starColor, bright);
+      const at = (x, y) => [d[0] * 0.98 + east[0] * x + north[0] * y, d[1] * 0.98 + east[1] * x + north[1] * y, d[2] * 0.98 + east[2] * x + north[2] * y];
+      const n = at(0, size * 1.3), s = at(0, -size * 1.3), e = at(size, 0), w = at(-size, 0);
+      push(n, color); push(e, color); push(s, color); push(n, color); push(s, color); push(w, color);
+    }
+    return new Float32Array(out);
+  }
+
   // Conservative homogeneous-frustum test for an axis-aligned local-space box.
   // Missing/invalid bounds stay visible. A straddling box is never clipped away.
   function boxVisible(bounds, matrix) {
@@ -167,6 +204,8 @@
     let ring = [], ringBytes = [], ringIndex = -1;
     // Per-frame scratch: no allocation per bounded mesh / per model.
     const mvpScratch = new Float32Array(16), normalScratch = new Float32Array(9), opaque = [], translucent = [], translucentPool = [];
+    // The sky dome is one buffer, rebuilt only when the scene's sky changes.
+    let skySource = null, skyKey = '', skyBuffer = null, skyCount = 0;
     let width = Math.max(1, finite(canvas.width, 1)), height = Math.max(1, finite(canvas.height, 1));
     let pixelRatio = 1, maxSize = 4096;
 
@@ -175,7 +214,9 @@
         records.forEach(record => gl.deleteBuffer(record.buffer));
         ring.forEach(buffer => { if (buffer) gl.deleteBuffer(buffer); });
         if (program) gl.deleteProgram(program);
+        if (skyBuffer) gl.deleteBuffer(skyBuffer);
       }
+      skySource = null; skyKey = ''; skyBuffer = null; skyCount = 0;
       records = new Set(); staticCache = new WeakMap();
       program = null; locations = null; ring = []; ringBytes = []; ringIndex = -1;
     }
@@ -255,6 +296,35 @@
       notify('onRestored', renderer);
     }
 
+    // The sky follows the camera's rotation only, so it never gets closer. It is
+    // drawn first, without depth or fog, and everything else paints over it.
+    function drawSky(sky, fov, forward, up) {
+      if (sky !== skySource) {
+        const key = JSON.stringify([sky.top, sky.horizon, sky.glow, sky.ground, sky.starColor, sky.stars]);
+        skySource = sky;
+        if (key !== skyKey || !skyBuffer) {
+          const vertices = skyDome(sky);
+          if (!skyBuffer) skyBuffer = gl.createBuffer();
+          if (!skyBuffer) return;
+          gl.bindBuffer(gl.ARRAY_BUFFER, skyBuffer); gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+          skyKey = key; skyCount = vertices.length / 9;
+        }
+      }
+      if (!skyBuffer) return;
+      gl.bindBuffer(gl.ARRAY_BUFFER, skyBuffer);
+      gl.vertexAttribPointer(locations.aPosition, 3, gl.FLOAT, false, 36, 0);
+      gl.vertexAttribPointer(locations.aNormal, 3, gl.FLOAT, false, 36, 12);
+      gl.vertexAttribPointer(locations.aColor, 3, gl.FLOAT, false, 36, 24);
+      gl.uniformMatrix4fv(locations.uViewProjection, false, multiply(perspective(fov, width / height, 0.1, 10), lookAt([0, 0, 0], forward, up)));
+      gl.uniform3fv(locations.uEye, [0, 0, 0]); gl.uniform2f(locations.uFogRange, 1e6, 1e6 + 1);
+      gl.uniform1f(locations.uEmissive, 1); gl.uniform1f(locations.uOpacity, 1);
+      gl.uniform1f(locations.uSoftShadow, 0); gl.uniform1f(locations.uTailFade, 0);
+      gl.uniformMatrix4fv(locations.uModel, false, IDENTITY); gl.uniformMatrix3fv(locations.uNormal, false, IDENTITY_NORMAL);
+      gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+      gl.drawArrays(gl.TRIANGLES, 0, skyCount);
+      gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+    }
+
     function draw(scene) {
       if (state !== 'ready') return false;
       if (typeof gl.isContextLost === 'function' && gl.isContextLost()) { lost(); return false; }
@@ -274,6 +344,8 @@
         gl.clearColor(clamp(background[0], 0, 1), clamp(background[1], 0, 1), clamp(background[2], 0, 1), 1);
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
         gl.useProgram(program);
+        const forward=normalize(target.map((n,i)=>n-eye[i]),[0,0,-1]);
+        if (scene.sky) drawSky(scene.sky, fov, forward, camera.up);
         gl.uniformMatrix4fv(locations.uViewProjection, false, vp);
         gl.uniform3fv(locations.uEye, eye); gl.uniform3fv(locations.uFogColor, fogColor);
         gl.uniform2f(locations.uFogRange, fogNear, fogFar);
@@ -282,7 +354,6 @@
         // Sort the small effects list far-to-near in view space so roster order
         // cannot make a farther hull erase a nearer translucent effect.
         opaque.length = 0; translucent.length = 0;
-        const forward=normalize(target.map((n,i)=>n-eye[i]),[0,0,-1]);
         const isTransparent=mesh=>clamp(finite(mesh.opacity,1),0,1)<1 || mesh.softShadow===true || mesh.tailFade===true;
         const depth=mesh=>{
           const lo=mesh.bounds?.min,hi=mesh.bounds?.max,
@@ -392,5 +463,5 @@
     return renderer;
   }
 
-  return { perspective, lookAt, multiply, project, cameraFrame, boxVisible, create, STREAM_RING, streamCapacity, nextStreamSlot };
+  return { perspective, lookAt, multiply, project, cameraFrame, boxVisible, skyDome, create, STREAM_RING, streamCapacity, nextStreamSlot };
 });
