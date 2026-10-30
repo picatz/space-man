@@ -270,27 +270,28 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
 }
 .arena-root[data-spectating=true] .arena-player-out{cursor:default}
 `;
-  // Phone portrait: the scoreboard is one row of compact chips (name, damage,
-  // lives) so the stage below it stays clear. Boss rows keep their own layout.
+  // Phone portrait: the scoreboard is one row of compact chips (your avatar,
+  // name, role, damage, lives) so the stage below it stays clear. Boss rows
+  // keep their own layout.
   const CHIP_STYLES = `
 @media(max-width:650px) and (min-height:520px){
 .arena-root .arena-hud-top{margin-bottom:8px}
 .arena-root[data-screen] .arena-roster{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);grid-template-columns:none;gap:6px;max-width:none;margin:0}
 .arena-root[data-screen] .arena-roster:has([data-boss=true]){grid-auto-flow:row;grid-template-columns:repeat(4,minmax(0,1fr))}
-.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]){display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name name" "damage lives";align-items:end;gap:1px 4px;min-width:0;max-width:none;min-height:44px;box-sizing:border-box;padding:5px 7px 6px;border-radius:9px;border-top-width:3px}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]){display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"pic name name" "tag tag tag" "damage damage lives";align-items:end;gap:1px 0;min-width:0;max-width:none;min-height:44px;box-sizing:border-box;padding:5px 7px 6px;border-radius:9px;border-top-width:3px}
 .arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-player-info{display:contents}
-.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) :is(.arena-player-portrait,.arena-player-tag){display:none!important}
-.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-player-name{grid-area:name;font-size:calc(10px * var(--ui-scale, 1));line-height:1.2}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]):not([data-you=true]) .arena-player-portrait{display:none!important}
+.arena-root[data-screen] .arena-roster .arena-player-card[data-you=true] .arena-player-portrait{display:block!important;grid-area:pic;width:15px;height:19px;flex:none;margin:0 4px 0 0;align-self:center}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-player-tag{grid-area:tag;font-size:calc(9px * var(--ui-scale, 1));line-height:1.25;min-width:0}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-player-name{grid-area:name;font-size:calc(10px * var(--ui-scale, 1));line-height:1.2;align-self:center}
 .arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-damage{grid-area:damage;font-size:18px;min-width:0;text-align:left}
 .arena-root[data-screen] .arena-roster .arena-player-out:not([data-boss=true]) .arena-damage{font-size:13px}
 .arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-stocks{grid-area:lives;justify-self:end;margin:0 0 3px;font-size:calc(9px * var(--ui-scale, 1));letter-spacing:0;white-space:nowrap}
-.arena-root[data-screen] .arena-roster .arena-player-card[data-you=true] .arena-player-name:after{content:'YOU';flex:none;font:800 calc(9px * var(--ui-scale, 1))/1 system-ui,sans-serif;letter-spacing:.04em;color:#071522;background:#EAF7FF;border-radius:4px;padding:2px 3px}
 .arena-root[data-screen] .arena-roster .arena-player-card[data-watching=true]{border:1.5px solid #EAF7FF;border-top:3px solid var(--fighter);background:#1A2C40}
 .arena-root[data-screen] .arena-roster .arena-player-card[data-watching=true]:after{content:'';position:absolute;left:50%;bottom:-6px;width:10px;height:10px;background:#EAF7FF;transform:translateX(-50%) rotate(45deg);border-radius:2px}
 }
-/* The narrowest phones: YOU replaces your own name, and damage steps down a size. */
+/* The narrowest phones: damage steps down a size. */
 @media(max-width:360px) and (min-height:520px){
-.arena-root[data-screen] .arena-roster .arena-player-card[data-you=true] .arena-player-name-text{display:none}
 .arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]){padding:5px 5px 6px}
 .arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-damage{font-size:15px}
 }
