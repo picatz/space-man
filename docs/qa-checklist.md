@@ -16,6 +16,9 @@ Together, the wardrobe and records at 390x844, 768x1024 and 1280x800, and fails 
 - horizontal page overflow (including a mobile browser widening its layout to fit content),
 - a control extending past the left or right edge (outside a horizontal scroller),
 - a control covered by fixed or sticky chrome even after it is scrolled into view.
+- a control or line of copy (card names, labels, captions) hidden behind a sticky footer or header
+  when it is scrolled to either edge of its scroller, where keyboard focus and the last swipe leave it
+  (WCAG 2.2 SC 2.4.11). Prefer a real flex footer under a scrolling body over a sticky overlay.
 
 Add a screen to `screens` when you add one. A known failure goes in `KNOWN` with the issue to fix;
 it runs as a todo until the fix lands, then remove the entry. Never add an entry to get green.

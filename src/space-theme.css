@@ -765,7 +765,7 @@ body.gamepad-active .race-root [data-for=key] { display: none; }
 }
 @media (max-width: 480px) {
   .race-root .race-track { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; min-height: 0; padding: 8px 10px; }
-  .race-root .race-track canvas { width: 100%; height: 44px; flex: 0 0 44px; }
+  .race-root .race-track canvas { width: 100%; height: 44px; flex: 0 0 44px; object-fit: contain; }
   .race-root .race-track > span { min-width: 0; display: block; }
   .race-root .race-track small, .race-root .race-track strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .race-root .race-track small { letter-spacing: .08em; }
