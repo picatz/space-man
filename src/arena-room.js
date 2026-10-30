@@ -15,7 +15,8 @@
       if(!votes&&social)votes=social.createRoomVotes({net,host:()=>!!host,roster,myP:()=>info().myP,myRole:()=>info().role,isLobby:()=>lobbyNow(client.current),isOver:()=>overNow(client.current),blocked:()=>!active||!!connection||!!(opts.canStart&&!opts.canStart()),changed,delay:opts.autoStartDelayMs,autoStart:kind=>{if(opts.onAutoStart)opts.onAutoStart(kind);}});
       return votes;
     }
-    function status(){return{active,busy,error,closedReason,connection,host:!!host,info:info(),roster:roster(),current:client.current,stale:active&&!host&&now()-lastReceived>1500,votes:active&&votes?votes.status():null};}
+    function joinText(){const j=busy&&net.joinStatus?net.joinStatus():null;return j?j.text:'';}
+    function status(){return{active,busy,error,closedReason,connection,host:!!host,info:info(),roster:roster(),current:client.current,stale:active&&!host&&now()-lastReceived>1500,joinText:joinText(),votes:active&&votes?votes.status():null};}
     function changed(){if(opts.onChange)opts.onChange(status());}
     function present(snapshot){
       const s=sim.snapshot(snapshot.state),rows=roster(),local=info(),myP=local.myP;
@@ -43,6 +44,7 @@
       ensureVotes();
       off=net.onEvent((event,data)=>{
         if(!active&&!busy)return;
+        if(event==='join-progress'){changed();return;}
         if(event==='emote'){if(votes&&data&&social.kindOf(data.id))votes.onSignal(data.p,data.id);return;}
         if(votes&&data&&(event==='leave'||event==='kick'||event==='banned'||event==='join'))votes.drop(data.p);
         if(event==='arena-data'){

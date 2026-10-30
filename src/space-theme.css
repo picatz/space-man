@@ -727,3 +727,27 @@ body.gamepad-active .race-root [data-for=key] { display: none; }
   .race-root .race-setup .race-track-list { flex: 1 1 auto; max-height: none; grid-auto-rows: minmax(84px, 1fr); }
   .race-root .race-track canvas { width: 108px; height: 66px; flex-basis: 108px; }
 }
+/* Flight deck: one tucked-away row; camera and audio open on demand. */
+.race-root .race-preferences { padding: 0; }
+.race-root .race-dialog .race-preferences > .race-deck-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; padding: 0 16px; cursor: pointer; list-style: none; font: 750 calc(12px * var(--ui-scale, 1))/1.3 var(--sm-font-body); color: var(--sm-copy); }
+.race-root .race-deck-summary::-webkit-details-marker { display: none; }
+.race-root .race-deck-status { color: #8fb0c4; font-weight: 600; font-size: calc(11px * var(--ui-scale, 1)); text-align: right; }
+.race-root .race-preferences[open] > .race-deck-summary { border-bottom: 1px solid var(--sm-line); margin-bottom: 8px; }
+.race-root .race-preferences > :not(summary) { margin-left: 16px; margin-right: 16px; }
+.race-root .race-preferences > :last-child { margin-bottom: 14px; }
+.race-root .race-deck-summary .race-deck-status { margin-left: auto; }
+.race-root .race-deck-summary .race-deck-title { flex: 0 0 auto; }
+/* Phones: no nested scroller, evenly sized cards, and no dead gap under CPU pace. */
+@media (max-width: 760px) {
+  .race-root .race-setup .race-track-list { max-height: none; overflow: visible; }
+  .race-root .race-options { margin-bottom: 0; }
+  .race-root .race-track-description { min-height: 0; margin: 10px 0 12px; }
+}
+@media (max-width: 480px) {
+  .race-root .race-track { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; min-height: 0; padding: 8px 10px; }
+  .race-root .race-track canvas { width: 100%; height: 44px; flex: 0 0 44px; }
+  .race-root .race-track > span { min-width: 0; display: block; }
+  .race-root .race-track small, .race-root .race-track strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .race-root .race-track small { letter-spacing: .08em; }
+  .race-root .race-track strong { font-size: 12px; margin-top: 2px; }
+}

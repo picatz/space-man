@@ -792,7 +792,7 @@
       roomLeave.textContent = status.busy ? 'Cancel connecting' : status.host ? 'Close arena room' : 'Leave arena room';
       // Friends still queued while the host sits in the lobby means the format is full (a Duel seats two).
       const queued = status.active && status.host && status.current && status.current.status === 'lobby' ? status.roster.filter(r => r.waiting).length + (selections.format === 'duel' ? Math.max(0, status.info.players - 2) : 0) : 0;
-      roomHint.textContent = status.error || status.closedReason || (status.busy ? 'Connecting to your arena… You can cancel below.' : status.connection || (status.stale ? 'Waiting for host · controls released' : status.active ? (status.host ? (queued ? queued + (queued === 1 ? ' friend is' : ' friends are') + ' waiting for a seat. Pick Free-for-all or Teams so everyone plays.' : 'You host the match. Keep this tab open; stepping away pauses everyone.') : (status.info.waiting ? 'You are up next. The host seats you when this match ends.' : 'The host sets the match. Join during a round to play from the next lobby.')) : 'Up to 4 friends + 4 spectators. Empty fighter slots get CPUs.'));
+      roomHint.textContent = status.error || status.closedReason || (status.busy ? (status.joinText || 'Connecting to your arena…') + ' You can cancel below.' : status.connection || (status.stale ? 'Waiting for host · controls released' : status.active ? (status.host ? (queued ? queued + (queued === 1 ? ' friend is' : ' friends are') + ' waiting for a seat. Pick Free-for-all or Teams so everyone plays.' : 'You host the match. Keep this tab open; stepping away pauses everyone.') : (status.info.waiting ? 'You are up next. The host seats you when this match ends.' : 'The host sets the match. Join during a round to play from the next lobby.')) : 'Up to 4 friends + 4 spectators. Empty fighter slots get CPUs.'));
       if (status.active) {
         const upNext = r => !!(r.spectator && (r.waiting || (r.you && status.info.waiting)));
         const signature = JSON.stringify([status.roster.map(r => [r.p,r.role,r.callsign,upNext(r)]),status.info.role,selections.format,status.current && status.current.status,status.current && status.current.seats.map(s => [s.p,s.actorId]),status.votes && status.current && status.current.status === 'lobby' ? status.votes.ready.missing : null]);
@@ -1033,55 +1033,39 @@
       }
     }
     function actorColor(actor) { if (local2 && !actor.boss) return LOCAL_COLORS[(actor.id - 1) % 4]; return state && state.format === 'teams' ? (actor.team === 0 ? '#38E1FF' : '#FFB454') : (actor.color || PLAYER_COLORS[(actor.id - 1) % 4]); }
+    const arenaPose = {};   // reused per actor: the rig reads it synchronously
     function astronaut(g, actor, x, y, tick, hero) {
       const art = root.SpaceManArt, color = hero ? (actor.color || '#38E1FF') : actorColor(actor);
       const appearance = actor.appearance || ((hero || actor.id === localActor()?.id) && typeof opts.appearance === 'function' ? opts.appearance() : null);
-      const style = art.characterStyle(appearance, color), P = style.palette;
       const aw = actor.w || 24, ah = actor.h || 34, boss = actor.boss;
       const w = 24, h = 34, scale = boss ? Math.min(aw / w, ah / h) : 1;
-      const speed = Math.min(Math.abs(actor.vx || 0) / 6.4, 1), phase = tick * .25 + actor.id;
-      const bob = calm() ? 0 : Math.sin(phase * 2) * speed * .9;
       const facing = actor.facing || 1, attack = actor.attackTicks || 0;
-      g.save(); g.translate(x + aw / 2, y + ah - h * scale / 2);
-      if (!calm()) g.rotate(clamp((actor.vx || 0) * .012, -.10, .10));
       const land = !hero && !calm() ? feel.land[actor.id] : null, squash = land ? arena.feel.landSquash(land.age, land.impact) : null;
-      // Squash and stretch pivot on the feet so a landing never sinks the sprite.
-      if (squash) { g.translate(0, h * scale / 2); g.scale(squash.x, squash.y); g.translate(0, -h * scale / 2); }
-      g.scale(facing * scale, scale);
+      // Glow, invulnerability ring and dash streak sit around the body, in the sprite's centre frame.
+      g.save(); g.translate(x + aw / 2, y + ah - h * scale / 2); g.scale(facing * scale, scale);
       if (!saver()) { g.globalAlpha = actor.invulnerable ? .42 : .18; g.drawImage(art.glow(32, color, .03), -30, -31, 60, 60); g.globalAlpha = 1; }
       if (actor.invulnerable > 0) { g.strokeStyle = color; g.lineWidth = 1; g.globalAlpha = .6; g.beginPath(); g.ellipse(0, -1, w * .82, h * .7, 0, 0, TAU); g.stroke(); g.globalAlpha = 1; }
       if (actor.dashTicks > 0) {
         g.fillStyle = color; g.globalAlpha = .45; rounded(g, -w * 1.7, -5, w * 1.1, 5, 2); g.fill(); g.globalAlpha = .22; rounded(g, -w * 2.1, 3, w * 1.4, 4, 2); g.fill(); g.globalAlpha = 1;
       }
-      const stride = actor.onGround ? Math.sin(phase) * speed * 4 : actor.vy < 0 ? -3 : 2;
-      const limb = art.limbKit(g, style);
-      limb.tube(3, 7, 4 + stride / 2, 11.5, 5 + stride, h / 2 - 1.5, P.legB, P.legB, 3.8); limb.boot(5 + stride, h / 2 - 1.5, true);
-      limb.tube(-3, 7, -4 - stride / 2, 11.5, -5 - stride, h / 2 - 1.5, P.legF, P.legB, 3.8); limb.boot(-5 - stride, h / 2 - 1.5, false);
-      g.fillStyle = '#415D78'; g.strokeStyle = P.legB; g.lineWidth = .7; rounded(g, -w / 2 - 3, -6 + bob, 8, 15, 3); g.fill(); g.stroke(); g.fillStyle = color; g.fillRect(-w / 2 - 2, -3 + bob, 3, 6);
-      limb.arm(-6.6, -.4 + bob, -11.8, 2.6 + bob, -11.6, 7.4 + bob, true);
-      g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; rounded(g, -8, -5 + bob, 16, 17, 6); g.fill(); g.stroke();
-      art.suitDetails(g, 0, bob, style);
-      if (boss) {
-        // Broader armored shoulders and three charge cells distinguish the
-        // guardian at a glance; authored encounter telegraphs live outside it.
-        g.fillStyle = P.legB; rounded(g, -12, -4 + bob, 6, 7, 2); g.fill(); rounded(g, 6, -4 + bob, 6, 7, 2); g.fill();
-        g.fillStyle = color; for (let i = 0; i < 3; i++) g.fillRect(-3 + i * 2.5, 7 + bob, 1.5, 2);
-      }
-      // The near arm carries the pulse emitter: the shared sleeve, with the team-coloured emitter in place of the mitten.
-      // It paints before the helmet so no shoulder or sleeve ever shows over the visor.
-      const ex = attack ? 14 : 10, ey = attack ? -3 + bob : 5 + bob;
-      limb.tube(6.6, -.4 + bob, 11.8, attack ? -2 + bob : 2.6 + bob, ex, ey, P.arm, P.legB, 3.1);
-      g.fillStyle = P.suit; g.strokeStyle = P.legB; g.lineWidth = .7; g.beginPath(); g.arc(6.6, -.4 + bob, 2.4, 0, TAU); g.fill(); g.stroke();
-      g.fillStyle = color; rounded(g, attack ? 12 : 7, attack ? -7 + bob : 2 + bob, 7, 7, 2.5); g.fill(); g.fillStyle = '#E7FEFF'; g.beginPath(); g.arc(attack ? 16 : 11, attack ? -3.5 + bob : 5.5 + bob, 1.7, 0, TAU); g.fill();
-      const reaction = art.arenaMood(actor);
-      const face = { tick: hero ? 20 : tick, id: actor.id, calm: calm() || hero,
-        mood: reaction, lookX: Math.min(speed, .8), lookY: actor.onGround ? 0 : (actor.vy < 0 ? -.5 : .5) };
-      const helmetStyle = boss?.phase === 'charging' ? { ...style, appearance: { ...style.appearance, eyes: 'determined' } } : style;
-      art.characterHelmet(g, 0, -9 + bob, helmetStyle, face);
+      g.restore();
+      // The body is the shared Spacefarer rig: the Run's IK stride (locked to world x so
+      // feet never skate), lean, feet-anchored landing squash, and the pulse as a real
+      // windup, jab and settle. A held charge keeps the windup; a stun is a flinch.
+      const total = actor.attackCharge > 0 ? arena.constants.CHARGED_TICKS : arena.constants.ATTACK_TICKS;
+      const action = actor.stun > 0 ? 'hit' : attack > 0 || actor.charge > 0 ? 'attack' : 'run';
+      const actionT = action === 'hit' ? Math.min(1, actor.stun / 12) : attack > 0 ? 1 - attack / total : .08;
+      const pose = art.spacefarerPose({ t: tick / 60, x, vx: actor.vx, vy: actor.vy, onGround: actor.onGround, facing, maxSpeed: 6.4,
+        action, actionT, squash, calm: calm() || hero, gear: 'emitter', accent: color, tick: hero ? 20 : tick, id: actor.id,
+        mood: art.arenaMood(actor) || null }, arenaPose);
+      pose.aimY = Number.isFinite(actor.attackDirY) ? actor.attackDirY : 0;
+      pose.gearColor = color; pose.guardian = !!boss;
+      pose.eyes = boss?.phase === 'charging' ? 'determined' : null;
+      if (calm()) pose.lean = 0;
+      art.drawSpacefarer(g, x + aw / 2, y + ah, scale, appearance, pose);
       // Victim hit flash: a brief additive white silhouette over the body.
       const flash = !hero && !calm() ? feel.flash[actor.id] : 0;
-      if (flash > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = .6 * Math.min(1, flash / 5); g.fillStyle = '#FFFFFF'; g.beginPath(); g.ellipse(0, 0, 11, 16, 0, 0, TAU); g.fill(); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; }
-      g.restore();
+      if (flash > 0) { g.save(); g.translate(x + aw / 2, y + ah - h * scale / 2); g.scale(scale, scale); g.globalCompositeOperation = 'lighter'; g.globalAlpha = .6 * Math.min(1, flash / 5); g.fillStyle = '#FFFFFF'; g.beginPath(); g.ellipse(0, 0, 11, 16, 0, 0, TAU); g.fill(); g.restore(); }
     }
     function paintPreview(preview, a) {
       const g = preview.getContext('2d'), t = themeFor(a); g.fillStyle = a.theme.skyBottom || t.sky; g.fillRect(0, 0, preview.width, preview.height);

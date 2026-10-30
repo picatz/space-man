@@ -118,6 +118,38 @@ The crew is drawn by `SpaceManArt` (2D) and `SpaceManRaceScene.actorMeshes`
 - The visor is dark navy with exactly two LED eyes and one highlight that never
   crosses the eyes.
 
+### The Spacefarer rig
+
+Every 2D astronaut is painted by one rig, `SpaceManArt.drawSpacefarer(c, x, y, scale,
+appearance, pose)`. Home, wardrobe, tiles and the Arena lobby reach it through
+`drawAvatar`; Arena matches call it directly; the Endless Run's `drawPlayer` is the
+reference it matches and will move onto it next. No mode adds its own body.
+
+- **Frame.** The Run sprite's units: a 24 x 34 hitbox, origin at the body centre,
+  helmet r 11 at y -9, boots on y 16. `(x, y)` is the ground contact point under
+  the hitbox; `scale` multiplies the frame.
+- **Parts, back to front.** IK legs (far, then near) with boots; the pack; the far
+  arm; the 16 x 16 torso with `suitDetails`; the near arm and its gear; the head
+  group (optional halo sprite, helmet, hat, frost). The helmet is always last.
+- **Proportions.** Arms are the Run's capsules: shoulders at (+-5, -6) under the
+  neck seal, near arm 10 long, far arm 12, about 4 units wide with the outline.
+  Legs are two 6.4 segments from hips at (+-4, 4).
+- **Palette slots.** `suit` torso and helmet, `arm` near sleeve, `legF` near leg,
+  `legB` outline, shade, far limbs and cuffs, `pack` canister, `visTop`/`visBot`
+  blaster. The crew or team `accent` lights the cuffs, boots, pack vent, chest panel
+  and helmet ring; it never recolours the suit.
+- **Gear.** `blaster` (the Run's light pistol), `emitter` (the Arena pulse puck in
+  `gearColor`) or none (mittens). Gear sits grip-at-origin in the near glove.
+- **Poses.** A plain object: facing, speed, runCycle, onGround, air, lean,
+  squashX/Y (feet-anchored on the ground), crouch, pop, launch, and the actions
+  wave, aim, attack (windup, jab, settle by progress), hit, celebrate, hang and
+  recoil. `SpaceManArt.spacefarerPose(input, out)` derives one from speed, vx, vy,
+  onGround, time, world x (stride-locked feet) and a named action, so a surface gets
+  Run motion without animation code. `calm` (reduced motion) keeps information
+  (stride, squash, actions) and drops time-driven sway, breath and wave flutter.
+- **Rules.** Pure and deterministic for a pose: no `Math.random`, no blur or filter,
+  no per-frame gradients (glows are cached sprites passed in as `halo`).
+
 **Outline and shading.** A thin outline (0.6 to 0.8 units) in the suit's shade
 color `legB`, never black. Far-side limbs use the shade color plus a soft dark wash
 so they recede. One shading step only: base and shade. No gradients on the body.

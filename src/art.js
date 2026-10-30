@@ -6,7 +6,7 @@
    cached sprites), no Math.random (the renderer must never perturb the run). */
 (function (root) {
   'use strict';
-  if (typeof module === 'object' && module.exports) require('./cosmetics.js');
+  if (typeof module === 'object' && module.exports) { require('./cosmetics.js'); require('./anim.js'); }
   const { TAU, clamp } = typeof module === 'object' && module.exports ? require('./math.js') : root.SpaceManMath;
 
   // The palette — mirrors the CSS custom properties on :root.
@@ -480,33 +480,249 @@ const characterHats = {
     };
     return { tube, cuff, mitten, boot, arm };
   }
+
+  /* ---- The Spacefarer rig -------------------------------------------------------
+     The one astronaut every 2D surface draws (docs/art-direction.md, "The Spacefarer
+     rig"). Frame: the Endless Run sprite's canvas units, a 24x34 hitbox with the
+     origin at the body centre, helmet r 11 at y -9 and boots on y 16. (x, y) is the
+     ground contact point under the hitbox and scale multiplies the frame, so a
+     caller never needs to know the body's insides. Arm angles are radians from
+     hanging-down, + toward facing (the Run's convention). Pure: no state, no
+     Math.random, no gradients or blur; the same pose always paints the same calls,
+     and the helmet always paints last so no limb or shoulder can cross the visor. */
+  const RIG_LEG_IN = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 16, hipY: 4, hipX: 4, len: 6.4 };
+  const RIG_LEG = new Float32Array(12), RIG_HAND = new Float32Array(3);
+  const RIG_FAR = 'rgba(8,18,40,.2)', RIG_SLATE = '#415D78';
+  const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const mix = (a, b, t) => a + (b - a) * t;
+  // anim.js loads after art.js in the page; the rig only needs it at draw time.
+  // The fallback is the same two-bone solve, kept for a page that loads art.js alone.
+  function rigLegs(o, out) {
+    const anim = root.SpaceManAnim;
+    if (anim && anim.legPose) return anim.legPose(o, out);
+    for (let leg = 0; leg < 2; leg++) {
+      const hx = leg ? -o.hipX : o.hipX, i = leg * 6, fx = hx * .7, fy = o.groundY;
+      out[i] = hx; out[i + 1] = o.hipY; out[i + 2] = (hx + fx) / 2 + 1.5; out[i + 3] = (o.hipY + fy) / 2; out[i + 4] = fx; out[i + 5] = fy;
+    }
+    return out;
+  }
+  // One sleeve: a quadratic capsule (the Run's armCapsule) with a hairline edge.
+  // Writes the hand point and the wrist angle (limb frame, +y away from the body).
+  function rigSleeve(c, sx, sy, ang, len, bend, fill, edge, far) {
+    const hx = sx + Math.sin(ang) * len, hy = sy + Math.cos(ang) * len;
+    const mx = (sx + hx) / 2 + Math.cos(ang) * bend, my = (sy + hy) / 2 - Math.sin(ang) * bend;
+    c.lineCap = 'round'; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(mx, my, hx, hy);
+    c.strokeStyle = edge; c.lineWidth = 4.1; c.stroke();
+    c.strokeStyle = fill; c.lineWidth = 2.8; c.stroke();
+    if (far) { c.strokeStyle = RIG_FAR; c.stroke(); }
+    RIG_HAND[0] = hx; RIG_HAND[1] = hy; RIG_HAND[2] = Math.atan2(hy - my, hx - mx) - Math.PI / 2;
+    return RIG_HAND;
+  }
+  function rigCuff(c, P, accent, x, y, angle) {
+    c.save(); c.translate(x, y); c.rotate(angle);
+    c.fillStyle = P.legB; rrPath(c, -2, -1.9, 4, 2.2, 1); c.fill();
+    c.fillStyle = accent; c.fillRect(-1.6, -1.25, 3.2, .7);
+    c.restore();
+  }
+  function rigMitten(c, P, x, y, angle, far) {
+    c.save(); c.translate(x, y); c.rotate(angle);
+    c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
+    c.beginPath(); c.ellipse(0, 1.4, 2, 2.2, 0, 0, TAU); c.fill(); c.stroke();
+    c.beginPath(); c.ellipse(1.7, 1, .75, 1.2, .4, 0, TAU); c.fill(); c.stroke();   // thumb toward facing
+    if (far) { c.fillStyle = RIG_FAR; c.beginPath(); c.ellipse(0, 1.4, 2, 2.2, 0, 0, TAU); c.fill(); }
+    c.restore();
+  }
+  function rigBoot(c, P, accent, x, y, angle, far) {
+    c.save(); c.translate(x, y); c.rotate(angle);
+    c.fillStyle = P.legB; rrPath(c, -2.2, -2.4, 4.4, 2, .9); c.fill();
+    c.fillStyle = accent; c.fillRect(-1.7, -1.8, 3.4, .6);
+    c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
+    c.beginPath(); c.ellipse(1, -.1, 2.9, 1.6, 0, 0, TAU); c.fill(); c.stroke();
+    if (far) { c.fillStyle = RIG_FAR; c.beginPath(); c.ellipse(1, -.1, 2.9, 1.6, 0, 0, TAU); c.fill(); }
+    c.restore();
+  }
+  // Gear sits grip-at-origin, emitter toward +x, so the hand is the recoil pivot.
+  function rigGear(c, P, gear, color) {
+    if (gear === 'emitter') {   // Arena pulse emitter: a team-coloured puck with a bright core
+      c.fillStyle = color; rrPath(c, -1.2, -5, 7.4, 6.6, 2.4); c.fill();
+      c.fillStyle = RIG_SLATE; c.fillRect(-1.2, -1.6, 2.4, 2.4);
+      c.fillStyle = '#E7FEFF'; c.beginPath(); c.arc(3.2, -1.7, 1.6, 0, TAU); c.fill();
+    } else {                    // Run light blaster, ~7x4: visBot body, visTop emitter
+      c.fillStyle = P.visBot; rrPath(c, -2, -3.6, 7, 3.4, 1.4); c.fill(); c.fillRect(-1.4, -.8, 2.2, 2.2);
+      c.fillStyle = P.visTop; c.fillRect(5, -3.3, 1.6, 1.5);
+    }
+  }
+
+  /* Derive a full pose from a few plain inputs, so a surface gets Run-quality motion
+     without animation code of its own. o: { t (s), x (world px, for stride-locked
+     feet), vx, vy, onGround, facing, maxSpeed, runCycle, action ('idle' | 'run' |
+     'wave' | 'attack' | 'hit' | 'celebrate' | 'hang' | 'aim'), actionT (0..1:
+     progress for attack, strength otherwise), squash {x, y}, crouch, lookX, lookY,
+     mood, gear, accent, calm, tick, id }. Writes into out (reused) and returns it. */
+  function spacefarerPose(o = {}, out = {}) {
+    const onGround = o.onGround !== false, facing = o.facing < 0 ? -1 : 1, vx = num(o.vx, 0), vy = num(o.vy, 0), t = num(o.t, 0);
+    const speed = onGround ? clamp(Math.abs(vx) / num(o.maxSpeed, 6.8), 0, 1) : 0;
+    const sq = o.squash || null, sqY = sq ? num(sq.y, 1) : 1, act = o.action || 'idle', k = clamp(num(o.actionT, 1), 0, 1);
+    out.facing = facing; out.t = t; out.calm = !!o.calm; out.onGround = onGround; out.speed = speed;
+    // Stride-locked: the Run advances its cycle 0.06 rad per pixel run, so feet never skate.
+    out.runCycle = num(o.runCycle, Number.isFinite(o.x) ? o.x * .06 * facing : t * speed * 24);
+    out.air = onGround ? 0 : clamp(vy / 6, -1, 1);
+    out.lean = clamp(vx * .018, -.14, .14) + (onGround ? 0 : clamp(vy * .008, -.1, .12));
+    out.squashX = sq ? num(sq.x, 1) : 1; out.squashY = sqY;
+    out.crouch = num(o.crouch, onGround ? clamp((1 - sqY) * 5, 0, 1.2) : 0);
+    out.wave = act === 'wave' ? k : 0; out.attack = act === 'attack' ? k : 0; out.hit = act === 'hit' ? k : 0;
+    out.celebrate = act === 'celebrate' ? k : 0; out.aim = act === 'aim' ? k : 0;
+    out.hang = act === 'hang'; out.hangT = out.hang ? t : 0;
+    out.lookX = num(o.lookX, Math.min(speed, .8)); out.lookY = num(o.lookY, onGround ? 0 : vy < 0 ? -.5 : .5);
+    out.mood = o.mood ?? null; out.gear = o.gear || null; out.accent = o.accent || null;
+    out.tick = num(o.tick, t * 60 + 20); out.id = o.id || 0;
+    return out;
+  }
+
+  /* Paint the Spacefarer. pose fields (all optional): facing, t, calm, onGround,
+     speed 0..1, runCycle, air (-1 rising..1 falling), lean (rad, world), squashX/Y
+     (feet-anchored on the ground, centred in the air), crouch 0..1.2, launch, pop
+     (stomp stretch), nearArm/farArm (override angles), wave, recoil, attack
+     (0..1 progress), aimY (-1 up..1 down), hit, celebrate, hang, hangT, headTilt,
+     lookX, lookY, mood, lid, tick, id, eyes (expression override), gear ('blaster'
+     | 'emitter' | null), gearColor, gearSpin, gearFx(c) (hand frame), accent, palette,
+     guardian, halo (cached sprite behind the helmet), frost, hat (false hides it). */
+  function drawSpacefarer(c, x, y, scale, appearance, pose = {}) {
+    let style = characterStyle(appearance, pose.accent, pose.palette);
+    if (pose.eyes && pose.eyes !== style.appearance.eyes) style = { ...style, appearance: { ...style.appearance, eyes: pose.eyes } };
+    const P = style.palette, accent = style.accent, calm = !!pose.calm, t = calm ? 0 : num(pose.t, 0);
+    const facing = pose.facing < 0 ? -1 : 1, onGround = pose.onGround !== false, hang = !!pose.hang;
+    const speed = onGround ? clamp(num(pose.speed, 0), 0, 1) : 0, cyc = num(pose.runCycle, 0), air = clamp(num(pose.air, 0), -1, 1);
+    const wave = clamp(num(pose.wave, 0), 0, 1), hit = clamp(num(pose.hit, 0), 0, 1), cheer = clamp(num(pose.celebrate, 0), 0, 1);
+    const aim = clamp(num(pose.aim, 0), 0, 1), rec = clamp(num(pose.recoil, 0), 0, 1), atk = clamp(num(pose.attack, 0), 0, 1);
+    const crouch = clamp(num(pose.crouch, 0), 0, 1.2) * (calm ? .5 : 1), pop = calm ? 0 : clamp(num(pose.pop, 0), 0, 1);
+    // Attack phases match the Arena pulse (4 windup, 7 active of 26 ticks): pull back, jab, settle.
+    const windup = atk > 0 && atk < .15 ? atk / .15 : 0, jab = atk >= .15 ? (atk < .45 ? 1 : 1 - (atk - .45) / .55) : 0;
+    const strike = jab * jab * (3 - 2 * jab);
+    const idle = onGround && !hang && speed < .05 && !wave && !hit && !cheer && !atk;
+    const breathe = idle && !calm ? Math.sin(t * 3) * .03 : 0;
+    let sx = (num(pose.squashX, 1) + breathe) * (1 - pop * .1) * (1 - hit * .04), sy = (num(pose.squashY, 1) - breathe) * (1 + pop * .14) * (1 + hit * .05);
+    if (cheer && !calm) sy *= 1 + Math.sin(t * 12) * .04 * cheer;
+    const lean = num(pose.lean, 0) + facing * (strike * .09 - windup * .05 - hit * .2);
+    c.save(); c.translate(x, y); c.scale(scale, scale);
+    // Feet-anchored squash on the ground (a landing compresses toward the slab);
+    // centre pivot in the air, where stretch reads along the jump.
+    if (onGround) { c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); c.translate(0, -17); }
+    else { c.translate(0, -17); c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); }
+    // Torso bob twice per stride, plus the crouch sinking the upper body while the knees take it.
+    const bob = (onGround ? Math.sin(cyc * 2) * 1.5 * Math.min(1, speed * 3) : 0) + crouch * 2.6;
+
+    // Legs: two-bone IK (the Run's solver), far leg in the shade tone first.
+    const L = RIG_LEG_IN;
+    L.runCycle = cyc; L.speed = speed; L.onGround = onGround; L.pose = air * 4; L.hang = hang; L.hangT = num(pose.hangT, 0);
+    L.launch = calm ? 0 : clamp(num(pose.launch, 0), 0, 1); L.stomp = pop; L.hipY = 4 + crouch * 2.6;
+    const leg = rigLegs(L, RIG_LEG);
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    for (let k = 0; k < 2; k++) {
+      const i = k * 6, far = k === 0;
+      c.beginPath(); c.moveTo(leg[i], leg[i + 1]); c.lineTo(leg[i + 2], leg[i + 3]); c.lineTo(leg[i + 4], leg[i + 5]);
+      c.strokeStyle = P.legB; c.lineWidth = 4.7; c.stroke();
+      c.strokeStyle = far ? P.legB : P.legF; c.lineWidth = 3.4; c.stroke();
+      if (far) { c.strokeStyle = RIG_FAR; c.stroke(); }
+      // Boots stay flat on the ground and point their toes when the foot trails in the air.
+      const toe = onGround && !hang ? 0 : clamp((leg[i + 2] - leg[i + 4]) * .12, -.35, .6);
+      rigBoot(c, P, accent, leg[i + 4], leg[i + 5], toe, far);
+    }
+
+    // Pack: the Run's warm canister in the suit's pack colour, with the Arena's slate
+    // vent carrying the crew/team accent, and a nozzle for the jetpack read.
+    c.fillStyle = P.pack; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -13, -6 + bob, 7, 16, 3); c.fill(); c.stroke();
+    c.fillStyle = RIG_SLATE; rrPath(c, -12.3, -3 + bob, 2.8, 8.5, 1.2); c.fill(); rrPath(c, -12, 9.4 + bob, 4.2, 2, .8); c.fill();
+    c.fillStyle = accent; c.fillRect(-11.8, -2 + bob, 1.8, 5);
+
+    // Arms: the Run's angles. Unarmed hands swing in counter-phase; an armed near hand
+    // carries its gear level at speed. Air poses reach forward-up and trail back.
+    const sway = calm ? 0 : Math.sin(t * TAU * .8) * .07;
+    let nearA, farA, reach = 10;
+    if (onGround) {
+      const swing = Math.sin(cyc + Math.PI) * .49 * speed;
+      nearA = pose.gear ? mix(.55 + sway, 1.35 + swing * .2, speed) : mix(.55 + sway, .5 - swing * 1.1, speed);
+      farA = mix(-.5 + sway, -.7 + swing, speed);
+    } else {
+      const fall = air * .5 + .5;
+      nearA = mix(2.18, 1.75, fall); farA = mix(-.85, -.55, fall);
+    }
+    const dip = Math.max(0, 1 - num(pose.squashY, 1)) * 1.1;
+    nearA -= dip; farA -= dip;
+    if (aim) nearA = mix(nearA, 1.72, aim);
+    // Hello: the sleeve stretches a little so the mitten clears the helmet rim.
+    if (wave) { nearA = mix(nearA, 2.35 + (calm ? 0 : Math.sin(t * 14) * .26), wave); reach += wave * 2.6; }
+    if (atk) {
+      nearA = mix(mix(nearA, .25, windup), 1.62 - clamp(num(pose.aimY, 0), -1, 1) * .55, strike);
+      farA = mix(farA, -.75, Math.max(strike, windup * .6)); reach += strike * 2;
+    }
+    if (cheer) {
+      const pump = calm ? 0 : Math.sin(t * 10) * .14;
+      // A fist pump in front of the visor line and the far arm flung back: both read
+      // beside the head, where a straight overhead V would vanish behind the helmet.
+      nearA = mix(nearA, 2.3 + pump, cheer); farA = mix(farA, -2.05 - pump, cheer); reach += cheer * 2.4;
+    }
+    if (hit) { nearA = mix(nearA, 1.95, hit); farA = mix(farA, -1.25, hit); }   // flinch: guard up, far arm thrown back
+    if (hang) { const s = Math.sin(num(pose.hangT, 0) * 6) * .07; nearA = 2.78 + s; farA = 2.62 + s; }
+    nearA += rec * .24;
+    if (Number.isFinite(pose.nearArm)) nearA = pose.nearArm;
+    if (Number.isFinite(pose.farArm)) farA = pose.farArm;
+
+    // Far arm behind the torso (shade tone + wash), from the pack-side shoulder.
+    const fh = rigSleeve(c, -5, -6 + bob, farA, 12, -1.8, P.legB, P.legB, true);
+    const fhx = fh[0], fhy = fh[1], fw = fh[2];
+    rigCuff(c, P, accent, fhx, fhy, fw); rigMitten(c, P, fhx, fhy, fw, true);
+
+    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -8, -4 + bob, 16, 16, 6); c.fill(); c.stroke();
+    suitDetails(c, 0, bob, style);
+    if (pose.guardian) {
+      // Guardian plating and three charge cells; the helmet still paints over the shoulders.
+      c.fillStyle = P.legB; rrPath(c, -12, -4 + bob, 6, 7, 2); c.fill(); rrPath(c, 6, -4 + bob, 6, 7, 2); c.fill();
+      c.fillStyle = accent; for (let i = 0; i < 3; i++) c.fillRect(-3 + i * 2.5, 9.6 + bob, 1.5, 1.6);
+    }
+
+    // Near arm over the torso. The shoulder sits under the neck seal, inside the
+    // helmet's footprint, so the helmet (painted next) always covers the joint.
+    const nh = rigSleeve(c, 5, -6 + bob, nearA, reach, -1.8, P.arm, P.legB, false);
+    const nhx = nh[0], nhy = nh[1], nw = nh[2];
+    rigCuff(c, P, accent, nhx, nhy, nw);
+    if (pose.gear) {
+      const gearA = (1.35 - nearA) * .65 - rec * .2 + num(pose.gearSpin, 0);
+      c.save(); c.translate(nhx, nhy); c.rotate(gearA);
+      rigGear(c, P, pose.gear, pose.gearColor || accent);
+      c.fillStyle = P.arm; c.strokeStyle = P.legB; c.lineWidth = .6; c.beginPath(); c.arc(0, .4, 2.1, 0, TAU); c.fill(); c.stroke();   // glove wraps the grip
+      if (typeof pose.gearFx === 'function') pose.gearFx(c);
+      c.restore();
+    } else rigMitten(c, P, nhx, nhy, nw, false);
+
+    // Head group, last: rides a softened bob, nods with the crouch and tips with a hit.
+    const tilt = calm ? 0 : num(pose.headTilt, 0);
+    c.save(); c.translate(0, -9 + bob * .35 + crouch * .8); c.rotate(tilt - pop * .08 - hit * .16 + strike * .05);
+    if (pose.halo) c.drawImage(pose.halo, -20, -12, 40, 40);
+    const mood = pose.mood ?? (hit > .2 ? 2 : cheer > .2 || wave > .15 ? 1 : 0);
+    characterHelmet(c, 0, 0, style, { mood, lid: num(pose.lid, 0), lookX: num(pose.lookX, 0), lookY: num(pose.lookY, 0),
+      tick: num(pose.tick, 20), id: pose.id || 0, calm }, pose.hat !== false);
+    if (pose.frost) {   // seasonal frost creeping in from the visor edge
+      c.strokeStyle = 'rgba(228,248,255,0.9)'; c.lineWidth = 1.4; c.lineCap = 'round';
+      c.beginPath(); c.ellipse(1, 0, 6.6, 5.6, 0, -2.8, -1.15); c.stroke();
+      c.beginPath(); c.ellipse(1, 0, 6.6, 5.6, 0, .7, 1.4); c.stroke();
+      c.fillStyle = 'rgba(228,248,255,0.85)'; c.fillRect(-3.4, -4.8, 1.2, 1.2); c.fillRect(4.2, 3, 1, 1);
+    }
+    c.restore();
+    c.restore();
+  }
   // Full appearance preview with no dependency on a running game or player.
   // x/y is the slot center; size is the total headwear-to-boot height in pixels.
   function drawAvatar(c, x, y, size, appearance, { time = 0, reduceMotion = false, ship = false, greeting = 0, lookX = 0, lookY = 0, mood = null, blaster = null } = {}) {
-    const style = characterStyle(appearance), P = style.palette;
-    const bob = reduceMotion ? 0 : Math.sin(time * 2) * .65;
-    const hello = reduceMotion ? 0 : clamp(greeting, 0, 1);
-    c.save(); c.translate(x, y + size * .13); c.scale(size / 54, size / 54);
-    if (ship) { c.scale(.78, .78); c.rotate(-.18); hoverpod(c, style, { tick: time * 60 + 20, calm: reduceMotion, hero: true }); c.restore(); return; }
+    const k = size / 54, hello = reduceMotion ? 0 : clamp(greeting, 0, 1);
+    c.save(); c.translate(x, y + size * .13); c.scale(k, k);
+    if (ship) { const style = characterStyle(appearance); c.scale(.78, .78); c.rotate(-.18); hoverpod(c, style, { tick: time * 60 + 20, calm: reduceMotion, hero: true }); c.restore(); return; }
     c.fillStyle = '#0005'; c.beginPath(); c.ellipse(0, 18, 12, 2.8, 0, 0, TAU); c.fill();
-    const { tube, boot, arm } = limbKit(c, style);
-    // Legs: far leg first, then the near one, each ending in the same boot.
-    tube(3, 7, 4, 11.5, 5, 15.8, P.legB, P.legB, 3.8); boot(5, 15.8, true);
-    tube(-3, 7, -4, 11.5, -5, 15.8, P.legF, P.legB, 3.8); boot(-5, 15.8, false);
-    c.fillStyle = '#415D78'; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -14, -5 + bob, 7, 15, 3); c.fill(); c.stroke();
-    c.fillStyle = style.accent; c.fillRect(-13, -2 + bob, 2, 6);
-    // The far arm hangs behind the torso from the pack side, mirroring the near arm.
-    arm(-6.6, -.4 + bob, -11.8, 2.6 + bob, -11.6, 7.4 + bob, true);
-    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -8, -5 + bob, 16, 17, 6); c.fill(); c.stroke(); suitDetails(c, 0, bob, style);
-    // The near shoulder starts beneath the neck seal. The helmet paints last, so no
-    // limb can pop over the face during idle or the brief equip greeting.
-    if (blaster) {
-      // Pulse blaster raised: the sleeve reaches forward and the emitter sits where the mitten would, as in a match.
-      tube(6.4, .9 + bob, 11.8, -1.6 + bob, 14, -3 + bob, P.arm, P.legB, 3.1);
-      c.fillStyle = blaster; rrPath(c, 12, -7 + bob, 7, 7, 2.5); c.fill(); c.fillStyle = '#E7FEFF'; c.beginPath(); c.arc(16, -3.5 + bob, 1.7, 0, TAU); c.fill();
-    } else arm(6.4, .9 + bob, 11.8 + hello * 1.2, 2.6 + bob - hello * 5, 11.6 + hello * 2.6, 7.4 + bob - hello * 14, false, false);
-    characterHelmet(c, 0, -9 + bob, style, { tick: time * 60 + 20, calm: reduceMotion, mood: mood ?? (hello > .15 ? 1 : 0), lookX, lookY });
     c.restore();
+    // The same rig as Arena and the Run: an idle stance that breathes and sways, the
+    // greeting as a real wave, and a raised pulse emitter when the lobby asks for one.
+    drawSpacefarer(c, x, y + size * .13 + 17 * k, k, appearance, { t: time, calm: reduceMotion, onGround: true, speed: 0,
+      wave: hello, aim: blaster ? 1 : 0, gear: blaster ? 'emitter' : null, gearColor: blaster, mood, lookX, lookY, tick: time * 60 + 20 });
   }
 
   // Screen-space identity is deliberately independent of suit/team color.
@@ -818,7 +1034,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { REGIONS, circuitSky, lantern, pumpkin, homeSeason, seasonBackdrop, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { REGIONS, circuitSky, lantern, pumpkin, homeSeason, seasonBackdrop, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, spacefarerPose, drawSpacefarer, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

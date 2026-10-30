@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="Space Man" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" id="faviconLink" href="favicon.png" />
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-v2.png" />
 <style>
   @font-face {
     font-family: 'Orbitron';
@@ -7969,7 +7969,7 @@ function rejectMessage(e) {
   if (/expired/i.test(m)) return 'This invite has expired.';
   if (/scan|right/i.test(m)) return "This link doesn't look right.";
   if (/full/i.test(m)) return 'This room is full.';
-  if (/did not admit/i.test(m)) return "The host didn't answer. If they refreshed or closed the tab the room has ended, so ask for a fresh link. If joins need approval, ask them to let you in.";
+  if (/didn't answer|did not admit/i.test(m)) return "The host's game didn't answer. Ask them to open Space Man and check the room is still open, then try again. If joins need approval, ask them to let you in.";
   if (/admit|declined|cancelled/i.test(m)) return m;
   return 'relay unreachable — the room may have ended, or your network blocks it. A host can supply a custom relay in Settings.';
 }
@@ -7998,16 +7998,15 @@ async function acceptInvite(role) {
   $('btnJoinNotNow').textContent = 'Cancel';
   const req = ++joinReq;
   joining = true;
-  setJoinState(resuming ? 'Getting your seat back…' : 'Connecting to the relay…');
-  let waitHint = 0;
+  setJoinState(resuming ? 'Getting your seat back…' : 'Connecting…');
+  // The network layer names what the join waits for (relay, host, a host whose phone locked…) in the same
+  // words every mode uses; a reload back into a seat says so instead.
   const off = NET.onEvent ? netProgress((e, d) => {
-    if (req !== joinReq) return;
-    if (e === 'join-progress' && d.stage === 'hello') {
-      setJoinState(resuming ? 'Connected. Asking the host for your seat…' : 'Connected. Waiting for the host to let you in…');
-      clearTimeout(waitHint);   // a quiet host is the common case (a backgrounded tab): say so, and say what to do
-      waitHint = setTimeout(() => { if (req === joinReq && joining) setJoinState('Still waiting for the host… they may be away. You can keep waiting, or cancel and try again.'); }, 8000);
-    }
-    if (e === 'join-progress' && d.stage === 'relay') setJoinState('Connecting to the relay…');
+    if (req !== joinReq || e !== 'join-progress') return;
+    const st = NET.joinStatus ? NET.joinStatus() : null;
+    if (resuming && d.stage === 'hello') setJoinState('Connected. Asking the host for your seat…');
+    else if (resuming && d.stage === 'relay') setJoinState('Getting your seat back…');
+    else if (st) setJoinState(st.text);
   }) : null;
   try {
     await NET.acceptJoin(joinPayload, { ...netIdentity(), role, resumeKey: resumeKey || undefined });
@@ -8023,7 +8022,6 @@ async function acceptInvite(role) {
     if (resuming) { clearResume(); $('joinTitle').textContent = 'Join This Run Together?'; }
     setJoinState(isOffline() ? OFFLINE_TOGETHER : (resuming ? 'Your room is no longer there — the host may have closed it. You can try the invite again.' : rejectMessage(e)));
   } finally {
-    clearTimeout(waitHint);
     if (off) off();
     if (req === joinReq) { joining = false; $('btnJoinNotNow').textContent = 'Not Now'; }
   }
