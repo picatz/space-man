@@ -495,10 +495,31 @@ const characterHats = {
      hanging-down, + toward facing (the Run's convention). Pure: no state, no
      Math.random, no gradients or blur; the same pose always paints the same calls,
      and the helmet always paints last so no limb or shoulder can cross the visor. */
-  // tuck 3.4 (the Run's is 5.5): the rig's chunkier boots stay visible under the torso in a jump.
-  const RIG_LEG_IN = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 15.2, hipY: 4, hipX: 4.6, len: 6.4, tuck: 3.4 };
+  /* The Spacefarer model sheet, in rig units (docs/art-direction.md, "Model sheet").
+     Every joint pivot, limb width and proportion lives here so the body is designed
+     in one place and a future character can pass its own sheet as pose.model.
+     Ground is y 17 under the hitbox; the helmet (r 11 at y -9) is the identity and
+     never changes. Read top to bottom it is roughly 6 parts head, 3 torso, 2 leg, 1
+     boot: a big-headed mascot whose legs still show between torso and boots. */
+  const SPACEFARER = Object.freeze({
+    ground: 17, edge: 1.3, line: .7,
+    head: Object.freeze({ y: -9, r: 11 }),
+    torso: Object.freeze({ x: -8.5, y: -4, w: 17, h: 14, r: 7 }),
+    pack: Object.freeze({ x: -13, y: -6, w: 7, h: 16, r: 3 }),
+    // Shoulders sit just inside the helmet rim so the sleeve leaves the body at shoulder
+    // height; rest angles hang the near arm clear of the torso and bring the far mitten
+    // out in front of the pack, so both hands read in the idle silhouette.
+    shoulder: Object.freeze({ x: 5, y: -.5, farX: -5 }),
+    arm: Object.freeze({ w: 3.2, seg: 5.6, farSeg: 5.6, reach: 10.2, farReach: 8.8, rest: .5, farRest: -.36, runFold: 2.2 }),
+    // Hips hide inside the torso; standing legs are straight (hip to ankle = 2 segments).
+    hip: Object.freeze({ x: 3.6, y: 4.6 }),
+    leg: Object.freeze({ w: 4.2, seg: 5.25, ankle: 15, tuck: 3 }),
+    hand: Object.freeze({ rx: 2.1, ry: 2.2 }),
+    boot: Object.freeze({ heel: 2.5, toe: 3.6, top: 2.1, sole: 1.7 }),
+  });
+  const RIG_LEG_IN = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 15, hipY: 4.6, hipX: 3.6, len: 5.25, tuck: 3 };
   const RIG_LEG = new Float32Array(12), RIG_HAND = new Float32Array(3);
-  const RIG_FAR = 'rgba(8,18,40,.2)', RIG_SLATE = '#415D78';
+  const RIG_FAR = 'rgba(8,18,40,.1)', RIG_SLATE = '#415D78';
   const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   const mix = (a, b, t) => a + (b - a) * t;
   // anim.js loads after art.js in the page; the rig only needs it at draw time.
@@ -512,69 +533,58 @@ const characterHats = {
     }
     return out;
   }
-  // Limb widths, shared by arms and legs so the whole body reads as one suit: the fill
-  // sits inside a hairline edge, and cuffs, mittens and boot shafts are sized from them.
-  const RIG_ARM_W = 3.7, RIG_LEG_W = 4.5, RIG_EDGE = 1.3;
+  // Far limbs are the same suit in shade, never a different material: their own fill
+  // under a dark wash, with the shared slate-blue edge.
+  function rigShade(c, far) { if (far) { c.fillStyle = RIG_FAR; c.fill(); } }
   // One arm: a two-bone limb (upper arm and forearm, each `seg` long) solved toward a
-  // hand placed `len` from the shoulder along `ang`. The elbow folds to the same side the
-  // Run's capsule bowed (bend < 0: back when hanging, down when reaching forward), so a
-  // short reach reads as a bent elbow instead of a squashed noodle. Writes the hand
-  // point and the wrist angle (limb frame, +y away from the body).
-  function rigArm(c, sx, sy, ang, len, seg, bend, fill, edge, far) {
+  // hand placed `len` from the shoulder along `ang` (radians from hanging down, + toward
+  // facing). The elbow always folds backward and down, like a real arm, so a short
+  // reach reads as a bent elbow. Writes the hand point and the wrist angle.
+  function rigArm(c, M, sx, sy, ang, len, seg, fill, edge, far) {
     const d = clamp(len, 2, seg * 2 - .01);
     const hx = sx + Math.sin(ang) * d, hy = sy + Math.cos(ang) * d;
-    const h = Math.sqrt(Math.max(0, seg * seg - d * d / 4)) * (bend < 0 ? 1 : -1);
+    const h = Math.sqrt(Math.max(0, seg * seg - d * d / 4));
     const ex = (sx + hx) / 2 - Math.cos(ang) * h, ey = (sy + hy) / 2 + Math.sin(ang) * h;
     c.lineCap = 'round'; c.lineJoin = 'round';
     c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.lineTo(hx, hy);
-    c.strokeStyle = edge; c.lineWidth = RIG_ARM_W + RIG_EDGE; c.stroke();
-    c.strokeStyle = fill; c.lineWidth = RIG_ARM_W; c.stroke();
+    c.strokeStyle = edge; c.lineWidth = M.arm.w + M.edge; c.stroke();
+    c.strokeStyle = fill; c.lineWidth = M.arm.w; c.stroke();
     if (far) { c.strokeStyle = RIG_FAR; c.stroke(); }
     RIG_HAND[0] = hx; RIG_HAND[1] = hy; RIG_HAND[2] = Math.atan2(hy - ey, hx - ex) - Math.PI / 2;
     return RIG_HAND;
   }
   // The glove's cuff: a band exactly one sleeve wide, so the forearm runs into it with
   // no step, carrying the accent as a single stripe.
-  function rigCuff(c, P, accent, x, y, angle) {
-    const w = RIG_ARM_W + RIG_EDGE + .5;
+  function rigCuff(c, M, P, accent, x, y, angle) {
+    const w = M.arm.w + M.edge;
     c.save(); c.translate(x, y); c.rotate(angle);
-    c.fillStyle = P.legB; rrPath(c, -w / 2, -1.6, w, 2.2, 1); c.fill();
-    c.fillStyle = accent; c.fillRect(-w / 2 + .6, -.85, w - 1.2, .65);
+    c.fillStyle = P.legB; rrPath(c, -w / 2, -1.5, w, 2, .9); c.fill();
+    c.fillStyle = accent; c.fillRect(-w / 2 + .55, -.8, w - 1.1, .6);
     c.restore();
   }
-  // A mitten: a padded palm a little wider than the cuff (hands read at every scale)
-  // with the thumb tucked in under it toward facing, and one knuckle crease.
-  function rigMitten(c, P, x, y, angle, far, curl = 0) {
+  // A mitten: a padded palm a little wider than the cuff with the thumb tucked under
+  // it toward facing, and one knuckle crease. curl closes it into a fist.
+  function rigMitten(c, M, P, x, y, angle, far, curl = 0) {
+    const rx = M.hand.rx, ry = M.hand.ry - curl * .3;
     c.save(); c.translate(x, y); c.rotate(angle);
-    c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7;
-    c.beginPath(); c.ellipse(1.9, 1.1, .95, 1.45, .55 - curl * .5, 0, TAU); c.fill(); c.stroke();   // thumb
-    c.beginPath(); c.ellipse(0, 1.9, 2.45, 2.55 - curl * .35, 0, 0, TAU); c.fill(); c.stroke();     // palm
-    c.lineWidth = .45; c.beginPath(); c.moveTo(-1.3, 3.2); c.quadraticCurveTo(-.3, 3.8 - curl, .8, 3.3); c.stroke();
-    if (far) { c.fillStyle = RIG_FAR; c.beginPath(); c.ellipse(0, 1.9, 2.45, 2.55, 0, 0, TAU); c.fill(); }
+    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = M.line;
+    c.beginPath(); c.ellipse(rx * .78, ry * .3, rx * .38, ry * .55, .55 - curl * .5, 0, TAU); c.fill(); c.stroke(); rigShade(c, far);   // thumb
+    c.fillStyle = P.suit; c.beginPath(); c.ellipse(0, ry * .55, rx, ry, 0, 0, TAU); c.fill(); c.stroke(); rigShade(c, far);           // palm
+    c.lineWidth = .45; c.beginPath(); c.moveTo(-rx * .55, ry * 1.1); c.quadraticCurveTo(-rx * .1, ry * 1.35 - curl, rx * .35, ry * 1.15); c.stroke();
     c.restore();
   }
-  // A moon boot, origin at the ankle (the IK foot point), sole about 1.7 below it and the
-  // toe toward facing. The shaft is exactly one leg wide and rises above the ankle, so
-  // the shin always ends inside it; a darker sole and a rounded toe give it a front,
-  // and the accent rides the shaft's top band.
-  function rigBoot(c, P, accent, x, y, angle, far) {
-    const sw = RIG_LEG_W + RIG_EDGE, hw = sw / 2;
+  // A moon boot, origin at the ankle (the IK foot point), toe toward facing: a padded
+  // bean with a fully round toe and a tighter heel, wider than the leg so it reads as a
+  // foot, low enough that the shin still shows above it, on a darker sole.
+  function rigBoot(c, M, P, accent, x, y, angle, far) {
+    const B = M.boot, T = B.top, S = B.sole, H = T + S, rt = H / 2, rh = H * .42;
     c.save(); c.translate(x, y); c.rotate(angle);
-    c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7;
-    c.beginPath();
-    c.moveTo(-hw, -1.6); c.quadraticCurveTo(-hw, -2.8, -hw + 1.2, -2.8);   // shaft top, rounded
-    c.lineTo(hw - 1.2, -2.8); c.quadraticCurveTo(hw, -2.8, hw, -1.6);
-    c.lineTo(hw, -1.3);                                           // shaft front
-    c.quadraticCurveTo(hw + .3, -.8, 3, -.75);                    // instep
-    c.quadraticCurveTo(4.5, -.6, 4.5, .45);                       // toe
-    c.quadraticCurveTo(4.5, 1.4, 3.4, 1.4);
-    c.lineTo(-2.2, 1.4);                                          // sole line
-    c.quadraticCurveTo(-hw - .3, 1.4, -hw, -.3);                  // heel
-    c.lineTo(-hw, -1.6);
-    c.closePath(); c.fill(); c.stroke();
-    if (far) { c.fillStyle = RIG_FAR; c.fill(); }
-    c.fillStyle = P.legB; rrPath(c, -hw + .2, .55, 4.3 + hw, .9, .45); c.fill();   // sole
-    c.fillStyle = accent; rrPath(c, -hw + .8, -2.1, sw - 1.6, .6, .3); c.fill();   // accent band round the shaft
+    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = M.line;
+    c.beginPath(); c.moveTo(-B.heel + rh, -T); c.lineTo(B.toe - rt, -T);
+    c.arcTo(B.toe, -T, B.toe, S, rt); c.arcTo(B.toe, S, -B.heel, S, rt);
+    c.arcTo(-B.heel, S, -B.heel, -T, rh); c.arcTo(-B.heel, -T, B.toe, -T, rh); c.closePath();
+    c.fill(); c.stroke(); rigShade(c, far);
+    c.fillStyle = P.legB; rrPath(c, -B.heel + rh * .6, S - 1.05, B.heel + B.toe - rh * .6 - rt * .5, .85, .42); c.fill();   // sole
     c.restore();
   }
   // Gear sits grip-at-origin, emitter toward +x, so the hand is the recoil pivot.
@@ -627,7 +637,7 @@ const characterHats = {
   function drawSpacefarer(c, x, y, scale, appearance, pose = {}) {
     let style = characterStyle(appearance, pose.accent, pose.palette);
     if (pose.eyes && pose.eyes !== style.appearance.eyes) style = { ...style, appearance: { ...style.appearance, eyes: pose.eyes } };
-    const P = style.palette, accent = style.accent, calm = !!pose.calm, t = calm ? 0 : num(pose.t, 0);
+    const P = style.palette, accent = style.accent, calm = !!pose.calm, t = calm ? 0 : num(pose.t, 0), M = pose.model || SPACEFARER;
     const facing = pose.facing < 0 ? -1 : 1, onGround = pose.onGround !== false, hang = !!pose.hang;
     const speed = onGround ? clamp(num(pose.speed, 0), 0, 1) : 0, cyc = num(pose.runCycle, 0), air = clamp(num(pose.air, 0), -1, 1);
     const wave = clamp(num(pose.wave, 0), 0, 1), hit = clamp(num(pose.hit, 0), 0, 1), cheer = clamp(num(pose.celebrate, 0), 0, 1);
@@ -649,8 +659,8 @@ const characterHats = {
     c.save(); c.translate(x, y - hop * scale); c.scale(scale, scale);
     // Feet-anchored squash on the ground (a landing compresses toward the slab);
     // centre pivot in the air, where stretch reads along the jump.
-    if (onGround) { c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); c.translate(0, -17); }
-    else { c.translate(0, -17); c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); }
+    if (onGround) { c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); c.translate(0, -M.ground); }
+    else { c.translate(0, -M.ground); c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); }
     if (typeof pose.frame === 'function') pose.frame(c);   // body frame (origin at the body centre): e.g. a clip
     // Torso bob twice per stride, plus the crouch sinking the upper body while the knees take it.
     const gait = Math.min(1, speed * 3);
@@ -660,11 +670,12 @@ const characterHats = {
     const headBob = (onGround ? Math.sin(cyc * 2 - .8) * 1.5 * gait : 0) * .45 + crouch * 1.7;
     const shift = idle && !calm ? Math.sin(t * 1.4) * .45 : 0, headShift = idle && !calm ? Math.sin(t * 1.4 - .9) * .55 : 0;
 
-    // Legs: two-bone IK (the Run's solver) to the ankle, far leg in the shade tone first.
+    // Legs: two-bone IK (the Run's solver) to the ankle, the far leg first under the shade wash.
     // The boot owns the ankle, so the shin always ends inside its shaft.
     const L = RIG_LEG_IN;
     L.runCycle = cyc; L.speed = speed; L.onGround = onGround; L.pose = air * 4; L.hang = hang; L.hangT = num(pose.hangT, 0);
-    L.launch = calm ? 0 : clamp(num(pose.launch, 0), 0, 1); L.stomp = pop; L.hipY = 4 + crouch * 2.6;
+    L.launch = calm ? 0 : clamp(num(pose.launch, 0), 0, 1); L.stomp = pop; L.hipY = M.hip.y + crouch * 2.6;
+    L.hipX = M.hip.x - crouch * .8;   // a crouch gathers the feet under the hips L.groundY = M.leg.ankle; L.len = M.leg.seg; L.tuck = M.leg.tuck;
     const leg = rigLegs(L, RIG_LEG);
     c.lineCap = 'butt'; c.lineJoin = 'round';   // a flat ankle end hides inside the boot shaft
     for (let k = 0; k < 2; k++) {
@@ -672,20 +683,20 @@ const characterHats = {
       const kx = leg[i + 2], ky = leg[i + 3], ax = leg[i + 4], ay = leg[i + 5], sl = Math.hypot(ax - kx, ay - ky) || 1;
       // The shin stops 1.4 short of the ankle so its flat end never shows past a tilted boot.
       c.beginPath(); c.moveTo(leg[i] + shift * .5, leg[i + 1]); c.lineTo(kx, ky); c.lineTo(ax - (ax - kx) / sl * 1.4, ay - (ay - ky) / sl * 1.4);
-      c.strokeStyle = P.legB; c.lineWidth = RIG_LEG_W + RIG_EDGE; c.stroke();
-      c.strokeStyle = far ? P.legB : P.legF; c.lineWidth = RIG_LEG_W; c.stroke();
+      c.strokeStyle = P.legB; c.lineWidth = M.leg.w + M.edge; c.stroke();
+      c.strokeStyle = P.legF; c.lineWidth = M.leg.w; c.stroke();
       if (far) { c.strokeStyle = RIG_FAR; c.stroke(); }
       // Planted boots stay flat on the slab; in the air (and mid-swing) they follow the
       // shin, toes pointing as the foot trails and lifting as it reaches.
       const shin = Math.atan2(ax - kx, ay - ky);
-      const lifted = hang || !onGround ? 1 : clamp((15.2 - ay) / 3, 0, 1);
-      rigBoot(c, P, accent, ax, ay, clamp(-shin * .7, -.5, .7) * lifted, far);
+      const lifted = hang || !onGround ? 1 : clamp((M.leg.ankle - ay) / 3, 0, 1);
+      rigBoot(c, M, P, accent, ax, ay, clamp(-shin * .7, -.5, .7) * lifted - (onGround && !hang ? lifted * .3 : 0), far);
     }
 
     c.save(); c.translate(shift, 0);   // upper body: pack, arms and torso ride the weight shift
     // Pack: the Run's warm canister in the suit's pack colour, with the Arena's slate
     // vent carrying the crew/team accent, and a nozzle for the jetpack read.
-    c.fillStyle = P.pack; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -13, -6 + bob, 7, 16, 3); c.fill(); c.stroke();
+    c.fillStyle = P.pack; c.strokeStyle = P.legB; c.lineWidth = M.line; rrPath(c, M.pack.x, M.pack.y + bob, M.pack.w, M.pack.h, M.pack.r); c.fill(); c.stroke();
     c.fillStyle = RIG_SLATE; rrPath(c, -12.3, -3 + bob, 2.8, 8.5, 1.2); c.fill(); rrPath(c, -12, 9.4 + bob, 4.2, 2, .8); c.fill();
     c.fillStyle = accent; c.fillRect(-11.8, -2 + bob, 1.8, 5);
 
@@ -693,17 +704,19 @@ const characterHats = {
     // as the pace picks up. Unarmed hands swing in counter-phase; an armed near hand
     // carries its gear level at speed. Air poses reach forward-up and trail back.
     const sway = calm ? 0 : Math.sin(t * TAU * .8 - .5) * .07;
-    let nearA, farA, reach = 11.2 - 2.8 * speed, farReach = 12.6 - 3.2 * speed;
+    const A = M.arm;
+    let nearA, farA, reach = A.reach - A.runFold * speed, farReach = A.farReach - A.runFold * 1.15 * speed;
     if (onGround) {
       const swing = Math.sin(cyc + Math.PI - .35) * .49 * speed;
-      nearA = pose.gear ? mix(.55 + sway, 1.35 + swing * .2, speed) : mix(.3 + sway, .5 - swing * 1.1, speed);
-      farA = mix(-.28 + sway, -.7 + swing, speed);
+      nearA = pose.gear ? mix(.55 + sway, 1.35 + swing * .2, speed) : mix(A.rest + sway, .5 - swing * 1.1, speed);
+      farA = mix(A.farRest + sway, -.15 + swing * 1.1, speed);
     } else {
       const fall = air * .5 + .5;
       nearA = mix(2.18, 1.75, fall); farA = mix(-.85, -.55, fall);
     }
     const dip = Math.max(0, 1 - num(pose.squashY, 1)) * 1.1;
     nearA -= dip; farA -= dip;
+    if (crouch && onGround && !hang) { nearA += crouch * .7; reach -= crouch; }   // the near hand braces forward on a landing
     if (aim) { nearA = mix(nearA, 1.72, aim); reach = mix(reach, 10.4, aim); }
     // Hello: the sleeve straightens so the mitten clears the helmet rim.
     if (wave) { nearA = mix(nearA, 2.35 + (calm ? 0 : Math.sin(t * 14) * .26), wave); reach += wave * 2.6; }
@@ -713,12 +726,12 @@ const characterHats = {
     }
     if (cheer) {
       const pump = calm ? 0 : Math.sin(t * 12 - .6) * .16;
-      // A fist pump in front of the visor line and the far arm flung back: both read
-      // beside the head, where a straight overhead V would vanish behind the helmet.
-      nearA = mix(nearA, 2.3 + pump, cheer); farA = mix(farA, -2.05 - pump, cheer); reach += cheer * 2.4; farReach += cheer;
+      // A fist pump in front of the visor line and the far fist raised behind, elbow bent:
+      // both read beside the head, where a straight overhead V would vanish behind the helmet.
+      nearA = mix(nearA, 2.3 + pump, cheer); farA = mix(farA, -2 - pump, cheer); reach += cheer * 2.4; farReach += cheer * .6;
     }
-    if (hit) { nearA = mix(nearA, 1.95, hit); farA = mix(farA, -1.25, hit); }   // flinch: guard up, far arm thrown back
-    if (hang) { const s = Math.sin(num(pose.hangT, 0) * 6) * .07; nearA = 2.78 + s; farA = 2.62 + s; reach = 11; farReach = 12.5; }
+    if (hit) { nearA = mix(nearA, 2.2, hit); farA = mix(farA, -1.6, hit); reach = mix(reach, 9.6, hit); }   // flinch: both arms thrown up and out
+    if (hang) { const s = Math.sin(num(pose.hangT, 0) * 6) * .07; nearA = 2.78 + s; farA = 2.62 + s; reach = A.seg * 2; farReach = A.farSeg * 2; }
     nearA += rec * .24;
     const blend = clamp(num(pose.armBlend, 0), 0, 1);   // a caller's authored arm pose, eased over the motion
     if (blend) { nearA = mix(nearA, num(pose.nearArmTo, nearA), blend); farA = mix(farA, num(pose.farArmTo, farA), blend); }
@@ -727,24 +740,25 @@ const characterHats = {
     // Hands overlap the arm: the wrist flutters a beat behind a wave, and a fist curls in a cheer.
     const flutter = wave && !calm ? Math.sin(t * 14 - 1.1) * .4 * wave : 0;
 
-    // Far arm behind the torso (shade tone + wash), from the pack-side shoulder.
-    const fh = rigArm(c, -6, -2.5 + bob, farA, farReach, 6.6, -1, P.legB, P.legB, true);
+    // Far arm behind the torso, from the pack-side shoulder: the same sleeve in shade.
+    const S = M.shoulder, T = M.torso;
+    const fh = rigArm(c, M, S.farX, S.y + bob, farA, farReach, A.farSeg, P.arm, P.legB, true);
     const fhx = fh[0], fhy = fh[1], fw = fh[2];
-    rigCuff(c, P, accent, fhx, fhy, fw); rigMitten(c, P, fhx, fhy, fw, true, cheer * .8);
+    rigCuff(c, M, P, accent, fhx, fhy, fw); rigMitten(c, M, P, fhx, fhy, fw, true, cheer * .8);
 
-    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -8, -4 + bob, 16, 15, 6); c.fill(); c.stroke();
+    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = M.line; rrPath(c, T.x, T.y + bob, T.w, T.h, T.r); c.fill(); c.stroke();
     suitDetails(c, 0, bob, style);
     if (pose.guardian) {
       // Guardian plating and three charge cells; the helmet still paints over the shoulders.
       c.fillStyle = P.legB; rrPath(c, -12, -4 + bob, 6, 7, 2); c.fill(); rrPath(c, 6, -4 + bob, 6, 7, 2); c.fill();
-      c.fillStyle = accent; for (let i = 0; i < 3; i++) c.fillRect(-3 + i * 2.5, 9.2 + bob, 1.5, 1.6);
+      c.fillStyle = accent; for (let i = 0; i < 3; i++) c.fillRect(-3 + i * 2.5, 8.2 + bob, 1.5, 1.6);
     }
 
     // Near arm over the torso. The shoulder sits under the neck seal, inside the
     // helmet's footprint, so the helmet (painted next) always covers the joint.
-    const nh = rigArm(c, 6, -2.5 + bob, nearA, reach, 6, -1, P.arm, P.legB, false);
+    const nh = rigArm(c, M, S.x, S.y + bob, nearA, reach, A.seg, P.arm, P.legB, false);
     const nhx = nh[0], nhy = nh[1], nw = nh[2] + flutter;
-    rigCuff(c, P, accent, nhx, nhy, nw);
+    rigCuff(c, M, P, accent, nhx, nhy, nw);
     if (pose.gear) {
       const gearA = (1.35 - nearA) * .65 - rec * .2 + num(pose.gearSpin, 0);
       c.save(); c.translate(nhx, nhy); c.rotate(gearA);
@@ -752,15 +766,15 @@ const characterHats = {
       c.fillStyle = P.arm; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(0, .4, 2.4, 0, TAU); c.fill(); c.stroke();   // glove wraps the grip
       if (typeof pose.gearFx === 'function') pose.gearFx(c);
       c.restore();
-    } else rigMitten(c, P, nhx, nhy, nw, false, cheer);
+    } else rigMitten(c, M, P, nhx, nhy, nw, false, cheer);
     c.restore();   // upper body
 
     // Head group, last: rides a softened, later bob, nods with the crouch and tips with a hit.
     // The comms aerial trails the motion (follow-through), lagging lean, stride and hop.
-    const tilt = calm ? 0 : num(pose.headTilt, 0);
+    const tilt = (calm ? 0 : num(pose.headTilt, 0)) + (idle ? .045 : 0);
     const aerial = calm ? 0 : clamp(-num(pose.lean, 0) * facing * 1.6 + Math.sin(cyc * 2 - 1.6) * .14 * gait - air * .3
       + (idle ? Math.sin(t * 1.4 - 1.8) * .08 : 0) + (cheer ? Math.cos(t * 12) * .2 * cheer : 0) + crouch * .25, -.6, .6);
-    c.save(); c.translate(headShift, -9 + headBob);
+    c.save(); c.translate(headShift, M.head.y + headBob);
     c.rotate(tilt - pop * .08 - hit * .16 + strike * .05 + headShift * .03);
     if (pose.halo) c.drawImage(pose.halo, -20, -12, 40, 40);
     const mood = pose.mood ?? (hit > .2 ? 2 : cheer > .2 || wave > .15 ? 1 : 0);
@@ -1098,7 +1112,7 @@ const characterHats = {
     outElastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * (TAU / 3)) + 1),
   };
 
-  const api = { REGIONS, circuitSky, lantern, pumpkin, homeSeason, seasonBackdrop, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, spacefarerPose, drawSpacefarer, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
+  const api = { REGIONS, circuitSky, lantern, pumpkin, homeSeason, seasonBackdrop, circuitCanyonShelves, circuitMesaRings, circuitConnections, circuitPalette, circuitGlyphs, circuitStructures, C, ROLE, biome, ridgeProfile, glow, contactShadow, eyes, ease, makeCanvas, characterStyle, facePose, arenaMood, visorEyes, characterHelmet, suitDetails, characterHat, characterHats, hoverHullOutline, hoverpod, limbKit, SPACEFARER, spacefarerPose, drawSpacefarer, drawAvatar, identityLayout, identityMarkerLayout, identityCue };
   root.SpaceManArt = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);

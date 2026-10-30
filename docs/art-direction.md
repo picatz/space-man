@@ -132,15 +132,28 @@ the `gearFx`, `armBlend` and `frame` hooks). No mode adds its own body.
 - **Parts, back to front.** IK legs (far, then near) with boots; the pack; the far
   arm; the 16 x 16 torso with `suitDetails`; the near arm and its gear; the head
   group (optional halo sprite, helmet, hat, frost). The helmet is always last.
-- **Proportions.** Arms are two-bone limbs (upper arm and forearm, 6 each near, 6.6
-  far) from shoulders at (+-6, -2.5), just inside the helmet rim, so a sleeve leaves
-  the body at shoulder height rather than the neck and a short reach folds the
-  elbow. Legs are two 6.4 segments from hips at (+-4.6, 4) to the ankle at y 15.2.
-  One limb language: sleeves 3.7 and legs 4.5 wide inside a 1.3 hairline edge;
-  cuffs are exactly one sleeve wide and boot shafts one leg wide, so wrists and
-  ankles have no step. Mittens are a padded palm a little wider than the cuff with
-  a tucked thumb; boots are rounded moon boots (shaft, toe cap, darker sole) whose
-  shaft swallows the shin end. The torso is 16 x 15.
+- **Model sheet.** Every pivot, width and proportion lives in one frozen object,
+  `SpaceManArt.SPACEFARER`; the rig reads nothing else, and a future character
+  passes its own sheet as `pose.model`. Read top to bottom the pilot is about 6
+  parts helmet, 3 torso, 2 shin, 1 boot: a big-headed mascot whose legs still
+  show. The rules the sheet encodes:
+  - Helmet r 11 at y -9 is the identity and never changes; it paints last.
+  - Torso 17 x 14 (r 7) from y -4, so a soft waist flares into the hips.
+  - Shoulders at (5, -0.5) / (-5, -0.5), just inside the helmet rim: sleeves leave
+    the body at shoulder height, never from the chin. Arms are two-bone (5.6 per
+    segment), the elbow always folds back and down. At rest the near mitten
+    hangs at the hip and the far mitten shows in front of the pack, so both hands
+    read in the idle silhouette.
+  - Hips at (+-3.6, 4.6) inside the torso; legs are two 5.25 segments to the
+    ankle at y 15, so a standing pilot's legs are straight, not bowed.
+  - Boots are padded beans (heel 2.5, toe 3.6, 3.8 tall) with a round toe and a
+    darker sole; a lifted foot tips its toe up.
+  - Limbs are 3.2 (arm) and 4.2 (leg) wide inside a 1.3 edge; cuffs are one sleeve
+    wide and the mitten overlaps them. Far limbs are the same suit under a light
+    0.1 shade wash, never a different (grey) material.
+  - Review any change on the 14-pose sheet against `main` (idle x2, wave, run x3,
+    rise, fall, land, celebrate, attack, hit, aim, hang) at 5x and at gameplay
+    size, plus the home hero; it ships only if no pose gets worse.
 - **Motion.** Overlap and follow-through come from phase, not state: the head bobs
   a beat after the torso, arms swing a beat behind the legs and fold at the elbow
   as pace rises, an idle pilot shifts weight with the helmet trailing the hips, the

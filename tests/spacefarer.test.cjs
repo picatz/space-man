@@ -148,7 +148,8 @@ test('limbs read as one suit: sleeves, legs, cuffs and boots share widths', () =
   const widths = calls => calls.filter(c => c[0] === '=lineWidth').map(c => c[1]);
   const w = widths(draw({ t: .4 }));
   // Legs then arms: an outline one hairline wider than each fill, arms a touch slimmer than legs.
-  for (const fill of [4.5, 3.7]) { assert.ok(w.includes(fill)); assert.ok(w.some(v => Math.abs(v - fill - 1.3) < 1e-9)); }
+  const M = Art.SPACEFARER;
+  for (const fill of [M.leg.w, M.arm.w]) { assert.ok(w.includes(fill)); assert.ok(w.some(v => Math.abs(v - fill - M.edge) < 1e-9)); }
   // A running arm folds at the elbow: the sleeve is a two-segment polyline, not a single curve.
   const run = draw({ speed: 1, runCycle: 1 });
   assert.equal(run.filter(c => c[0] === 'quadraticCurveTo' && c.length === 5 && Math.abs(c[3]) > 8).length, 0, 'no single-curve sleeves');
@@ -159,4 +160,14 @@ test('the comms aerial trails motion as follow-through', () => {
   const tip = pose => { const calls = draw(pose), i = calls.findIndex(c => c[0] === '=lineWidth' && c[1] === 1.4); return calls.slice(i).find(c => c[0] === 'quadraticCurveTo'); };
   assert.deepEqual(tip({ calm: true }), tip({ calm: true, lean: .14 }), 'calm keeps the aerial still');
   assert.notDeepEqual(tip({ t: 1 }), tip({ t: 1, lean: .14, speed: 1, runCycle: 1 }), 'a running pilot whips its aerial');
+});
+
+test('the model sheet stands the pilot up straight: legs reach the ground unbent, boots under the hips', () => {
+  const M = Art.SPACEFARER, stand = M.leg.ankle - M.hip.y;
+  assert.ok(stand <= M.leg.seg * 2 && stand > M.leg.seg * 2 - .4, 'standing legs are nearly straight (' + stand + ' of ' + M.leg.seg * 2 + ')');
+  assert.ok(M.leg.ankle + M.boot.sole <= M.ground + .1 && M.leg.ankle + M.boot.sole > M.ground - .6, 'soles meet the ground');
+  assert.ok(M.leg.ankle - M.boot.top > M.torso.y + M.torso.h + 2, 'shins show between torso and boots');
+  // A different sheet (a future character) paints through the same rig.
+  const tall = Object.freeze({ ...M, leg: Object.freeze({ ...M.leg, seg: 6 }), hip: Object.freeze({ ...M.hip, y: 3.2 }) });
+  assert.notDeepEqual(draw({ model: tall }), draw({}));
 });
