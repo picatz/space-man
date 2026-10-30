@@ -79,6 +79,15 @@ failing one once before assuming a real regression, but never skip or loosen a t
 - Prefer a test that fails first. New behavior gets a `tests/*.test.cjs` case; UI-only behavior gets
   a browser test.
 
+## Adding a mode
+
+`docs/universe.md` has the bar every mode clears and the roadmap. In short: register it in `src/modes.js`
+(name, region, seats, wire mode, home and Play Together button ids), add its home card and hub pick, and
+open it from a lazy overlay like `src/table-ui.js`. Turn-based games are a rules object in
+`src/tabletop.js` and get Play Together for free through `src/table-room.js` (new game = new wire id, not
+a new transport mode). Test rules as pure functions, rooms over the harness relay, and add the lobby and
+match screens to `layout-qa`. Have a separate reviewer critique the screenshots before merge.
+
 ## Git and PRs
 
 Work on a feature branch, open a PR against `main`, and wait for CI and the AI review to finish before
