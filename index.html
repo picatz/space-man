@@ -666,16 +666,18 @@
   /* Room card. On short (landscape) viewports the card is taller than the
      screen — cap it and scroll internally so title/link/roster stay reachable. */
   #ovRoom .panel { max-height: calc(100dvh - 32px); overflow-y: auto; }
-  .room-top { display: flex; gap: 14px; align-items: flex-start; margin: 4px 0 10px; text-align: left; }
-  /* QR bumped to a scannable 245px (5px/module at the invite's V6 size) —
-     phone cameras couldn't lock the old 168px grid. Integer-module-friendly. */
-  .room-qr { flex: 0 0 auto; width: 245px; height: 245px; border-radius: 10px; background: #fff; image-rendering: pixelated; }
-  /* On narrow phones the 245px code stacks above the invite so neither is
-     squeezed; side-by-side returns as soon as there's room. */
-  @media (max-width: 430px) {
-    .room-top { flex-direction: column; align-items: center; }
-    .room-invite { width: 100%; }
-  }
+  /* Room lobby (Play Together · Endless Run): the invite leads, big and centred, the crew follows as astronauts,
+     host options fold away, and the connection only speaks up when it is in trouble. */
+  .room-eyebrow { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 3px; text-transform: uppercase; color: var(--orange); margin-bottom: 4px; }
+  .room-top { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 10px 0 14px; padding: 14px 12px;
+    border: 1px solid rgba(56, 225, 255, 0.28); border-radius: 18px; background: linear-gradient(180deg, rgba(15, 44, 68, 0.9), rgba(11, 33, 53, 0.9)); text-align: center; }
+  .room-scan-title { margin: 0; font-weight: 800; font-size: 20px; letter-spacing: 0.5px; color: var(--suit); }
+  .room-qr-tile { padding: 10px; border-radius: 16px; background: #fff; line-height: 0; box-shadow: 0 0 0 3px rgba(56, 225, 255, 0.2), 0 8px 24px rgba(0, 0, 0, 0.5); }
+  /* QR at a scannable 245px (5px/module at the invite's V6 size); never wider than a small phone allows. */
+  .room-qr { display: block; width: min(245px, 62vw); height: auto; aspect-ratio: 1; background: #fff; image-rendering: pixelated; }
+  .room-share { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; width: 100%; }
+  .room-share .btn { flex: 1 1 120px; max-width: 200px; margin: 0; }
+  .sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   .room-invite { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
   .invite-block .k { font-size: calc(9px * var(--ui-scale, 1)); letter-spacing: 2px; color: var(--cyan); text-transform: uppercase; }
   .invite-block .v { font-family: var(--font-num); font-size: 12px; color: var(--suit); word-break: break-all; margin-top: 2px; }
@@ -691,6 +693,20 @@
   .invite-block .code:focus-visible { outline: 2px solid var(--cyan); outline-offset: 3px; border-radius: 6px; }
   .invite-block .code-note { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--ui); opacity: 0.6; margin-top: 4px; }
   /* Run Together hub: create a room, or join one with a code or link. */
+  .together-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0 4px; }
+  .mode-pick { --mp: var(--orange); display: flex; flex-direction: column; justify-content: flex-start; gap: 3px; min-height: 92px; padding: 12px 8px 14px;
+    border: 1px solid rgba(207, 227, 255, 0.16); border-radius: 14px; cursor: pointer; text-align: center; color: var(--suit); font-family: inherit;
+    background: radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--mp) 26%, transparent), transparent 70%), rgba(10, 18, 40, 0.85);
+    box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--mp) 70%, transparent); transition: transform var(--dur-1, 120ms) var(--ease-out, ease), border-color 120ms; }
+  .mode-pick[data-mode=arena] { --mp: var(--cyan); } .mode-pick[data-mode=race] { --mp: var(--green); }
+  .mode-pick:hover, .mode-pick:focus-visible { border-color: var(--mp); transform: translateY(-2px); }
+  .mode-pick:focus-visible { outline: 2px solid var(--mp); outline-offset: 2px; }
+  .mode-pick:active { transform: translateY(1px); }
+  .mode-pick:disabled { opacity: 0.4; filter: saturate(0.3); cursor: default; transform: none; }
+  .mode-pick .mp-name { font-weight: 800; font-size: 15px; line-height: 1.15; }
+  .mode-pick .mp-cap { font-size: 12px; line-height: 1.25; color: var(--ui); opacity: 0.8; }
+  @media (max-width: 360px) { .mode-pick { min-height: 80px; padding: 10px 4px 12px; } .mode-pick .mp-name { font-size: 13px; } }
+  .scan-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-bottom: 14px; }
   .together-or { display: flex; align-items: center; gap: 10px; margin: 16px 0 10px; font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 3px; text-transform: uppercase; color: var(--ui); opacity: 0.6; }
   .together-or::before, .together-or::after { content: ''; flex: 1; height: 1px; background: rgba(56, 225, 255, 0.22); }
   .join-label { display: block; font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); margin-bottom: 6px; }
@@ -737,6 +753,32 @@
   .roster-row.pending .who { color: var(--gold); text-transform: none; letter-spacing: 0.3px; }
   .roster-row.pending { color: var(--gold); }
   .roster-row.pending .who { color: var(--gold); }
+  .crew-head { display: flex; justify-content: space-between; align-items: baseline; margin: 4px 2px 0; font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); }
+  .crew-head #roomCounts { letter-spacing: 1px; color: var(--ui); opacity: 0.75; text-transform: none; font-size: 12px; }
+  .crew-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; max-height: none; overflow: visible; }
+  .crew-grid .roster-row { flex-direction: column; justify-content: flex-start; gap: 2px; min-height: 0; padding: 8px 4px 10px; border: 1px solid rgba(207, 227, 255, 0.1);
+    border-radius: 14px; background: rgba(10, 18, 40, 0.7); text-align: center; position: relative; }
+  .crew-grid .roster-row.you { border-color: rgba(56, 225, 255, 0.45); }
+  .crew-grid .roster-row.spectator { opacity: 0.72; }
+  .crew-grid .roster-row .crew-face { width: 64px; height: 64px; }
+  .crew-grid .roster-row .who { flex: none; width: 100%; font-size: 12px; letter-spacing: 0.5px; white-space: normal; overflow-wrap: anywhere; line-height: 1.2; }
+  .crew-grid .roster-row .tag { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1.5px; text-transform: uppercase; color: var(--cyan-lt); opacity: 0.85; }
+  .crew-grid .roster-row .q { margin: 0; padding: 0; }
+  .crew-grid .roster-row .mini-chip { margin-top: 4px; min-height: 44px; min-width: 64px; background: transparent; border-color: transparent; opacity: 0.8; }
+  .crew-grid .roster-row.pending { grid-column: 1 / -1; flex-direction: row; justify-content: center; gap: 10px; }
+  .crew-grid .roster-row.pop { animation: crewPop 520ms var(--ease-spring, cubic-bezier(.3,1.6,.5,1)) both; }
+  @keyframes crewPop { 0% { transform: scale(0.4) translateY(10px); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: none; } }
+  body.reduce-motion .crew-grid .roster-row.pop { animation: none; }
+  .room-status { margin: 6px 2px 8px; font-size: 13px; line-height: 1.4; color: var(--ui); text-align: left; }
+  .room-relay:empty, .room-relay[hidden], .crew-sum:empty, #roomCode[hidden] { display: none; }
+  .room-options { text-align: left; margin: 4px 0 8px; border-top: 1px solid rgba(207, 227, 255, 0.08); }
+  .room-options > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: 13px; letter-spacing: 1px; color: var(--ui); list-style: none; }
+  .room-options > summary::-webkit-details-marker { display: none; }
+  .room-options > summary::before { content: '⚙'; margin-right: 8px; color: var(--cyan); }
+  .room-lobby .dock { display: flex; gap: 8px; }
+  .room-lobby .dock .btn { flex: 1 1 0; margin: 0; }
+  .room-lobby .dock #btnRoomPlay { flex-grow: 2; }
+  .room-option-note { margin: 4px 2px 8px; font-size: 12px; line-height: 1.4; color: var(--ui); opacity: 0.75; }
 
   /* Join prompt / blocked-host card */
   .stack-btn { display: flex; flex-direction: column; }
@@ -1014,15 +1056,20 @@
 <!-- Run Together: the front door — create a room, or join one with a code or a link -->
 <div class="overlay" id="ovTogether">
   <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Run Together">
-    <div class="title-lg t-md">Run Together</div>
-    <div class="sub">Race the same course with friends, on any device.</div>
-    <button class="btn pulse" id="btnCreateRoom">Create a Room</button>
+    <div class="title-lg t-md">Play Together</div>
+    <div class="sub">Pick a game to host. Friends scan your QR or type your code, on any device.</div>
+    <div class="together-modes" role="group" aria-label="Host a game">
+      <button class="mode-pick" data-mode="run" id="btnCreateRoom"><span class="mp-name">Endless Run</span><span class="mp-cap">Race one course</span></button>
+      <button class="mode-pick" data-mode="arena" id="btnHostArena"><span class="mp-name">Orbital Arena</span><span class="mp-cap">Knock friends out</span></button>
+      <button class="mode-pick" data-mode="race" id="btnHostRace"><span class="mp-name">Star Circuit</span><span class="mp-cap">Kart race</span></button>
+    </div>
     <div class="together-or" aria-hidden="true">or join a friend</div>
+    <button class="btn ghost scan-btn" id="btnJoinScan"><svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9h3v3H8zM13 9h3M13 12v3h3M8 15h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Scan QR code</button>
     <label class="join-label" for="joinInput">Room code or link</label>
     <input class="join-input" id="joinInput" type="text" inputmode="text" enterkeyhint="go" autocomplete="off"
-      autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="NYC-COMET-ORBIT-42"
+      autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="Code or link"
       aria-describedby="joinHint" />
-    <div class="join-hint" id="joinHint" role="status" aria-live="polite">Type the code your friend sees, or paste their invite link.</div>
+    <div class="join-hint" id="joinHint" role="status" aria-live="polite">Type the code on your friend’s screen (it looks like NYC-COMET-ORBIT-42), or paste their invite link.</div>
     <button class="btn ghost" id="btnJoinGo">Join</button>
     <button class="btn ghost" id="btnRejoinLast" hidden>Rejoin last room</button>
     <button class="btn ghost" id="btnTogetherBack">Back</button>
@@ -1031,43 +1078,43 @@
 
 <!-- Run Together: room card — attract-anchored so the idle scene stays behind it -->
 <div class="overlay attract-anchor" id="ovRoom">
-  <div class="panel secondary-panel" role="dialog" aria-modal="true" aria-label="Room">
+  <div class="panel secondary-panel room-lobby" role="dialog" aria-modal="true" aria-label="Room">
+    <div class="room-eyebrow">Play Together · Endless Run</div>
     <div class="title-lg t-md" id="roomTitle">Room</div>
-    <div class="net-sub" id="roomCounts"></div>
-    <div class="room-codebar invite-block" id="roomCodeBar">
-      <div class="k">Room code · tap to copy</div>
-      <div class="v code" id="roomCode" role="button" tabindex="0" aria-label="Room code. Activate to copy."></div>
-      <div class="code-note" id="roomCodeNote"></div>
-    </div>
     <div class="room-top" id="roomTop">
-      <canvas class="room-qr" id="roomQr" width="245" height="245"></canvas>
-      <div class="room-invite">
-        <div class="invite-block">
-          <div class="k">Link</div>
-          <div class="v" id="roomLink"></div>
-          <div class="chip-row">
-            <button class="mini-chip" id="btnRoomCopy">Copy</button>
-            <button class="mini-chip" id="btnRoomShare" style="display:none;">Share…</button>
-          </div>
-        </div>
+      <p class="room-scan-title">Scan to join</p>
+      <div class="room-qr-tile"><canvas class="room-qr" id="roomQr" width="245" height="245" role="img" aria-label="QR code to join this run with a phone camera"></canvas></div>
+      <div class="room-codebar invite-block" id="roomCodeBar">
+        <div class="v code" id="roomCode" role="button" tabindex="0" aria-label="Room code. Activate to copy."></div>
+        <div class="code-note" id="roomCodeNote"></div>
       </div>
+      <div class="room-share">
+        <button class="btn ghost" id="btnRoomShare" style="display:none;">Share invite</button>
+        <button class="btn ghost" id="btnRoomCopy">Copy link</button>
+      </div>
+      <div class="sr-only"><div class="v" id="roomLink"></div></div>
     </div>
+    <div class="crew-head"><span>Crew</span><span id="roomCounts"></span></div>
+    <div class="roster crew-grid" id="roomRoster"></div>
     <div class="crew-sum" id="roomCrew" role="status"></div>
+    <p class="room-status" id="roomStatus" role="status"></p>
     <div class="room-relay" id="roomRelay"></div>
     <details class="room-log" id="roomLog" style="display:none;">
       <summary id="roomLogSummary"></summary>
       <div id="roomLogLines"></div>
     </details>
-    <div class="roster" id="roomRoster"></div>
-    <p class="room-relay" id="roomStatus" role="status"></p>
-    <div class="toggle-row" id="roomApproveRow">
-      <span>Approve Joins</span>
-      <button class="switch" id="roomApprove" role="switch" aria-label="Approve joins"></button>
-    </div>
-    <div class="row" id="roomHostControls">
-      <button class="btn ghost" id="btnRoomNewLink">New Link</button>
-      <button class="btn ghost" id="btnRoomNewWorld">New Round</button>
-    </div>
+    <details class="room-options" id="roomOptions">
+      <summary>Room options</summary>
+      <div class="toggle-row" id="roomApproveRow">
+        <span>Ask before friends join</span>
+        <button class="switch" id="roomApprove" role="switch" aria-label="Ask before friends join"></button>
+      </div>
+      <div class="row" id="roomHostControls">
+        <button class="btn ghost" id="btnRoomNewLink">New invite link</button>
+        <button class="btn ghost" id="btnRoomNewWorld">New course</button>
+      </div>
+      <p class="room-option-note" id="roomOptionNote">A new invite link retires the old link, code and QR. A new course rerolls the run for everyone.</p>
+    </details>
     <button class="btn ghost coral" id="btnRoomLeave">Leave Room</button>
     <div class="dock">
       <button class="btn" id="btnRoomPlay">Start Together</button>
@@ -1172,6 +1219,7 @@
 <script src="src/relay-directory.js"></script>
 <script src="src/qr.js"></script>
 <script src="src/room-invite.js"></script>
+<script src="src/qr-scan.js"></script>
 <script src="src/netsmooth.js"></script>
 <script src="src/net.js"></script>
 <script src="src/journey-online.js"></script>
@@ -7681,37 +7729,53 @@ function resolvePending(pubHex, ok) {
   announce(ok ? 'Admitted a player.' : 'Rejected a join.');
   if (netLive()) renderRoomCard();
 }
+// The crew as astronauts: each member's own suit and helmet, their callsign, and who they are to you.
+// A friend who arrives while the lobby is open pops in with a two-note hello.
+let rosterSeen = null;
+function crewAppearance(r) {
+  if (r.appearance) return r.appearance;
+  return { ...equippedAppearance(), suit: SUIT_ORDER[r.suit | 0] || 'classic', hat: HAT_ORDER[r.hat | 0] || 'none' };
+}
+function crewFace(r) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2), canvas = makeCanvas(64 * dpr, 64 * dpr), c = canvas.getContext('2d');
+  canvas.className = 'crew-face'; canvas.setAttribute('aria-hidden', 'true');
+  if (c && ART && ART.drawAvatar) { try { c.scale(dpr, dpr); ART.drawAvatar(c, 32, 30, 56, crewAppearance(r), { reduceMotion: true, greeting: r.you ? 0 : 1 }); } catch (e) {} }
+  return canvas;
+}
 function renderRoster(roster, isHost) {
   const host = $('roomRoster'); host.innerHTML = '';
+  const fresh = rosterSeen ? roster.filter((r) => !r.you && !rosterSeen.has(r.p)) : [];
+  rosterSeen = new Set(roster.map((r) => r.p));
   for (const r of roster) {
     const row = document.createElement('div');
-    row.className = 'roster-row' + (r.unverified ? ' unverified' : '');
-    const pn = document.createElement('span'); pn.className = 'pn'; pn.textContent = 'P' + r.p; row.appendChild(pn);
-    if (r.spectator) { const g = document.createElement('span'); g.className = 'glyph'; g.textContent = '◎'; row.appendChild(g); }
-    else if (r.unverified) { const g = document.createElement('span'); g.className = 'glyph'; g.textContent = '≈'; row.appendChild(g); }
+    row.className = 'roster-row' + (r.unverified ? ' unverified' : '') + (r.you ? ' you' : '') + (r.spectator ? ' spectator' : '') + (fresh.includes(r) ? ' pop' : '');
+    row.appendChild(crewFace(r));
     const who = document.createElement('span'); who.className = 'who';
-    let suffix = '';
-    if (r.you && r.host) suffix = ' (you, host)';
-    else if (r.you) suffix = ' (you)';
-    else if (r.host) suffix = ' (host)';
-    if (r.spectator) suffix += ' (watching)';
-    // No-callsign peers arrive as callsign 'P{n}' (net getter fallback); the P#
-    // column already shows that, so render the blueprint's "PLAYER {n}" grammar
-    // instead of a redundant "P4  P4" (same dedup the ghost badge uses, §4.3).
+    // No-callsign peers arrive as callsign 'P{n}' (net getter fallback); show the blueprint's "PLAYER {n}" grammar instead.
     const rname = (r.callsign && r.callsign !== ('P' + r.p)) ? r.callsign : ('PLAYER ' + r.p);
-    who.textContent = rname + suffix;   // textContent: raw tags never reach DOM (I7)
+    who.textContent = rname;   // textContent: raw tags never reach DOM (I7)
     row.appendChild(who);
-    // Host view: each member's own measured link (reported in its PING), as a small dot.
+    const tag = document.createElement('span'); tag.className = 'tag';
+    tag.textContent = [r.you && r.host ? 'you, host' : r.you ? 'you' : r.host ? 'host' : '', r.spectator ? 'watching' : r.unverified ? 'joining' : ''].filter(Boolean).join(' · ') || 'crew';
+    row.appendChild(tag);
+    row.setAttribute('aria-label', rname + ' (' + tag.textContent + ')');
+    // Host view: each member's own measured link (reported in its PING), shown only when it is struggling.
     const pq = isHost && !r.you && NET.quality ? (NET.quality().peers || []).find((q) => q.p === r.p) : null;
     // The level is visible text (never colour alone) and the element has an accessible name.
-    if (pq) { const d = document.createElement('span'); d.className = 'q q-' + pq.level; d.textContent = LINK_WORD[pq.level] + ' ' + pq.rttMs + 'ms'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', LINK_WORD[pq.level] + ' link, ' + pq.rttMs + ' milliseconds'); d.title = LINK_WORD[pq.level] + ' link · ' + pq.rttMs + ' ms'; row.appendChild(d); }
+    if (pq && pq.level !== 'good' && pq.level !== 'fair') { const d = document.createElement('span'); d.className = 'q q-' + pq.level; d.textContent = LINK_WORD[pq.level] + ' ' + pq.rttMs + 'ms'; d.setAttribute('role', 'img'); d.setAttribute('aria-label', LINK_WORD[pq.level] + ' link, ' + pq.rttMs + ' milliseconds'); d.title = LINK_WORD[pq.level] + ' link · ' + pq.rttMs + ' ms'; row.appendChild(d); }
     if (isHost && !r.you) {
       const k = document.createElement('button'); k.className = 'mini-chip coral'; k.textContent = 'Kick';
+      k.setAttribute('aria-label', 'Kick ' + rname);
       k.onclick = () => kickPlayer(r);
       row.appendChild(k);
     }
     if (!r.you) attachRosterLongPress(row, r);   // 500ms long-press → hide/block/kick sheet (§7)
     host.appendChild(row);
+  }
+  if (fresh.length && $('ovRoom').classList.contains('show')) {
+    const deg = 1 + (fresh[0].p % 5);
+    try { Audio.sfx.boop(deg); setTimeout(() => { try { Audio.sfx.boop(deg + 2); } catch (e) {} }, 110); } catch (e) {}
+    buzz('select');
   }
 }
 function renderRoomCard() {
@@ -7719,27 +7783,33 @@ function renderRoomCard() {
   const info = NET.info(), roster = NET.roster();
   const isHost = !!info.isHost;
   const hostRow = roster.find((r) => r.host) || roster[0] || { p: 1 };
-  const titleName = hostRow.callsign || ('P' + hostRow.p);
-  $('roomTitle').textContent = 'ROOM · ' + titleName + "'S RUN";
-  $('roomCounts').innerHTML = 'players <span class="num">' + info.players + '/' + info.cap +
-    '</span> · spectators <span class="num">' + info.spectators + '/' + info.specCap + '</span>';
+  const titleName = hostRow.callsign && hostRow.callsign !== ('P' + hostRow.p) ? hostRow.callsign : 'Your crew';
+  $('roomTitle').textContent = (titleName + "'s run").toUpperCase();
+  // Counts stay quiet until they matter: how many are here, and a heads-up when the room is nearly full.
+  const full = info.players >= info.cap, near = !full && info.players >= info.cap - 2;
+  $('roomCounts').textContent = (info.players === 1 ? '1 player' : info.players + ' players') + (info.spectators ? ' · ' + info.spectators + ' watching' : '') +
+    (full ? ' · room full' : near ? ' · ' + (info.cap - info.players) + ' seats left' : '');
   // QR / link / code are host-only (guests don't re-share their own invite, §4.4).
   $('roomTop').style.display = isHost ? '' : 'none';
   $('roomCodeBar').style.display = isHost && !BUILD.preview ? '' : 'none';
-  $('roomApproveRow').style.display = isHost ? '' : 'none';
-  $('roomHostControls').style.display = isHost ? '' : 'none';
+  $('roomOptions').style.display = isHost ? '' : 'none';
   if (isHost) {
     $('roomLink').textContent = shortLink(info.link);
     $('roomLink').title = BUILD.preview ? 'Share this exact preview build with your crew' : '';
-    $('roomCode').textContent = info.joinCode || '—';
-    $('roomCodeNote').textContent = info.joinCode ? 'Friends type it under Run Together → Join, or scan the QR.' : 'This room is on a custom relay: friends join with the link or QR.';
+    $('roomCode').textContent = info.joinCode || '';
+    $('roomCode').hidden = !info.joinCode;
+    $('roomCodeNote').textContent = info.joinCode ? 'Or type this code under Play Together → Join. Tap it to copy.' : 'This room is on a custom relay: friends join with the link or QR.';
     drawRoomQr(info.link);
     $('btnRoomShare').style.display = navigator.share ? '' : 'none';
     $('roomApprove').classList.toggle('on', !!settings.netApprove);
     $('roomApprove').setAttribute('aria-checked', String(!!settings.netApprove));
   }
-  $('roomCrew').textContent = window.SpaceManCrew.summary(crewStandings());
-  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(NET.quality ? NET.quality() : null, isHost);
+  // Standings matter once the crew is running; in the lobby the avatars already say who is here.
+  $('roomCrew').textContent = netRoundActive() ? window.SpaceManCrew.summary(crewStandings()) : '';
+  // The connection line only appears when it needs attention (fair or worse, or reconnecting).
+  const q = NET.quality ? NET.quality() : null;
+  $('roomRelay').innerHTML = 'relay ' + escapeHtml(info.city || '—') + ' · ' + linkLabelHtml(q, isHost);
+  $('roomRelay').hidden = !q || !/^(poor|reconnecting|connecting)$/.test(q.level);
   renderMobilityLog();
   renderRoster(roster, isHost);
   $('btnRoomPlay').textContent = netRoundActive() ? (info.role === 1 ? 'Watch Round' : 'Join Round') : (isHost ? 'Start Together' : 'Ready to Run');
@@ -7828,9 +7898,9 @@ function syncOffline() {
   const off = isOffline() && !netLive();
   const note = $('offlineNote'); if (note) note.style.display = off && !SHOT ? '' : 'none';
   if ($('ovTogether').classList.contains('show') && !joinLookup) {
-    for (const id of ['btnCreateRoom', 'btnJoinGo']) $(id).disabled = off;
+    for (const id of ['btnCreateRoom', 'btnHostArena', 'btnHostRace', 'btnJoinScan', 'btnJoinGo']) $(id).disabled = off;
     if (off) setTogetherHint(OFFLINE_TOGETHER, true);
-    else if ($('joinHint').textContent === OFFLINE_TOGETHER) setTogetherHint(BUILD.preview ? 'Paste the full invite link from this exact preview build.' : 'Type the code your friend sees, or paste their invite link.');
+    else if ($('joinHint').textContent === OFFLINE_TOGETHER) setTogetherHint(BUILD.preview ? 'Paste the full invite link from this exact preview build.' : 'Type the code on your friend’s screen (it looks like NYC-COMET-ORBIT-42), or paste their invite link.');
   }
 }
 window.addEventListener('offline', () => { syncOffline(); if (netLive() && !NET.mockActive) queueToast('Connection lost · reconnecting when it\'s back', 'net'); });
@@ -7856,7 +7926,7 @@ let joinReq = 0;   // bumped whenever the screen is left or reopened, so a slow 
 function setTogetherHint(msg, isError) { const h = $('joinHint'); h.textContent = msg || ''; h.classList.toggle('err', !!isError); }
 function setTogetherBusy(on) {
   joinLookup = on;
-  for (const id of ['joinInput', 'btnJoinGo', 'btnCreateRoom', 'btnRejoinLast']) $(id).disabled = on;
+  for (const id of ['joinInput', 'btnJoinGo', 'btnCreateRoom', 'btnHostArena', 'btnHostRace', 'btnJoinScan', 'btnRejoinLast']) $(id).disabled = on;
 }
 // SOC-03: offer the last room code for 20 minutes. The entry holds {region, code, mode, ts} only.
 function paintRejoinLast() {
@@ -7873,7 +7943,7 @@ function openTogether() {
   hideAllOverlays();
   setTogetherBusy(false);
   $('joinInput').value = '';
-  setTogetherHint(BUILD.preview ? 'Paste the full invite link from this exact preview build.' : 'Type the code your friend sees, or paste their invite link.');
+  setTogetherHint(BUILD.preview ? 'Paste the full invite link from this exact preview build.' : 'Type the code on your friend’s screen (it looks like NYC-COMET-ORBIT-42), or paste their invite link.');
   paintRejoinLast();
   showOverlay('ovTogether');
   syncOffline();
@@ -7892,6 +7962,29 @@ function lookupFailMessage(e, p) {
   if (/too many/i.test(m)) return 'Too many tries in a row. Wait a few seconds, then try again.';
   if (/update/i.test(m)) return 'Update to play together.';
   return 'Couldn\'t reach the relay. Check your connection, or ask for the link instead.';
+}
+// Host a friend room in any mode from the Play Together hub: the mode opens in its lobby with the room
+// already created and its Scan to join card in view. Run keeps its own room card.
+async function openFriendsFor(mode) {
+  if (!netEnabled()) return false;
+  if (mode !== 'arena' && mode !== 'race') { openRoomFlow(); return true; }
+  if (isOffline()) { setTogetherHint(OFFLINE_TOGETHER, true); return false; }
+  Audio.ensure();
+  hideAllOverlays();
+  $(mode === 'race' ? 'btnRace' : 'btnArena').onclick();
+  const ui = mode === 'race' ? raceUI : arenaUI;
+  return !!(ui && ui.active && ui.hostRoom && await ui.hostRoom());
+}
+// The in-game camera reads a friend's QR and goes straight on, exactly as if the code had been typed.
+// Only invite links and room codes are taken; any other QR leaves the scanner open with a gentle note.
+function scanAccepts(text) {
+  try { const t = BUILD.resolveJoin(text); if (t.error) return false; const k = NET.parseJoin(t.value).kind; return k === 'invite' || k === 'code'; } catch (e) { return false; }
+}
+function scanToJoin() {
+  if (!window.SpaceManQRScan || joinLookup) return;
+  if (isOffline()) { setTogetherHint(OFFLINE_TOGETHER, true); return; }
+  window.SpaceManQRScan.open({ accept: scanAccepts, calm: lessMotion(),
+    onResult(text) { $('joinInput').value = text; submitJoin(); } });
 }
 function beginJoin(payload) {
   joinReq++;
@@ -7925,6 +8018,7 @@ async function submitJoin() {
   }
 }
 function leaveRoom() {
+  rosterSeen = null;
   clearResume();
   raceReset();
   emTray.open = false; toggleCrew(false);
@@ -9415,6 +9509,9 @@ $('btnInitialsOk').onclick = () => commitInitials();
 // --- Run Together wiring ---
 $('btnTogether').onclick = () => openTogether();
 $('btnCreateRoom').onclick = () => openRoomFlow();
+$('btnHostArena').onclick = () => openFriendsFor('arena');
+$('btnHostRace').onclick = () => openFriendsFor('race');
+$('btnJoinScan').onclick = () => scanToJoin();
 $('btnJoinGo').onclick = () => submitJoin();
 $('btnRejoinLast').onclick = () => { const c = $('btnRejoinLast').dataset.code; if (!c) return; $('joinInput').value = c; submitJoin(); };
 $('btnTogetherBack').onclick = () => { joinReq++; if (roomOpening) { roomOpening = false; try { NET.leave(); } catch (e) {} } setTogetherBusy(false); showAttract(); };

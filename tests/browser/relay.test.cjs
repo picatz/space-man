@@ -151,7 +151,7 @@ test('real relay: desktop host, phone-sized player, spectator, and reconnect', {
     await join(player, invite, false);
     await join(spectator, invite, true);
     await rostersAgree();
-    assert.match(await host.page.locator('#roomCounts').innerText(), /players 2\/\d+ · spectators 1\/\d+/);
+    assert.match(await host.page.locator('#roomCounts').innerText(), /^2 players · 1 watching/);
     assert.equal(await host.page.locator('#roomRoster .roster-row').count(), 3);
     const playerBefore = await identity(player.page), spectatorBefore = await identity(spectator.page);
     assert.equal(playerBefore.role, 0);

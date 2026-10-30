@@ -91,3 +91,29 @@ test('in a run, the link only speaks up when reconnecting or poor', async (t) =>
   }
   assert.deepEqual(said, ['WEAK LINK · 480 ms', 'RECONNECTING…']);
 });
+
+test('the lobby shows the crew as astronauts and a friend who arrives pops in with a hello', async (t) => {
+  const hub = relay(), host = client(hub), guest = client(hub);
+  t.after(() => { host.close(); guest.close(); });
+  await host.net.openRoom({ relayHost: 'relay.test', code: false, adjIdx: 0, nounIdx: 0 });
+  host.run("showOverlay('ovRoom'); renderRoomCard(); window.__boops = 0; const b = Audio.sfx.boop; Audio.sfx.boop = (d) => { __boops++; };");
+  const first = el(host, 'roomRoster').children;
+  assert.equal(first.length, 1);
+  assert.ok(!first[0].className.includes('pop'), 'the host is not announced to themselves');
+  assert.equal(host.run('__boops'), 0);
+  await guest.net.acceptJoin(host.net.info().link.split('#j=')[1], { adjIdx: 1, nounIdx: 1 });
+  await until(() => host.net.roster().length === 2, 'guest admitted');
+  await until(() => host.run('__boops') >= 1, 'the join event re-renders the open lobby');
+  // The fake DOM keeps appended rows across innerHTML resets, so read the latest render.
+  const rows = el(host, 'roomRoster').children.slice(-2), fresh = rows.find((r) => !r.className.includes(' you'));
+  assert.ok(fresh.className.includes('pop'), 'the new friend pops in');
+  assert.ok(fresh.children.some((n) => n.className === 'crew-face'), 'every member is drawn as an astronaut');
+  assert.ok(host.run('__boops') >= 1, 'a two-note hello plays');
+  host.run('renderRoomCard()');
+  const boops = host.run('__boops');
+  host.run('renderRoomCard()');
+  assert.ok(!el(host, 'roomRoster').children.slice(-2).some((r) => r.className.includes('pop')), 'a re-render does not pop or chime again');
+  assert.equal(host.run('__boops'), boops);
+  assert.match(el(host, 'roomCounts').textContent, /^2 players$/);
+  assert.equal(el(host, 'roomCrew').textContent, '', 'no standings noise in the lobby');
+});

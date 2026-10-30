@@ -39,6 +39,8 @@
     r = Math.min(r, w / 2, h / 2);
     ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
   }
+  // A scanned QR is taken only when it reads as an invite link or room code.
+  function scanAccepts(net) { return text => { try { const k = net && net.parseJoin ? net.parseJoin(text).kind : 'invite'; return k === 'invite' || k === 'code'; } catch (_) { return false; } }; }
   function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   function button(text, cls, fn) { const n = el('button', 'arena-button ' + (cls || ''), text); n.type = 'button'; if (fn) n.addEventListener('click', fn); return n; }
   const STYLES = `\n/* All arena rules are scoped. The runner's cascade stays untouched. */
@@ -848,7 +850,7 @@
       roomDetails = el('details','arena-online-panel'); roomDetails.append(el('summary','','Play with friends · Create, join or watch'));
       roomEntry=el('div','arena-online-entry'); roomHost=button('Create arena room','arena-primary',async()=>{if(await room.hosting(selections))roomDetails.open=true;});roomHost.id='arenaHost';
       roomInput=el('input','arena-room-input');roomInput.id='arenaRoomInput';roomInput.type='text';roomInput.placeholder=opts.build&&opts.build.preview?'Full invite link from this preview':'Room code or invite link';roomInput.setAttribute('aria-label','Arena room code or invite link');roomInput.autocomplete='off';
-      const joinRow=el('div','arena-online-actions');roomJoin=button('Join arena','',()=>room.join(roomInput.value,0));roomJoin.id='arenaJoin';roomWatch=button('Watch arena','arena-text-button',()=>room.join(roomInput.value,1));roomWatch.id='arenaWatch';joinRow.append(roomJoin,roomWatch);roomRejoin=button('Rejoin last room','arena-text-button',()=>{const r=lastRoomEntry();if(!r)return;const text=social().lastRoomText(r);roomInput.value=text;room.join(text,0);});roomRejoin.id='arenaRejoin';roomRejoin.hidden=true;roomEntry.append(roomHost,roomInput,joinRow,roomRejoin);
+      const joinRow=el('div','arena-online-actions');roomJoin=button('Join arena','',()=>room.join(roomInput.value,0));roomJoin.id='arenaJoin';roomWatch=button('Watch arena','arena-text-button',()=>room.join(roomInput.value,1));roomWatch.id='arenaWatch';joinRow.append(roomJoin,roomWatch);roomRejoin=button('Rejoin last room','arena-text-button',()=>{const r=lastRoomEntry();if(!r)return;const text=social().lastRoomText(r);roomInput.value=text;room.join(text,0);});roomRejoin.id='arenaRejoin';roomRejoin.hidden=true;const scan=root.SpaceManQRScan?button('Scan QR code','arena-text-button',()=>root.SpaceManQRScan.open({calm:calm(),accept:scanAccepts(opts.net),onResult:t=>{roomInput.value=t;room.join(t,0);}})):null;if(scan){scan.id='arenaScan';joinRow.append(scan);}roomEntry.append(roomHost,roomInput,joinRow,roomRejoin);
       roomBox=el('div','arena-room-box');roomBox.hidden=true;roomCode=el('strong','arena-room-code');roomMembers=el('ul','arena-room-members');roomMembers.id='arenaRoomMembers';
       roomInvite=el('input','arena-room-input');roomInvite.id='arenaInvite';roomInvite.readOnly=true;roomInvite.setAttribute('aria-label','Arena invite link');
       roomCopy=button('Copy link','',async()=>{try{await root.navigator.clipboard.writeText(roomInvite.value);roomHint.textContent='Invite copied. Send it to your friends.';}catch(_){roomInvite.focus();roomInvite.select();roomHint.textContent='Select and copy this invite link.';}});
@@ -1807,6 +1809,8 @@
     }
     function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
     return Object.freeze({ open, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role, resumeKey) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true, resumeKey); },
+      // Play Together hub: open the lobby with a fresh friend room already hosting (or the current one).
+      hostRoom() { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; if (room.active || room.busy) return Promise.resolve(!!room.active); return room.hosting(selections); },
       // A host's page reload: reopen the same room (same invite, same code) in its lobby with the saved rules.
       restoreHost(token) { if (!active) open(); if (!room || !token) return Promise.resolve(false); const g = token.game || {}; selections = { arenaId: arena.getArena(g.arenaId).id, format: ['duel', 'ffa', 'teams'].includes(g.format) ? g.format : selections.format, difficulty: ['easy', 'normal', 'hard'].includes(g.difficulty) ? g.difficulty : selections.difficulty }; syncChoices(); roomDetails.open = true; return room.hosting(selections, token); }, get active() { return active; }, get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : activeModal === resultPanel ? 'results' : paused ? 'pause' : 'play'; }, snapshot() { return state ? (arena.snapshot ? arena.snapshot(state) : JSON.parse(JSON.stringify(state))) : null; } });
   }

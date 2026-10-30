@@ -58,6 +58,7 @@ const SHELL = [
   './src/relay-directory.js',
   './src/qr.js',
   './src/room-invite.js',
+  './src/qr-scan.js',
   './src/netsmooth.js',
   './src/net.js', './src/journey-online.js', './src/journey-room.js', './src/journey-ui.js',
   './manifest.json',

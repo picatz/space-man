@@ -434,7 +434,9 @@ test('the join box shows a complete typed or pasted code the way it is read alou
   guest.run('tidyJoinInput()');
   assert.equal(el(guest, 'joinInput').value, 'half a thought', 'never rewrites what is not a code');
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
-  assert.match(src.match(/<input[^>]*id="joinInput"[^>]*>/s)[0], /placeholder="NYC-COMET-ORBIT-42"/);
+  // The box itself reads as an empty field (a sample code there was mistaken for a real one); the hint under it shows the shape.
+  assert.match(src.match(/<input[^>]*id="joinInput"[^>]*>/s)[0], /placeholder="Code or link"/);
+  assert.match(src.match(/<div class="join-hint" id="joinHint"[^>]*>([^<]*)</)[1], /looks like NYC-COMET-ORBIT-42/);
 });
 
 test('a host restored from its reload token keeps the room code friends were reading out', async (t) => {
