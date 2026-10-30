@@ -249,26 +249,14 @@
   // Spectating: one dock replaces the fighter controls, and the roster cards
   // become tap targets that pick who the camera follows.
   const WATCH_STYLES = `
-.arena-watch-tools{position:absolute;z-index:6;left:50%;transform:translateX(-50%);bottom:calc(var(--arena-safe-bottom) + 16px);box-sizing:border-box;width:min(420px,calc(100% - 24px - var(--arena-safe-left) - var(--arena-safe-right)));display:grid;grid-template-columns:48px minmax(0,1fr) 48px;align-items:center;gap:8px 10px;padding:10px;background:#071527F2;border:1px solid #36526D;border-top:2px solid #FFB454;border-radius:18px;box-shadow:0 12px 34px #00000080;color:#DCEFFF}
+.arena-root .arena-watch-tools{bottom:calc(var(--arena-safe-bottom) + 12px);width:min(540px,calc(100% - 24px - var(--arena-safe-left) - var(--arena-safe-right)))}
 .arena-root:not([data-screen=match]) .arena-watch-tools{display:none!important}
-.arena-watch-step{width:48px;height:48px;min-height:48px;font-size:20px}
-.arena-watch-copy{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;text-align:center}
-.arena-watch-eyebrow{font:750 calc(9px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;letter-spacing:.12em;color:#FFC66B}
-.arena-watch-name{font:800 calc(14px * var(--ui-scale, 1))/1.25 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#F4F7FF;overflow-wrap:anywhere}
-.arena-watch-hint{font:500 calc(10px * var(--ui-scale, 1))/1.35 system-ui,sans-serif;color:#9FBBD2}
-.arena-watch-hint span{display:none}
-body[data-input=touch] .arena-watch-hint [data-help=touch],body[data-input=keys] .arena-watch-hint [data-help=keys],body[data-input=pad] .arena-watch-hint [data-help=pad],
-body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help=touch],body:not([data-input]) .arena-root[data-touch=false] .arena-watch-hint [data-help=keys]{display:inline}
-.arena-watch-rematch{grid-column:1/-1;justify-self:center;min-height:44px;padding:9px 22px}
-.arena-watch-rematch[hidden]{display:none!important}
 .arena-root[data-spectating=true] .arena-player-card{pointer-events:auto;cursor:pointer}
 /* Landscape phones: one slim row (arrows, who, Rematch) so the stage keeps its middle. */
 @media(min-aspect-ratio:115/100) and (max-height:600px){
-.arena-watch-tools{grid-template-columns:44px minmax(0,1fr) auto 44px;width:min(560px,calc(100% - 24px - var(--arena-safe-left) - var(--arena-safe-right)));bottom:calc(var(--arena-safe-bottom) + 8px);padding:6px 8px;gap:8px;border-radius:14px}
-.arena-watch-step{width:44px;height:44px;min-height:44px}
-.arena-watch-rematch{grid-column:auto;order:1}#arenaWatchNext{order:2}
+.arena-root .arena-watch-tools{grid-template-columns:minmax(0,1fr) auto;align-items:center;width:min(640px,calc(100% - 24px - var(--arena-safe-left) - var(--arena-safe-right)));bottom:calc(var(--arena-safe-bottom) + 8px);padding:6px 8px}
+.arena-root .arena-watch-tools .sm-watch-hint{display:none}
 }
-.arena-root[data-spectating=true] .arena-player-out{cursor:default}
 `;
   // Phone portrait: the scoreboard is one row of compact chips (your avatar,
   // name, role, damage, lives) so the stage below it stays clear. Boss rows
@@ -361,7 +349,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
     let audio = null, audioGain = null, lastSfx = -999, lastFar = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     let room = null, roomBox, roomEntry, roomMembers, roomHint, roomInput, roomInvite, roomCode, roomQR, roomRole, roomLeave, roomCopy, roomShare, roomInviteCard, roomHost, roomJoin, roomWatch, roomDetails;
     let roomStatus = null, roomSignature = '', rosterSignature = '', roomPaused = false, localRoomMenu = false, roomClosing = false, networkReceived = 0, playout = null, priorNetworkTick = -1, networkEventHigh = 0;
-    let watchTools, watchName, watchEyebrow, watchRematch, swipe = null;
+    let watchBar = null, swipe = null;
     const onlineActive = () => !!(room && room.active);
     const localActor = () => state && state.actors.find(a => a.controller === 'human');
     const canControl = () => !onlineActive() || !!(localActor() && localActor().stocks > 0 && !(roomStatus && (roomStatus.stale || roomStatus.connection)));
@@ -831,7 +819,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       return allies.length ? allies : living;
     }
     // A friend who arrived mid-match is told they are queued, not just that they are watching.
-    function watchLabel(name) { return (roomStatus && roomStatus.info && roomStatus.info.waiting ? 'UP NEXT · WATCHING ' : 'WATCHING ') + name; }
+    function watchLabel() { return roomStatus && roomStatus.info && roomStatus.info.waiting ? 'UP NEXT · WATCHING' : localActor() ? 'YOU’RE OUT · WATCHING' : 'WATCHING'; }
     function cycleWatch(direction) {
       if (!state) return; const candidates = watchCandidates(); if (!candidates.length) return;
       const index = candidates.findIndex(a => a.id === spectatorId);
@@ -843,14 +831,14 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
     function watchActor(id) {
       const target = state && watchCandidates().find(a => a.id === id); if (!target) return false;
       const changed = target.id !== spectatorId; spectatorId = target.id;
-      if (watchName) watchName.textContent = watchLabel(target.name);
+      paintWatch(target);
       if (changed) { announce('Watching ' + target.name); updateHud(true); }
       return true;
     }
     function resetRoomPresentation() {
       roomPaused = localRoomMenu = false; priorNetworkTick = -1; networkEventHigh = 0;
       rosterSignature = roomSignature = ''; delete rootEl.dataset.epoch;
-      if (watchTools) watchTools.hidden = true; touchEl.hidden = false;
+      watchBar?.update({ active: false }); touchEl.hidden = false;
     }
     function roomChanged(status) {
       if (!active || roomClosing) return;
@@ -977,14 +965,13 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       // Spectating replaces the fighter controls with one dock: who you watch,
       // how to switch (arrows, a roster card, a swipe, ←/→ or the bumpers) and,
       // offline, a rematch so a knocked-out pilot is never just waiting.
-      watchTools = el('div', 'arena-watch-tools'); watchTools.hidden = true; watchTools.setAttribute('role', 'group'); watchTools.setAttribute('aria-label', 'Spectator controls');
-      const prev = button('←', 'arena-icon-button arena-watch-step', () => cycleWatch(-1)); prev.id = 'arenaWatchPrevious'; prev.setAttribute('aria-label', 'Watch previous fighter');
-      const next = button('→', 'arena-icon-button arena-watch-step', () => cycleWatch(1)); next.id = 'arenaWatchNext'; next.setAttribute('aria-label', 'Watch next fighter');
-      const watchCopy = el('div', 'arena-watch-copy'); watchEyebrow = el('small', 'arena-watch-eyebrow', 'SPECTATING'); watchName = el('span', 'arena-watch-name', 'WATCHING'); watchName.id = 'arenaWatchName';
-      const hint = el('small', 'arena-watch-hint'); for (const [kind, text] of [['touch', 'Swipe or tap a card to switch'], ['keys', '← → or Q E to switch'], ['pad', 'LB RB or d-pad to switch']]) { const h = el('span', '', text); h.dataset.help = kind; hint.append(h); }
-      watchCopy.append(watchEyebrow, watchName, hint);
-      watchRematch = button('Rematch', 'arena-text-button arena-watch-rematch', () => startMatch()); watchRematch.id = 'arenaWatchRematch'; watchRematch.hidden = true;
-      watchTools.append(prev, watchCopy, next, watchRematch); rootEl.append(watchTools);
+      watchBar = root.SpaceManSpectate?.createBar({
+        doc: document, parent: rootEl, prefix: 'arenaWatch', mode: 'arena', announce: false,   // watchActor() announces
+        prevLabel: 'Watch previous fighter', nextLabel: 'Watch next fighter',
+        onPrev: () => cycleWatch(-1), onNext: () => cycleWatch(1),
+        actions: [{ id: 'rematch', label: 'Rematch', primary: true, onClick: () => startMatch() }],
+      }) || null;
+      watchBar?.el.classList.add('arena-watch-tools');
       // A horizontal swipe across the stage flips fighters; taps and vertical drags do nothing.
       canvas.addEventListener('pointerdown', e => { swipe = spectating() && e.isPrimary ? { x: e.clientX, y: e.clientY } : null; });
       canvas.addEventListener('pointerup', e => { if (!swipe || !spectating()) return; const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y; swipe = null; if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) cycleWatch(dx < 0 ? 1 : -1); });
@@ -1281,6 +1268,21 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       if (!active || !ctx) return;
       const a = selectedArena(); background = makeBackground(a); bgKey = a.id + width + height; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.drawImage(background, 0, 0, width, height);
     }
+    // The shared spectator dock (src/spectate.js): who is followed, how they are
+    // doing, how many are left, and Rematch when a solo pilot is out.
+    function paintWatch(target) {
+      if (!watchBar) return;
+      if (!spectating()) { watchBar.update({ active: false }); return; }
+      const a = target || watchedActor(), left = state.actors.filter(x => x.stocks > 0 && !x.boss).length;
+      const kind = document.body.dataset.input || (rootEl.dataset.touch === 'true' ? 'touch' : 'keys');
+      watchBar.update({
+        active: true, eyebrow: watchLabel(), name: a.name, inputKind: kind,
+        tone: roomStatus?.info?.waiting ? 'wait' : localActor() ? 'down' : 'live',
+        detail: (a.boss ? 'Boss · ' + Math.round(a.damage) + '%' : Math.round(a.damage) + '% · ' + a.stocks + (a.stocks === 1 ? ' life' : ' lives')) + ' · ' + left + ' left',
+        hint: kind === 'touch' ? 'Swipe or tap a card to switch' : null, count: watchCandidates().length,
+        actions: { rematch: { hidden: onlineActive() } },
+      });
+    }
     function watchedActor() {
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
       if (local2) { const alive = state.actors.filter(a => a.controller === 'human' && a.stocks > 0); if (alive.length) { spectatorId = null; return alive[0]; } }
@@ -1315,7 +1317,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
         if (zones.every(r => r.width > 0 && r.height > 0)) thumbBounds = { pods: zones.map(r => ({x:r.left-origin.left,y:r.top-origin.top,w:r.width,h:r.height})).sort((a,b)=>a.x-b.x), top: Math.min(...zones.map(r => r.top - origin.top)), side: Math.max(...zones.map(r => r.width + Math.min(r.left - origin.left, origin.right - r.right))) + 14 };
       }
       const lowerDeck = portrait || height > 600;
-      const dock = watchTools && !watchTools.hidden && watchTop > 0 ? height - watchTop + 12 : 0;
+      const dock = watchBar && watchBar.isActive() && watchTop > 0 ? height - watchTop + 12 : 0;
       const bottom = dock || (touch && thumbBounds ? (lowerDeck ? height - thumbBounds.top + 16 : 24) : 66);
       const playHeight = Math.max(100, height - top - bottom), cy = top + playHeight / 2;
       let scale, x, y;
@@ -1616,15 +1618,8 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       }
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
       const watching = spectating(); rootEl.dataset.spectating = String(watching);
-      if (watchTools) {
-        watchTools.hidden = !watching; watchRematch.hidden = !watching || onlineActive();
-        watchTop = watching ? watchTools.getBoundingClientRect().top - (viewportBox?.top || 0) : 0;
-        if (watching) {
-          const left = state.actors.filter(a => a.stocks > 0 && !a.boss).length;
-          setText(watchEyebrow, (localActor() ? 'YOU’RE OUT' : 'SPECTATING') + ' · ' + left + ' LEFT');
-          setText(watchName, watchLabel(watchedActor().name));
-        }
-      }
+      paintWatch();
+      watchTop = watching && watchBar ? watchBar.el.getBoundingClientRect().top - (viewportBox?.top || 0) : 0;
       touchEl.hidden = watching || (onlineActive() && !canControl()) || !!local2;
       const K = arena.constants, remaining = human.attackTicks > 0 ? human.attackTicks + K.ATTACK_RECOVERY : (human.attackCooldown || 0);
       const attackReady = human.charge > 0 ? clamp(human.charge / K.CHARGE_MAX, 0, 1) : 1 - clamp(remaining / (K.ATTACK_TICKS + K.ATTACK_RECOVERY), 0, 1), dashReady = 1 - clamp(human.dashCooldown / arena.constants.DASH_COOLDOWN, 0, 1);

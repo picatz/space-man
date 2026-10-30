@@ -260,14 +260,14 @@ for (const [width, height] of [[390, 844], [844, 390]]) {
     // CPUs keep fighting, so a fighter can be knocked out between the pick
     // and the tap; retry with another eligible card rather than flake.
     let picked = '', followed = '';
-    for (let attempt = 0; attempt < 4 && followed !== 'WATCHING ' + picked; attempt++) {
+    for (let attempt = 0; attempt < 4 && followed !== picked; attempt++) {
       const id = await page.evaluate(() => { const s = arenaUI.snapshot(), now = document.querySelector('.arena-player-card[data-watching=true]')?.dataset.actor; return s.actors.filter(a => a.stocks > 0 && a.respawnTicks <= 0 && String(a.id) !== now).sort((a, b) => a.damage - b.damage)[0]?.id; });
       if (!id) { await page.waitForTimeout(200); continue; }
       const card = page.locator(`.arena-player-card[data-actor="${id}"]`);
       picked = (await card.locator('.arena-player-name-text').textContent()).trim();
       await card.tap(); followed = await watched();
     }
-    assert.equal(followed, 'WATCHING ' + picked, 'tapping a card follows that fighter');
+    assert.equal(followed, picked, 'tapping a card follows that fighter');
     await page.locator('#arenaWatchRematch').tap();
     await page.waitForFunction(() => arenaUI.snapshot()?.actors[0].stocks > 0);
     await page.locator('.arena-touch').waitFor();
