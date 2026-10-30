@@ -2,7 +2,10 @@
 // Layout QA guard: opens every main screen at phone, tablet and laptop sizes and
 // fails on the jank playtesters hit first: horizontal page overflow, controls
 // that extend past the viewport, and fixed or sticky chrome covering a control
-// even after it is scrolled into view. Known failures are listed in KNOWN with
+// even after it is scrolled into view. Controls and their copy (card names,
+// labels, captions) are also scrolled to each edge of their scroller, where
+// keyboard focus and a finger's last scroll leave them, and must not sit behind
+// a sticky footer or header there (WCAG 2.2 SC 2.4.11, Focus Not Obscured). Known failures are listed in KNOWN with
 // the issue to fix; they run as node:test todos so CI stays green until fixed.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -110,6 +113,38 @@ function audit([W, H]) {
     const cover = covered();
     if (cover) problems.push(`${label(n)} is covered by fixed/sticky ${label(cover)}`);
   }
+  // Edge pass: only content inside a vertical scroller that shares it with
+  // pinned chrome can slide under that chrome. Each control and line of copy
+  // is aligned to the scroller's top and bottom edge in turn; three points
+  // down its middle must then hit the element itself, not the pinned layer.
+  const scroller = n => { for (let p = n.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p).overflowY; if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight + 1) return p; if (p === document.documentElement) return null; } return null; };
+  const copy = [...document.querySelectorAll('h1,h2,h3,p,small,strong,label,summary,li')].filter(n => shown(n) && n.textContent.trim() && !n.closest('button,a[href],[role=button]'));
+  // The nearest fixed or sticky layer between n and its scroller, if any.
+  const pinnedIn = (n, box) => { for (; n && n !== box; n = n.parentElement) { const p = getComputedStyle(n).position; if (p === 'fixed' || p === 'sticky') return n; } return null; };
+  const scrollers = new Map();
+  for (const n of [...controls, ...copy]) {
+    const box = scroller(n);
+    if (box && !pinnedIn(n, box)) scrollers.set(box, [...(scrollers.get(box) || []), n]);
+  }
+  for (const [box, items] of scrollers) {
+    const before = box.scrollTop;
+    for (const n of items) {
+      for (const block of ['start', 'end']) {
+        n.scrollIntoView({ block, inline: 'nearest', behavior: 'instant' });
+        const b = n.getBoundingClientRect();
+        if (b.width < 1 || b.height < 1) continue;
+        const x = Math.min(W - 1, Math.max(0, b.left + b.width / 2));
+        for (const y of [b.top + b.height * .25, b.top + b.height / 2, b.bottom - b.height * .25]) {
+          if (y < 0 || y >= H) continue;
+          const top = document.elementFromPoint(x, y);
+          if (!top || top === n || n.contains(top) || top.contains(n)) continue;
+          const cover = box.contains(top) ? pinnedIn(top, box) : pinned(top);
+          if (cover && !cover.contains(n)) { problems.push(`${label(n)} hides behind fixed/sticky ${label(cover)} at the ${block === 'end' ? 'bottom' : 'top'} of its scroller`); break; }
+        }
+      }
+    }
+    box.scrollTop = before;
+  }
   return [...new Set(problems)];
 }
 
@@ -142,4 +177,29 @@ test('layout qa: the audit catches overflow, off-screen and covered controls', a
   assert.ok(problems.some(p => p.startsWith('page overflows horizontally')), problems.join('\n'));
   assert.ok(problems.some(p => p.startsWith('#qaWide extends past')), problems.join('\n'));
   assert.ok(problems.some(p => /is covered by fixed\/sticky #qaCover$/.test(p)), problems.join('\n'));
+});
+
+test('layout qa: the audit catches copy and controls hidden behind a sticky footer', async t => {
+  const { page, base } = await launch(t, { width: 390, height: 844 });
+  await home(page, base);
+  const problems = await page.evaluate(audit => {
+    document.getElementById('ovAttract').inert = true;
+    // A scrolling panel whose sticky footer overlays the last rows, like the
+    // Star Circuit lobby before its Launch bar became a real footer.
+    const panel = document.createElement('div');
+    panel.style.cssText = 'position:fixed;inset:0;z-index:2147483647;overflow-y:auto;background:#000';
+    for (let i = 0; i < 12; i++) {
+      const row = document.createElement('p');
+      row.style.cssText = 'height:90px;margin:0';
+      row.textContent = 'qa row ' + i;
+      panel.append(row);
+    }
+    const bar = document.createElement('div');
+    bar.id = 'qaSticky';
+    bar.style.cssText = 'position:sticky;bottom:0;height:120px;margin-top:-120px;background:#333';
+    panel.append(bar);
+    document.body.append(panel);
+    return eval(`(${audit})`)([390, 844]);
+  }, audit.toString());
+  assert.ok(problems.some(p => /^p "qa row 11" hides behind fixed\/sticky #qaSticky at the bottom/.test(p)), problems.join('\n'));
 });

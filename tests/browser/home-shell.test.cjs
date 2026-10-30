@@ -186,15 +186,17 @@ for (const [width, height] of [[320, 568], [390, 844], [820, 1180], [1000, 640],
   });
 }
 
-for (const [id, dialog] of [['btnRace', '.race-dialog']]) {
+// The Star Circuit lobby scrolls in its body above a Launch footer; the dialog
+// itself runs to the bottom edge so the footer sits on it, not above a band.
+for (const [id, dialog, scroller] of [['btnRace', '.race-lobby', '.race-lobby-body']]) {
   test(`${id} lobby scrolls to the bottom of a short window instead of clipping above it`, { timeout: 30000 }, async t => {
     const { page } = await launch(t, { width: 1000, height: 640 });
     await page.locator('#' + id).click();
     const box = page.locator(dialog).first();
     await box.waitFor();
-    const m = await box.evaluate(e => ({ bottom: e.getBoundingClientRect().bottom, inner: innerHeight, scrolls: e.scrollHeight > e.clientHeight, pad: parseFloat(getComputedStyle(e).paddingBottom) }));
-    if (id === 'btnRace') assert.ok(m.scrolls, 'the short window really overflows the lobby');
-    assert.ok(Math.abs(m.bottom - m.inner) <= 1, 'the scroller reaches the bottom edge, with no dead band under it');
+    const m = await box.evaluate((e, scroller) => { const s = e.querySelector(scroller); return { bottom: e.getBoundingClientRect().bottom, inner: innerHeight, scrolls: s.scrollHeight > s.clientHeight, pad: parseFloat(getComputedStyle(s).paddingBottom) }; }, scroller);
+    assert.ok(m.scrolls, 'the short window really overflows the lobby');
+    assert.ok(Math.abs(m.bottom - m.inner) <= 1, 'the dialog reaches the bottom edge, with no dead band under it');
     assert.ok(m.pad >= 16, 'the end of the scroll keeps breathing room');
   });
 }
