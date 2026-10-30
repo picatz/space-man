@@ -111,6 +111,9 @@ test('arena desktop: launcher, real controls, pause, result/rematch, stage forma
   assert.equal(await page.locator('.arena-roster [data-actor="1"] .arena-stocks').innerText(), '○○○', 'final HUD refresh agrees with zero remaining lives');
   assert.equal(await page.locator('.arena-roster [data-actor="1"] .arena-damage').innerText(), 'OUT');
   await capture(page, 'arena-results-desktop');
+  // Result actions are found by id elsewhere (keyboard nav, rooms, tests); each id names its own button.
+  assert.deepEqual(await page.evaluate(() => ['arenaRematch', 'arenaAgainCancel', 'arenaNext', 'arenaResultExit'].map(id => document.getElementById(id)?.textContent.trim())),
+    ['Rematch', 'Cancel auto-start', 'Next arena  ↗', 'All games']);
   await page.getByRole('button', { name: 'Rematch', exact: true }).click();
   assert.equal(await page.evaluate(() => arenaUI.snapshot().phase), 'countdown');
   await pause(page);
