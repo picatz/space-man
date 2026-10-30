@@ -68,7 +68,7 @@
 .tt-cell{position:absolute;margin:0;padding:0;border:0;border-radius:50%;background:transparent;cursor:pointer;touch-action:manipulation}
 .tt-cell:disabled{cursor:default}
 .tt-cell:focus-visible{outline:3px solid #FFE59A;outline-offset:-4px}
-.tt-dialog-wrap{position:absolute;inset:0;display:grid;place-items:center;padding:calc(16px + var(--tt-top)) 16px calc(16px + var(--tt-bottom));background:#05061399}
+.tt-dialog-wrap{position:absolute;inset:0;z-index:10;display:grid;place-items:center;padding:calc(16px + var(--tt-top)) 16px calc(16px + var(--tt-bottom));background:#05061399}
 .tt-dialog{width:min(420px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:10px;padding:20px;border-radius:22px;background:linear-gradient(180deg,#24204A,#16142E);box-shadow:inset 0 0 0 1px #B4A6E840,0 20px 50px #000a;text-align:center}
 .tt-dialog h2{margin:0;font-family:var(--sm-font-display,inherit);font-size:24px;line-height:1.15;color:#FFF6E6}
 .tt-dialog p{margin:0;color:#D8D6F2}

@@ -50,8 +50,9 @@ async function home(page, base) {
   await page.waitForFunction(() => G.mode === 'attract' && !document.getElementById('ovAttract').inert);
   await page.evaluate(() => { settings.muted = true; return document.fonts.ready; });
 }
-async function open(t, viewport) {
+async function open(t, viewport, init) {
   const { page, base } = await launch(t, viewport);
+  if (init) await page.context().addInitScript(init);
   await page.goto(base);
   await page.locator('#ovAttract.in').waitFor();
   await page.waitForFunction(() => G.mode === 'attract' && !document.getElementById('ovAttract').inert);
@@ -128,4 +129,19 @@ test('lantern lines: the oldest lantern goes dark when a fourth is lit, and the 
   const d = await debug(page);
   assert.equal(d.cells[0], 0, 'the oldest lantern went dark');
   assert.deepEqual(d.cells, [0, 2, 1, 2, 2, 0, 0, 1, 1]);
+});
+
+test('lantern lines with iPhone tap haptics: the switch overlays never cover the menu', async t => {
+  // iOS has no navigator.vibrate, so the page lays a haptic switch label over every button; those must stay under dialogs.
+  const page = await open(t, { width: 390, height: 844 }, () => { delete Navigator.prototype.vibrate; });
+  assert.equal(await page.evaluate(() => iosTapHaptics), true);
+  await page.locator('#ttPlayCpu').tap();
+  await page.locator('.tt-cell[data-cell="4"]').tap();
+  await page.waitForFunction(() => tableUI.debug().match.state.ply === 2, null, { timeout: 4000 });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Resume' }).tap({ timeout: 3000 });
+  assert.equal(await page.evaluate(() => tableUI.screen), 'match');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Home' }).tap({ timeout: 3000 });
+  await page.locator('#ovAttract.in').waitFor();
 });
