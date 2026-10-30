@@ -205,3 +205,72 @@ test('layout qa: the audit catches copy and controls hidden behind a sticky foot
   }, audit.toString());
   assert.ok(problems.some(p => /^p "qa row 11" hides behind fixed\/sticky #qaSticky at the bottom/.test(p)), problems.join('\n'));
 });
+
+// Arena on a phone: the scoreboard, the play area and the spectator dock must
+// share the screen without covering each other. A pilot knocked out of a solo
+// match watches the CPUs: fighter controls give way to the dock, and cards,
+// keys and swipes all pick who the camera follows.
+async function arenaKnockout(page) {
+  await activate(page, 'btnArena'); await page.locator('.arena-root[data-screen=lobby]').waitFor();
+  await page.locator('[data-format=ffa]').click(); await page.locator('[data-arena=ember-foundry]').click();
+  await page.locator('#arenaStart').click();
+  await page.waitForFunction(() => arenaUI.snapshot()?.phase === 'playing', null, { timeout: 15000 });
+}
+const rect = (page, selector) => page.locator(selector).first().evaluate(n => { const b = n.getBoundingClientRect(); return { top: b.top, bottom: b.bottom, left: b.left, right: b.right, height: b.height }; });
+const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+for (const [width, height] of [[390, 844], [844, 390]]) {
+  test(`layout qa: arena phone HUD and spectator dock ${width}x${height}`, async t => {
+    const { page, base } = await launch(t, { width, height });
+    await home(page, base);
+    await arenaKnockout(page);
+    // Fighting on touch: the DASH meter sits below its label, never through it.
+    await page.touchscreen.tap(width / 2, height / 2);
+    await page.locator('.arena-touch-dash').waitFor();
+    const dash = await page.locator('.arena-touch-dash').evaluate(b => { const word = b.querySelector('.arena-touch-word').getBoundingClientRect(), box = b.getBoundingClientRect(), after = getComputedStyle(b, '::after'); return { word: word.bottom, meter: box.bottom - parseFloat(after.bottom) - parseFloat(after.height) }; });
+    assert.ok(dash.meter >= dash.word, `dash meter (${dash.meter}) clears its label (${dash.word})`);
+    if (width < height) {
+      const hud = await rect(page, '.arena-hud');
+      assert.ok(hud.bottom <= height * .2, `phone scoreboard stays in the top fifth (bottom ${Math.round(hud.bottom)} of ${height})`);
+      for (const name of await page.locator('.arena-player-card:not([data-you=true]) .arena-player-name-text').all()) assert.ok(await name.evaluate(n => n.scrollWidth <= n.clientWidth + 1), `${await name.textContent()} is not truncated`);
+    }
+    await page.keyboard.down('d');
+    await page.waitForFunction(() => arenaUI.snapshot().actors[0].stocks <= 0, null, { timeout: 60000, polling: 100 });
+    await page.keyboard.up('d');
+    await page.touchscreen.tap(width / 2, height / 2);
+    await page.locator('#arenaWatchNext').waitFor();
+    assert.equal(await page.locator('.arena-touch').isVisible(), false, 'fighter controls give way to the spectator dock');
+    assert.equal(await page.locator('#arenaWatchRematch').isVisible(), true, 'a solo pilot can rematch without waiting');
+    const dock = await rect(page, '.arena-watch-tools'), roster = await rect(page, '.arena-roster');
+    assert.ok(!overlaps(dock, roster), 'dock and scoreboard never overlap');
+    assert.ok(dock.bottom <= height && dock.top >= 0, 'dock is on screen');
+    if (width > height) assert.ok(dock.height <= 72, `landscape dock is one slim row (${dock.height}px)`);
+    if (SHOTS) { await fs.mkdir(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, `qa-${engineName}-arena-spectate-${width}x${height}.png`) }); }
+    const watched = () => page.locator('#arenaWatchName').textContent();
+    // The followed fighter is framed inside the clear area (its WATCHING cue is painted).
+    await page.waitForFunction(() => /(^|,)WATCHING:/.test(document.querySelector('.arena-root').dataset.identity || ''), null, { timeout: 5000 });
+    // Each way of switching changes who is followed.
+    const twoToWatch = () => page.waitForFunction(() => arenaUI.snapshot().actors.filter(a => a.stocks > 0 && a.respawnTicks <= 0).length >= 2);
+    await twoToWatch(); let before = await watched();
+    await page.keyboard.press('ArrowRight');
+    assert.notEqual(await watched(), before, 'arrow keys switch fighters');
+    await twoToWatch(); before = await watched();
+    const box = await rect(page, '.arena-canvas');
+    await page.locator('.arena-canvas').evaluate((c, y) => { const at = x => ({ clientX: x, clientY: y, isPrimary: true, pointerId: 7, pointerType: 'touch', bubbles: true }); c.dispatchEvent(new PointerEvent('pointerdown', at(300))); c.dispatchEvent(new PointerEvent('pointerup', at(180))); }, (box.top + box.bottom) / 2);
+    assert.notEqual(await watched(), before, 'a swipe switches fighters');
+    // CPUs keep fighting, so a fighter can be knocked out between the pick
+    // and the tap; retry with another eligible card rather than flake.
+    let picked = '', followed = '';
+    for (let attempt = 0; attempt < 4 && followed !== 'WATCHING ' + picked; attempt++) {
+      const id = await page.evaluate(() => { const s = arenaUI.snapshot(), now = document.querySelector('.arena-player-card[data-watching=true]')?.dataset.actor; return s.actors.filter(a => a.stocks > 0 && a.respawnTicks <= 0 && String(a.id) !== now).sort((a, b) => a.damage - b.damage)[0]?.id; });
+      if (!id) { await page.waitForTimeout(200); continue; }
+      const card = page.locator(`.arena-player-card[data-actor="${id}"]`);
+      picked = (await card.locator('.arena-player-name-text').textContent()).trim();
+      await card.tap(); followed = await watched();
+    }
+    assert.equal(followed, 'WATCHING ' + picked, 'tapping a card follows that fighter');
+    await page.locator('#arenaWatchRematch').tap();
+    await page.waitForFunction(() => arenaUI.snapshot()?.actors[0].stocks > 0);
+    await page.locator('.arena-touch').waitFor();
+    assert.equal(await page.locator('.arena-watch-tools').isVisible(), false, 'a rematch puts the pilot back in control');
+  });
+}

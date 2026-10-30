@@ -66,8 +66,8 @@ test((live?'LIVE public':'simulated')+' relay: one crew through all engines and 
   const states=await Promise.all([host,friend,watcher].map(c=>state(c.page)));states.forEach((s,i)=>{assert.equal(s.room,initial[i].room);assert.equal(s.p,initial[i].p);assert.equal(s.role,initial[i].role);});
   if(index===4){await host.page.waitForFunction(()=>journeyUI.room.current?.phase==='running');assert.equal(await host.page.evaluate(()=>arenaUI.snapshot().actors.length),5);await watcher.page.waitForFunction(()=>journeyUI.room.current?.index===4&&arenaUI?.snapshot()?.actors.some(a=>a.boss)&&document.querySelector('#expeditionCue').hidden&&document.querySelector('.arena-countdown').hidden);
    const bossName=await watcher.page.evaluate(()=>arenaUI.snapshot().actors.find(a=>a.boss).name);
-   for(let n=0;n<6&&!(await watcher.page.locator('.arena-watch-tools span').innerText()).includes(bossName);n++)await watcher.page.locator('#arenaWatchNext').click();
-   assert.ok((await watcher.page.locator('.arena-watch-tools span').innerText()).includes(bossName),'ordinary spectator camera follows the boss');
+   for(let n=0;n<6&&!(await watcher.page.locator('#arenaWatchName').textContent()).includes(bossName);n++)await watcher.page.locator('#arenaWatchNext').click();
+   assert.ok((await watcher.page.locator('#arenaWatchName').textContent()).includes(bossName),'ordinary spectator camera follows the boss');
    await watcher.page.waitForFunction(()=>['charging','active','recover'].every(phase=>journeyBossPhases.some(v=>v.index===4&&v.phase===phase)),undefined,{timeout:25000});const phases=await watcher.page.evaluate(()=>journeyBossPhases.filter(v=>v.index===4));for(const phase of['charging','active','recover'])assert.ok(phases.some(v=>v.phase===phase),'live watcher observed '+phase);console.log('Boss phase evidence',JSON.stringify(phases));if((await state(watcher.page)).index===4){assert.equal(await watcher.page.locator('#expeditionCue').isVisible(),false);await capture(watcher.page,'journey-phone-boss-observed-cycle');} }
  }
  assert.equal((await state(late.page)).role,0,'late viewer takes requested seat at next boundary');

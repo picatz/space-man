@@ -124,7 +124,7 @@ function ui(pads = []) {
     root: { navigator: { getGamepads: () => c.pads } }, pads, rootEl: { dataset: { epoch: '1' }, inert: false }, inputSuspended: false, active: true, activeModal: null,
     paused: false, roomPaused: false, localRoomMenu: false, roomStatus: null, view: 'match', matchSerial: 1, usingTouch: false, sharedSession: null, localSession: null,
     local2: null, playerCount: 2, p2Joined: false, lobby: { contains: () => false, querySelectorAll: () => [] }, resultPanel: {}, performance: { now: () => c.now }, now: 1000, log,
-    onlineActive: () => false, canControl: () => true, localActor: () => c.state.actors.find((a) => a.controller === 'human'), isRunning: () => true, isMatch: () => true,
+    onlineActive: () => false, canControl: () => true, spectating: () => false, localActor: () => c.state.actors.find((a) => a.controller === 'human'), isRunning: () => true, isMatch: () => true,
     clamp: (v, l, h) => Math.max(l, Math.min(h, v)), joinP2() { log.joins++; }, showLobby() {}, close() {}, resumeMatch() {}, pauseMatch() { log.escapes++; }, focusStep() {}, cycleWatch() {}, roomInput: null, roomJoin: null, document: { hidden: false } });
   const code = between('    function resetTouchInput(', '    function guardPointer(') + between('    function pollGamepad(', '    function guardRecoveryClick(');
   vm.runInContext(between('  const LOCAL_KEYS', '  function rounded(') + code + '\nlocal2 = makeLocal2();', c);
