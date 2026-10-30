@@ -668,3 +668,21 @@ test('arena 2 players is not offered on a touch-only phone without two controlle
   await page.locator('#arenaPlayers2').tap();
   assert.match(await page.locator('#arenaPlayersNote').innerText(), /P2: press/);
 });
+
+test('stage medals show on the lobby cards and the Records shelf counts every mode', { timeout: 60000 }, async t => {
+  const { page } = await launch(t, {}, () => {
+    if (sessionStorage.getItem('medals-seeded')) return;
+    sessionStorage.setItem('medals-seeded', '1');
+    localStorage.setItem('sm2.arena.v1.medals', JSON.stringify({ 'orbital-dock': 'silver', 'bloom-reactor': 'nope' }));
+    localStorage.setItem('sm2.race.v1.best', JSON.stringify({ starlight: { time: 81.2, position: 1 } }));
+  });
+  await page.locator('#btnTrophy').click();
+  await page.locator('#ovTrophy.show').waitFor();
+  assert.equal(await page.locator('#trophyMedals').textContent(), 'ARENA 1/3 · CIRCUIT 1/8 · 1 GOLD · 1 SILVER · 0 BRONZE');
+  await page.locator('#btnCloseTrophy').click();
+  await page.locator('#btnArena').click(); await screen(page, 'lobby');
+  assert.deepEqual(await page.locator('.arena-stage-card .arena-medal').allTextContents(), ['SILVER', '', ''], 'unknown tiers are ignored');
+  assert.equal(await page.locator('.arena-stage-card[data-arena="orbital-dock"] .arena-medal').isVisible(), true);
+  assert.equal(await page.locator('.arena-stage-card[data-arena="bloom-reactor"] .arena-medal').isVisible(), false);
+  await capture(page, 'arena-lobby-medals');
+});

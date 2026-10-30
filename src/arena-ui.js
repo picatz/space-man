@@ -45,6 +45,7 @@
   function scanAccepts(net) { return text => { try { const k = net && net.parseJoin ? net.parseJoin(text).kind : 'invite'; return k === 'invite' || k === 'code'; } catch (_) { return false; } }; }
   function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
   const SKILL_NAMES = Object.freeze({ easy: 'Cadet', normal: 'Pilot', hard: 'Ace' });
+  const SKILL_MEDALS = Object.freeze({ easy: 'bronze', normal: 'silver', hard: 'gold' }), MEDAL_ORDER = Object.freeze(['bronze', 'silver', 'gold']);
   function button(text, cls, fn) { const n = el('button', 'arena-button ' + (cls || ''), text); n.type = 'button'; if (fn) n.addEventListener('click', fn); return n; }
   const STYLES = `\n/* All arena rules are scoped. The runner's cascade stays untouched. */
 .arena-root{position:fixed;inset:0 auto auto 0;width:100%;height:100%;height:100dvh;min-width:0;min-height:0;z-index:1000;isolation:isolate;overflow:hidden;background:#060818;color:#CFE3FF;font-family:var(--font,ui-rounded,system-ui,sans-serif);font-size:14px;line-height:1.4;touch-action:none;-webkit-user-select:none;user-select:none;color-scheme:dark}
@@ -95,8 +96,9 @@
 .arena-selected-dot{position:absolute;right:9px;top:10px;width:5px;height:5px;border-radius:50%;background:#38E1FF;opacity:0}
 .arena-format-card[aria-pressed=true] .arena-selected-dot{opacity:1}
 .arena-stage-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.arena-stage-card{display:block;text-align:left;min-width:0;padding:0 0 10px;overflow:hidden;background:#0B1829;border-color:rgba(135,173,204,.18);min-height:114px;border-radius:10px}
+.arena-stage-card{position:relative;display:block;text-align:left;min-width:0;padding:0 0 10px;overflow:hidden;background:#0B1829;border-color:rgba(135,173,204,.18);min-height:114px;border-radius:10px}
 .arena-stage-card[aria-pressed=true]{border-color:#FFC66B;box-shadow:0 0 0 1px rgba(255,198,107,.18)}
+.arena-medal{position:absolute;top:6px;right:6px;padding:4px 6px;border-radius:9px;border:1px solid var(--medal);background:rgba(7,14,26,.88);color:var(--medal);font:800 calc(9px * var(--ui-scale, 1))/1 system-ui,sans-serif;letter-spacing:.08em}.arena-medal:empty{display:none}.arena-medal[data-medal=gold]{--medal:#FFC66B}.arena-medal[data-medal=silver]{--medal:#C9D6E2}.arena-medal[data-medal=bronze]{--medal:#E0A274}
 .arena-stage-preview{display:block;min-width:0;max-width:100%;width:100%;height:auto;aspect-ratio:288/150;min-height:55px;object-fit:cover;border-bottom:1px solid rgba(159,241,255,.08)}
 .arena-stage-name{display:block;font-size:calc(9px * var(--ui-scale, 1));font-weight:800;line-height:1.5;padding:9px 8px 0;letter-spacing:-.01em;color:#BED5E9}
 .arena-stage-card[aria-pressed=true] .arena-stage-name{color:#FFE3AF}
@@ -337,6 +339,8 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
     let lobbyFit = null, lobbyArtEl = null, lobbyFitQueued = false;
     let live, timerEl, rosterEl, rosterRect = null, rosterFaded = false, canvasLeft = 0, canvasTop = 0, statusEl, statusSub, matchTitle, touchEl, stickZone, stickBase, stickKnob, pulseButton, dashButton;
     let pulseMeter, dashMeter, countdownEl, pauseButton, launchButton, resultTitle, resultText, resultRoster, suggestButton, suggestedLevel = null;
+    // Stage medals: the hardest CPU skill beaten solo on each stage (Cadet bronze, Pilot silver, Ace gold).
+    let medals = {};
     let formatButtons = [], stageButtons = [], difficultyButtons = [], mirrorButton, stageDescription;
     let savedFocus = null, inertSiblings = [], savedBodyOverflow = '';
     const cosmeticSession = Date.now().toString(36) + ':' + Math.random().toString(36).slice(2, 9);
@@ -433,7 +437,11 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
     function setArena(id) { selections.arenaId = id; camera.initialized = false; background = null; syncChoices(); saveSelection(); paintLobby(); if (onlineActive()) room.configure(selections); }
     function syncChoices() {
       formatButtons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.format === selections.format)));
-      stageButtons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.arena === selections.arenaId)));
+      stageButtons.forEach(b => {
+        b.setAttribute('aria-pressed', String(b.dataset.arena === selections.arenaId));
+        const medal = medals[b.dataset.arena], pip = b.querySelector('.arena-medal');
+        if (pip) { pip.textContent = medal ? medal.toUpperCase() : ''; if (medal) pip.dataset.medal = medal; else delete pip.dataset.medal; }
+      });
       difficultyButtons.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.difficulty === selections.difficulty)));
       const a = selectedArena();
       if (stageDescription) stageDescription.textContent = a.description;
@@ -948,7 +956,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       arena = root.SpaceManArena;
       actionBuffer = arena.createActionBuffer();
       if (!arena || !Array.isArray(arena.arenas) || !arena.arenas.length) throw new Error('Arena simulation is not available.');
-      loadSelection();
+      loadSelection(); loadMedals();
       rootEl = el('section', 'arena-root'); rootEl.id = 'arenaRoot'; const scopedStyle = el('style'); scopedStyle.textContent = STYLES + TWO_STYLES + ONLINE_STYLES + IDENTITY_STYLES + THUMB_STYLES + WATCH_STYLES + CHIP_STYLES; rootEl.append(scopedStyle); rootEl.hidden = true; rootEl.setAttribute('aria-label', 'Space Man Orbital Arena'); rootEl.dataset.touch = 'false';
       canvas = el('canvas', 'arena-canvas'); canvas.tabIndex = -1; canvas.setAttribute('aria-label', 'Orbital Arena match. Move with A and D or arrows. Space jumps twice. F pulses. Shift dashes. Escape pauses.');
       ctx = canvas.getContext('2d', { alpha: false }); rootEl.append(canvas);
@@ -1021,7 +1029,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       for (let i = 0; i < arena.arenas.length; i++) {
         const a = arena.arenas[i], b = button('', 'arena-stage-card', () => setArena(a.id)); b.dataset.arena = a.id;
         const preview = el('canvas', 'arena-stage-preview'); preview.width = 288; preview.height = 150; preview.setAttribute('aria-hidden', 'true');
-        b.append(preview, el('span', 'arena-stage-name', a.name), el('span', 'arena-stage-number', '0' + (i + 1))); stages.append(b); stageButtons.push(b); paintPreview(preview, a);
+        b.append(preview, el('span', 'arena-stage-name', a.name), el('span', 'arena-stage-number', '0' + (i + 1)), el('span', 'arena-medal')); stages.append(b); stageButtons.push(b); paintPreview(preview, a);
       }
       stageDescription = el('p', 'arena-stage-description'); stageGroup.append(stages, stageDescription); setup.append(stageGroup);
       const settingsRow = el('div', 'arena-setup-options');
@@ -1883,11 +1891,31 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
         const flawless = won && !result.tie && human.deaths === 0 && root.SpaceManLogbook ? root.SpaceManLogbook.discover('flawless') : null;
         if (flawless) resultText.textContent += ' Logbook: ' + flawless.name + '.';
       }
+      if (won && !result.tie && !onlineActive() && !local2 && !localSession && !sharedSession) {
+        const medal = awardMedal(state.arenaId, state.difficulty);
+        if (medal) { resultText.textContent += ' New ' + medal + ' medal on ' + arena.getArena(state.arenaId).name + '!'; syncChoices(); }
+      }
       adaptSkill(won ? 'win' : result.tie || !human ? 'tie' : 'loss');
       syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent + (suggestButton.hidden ? '' : ' ' + suggestButton.textContent + '.'));
     }
     // Two straight wins or losses at one CPU level offer the next level up or
     // down as a one-tap rematch; solo matches against CPUs only.
+    function medalsKey() { return (opts.storageKey || 'spaceman.arena.v1') + '.medals'; }
+    function loadMedals() {
+      medals = {};
+      try {
+        const raw = JSON.parse(root.localStorage.getItem(medalsKey()) || '{}');
+        for (const a of arena.arenas) if (MEDAL_ORDER.includes(raw[a.id])) medals[a.id] = raw[a.id];
+      } catch (_) { /* A corrupt record never blocks play. */ }
+    }
+    // Returns the newly earned medal for this solo win, or null.
+    function awardMedal(arenaId, difficulty) {
+      const earned = SKILL_MEDALS[difficulty];
+      if (!earned || MEDAL_ORDER.indexOf(earned) <= MEDAL_ORDER.indexOf(medals[arenaId])) return null;
+      medals[arenaId] = earned;
+      try { root.localStorage.setItem(medalsKey(), JSON.stringify(medals)); } catch (_) { /* Private mode is playable. */ }
+      return earned;
+    }
     function adaptSkill(outcome) {
       suggestedLevel = null; suggestButton.hidden = true;
       const Adapt = root.SpaceManAdapt;
