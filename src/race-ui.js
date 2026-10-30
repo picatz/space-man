@@ -386,7 +386,7 @@
         status.error ||
           status.closedReason ||
           (status.busy
-            ? "Connecting… You can cancel below."
+            ? (status.joinText || "Connecting…") + " You can cancel below."
             : status.connection ||
               (status.stale
                 ? "Waiting for host · controls released"

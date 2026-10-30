@@ -53,7 +53,7 @@ test('a join waiting on the host says so, and Cancel returns at once without a l
   await host.net.openRoom({ relayHost: 'relay.test', code: false, approve: true });
   guest.run(`G.cosmetics.callsign = [0, 0]; joinPayload = ${JSON.stringify(host.net.info().link.split('#j=')[1])}; resetJoinPrompt(); showOverlay('ovJoin');`);
   const joining = guest.run('acceptInvite(0)');
-  await until(() => /Waiting for the host/.test(el(guest, 'joinState').textContent), 'waiting-for-host stage');
+  await until(() => /Asking the host to let you in/.test(el(guest, 'joinState').textContent), 'waiting-for-host stage');
   assert.equal(el(guest, 'btnJoinNotNow').textContent, 'Cancel');
   assert.notEqual(el(guest, 'btnJoinNotNow').style.display, 'none', 'Cancel stays reachable');
   guest.run("$('btnJoinNotNow').onclick()");

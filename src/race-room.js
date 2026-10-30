@@ -50,9 +50,11 @@
       return votes;
     }
     function status() {
+      const joining = busy && net.joinStatus ? net.joinStatus() : null;
       return {
         active,
         busy,
+        joinText: joining ? joining.text : "",
         error,
         closedReason,
         connection,
@@ -164,6 +166,10 @@
       ensureVotes();
       off = net.onEvent((event, data) => {
         if (!active && !busy) return;
+        if (event === "join-progress") {
+          changed();
+          return;
+        }
         if (event === "emote") {
           if (votes && data && social.kindOf(data.id)) votes.onSignal(data.p, data.id);
           return;
