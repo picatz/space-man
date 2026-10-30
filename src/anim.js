@@ -116,7 +116,7 @@
         // Run: the foot traces a flattened loop; planted half hugs the baseline,
         // swing half lifts. Idle: feet planted a little apart.
         const ph = o.runCycle + (leg === 0 ? 0 : Math.PI);
-        const stride = (o.stride ?? 5.5) * o.speed, lift = (o.lift ?? 4.2) * o.speed;   // o.stride/lift: per-rig gait
+        const stride = 5.5 * o.speed, lift = 4.2 * o.speed;
         fx = hx * 0.7 + Math.sin(ph) * stride;
         fy = base - Math.max(0, Math.cos(ph)) * lift;
         fx += (leg === 0 ? 0.8 : -0.8) * (1 - o.speed);
@@ -126,7 +126,7 @@
         const tuck = Math.max(1 - fall, o.stomp) * (1 - o.launch * 0.7);
         const reach = leg === 0 ? -2.5 : 3;                   // front leg reaches ahead
         fx = hx * 0.6 + reach * (0.4 + fall * 0.6) - o.launch * (leg === 0 ? 3 : 1.5);
-        fy = base - tuck * (o.tuck ?? 5.5) - (leg === 0 ? 0.6 : 0);   // o.tuck: knee-lift height
+        fy = base - tuck * 5.5 - (leg === 0 ? 0.6 : 0);
       }
       if (fy > base) fy = base;   // feet never sink below the contact line
       // IK: equal segments, knee bends toward +x (the facing side).

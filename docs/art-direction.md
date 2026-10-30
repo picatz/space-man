@@ -123,8 +123,8 @@ The crew is drawn by `SpaceManArt` (2D) and `SpaceManRaceScene.actorMeshes`
 Every 2D astronaut is painted by one rig, `SpaceManArt.drawSpacefarer(c, x, y, scale,
 appearance, pose)`. Home, wardrobe, tiles and the Arena lobby reach it through
 `drawAvatar`; Arena matches and the Endless Run's `drawPlayer` call it directly (the Run
-feeds its sim and presentation rig, and adds pistol tricks and arrival morphs through
-the `gearFx`, `armBlend` and `frame` hooks). No mode adds its own body.
+adds pistol tricks and arrival morphs through the `gearFx`, `armBlend` and `frame`
+hooks). No mode adds its own body.
 
 - **Frame.** The Run sprite's units: a 24 x 34 hitbox, origin at the body centre,
   helmet r 11 at y -9, boots on y 16. `(x, y)` is the ground contact point under
@@ -132,34 +132,16 @@ the `gearFx`, `armBlend` and `frame` hooks). No mode adds its own body.
 - **Parts, back to front.** IK legs (far, then near) with boots; the pack; the far
   arm; the 16 x 16 torso with `suitDetails`; the near arm and its gear; the head
   group (optional halo sprite, helmet, hat, frost). The helmet is always last.
-- **Model sheet.** Every pivot, width and proportion lives in one frozen object,
-  `SpaceManArt.SPACEFARER`; the rig reads nothing else, and a future character
-  passes its own sheet as `pose.model`. Read top to bottom the pilot is about 6
-  parts helmet, 3 torso, 2 shin, 1 boot: a big-headed mascot whose legs still
-  show. The rules the sheet encodes:
-  - Helmet r 11 at y -9 is the identity and never changes; it paints last.
-  - Torso 17 x 14 (r 7) from y -4, so a soft waist flares into the hips.
-  - Shoulders at (5, -0.5) / (-5, -0.5), just inside the helmet rim: sleeves leave
-    the body at shoulder height, never from the chin. Arms are two-bone (5.6 per
-    segment), the elbow always folds back and down. At rest the near mitten
-    hangs at the hip and the far mitten shows in front of the pack, so both hands
-    read in the idle silhouette.
-  - Hips at (+-3.6, 4.6) inside the torso; legs are two 5.25 segments to the
-    ankle at y 15, so a standing pilot's legs are straight, not bowed.
-  - Boots are padded beans (heel 2.5, toe 3.6, 3.8 tall) with a round toe and a
-    darker sole; a lifted foot tips its toe up.
-  - Limbs are 3.2 (arm) and 4.2 (leg) wide inside a 1.3 edge; cuffs are one sleeve
-    wide and the mitten overlaps them. Far limbs are the same suit under a light
-    0.1 shade wash, never a different (grey) material.
-  - Review any change on the 14-pose sheet against `main` (idle x2, wave, run x3,
-    rise, fall, land, celebrate, attack, hit, aim, hang) at 5x and at gameplay
-    size, plus the home hero; it ships only if no pose gets worse.
-- **Motion.** Overlap and follow-through come from phase, not state: the head bobs
-  a beat after the torso, arms swing a beat behind the legs and fold at the elbow
-  as pace rises, an idle pilot shifts weight with the helmet trailing the hips, the
-  wave flutters the wrist late, a jump stretches on the rise, celebrate is a
-  victory hop that squashes on each touchdown, and the comms aerial whips behind
-  lean, stride and hop.
+- **Proportions.** Arms are the Run's capsules: shoulders at (+-5, -6) under the
+  neck seal, near arm 10 long, far arm 12, about 4 units wide with the outline.
+  Legs are two 6.4 segments from hips at (+-4, 4).
+- **Joints never show.** The shin ends inside a moon boot that rises over the ankle
+  (one shape: shaft, round toe, darker sole), never on a separate cuff and disc. A
+  wrist cuff is exactly the sleeve's outline width and the mitten overlaps it.
+- **Review.** Any rig change is judged on the 14-pose sheet against `main`
+  (`tests/browser/rig-sheet.cjs [ref]`), at close-up and gameplay size, still and in
+  motion, and ships only if no pose reads worse. Craft notes and sources:
+  project files `art-direction/character-research.md`.
 - **Palette slots.** `suit` torso and helmet, `arm` near sleeve, `legF` near leg,
   `legB` outline, shade, far limbs and cuffs, `pack` canister, `visTop`/`visBot`
   blaster. The crew or team `accent` lights the cuffs, boots, pack vent, chest panel

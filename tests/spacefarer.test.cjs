@@ -136,38 +136,21 @@ test('drawAvatar renders through the rig, keeping the hoverpod branch', () => {
   assert.ok(armed.calls.some(c => c[0] === '=fillStyle' && c[1] === '#38E1FF'), 'the lobby emitter takes its colour');
 });
 
-test('celebrate hops off the slab, and reduced motion keeps the feet planted', () => {
-  // The first translate is the ground contact point; a hop lifts it above y = 120.
-  const lift = pose => draw(pose).find(c => c[0] === 'translate')[2];
-  assert.ok(lift({ celebrate: 1, t: Math.PI / 12 }) < 120 - 6, 'mid-hop the body clears the ground');
-  assert.equal(lift({ celebrate: 1, t: Math.PI / 12, calm: true }), 120);
-  assert.equal(lift({ t: 1 }), 120, 'idle never leaves the ground');
+test('feet and wrists have no seams: the shin ends inside the boot, the cuff matches the sleeve', () => {
+  // The leg stroke stops short of the foot point, so its round end stays inside the boot shaft.
+  const calls = draw({ t: .4 });
+  const legEnds = [];
+  for (let i = 0; i < calls.length; i++) if (calls[i][0] === '=lineWidth' && calls[i][1] === 4.7) {
+    const line = calls.slice(0, i).reverse().find(c => c[0] === 'lineTo'); legEnds.push(line[2]);
+  }
+  assert.equal(legEnds.length, 2);
+  for (const y of legEnds) assert.ok(y < 16 - 1, 'shin ends above the foot point, inside the boot (' + y + ')');
+  // Cuffs are sleeve-outline wide (4.1), not a wider washer.
+  assert.ok(calls.some(c => c[0] === 'moveTo' && Math.abs(c[1] - (-2.05 + 1)) < 1e-9), 'cuff is one sleeve wide');
 });
 
-test('limbs read as one suit: each limb is one outlined piece with the torso hairline', () => {
-  const M = Art.SPACEFARER, calls = draw({ t: .4 });
-  // Cutout rule: a limb is a single filled tube outlined once, so no per-bone seam can show.
-  const arcs = calls.filter(c => c[0] === 'arc' && c[6] === true);   // the round root and tip of each tube
-  assert.ok(arcs.length >= 8, 'four limbs, each with a round root and tip (' + arcs.length + ')');
-  assert.ok(calls.some(c => c[0] === '=lineWidth' && c[1] === M.edge / 2), 'limb outline matches the torso hairline');
-  assert.ok(!calls.some(c => c[0] === '=lineWidth' && c[1] === M.arm.w), 'no stroked-noodle sleeves');
-  // Thumbs are a close-up detail only.
-  const thumbs = scale => { const r = recorder(); Art.drawSpacefarer(r.ctx, 0, 0, scale, Cosmetics.DEFAULTS, {}); return r.calls.filter(c => c[0] === 'ellipse').length; };
-  assert.ok(thumbs(4) > thumbs(1), 'mittens gain a thumb at close-up scale');
-});
-
-test('the comms aerial trails motion as follow-through', () => {
-  const tip = pose => { const calls = draw(pose), i = calls.findIndex(c => c[0] === '=lineWidth' && c[1] === 1.4); return calls.slice(i).find(c => c[0] === 'quadraticCurveTo'); };
-  assert.deepEqual(tip({ calm: true }), tip({ calm: true, lean: .14 }), 'calm keeps the aerial still');
-  assert.notDeepEqual(tip({ t: 1 }), tip({ t: 1, lean: .14, speed: 1, runCycle: 1 }), 'a running pilot whips its aerial');
-});
-
-test('the model sheet stands the pilot up straight: legs reach the ground unbent, boots under the hips', () => {
-  const M = Art.SPACEFARER, stand = M.leg.ankle - M.hip.y;
-  assert.ok(stand <= M.leg.seg * 2 && stand > M.leg.seg * 2 - 1, 'standing legs are nearly straight, with a hair of knee for the stride (' + stand + ' of ' + M.leg.seg * 2 + ')');
-  assert.ok(M.leg.ankle + M.boot.sole <= M.ground + .1 && M.leg.ankle + M.boot.sole > M.ground - .6, 'soles meet the ground');
-  assert.ok(M.leg.ankle - M.boot.top > M.torso.y + M.torso.h + 2, 'shins show between torso and boots');
-  // A different sheet (a future character) paints through the same rig.
-  const tall = Object.freeze({ ...M, leg: Object.freeze({ ...M.leg, seg: 6 }), hip: Object.freeze({ ...M.hip, y: 3.2 }) });
-  assert.notDeepEqual(draw({ model: tall }), draw({}));
+test('the Run hooks: a body-frame callback and an eased authored arm pose', () => {
+  let framed = 0; draw({ frame: () => framed++ }); assert.equal(framed, 1);
+  assert.notDeepEqual(draw({ armBlend: 1, nearArmTo: 2.6, farArmTo: -1 }), draw({}));
+  assert.deepEqual(draw({ armBlend: 0, nearArmTo: 2.6 }), draw({}));
 });
