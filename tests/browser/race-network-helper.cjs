@@ -580,6 +580,13 @@ async function runAcceptance(t, { live = false, relayHost = 'relay.test' } = {})
       assert.ok(box && box.width >= 44 && box.height >= 44 && box.x >= 0 && box.y >= 0 && box.x+box.width <= 391 && box.y+box.height <= 845,'phone spectator control fits and is touch-sized');
     }
     await capture(guest,'phone-watching');
+    // The race overview frames the whole circuit with numbered karts; follow returns to the chase.
+    await guest.page.locator('#raceWatchOverview').click();
+    await wait(guest,() => document.querySelector('.sm-watch-eyebrow').textContent === 'RACE OVERVIEW' && document.querySelector('#raceWatchOverview').getAttribute('aria-pressed') === 'true');
+    assert.equal(await guest.page.locator('.race-touch').isVisible(),false,'no driving controls while watching');
+    await capture(guest,'phone-overview');
+    await guest.page.locator('#raceWatchOverview').click();
+    await wait(guest,() => document.querySelector('.sm-watch-eyebrow').textContent !== 'RACE OVERVIEW');
 
     stage = 'host closure, fresh room reuse and preserved runner return';
     await host.page.getByRole('button',{name:'Pause race',exact:true}).click(); await host.page.locator('#raceLobby').click();

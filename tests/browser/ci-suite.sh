@@ -42,7 +42,7 @@ case "$suite" in
   cosmetics) node --test cosmetics.test.cjs runner-pause.test.cjs ;;
   expedition) node --test expedition.test.cjs ;;
   home) node --test home.test.cjs home-shell.test.cjs secondary-surfaces.test.cjs ;;
-  identity) node --test player-identity.test.cjs race-identity.test.cjs runner-identity.test.cjs ;;
+  identity) node --test player-identity.test.cjs race-identity.test.cjs runner-identity.test.cjs spectate.test.cjs ;;
   invite-qr) node --test journey-qr-pixels.test.cjs journey-qr.test.cjs ;;
   journey) node --test journey.test.cjs ;;
   layout-qa) node --test layout-qa.test.cjs ;;

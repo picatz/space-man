@@ -113,7 +113,7 @@
 @media(max-height:520px) and (min-width:600px){.race-hud-left{grid-template-columns:auto minmax(0,170px);align-items:center;max-width:360px}.race-warning{top:calc(var(--race-top) + 103px)}.race-grid{grid-template-columns:.85fr 1.15fr;gap:25px;align-items:start}.race-intro{display:block}.race-title{font-size:42px}.race-hero{max-width:190px}.race-lede{font-size:calc(11px * var(--ui-scale, 1))}.race-lobby-header{margin-bottom:9px}.race-track{min-height:61px;padding:5px 10px}.race-track canvas{height:43px;width:75px;flex-basis:75px}.race-setup{padding:15px}.race-track-description{min-height:0}.race-touch-button{width:57px;height:55px}.race-minimap,.race-root[data-touch=true] .race-minimap{width:100px;height:70px;bottom:calc(var(--race-bottom) + 85px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 91px)}.race-banner{top:25%;font-size:44px}.race-compact{padding:19px}.race-compact h2{font-size:28px}.race-compact>.race-button{margin-top:6px}.race-compact p{margin:6px 0}.race-results{margin:9px 0}.race-result-row{padding:5px 4px}}
 @media(max-width:350px){.race-touch-button{width:54px;height:60px}.race-root .race-recover{width:44px;font-size:0;padding:5px 2px}.race-recover:after{content:"↺";font-size:23px}.race-boostbar{width:100px}.race-root[data-touch=true] .race-minimap{width:100px;height:70px}.race-hud-box{padding:9px 10px;gap:10px}.race-hud{gap:5px}.race-time{padding:10px 8px}}
 .race-ready-row{display:grid;gap:8px;margin:10px 0}.race-ready-row[hidden],.race-ready-row>[hidden],.race-compact>.race-text[hidden]{display:none!important}.race-auto-label{display:flex;gap:8px;align-items:center;font-size:13px;min-height:44px}.race-auto-label input{width:22px;height:22px;flex:none}.race-vote-note{margin:6px 0;font-size:13px;line-height:1.5;color:#c7e2ef;min-height:0}.race-vote-note:empty{display:none}
-.race-online-panel{margin-top:18px;padding:13px 18px;border:1px solid #38536b;border-radius:16px;background:#10263be8}.race-online-panel>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750;color:#d6efbf}.race-online-entry{display:grid;gap:10px}.race-online-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.race-room-input{width:100%;min-height:46px;border:1px solid #547183;border-radius:10px;background:#071c2e;color:#e1f5ff;font:inherit;padding:10px;user-select:text;touch-action:auto}.race-room-members{padding-left:20px;color:#c7e2ef;font-size:12px}.race-room-code{font-size:18px;letter-spacing:.08em}.race-watch-tools{position:absolute;bottom:calc(var(--race-bottom) + 18px);left:50%;transform:translateX(-50%);z-index:4;background:#10263be8;border:1px solid #38536b;border-radius:12px;display:flex;align-items:center;gap:8px;max-width:95%;font-size:calc(10px * var(--ui-scale, 1))}.race-watch-tools>.race-button{width:44px;min-width:44px;height:44px;padding:8px;flex:0 0 44px}.race-watch-tools>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-root button:disabled{opacity:.5;cursor:default}.race-root[data-online=true] .race-hint{display:none}
+.race-online-panel{margin-top:18px;padding:13px 18px;border:1px solid #38536b;border-radius:16px;background:#10263be8}.race-online-panel>summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:750;color:#d6efbf}.race-online-entry{display:grid;gap:10px}.race-online-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.race-room-input{width:100%;min-height:46px;border:1px solid #547183;border-radius:10px;background:#071c2e;color:#e1f5ff;font:inherit;padding:10px;user-select:text;touch-action:auto}.race-room-members{padding-left:20px;color:#c7e2ef;font-size:12px}.race-room-code{font-size:18px;letter-spacing:.08em}.race-root button:disabled{opacity:.5;cursor:default}.race-root[data-online=true] .race-hint{display:none}
 .race-audio-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px}.race-audio-volume{display:flex;gap:8px;align-items:center;font-size:calc(11px * var(--ui-scale, 1));color:#a9bed0}.race-audio-volume input{max-width:140px;min-height:44px;touch-action:pan-x}.race-compact .race-audio-controls{border-top:1px solid #294054;padding-top:12px}
 
 .race-warning-source{width:14px;height:14px;vertical-align:-3px;margin-right:5px}.race-threat-map{display:block;width:140px;height:30px;margin:4px auto 0;border-radius:5px}.race-item{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 151px);z-index:3;width:76px;height:62px;min-height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:3px;background:#12283fec;border:2px solid #71879b;border-radius:16px;touch-action:none;box-shadow:0 3px 0 #071522}.race-item-icon{font-size:25px;line-height:1}.race-item-name{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.06em;line-height:1.25}.race-item[data-item=shield]{border-color:#89eaff;color:#c5f6ff}.race-item[data-item=pulse]{border-color:#ffb17b;color:#ffe4cc}.race-item[aria-disabled=true]{color:#a7b8c5;border-color:#506779}.race-item[data-active=true]{box-shadow:0 0 0 3px #89eaff44}.race-item-key{font-size:calc(9px * var(--ui-scale, 1));color:#abc0cc}.race-root[data-touch=true] .race-item-key{display:none}.race-root[data-touch=true] .race-item{right:calc(var(--race-right) + 18px);bottom:calc(var(--race-bottom) + 97px);width:65px;height:55px}.race-root[data-touch=true][data-handed=left] .race-item{right:auto;left:calc(var(--race-left) + 18px)}.race-root[data-touch=true][data-features=true] .race-minimap{bottom:calc(var(--race-bottom) + 166px)}.race-warning[data-kind=pulse]{background:#43291feb;border-color:#ffc48b;color:#fff0d8;font-size:calc(11px * var(--ui-scale, 1));white-space:normal;text-align:center;max-width:min(340px,calc(100% - 32px));top:calc(var(--race-top) + 145px)}
@@ -123,6 +123,8 @@
 @media(prefers-reduced-motion:reduce){.race-root *{transition:none!important}}
 
 @media(max-width:360px) and (max-height:650px){.race-root[data-touch=true] .race-minimap{display:none}}
+.race-root[data-watching=true] .race-touch,.race-root[data-watching=true] .race-item,.race-root[data-watching=true] .race-hint,.race-root[data-watching=true] .race-speed{display:none!important}.race-root[data-watching=true] .race-minimap{bottom:calc(var(--race-bottom) + 158px);width:132px;height:92px}.race-root[data-watching=true] .sm-watch{bottom:calc(var(--race-bottom) + 12px)}.race-root[data-overview=true] .race-minimap{display:none}
+@media(max-height:520px) and (min-width:600px){.race-root[data-watching=true] .race-minimap{bottom:calc(var(--race-bottom) + 80px);width:100px;height:70px}}
 .race-root[data-cb=true] .race-position,.race-root[data-cb=true] .race-banner small{color:#8fd0ff}.race-root[data-cb=true] .race-boostfill{background:#8fd0ff}.race-root[data-cb=true] .race-drive-feedback[data-kind=boost]{color:#8fd0ff}.race-root[data-cb=true] .race-warning{background:#4a2a0de0;border-color:#ffa04a}
 `;
   function create(opts = {}) {
@@ -237,19 +239,46 @@
       roomCopy,
       roomShare,
       roomInviteCard,
-      watchTools,
-      watchName;
+      watchBar = null;
     let roomButtons = [],
       watchId = null,
+      overview = false,
+      watchOrder = null,
+      overviewBodies = [],
+      overviewClosed = false,
       roomSignature = "",
       networkEpoch = -1;
     const onlineActive = () => !!room?.active;
     const ownActor = () =>
       state?.actors.find((a) => a.controller === "human") || null;
-    const followActor = () =>
-      ownActor() ||
-      state?.actors.find((a) => a.id === watchId) ||
-      state?.actors[0];
+    const S = root.SpaceManSpectate, padWatch = S?.padReader();
+    // Watching: a seatless spectator, or an online racer whose own race is
+    // over while others still drive. Solo finishes go straight to results.
+    const ownDone = (a = ownActor()) => !!a && (a.finishTick !== null || a.forfeited || a.dnf);
+    const watchingNow = () => !!state && onlineActive() && state.phase !== "finished" && (!ownActor() || ownDone());
+    // Karts still worth a camera, in race order; once everyone is home, the whole grid.
+    function watchList() {
+      if (!state) return [];
+      const own = ownActor(), order = R.standings(state).filter((a) => a !== own);
+      const racing = order.filter((a) => a.finishTick === null && !a.dnf);
+      return racing.length ? racing : order;
+    }
+    // The chosen kart while it races, and for a beat after it crosses the line;
+    // your own finish gets the same beat before the camera cuts to the race.
+    const LINGER_TICKS = 150;
+    const lingering = (a) => !!a && a.finishTick !== null && state.raceTick - a.finishTick < LINGER_TICKS;
+    function followActor() {
+      if (!state) return null;
+      const own = ownActor();
+      if (own && !watchingNow()) return own;
+      const chosen = state.actors.find((a) => a.id === watchId);
+      if (chosen && (watchList().includes(chosen) || lingering(chosen))) return chosen;
+      if (own && watchId === null && lingering(own)) return own;
+      // Lock onto the pick, so the camera never hops karts on every overtake.
+      const pick = watchList()[0];
+      if (pick) watchId = pick.id;
+      return pick || own || state.actors[0];
+    }
     const canControl = () =>
       !onlineActive() ||
       (!!ownActor() &&
@@ -325,9 +354,7 @@
           : "3 laps · You + 4 CPU pilots",
       );
       touch.hidden = view !== "play" || paused || (online && !canControl());
-      watchTools.hidden = !online || view !== "play" || paused || !!ownActor();
-      if (!watchTools.hidden)
-        setText(watchName, (roomStatus?.info?.waiting ? "UP NEXT · WATCHING " : "WATCHING ") + (followActor()?.name || "RACE"));
+      paintWatch();
     }
     function paintVotes(votes) {
       if (!roomReady) return;
@@ -545,11 +572,64 @@
       ensureFrame();
     }
     function cycleWatch(direction) {
-      if (!state) return;
-      const list = state.actors;
-      const i = list.findIndex((a) => a.id === followActor()?.id);
-      watchId = list[(i + direction + list.length) % list.length].id;
-      syncRoomChoices();
+      if (!state || !S) return;
+      // Race order, held for a moment: next-then-previous comes back to the
+      // same kart even if they swapped places in between.
+      const now = root.performance.now(), live = watchList().map((a) => a.id);
+      const ids = watchOrder && now - watchOrder.at < 2500 ? watchOrder.ids.filter((id) => live.includes(id)) : live;
+      watchOrder = { ids, at: now };
+      const next = S.cycle(ids, followActor()?.id, direction);
+      if (next == null) return;
+      watchId = next;
+      overview = false;
+      paintWatch();
+    }
+    function watchKart(id) {
+      if (!state?.actors.some((a) => a.id === id)) return false;
+      watchId = id;
+      overview = false;
+      paintWatch();
+      return true;
+    }
+    function toggleOverview() {
+      overview = !overview;
+      paintWatch();
+    }
+    const watchShown = (panel) => !!watchBar && watchingNow() && view === "play" && !paused && !panel && modal.hidden;
+    const inputKind = () => rootEl.dataset.touch === "true" ? "touch" : document.body.classList.contains("gamepad-active") ? "pad" : "keys";
+    const ordinal = (n) => n + (n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th");
+    // The dock says who is on screen and what comes next; cheap enough for every frame.
+    function paintWatch(panel = !modal?.hidden) {
+      if (!watchBar) return;
+      const on = watchShown(panel);
+      rootEl.dataset.watching = String(on);
+      if (!on) { watchBar.update({ active: false }); return; }
+      const own = ownActor(), a = followActor(), info = roomStatus?.info || {},
+        place = (x) => (state.results?.find((r) => r.id === x.id)?.position ?? R.standings(state).findIndex((y) => y.id === x.id) + 1),
+        seatless = !own, host = !!room?.isHost;
+      let eyebrow = "WATCHING", name = a?.name || "", detail = "", tone = "live";
+      if (own && a === own) {
+        eyebrow = "YOU FINISHED"; tone = "done";
+        name = ordinal(place(own)) + " place";
+        detail = own.finishTick !== null ? fmt(own.finishTick / 60) + " · cutting to the race" : "Cutting to the race";
+      } else if (overview) {
+        eyebrow = "RACE OVERVIEW"; name = R.course(state.trackId).name;
+        detail = (inputKind() === "touch" ? "Tap a kart to follow it" : "Pick a kart with ← →");
+      } else if (a) {
+        detail = ordinal(place(a)) + " of " + state.actors.length + " · " +
+          (a.finishTick !== null ? "Finished " + fmt(a.finishTick / 60) : "Lap " + Math.min(a.lap, state.laps) + "/" + state.laps);
+        if (own) { eyebrow = "YOU · " + ordinal(place(own)).toUpperCase() + " · WATCHING"; tone = "done"; }
+        else if (info.waiting) { eyebrow = "UP NEXT · WATCHING"; tone = "wait"; }
+      }
+      watchBar.update({
+        active: true, eyebrow, name, detail, tone, overview, inputKind: inputKind(),
+        count: watchList().length,
+        actions: {
+          join: { hidden: !seatless, disabled: !!info.waiting || !!room?.busy,
+            label: info.waiting ? "Up next ✓" : "Race next" },
+          leave: { hidden: host },
+        },
+      });
     }
     function leaveRaceRoom() {
       if (!room) return true;
@@ -718,18 +798,32 @@
       roomDetails.append(roomEntry, roomBox, roomHint, roomLeave);
       roomDetails.addEventListener("toggle", paintRejoin);
       roomUtilities.prepend(roomDetails);
-      watchTools = el("div", "race-watch-tools");
-      watchTools.hidden = true;
-      const previous = button("←", "race-small", () => cycleWatch(-1));
-      previous.id = "raceWatchPrevious";
-      previous.setAttribute("aria-label", "Watch previous kart");
-      const next = button("→", "race-small", () => cycleWatch(1));
-      next.id = "raceWatchNext";
-      next.setAttribute("aria-label", "Watch next kart");
-      watchName = el("span");
-      watchName.id = "raceWatchName";
-      watchTools.append(previous, watchName, next);
-      rootEl.append(watchTools);
+      watchBar = S?.createBar({
+        doc: document, parent: rootEl, prefix: "raceWatch", mode: "race",
+        prevLabel: "Watch the kart ahead", nextLabel: "Watch the kart behind",
+        onPrev: () => cycleWatch(-1), onNext: () => cycleWatch(1),
+        onOverview: toggleOverview, overviewLabel: "Overview", followLabel: "Follow kart",
+        actions: [
+          { id: "join", label: "Race next", primary: true, onClick: async () => {
+            if (!(await room.role(0)) && !room.status().info.waiting) announce("No seat yet. You will race in the next lobby if one opens.");
+            paintWatch();
+          } },
+          { id: "leave", label: "Leave", onClick: leaveRaceRoom },
+        ],
+      }) || null;
+      S?.bindSwipe(rootEl, { enabled: () => watchShown(), onPrev: () => cycleWatch(-1), onNext: () => cycleWatch(1) });
+      // In the overview, tap a kart to ride with it.
+      rootEl.addEventListener("click", (e) => {
+        if (!overview || !watchShown() || e.target.closest?.("button")) return;
+        const box = rootEl.getBoundingClientRect();
+        const x = e.clientX - box.left, y = e.clientY - box.top;
+        let best = null, bestD = 44 * 44;
+        for (const b of overviewBodies) {
+          const d = (b.x - x) ** 2 + (b.y - y) ** 2;
+          if (d < bestD) { bestD = d; best = b; }
+        }
+        if (best) watchKart(best.id);
+      });
       room = root.SpaceManRaceRoom.create({
         net: opts.net,
         build: opts.build,
@@ -1019,6 +1113,12 @@
         if (!e.repeat && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
         return;
       }
+      const watchKey = watchShown() && S?.keyAction(e);
+      if (watchKey) {
+        e.preventDefault();
+        if (!e.repeat) watchKey === "overview" ? toggleOverview() : cycleWatch(watchKey === "prev" ? -1 : 1);
+        return;
+      }
       if (!e.repeat && bound === (prefs.keys?.camera || "c") && !actionFor(e)) {
         e.preventDefault();
         perspective?.cycle();
@@ -1089,6 +1189,8 @@
           document.activeElement.click();
         if (edge("brake")) escape();
       } else {
+        const watchPad = padWatch?.read(p);
+        if (watchPad && watchShown()) watchPad === "overview" ? toggleOverview() : cycleWatch(watchPad === "prev" ? -1 : 1);
         if (edge("item") && isRunning() && canControl() && ownActor()?.item) itemRequest.request();
         pad = {
           steer,
@@ -1181,8 +1283,7 @@
       for (const p of [lobby, pausePanel, resultPanel]) p.hidden = p !== panel;
       hud.hidden = view === "lobby";
       touch.hidden = !!panel || (onlineActive() && !canControl());
-      if (watchTools)
-        watchTools.hidden = !!panel || !onlineActive() || !!ownActor();
+      paintWatch(!!panel);
       minimap.hidden = view === "lobby";
       rootEl.dataset.screen =
         view === "lobby"
@@ -2242,6 +2343,46 @@
       } else if (draftLevel < 0.15) draftSounded = false;
       return draftLevel;
     }
+    // Fit the whole circuit between the HUD and the watch dock, turning a wide
+    // track on its side when that frames it larger on a tall phone.
+    const overviewFit = new Map();
+    function overviewFrame(c) {
+      let box = overviewFit.get(c);
+      if (!box) {
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const s of c.segments) for (const [x, y] of [[s.x, s.y], [s.x + s.dx, s.y + s.dy]]) {
+          x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+        }
+        const pad = c.width || 120;
+        box = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 };
+        overviewFit.set(c, box);
+      }
+      const roomW = width - 24, roomH = Math.max(120, height - (height > width ? 260 : 190));
+      const flat = Math.min(roomW / box.w, roomH / box.h), turned = Math.min(roomW / box.h, roomH / box.w);
+      const turn = turned > flat * 1.08;
+      return { camera: { x: box.x, y: box.y, rotation: turn ? -Math.PI / 2 : 0 }, zoom: turn ? turned : flat };
+    }
+    // Overview karts read as numbered race positions, the followed one in gold.
+    function overviewBadges(ctx, c, actors, followed, project) {
+      const ranks = new Map(R.standings(state).map((x, i) => [x.id, i + 1]));
+      ctx.save();
+      ctx.font = "800 11px system-ui";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (const actor of actors) {
+        const p = project(actor), mine = actor.id === followed;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, mine ? 13 : 10, 0, TAU);
+        ctx.fillStyle = mine ? "#FFF3CE" : "#071626e6";
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = mine ? "#FFC66B" : actor.color || c.accent;
+        ctx.stroke();
+        ctx.fillStyle = mine ? "#1d1204" : "#EAF7FF";
+        ctx.fillText(String(ranks.get(actor.id) || ""), p.x, p.y + 0.5);
+      }
+      ctx.restore();
+    }
     function paint(frameDt = 0) {
       if (!active || !g) return;
       const c = R.course(state?.trackId || selected.trackId);
@@ -2254,8 +2395,13 @@
         alpha: acc * 60,
       }) || state);
       const shownActor = shown?.actors.find(actor => actor.id === a.id) || a;
+      // The race overview is a flat, whole-track frame; the 3D view rests under it.
+      const overviewOn = !!state && overview && watchShown();
+      if (overviewOn && !overviewClosed) perspective?.close();
+      overviewClosed = overviewOn;
+      rootEl.dataset.overview = String(overviewOn);
       const rendered3d =
-        a &&
+        a && !overviewOn &&
         perspective?.render(R.snapshot(state), {
           actorId: a.id,
           localActorId: ownActor()?.id || null,
@@ -2320,7 +2466,8 @@
       speed.parentNode.hidden = false;
       const catalog = R.features(c);
       rootEl.dataset.features = String(catalog.rows.length > 0);
-      itemSlot.hidden = view !== "play" || !catalog.rows.length;
+      paintWatch();
+      itemSlot.hidden = view !== "play" || !catalog.rows.length || rootEl.dataset.watching === "true";
       const heldItem = a.item || null;
       itemSlot.dataset.item = heldItem || "empty";
       itemSlot.dataset.active = String(a.shieldTicks > 0);
@@ -2332,7 +2479,7 @@
       setText(itemKey, mappedItemKey);
       itemSlot.setAttribute("aria-label", heldItem ? "Use " + heldItem + " item" : a.shieldTicks ? "Shield active" : "Item slot empty");
       updateFeatureNotice();
-      const zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
+      let zoom = clamp(Math.min(width / 820, height / 600), 0.65, 1.2);
       // Keep the fallback camera warm while WebGL is active, so switching view
       // or losing the graphics context never flies back from an old position.
       camera = flatCamera?.update(shownActor, {
@@ -2340,6 +2487,7 @@
         portrait: height > width, reduceMotion: calm(),
         paused: onlineActive() ? roomPaused : paused,
       }) || camera;
+      if (overviewOn) ({ camera, zoom } = overviewFrame(c));
       if (!rendered3d) {
         g.save();
         g.translate(width / 2, height * 0.48);
@@ -2387,6 +2535,8 @@
             y: height * 0.48 + (dx * sin + dy * cos - actorElevation(actor)*.8) * zoom };
         };
         const focus = project(shownActor), own = a.id === ownActor()?.id;
+        overviewBodies = overviewOn ? shown.actors.map((actor) => ({ id: actor.id, ...project(actor) })) : [];
+        if (overviewOn) overviewBadges(g, c, shown.actors, a.id, project);
         const bodies = shown.actors.map(actor => {
           const p = project(actor), r = 36 * zoom * (1+actorElevation(actor)/200);
           return {id:actor.id,x:p.x-r,y:p.y-r,w:r*2,h:r*2};
@@ -2414,7 +2564,7 @@
           g.fillStyle = "#cfdfeb";
           g.fillText(name, x, y + 1);
         }
-        if (cue) root.SpaceManArt.identityCue(g, cue.x+cue.w/2, cue.y+cue.h/2, own ? 'you' : 'watching', cue.targetX, cue.targetY, cue.link);
+        if (cue && !overviewOn) root.SpaceManArt.identityCue(g, cue.x+cue.w/2, cue.y+cue.h/2, own ? 'you' : 'watching', cue.targetX, cue.targetY, cue.link);
       }
       updateIdentity(a);
       drawMap(mg, c, 340, 240, shown.actors, prefs.cbHud
@@ -2447,7 +2597,7 @@
       if (!banner.hidden) {
         banner.replaceChildren(
           document.createTextNode(String(Math.ceil(state.countdown / 60))),
-          el("small", "", catalog.ramps.length ? "RAMPS LAUNCH · STARS FILL BOOST" : "BRAKE + TURN = DRIFT"),
+          el("small", "", rootEl.dataset.watching === "true" ? "WATCHING THE START" : catalog.ramps.length ? "RAMPS LAUNCH · STARS FILL BOOST" : "BRAKE + TURN = DRIFT"),
         );
       }
       const threats = canControl() && ownActor() && isRunning() ? R.warningFor(state, ownActor()) : [];
@@ -2475,7 +2625,7 @@
           ? "WAITING FOR CONNECTION · CONTROLS RELEASED"
           : a.forfeited
             ? "DISCONNECTED · DID NOT FINISH"
-            : onlineActive() && a.finishTick !== null
+            : onlineActive() && a.finishTick !== null && rootEl.dataset.watching !== "true"
               ? "FINISHED · WAITING FOR OTHER RACERS"
               : a.recoveryTicks
                 ? "RESCUING · BACK TO LAST CHECKPOINT"
