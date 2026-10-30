@@ -11,7 +11,8 @@ cd tests/browser && SPACE_MAN_ENGINE=chromium ./ci-suite.sh layout-qa
 ```
 
 `tests/browser/layout-qa.test.cjs` opens home, Run, the Arena lobby, the Star Circuit lobby, Play
-Together, the wardrobe and records at 390x844, 768x1024 and 1280x800, and fails on:
+Together, the wardrobe and records at 390x844, 844x390 (landscape phone), 768x1024 and 1280x800,
+and fails on:
 
 - horizontal page overflow (including a mobile browser widening its layout to fit content),
 - a control extending past the left or right edge (outside a horizontal scroller),
@@ -40,3 +41,19 @@ it runs as a todo until the fix lands, then remove the entry. Never add an entry
    mid-action returns focus to a sensible control.
 
 Attach the screenshots (or a strip) to the PR so reviewers can verify art and layout.
+
+## Traps we already hit
+
+Each of these shipped once. Check for the class, not just the instance.
+
+- **iOS home-screen app height.** Installed (black-translucent) on iPhone, `innerHeight`,
+  `clientHeight` and `visualViewport.height` report about 59 pt short while `100dvh` is full. Never
+  copy a measured window height into inline styles; measure the root's CSS height. Desktop emulation
+  never shows this, so fake the short window in a test (PR 122, `home-shell.test.cjs`).
+- **Sticky bars over content.** A sticky footer hid the last row and iOS WebKit misplaced it. Use a
+  real flex footer under a scrolling body (PR 121).
+- **Static copy that names inputs.** Text like "keyboard, controller & touch" or "Press Space" on a
+  touch-only phone. Name inputs only in `[data-help]`/`[data-for]` blocks keyed to `body[data-input]`.
+- **The first ten seconds.** A newcomer who has not touched a control yet must not lose a life or a
+  race in the opening seconds (`an idle newcomer survives` in `tests/arena.test.cjs`). Tuning that
+  makes the opening harsher needs a reason in the PR.

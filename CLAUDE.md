@@ -76,6 +76,8 @@ failing one once before assuming a real regression, but never skip or loosen a t
   no text under 9 px, respect reduced motion.
 - **UI changes** follow `docs/qa-checklist.md` before merge: run the `layout-qa` suite and attach
   phone-size screenshots covering touch hints, grounded 3D props and held-input HUD states.
+  Its "Traps we already hit" list (iOS home-screen height, sticky bars, input-naming copy, the first
+  ten seconds) is where a new class of jank gets recorded once it is fixed, with a test that guards it.
 - Prefer a test that fails first. New behavior gets a `tests/*.test.cjs` case; UI-only behavior gets
   a browser test.
 

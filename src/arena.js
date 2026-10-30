@@ -42,6 +42,9 @@
     CHARGE_MIN: 18, CHARGE_MAX: 36, CHARGE_AUTO: 60, CHARGE_MOVE: 0.45,
     CHARGED_WINDUP: 10, CHARGED_TICKS: 32, CHARGE_DAMAGE: 0.5, CHARGE_KNOCKBACK: 0.7,
     LAND_MIN_IMPACT: 3,
+    // Below this damage a grounded fighter hit by a plain side pulse skids along
+    // the deck instead of launching (see resolveAttacks).
+    LAUNCH_DAMAGE: 30,
     // Opt-in item drops (create({ items: true })). Cells fall onto platform
     // tops on a seeded timer; walking into one claims it.
     ITEM_FIRST_TICKS: 600, ITEM_GAP_MIN: 540, ITEM_GAP_SPAN: 360, ITEM_MAX: 2,
@@ -558,9 +561,15 @@
         vy += (a.attackDirY > 0.3 ? a.attackDirY * force : a.attackDirY * force - 5.2 - force * 0.20) * power;
         emit(state, 'hit', a, { targetId: b.id, x: centerX(b), y: centerY(b), damage: pulseDamage(a), knockback: force * power, charged: a.attackCharge > 0 });
       }
-      b.vx = vx / hits.length; b.vy = vy / hits.length;
+      // A fresh fighter standing on a deck flinches and skids instead of being
+      // thrown: early side hits trade position, and launches arrive once damage
+      // builds (or a pulse is charged or aimed up). Without this, one 0% tap
+      // could carry an idle newcomer off the edge seconds after GO.
+      const skid = b.onGround && b.damage < constants.LAUNCH_DAMAGE && hits.every((hit) => !(hit.attacker.attackCharge > 0) && hit.attacker.attackDirY > -0.3);
+      b.vx = vx / hits.length; b.vy = skid ? 0 : vy / hits.length;
       b.stun = Math.min(50, 15 + Math.floor(b.damage * 0.13));
-      b.attackTicks = 0; b.dashTicks = 0; b.onGround = false; b.supportId = null; clearPulse(b); b.hitGuard = constants.HIT_GUARD;
+      b.attackTicks = 0; b.dashTicks = 0; clearPulse(b); b.hitGuard = constants.HIT_GUARD;
+      if (!skid) { b.onGround = false; b.supportId = null; }
       // Equal-strength simultaneous contributors tie by stable actor ID for KO
       // credit only; that cosmetic statistic never breaks a match-result tie.
       b.coyoteTicks = 0; b.lastHitBy = hits[0].attacker.id;

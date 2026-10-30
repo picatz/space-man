@@ -297,10 +297,11 @@ test('shared boss supports four safe crew slots and one enemy without displacing
 test('standalone authority ignores expedition rules and preserves the standalone layout exactly', () => {
   const crypto = require('node:crypto');
   // Recorded from the standalone (version 3, charge-aware) encoder for this seeded stream.
+  // ffa and teams re-recorded when fresh grounded fighters began to skid (LAUNCH_DAMAGE).
   const hashes = {
     duel: '4dd59b1c64d268d3840dcfcba33994dec74b09de89a7aef24e18def0f7436744',
-    ffa: '02a5160f95f1cf580bcdfe3e9b8037847c201a1c8acc877600da1e86affb5c8c',
-    teams: '618d72b98cc97f0f6847d5c356a389e5cc8ced48a36b1bce156db63b13f11c17',
+    ffa: 'df4829d09c1d0fa5866b094abc2eba22ecdf77ba63d303e90a2032aafeda944c',
+    teams: 'd05c5742f9e42a335a8a2a04fba8ba90be230c0290ddb98c473891f7775d6dbf',
   };
   for (const format of ['duel', 'ffa', 'teams']) {
     const host = Online.createHost({ arenaId: 'ember-foundry', format, difficulty: 'hard', encounter: 'boss', crewCount: 4, stocks: 1, countdownTicks: 0, items: false });
