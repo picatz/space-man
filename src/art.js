@@ -467,11 +467,14 @@ const characterHats = {
       if (far) { c.fillStyle = FAR; c.beginPath(); c.ellipse(1.1, .8, 2.8, 1.6, 0, 0, TAU); c.fill(); }
       c.restore();
     };
-    const arm = (sx, sy, ex, ey, hx, hy, far) => {
+    const arm = (sx, sy, ex, ey, hx, hy, far, cap = true) => {
       tube(sx, sy, ex, ey, hx, hy, far ? P.legB : P.arm, P.legB, 3.1);
       if (far) { c.strokeStyle = FAR; c.lineWidth = 3.1; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(ex, ey, hx, hy); c.stroke(); }
-      c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); c.stroke();
-      if (far) { c.fillStyle = FAR; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); }
+      // The sleeve's round end is the shoulder. A separate white cap reads as a lump beside the helmet, so the near arm omits it.
+      if (cap) {
+        c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); c.stroke();
+        if (far) { c.fillStyle = FAR; c.beginPath(); c.arc(sx, sy, 2.4, 0, TAU); c.fill(); }
+      }
       const wrist = Math.atan2(hy - ey, hx - ex) - Math.PI / 2;
       cuff(hx, hy, wrist, far); mitten(hx, hy, wrist, far);
     };
