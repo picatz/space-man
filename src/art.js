@@ -510,16 +510,16 @@ const characterHats = {
     // height; rest angles hang the near arm clear of the torso and bring the far mitten
     // out in front of the pack, so both hands read in the idle silhouette.
     shoulder: Object.freeze({ x: 5, y: -.5, farX: -5 }),
-    arm: Object.freeze({ w: 3.2, seg: 5.6, farSeg: 5.6, reach: 10.2, farReach: 8.8, rest: .5, farRest: -.36, runFold: 2.2 }),
+    arm: Object.freeze({ w: 3.2, seg: 5.6, farSeg: 5.6, reach: 10.9, farReach: 10.6, rest: .42, farRest: -.36, runFold: 2.2 }),
     // Hips hide inside the torso; standing legs are straight (hip to ankle = 2 segments).
     hip: Object.freeze({ x: 3.6, y: 4.6 }),
-    leg: Object.freeze({ w: 4.2, seg: 5.25, ankle: 15, tuck: 3 }),
+    leg: Object.freeze({ w: 4.4, seg: 5.25, ankle: 15, tuck: 3, stride: 3, lift: 2.6 }),
     hand: Object.freeze({ rx: 2.1, ry: 2.2 }),
     boot: Object.freeze({ heel: 2.5, toe: 3.6, top: 2.1, sole: 1.7 }),
   });
-  const RIG_LEG_IN = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 15, hipY: 4.6, hipX: 3.6, len: 5.25, tuck: 3 };
+  const RIG_LEG_IN = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 15, hipY: 4.6, hipX: 3.6, len: 5.25, tuck: 3, stride: 3, lift: 2.6 };
   const RIG_LEG = new Float32Array(12), RIG_HAND = new Float32Array(3);
-  const RIG_FAR = 'rgba(8,18,40,.1)', RIG_SLATE = '#415D78';
+  const RIG_FAR = 'rgba(8,18,40,.09)', RIG_SLATE = '#415D78';
   const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   const mix = (a, b, t) => a + (b - a) * t;
   // anim.js loads after art.js in the page; the rig only needs it at draw time.
@@ -536,21 +536,44 @@ const characterHats = {
   // Far limbs are the same suit in shade, never a different material: their own fill
   // under a dark wash, with the shared slate-blue edge.
   function rigShade(c, far) { if (far) { c.fillStyle = RIG_FAR; c.fill(); } }
-  // One arm: a two-bone limb (upper arm and forearm, each `seg` long) solved toward a
-  // hand placed `len` from the shoulder along `ang` (radians from hanging down, + toward
-  // facing). The elbow always folds backward and down, like a real arm, so a short
-  // reach reads as a bent elbow. Writes the hand point and the wrist angle.
+  // One limb, the cutout-rig way: a single tapered tube through hip/shoulder, knee/elbow
+  // and ankle/wrist (the quadratic passes through the joint at its midpoint), filled and
+  // outlined once as one shape. A bent joint reads as a soft curve, never a kink, and no
+  // seam can open at a pivot because there is no second piece. w0 at the root, w1 at the tip.
+  const RIG_SIDE = new Float32Array(44);
+  function rigLimb(c, M, ax, ay, kx, ky, bx, by, w0, w1, fill, edge, far) {
+    const cx = 2 * kx - (ax + bx) / 2, cy = 2 * ky - (ay + by) / 2, n = 10, P = RIG_SIDE;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, u = 1 - t;
+      const px = u * u * ax + 2 * u * t * cx + t * t * bx, py = u * u * ay + 2 * u * t * cy + t * t * by;
+      let dx = 2 * (u * (cx - ax) + t * (bx - cx)), dy = 2 * (u * (cy - ay) + t * (by - cy));
+      const l = Math.hypot(dx, dy) || 1, h = (mix(w0, w1, t) + M.edge / 2) / 2;
+      dx /= l; dy /= l;
+      P[i * 4] = px - dy * h; P[i * 4 + 1] = py + dx * h; P[i * 4 + 2] = px + dy * h; P[i * 4 + 3] = py - dx * h;
+      if (i === 0) RIG_HAND[0] = Math.atan2(dy, dx);
+      if (i === n) RIG_HAND[1] = Math.atan2(dy, dx);
+    }
+    const a0 = RIG_HAND[0], a1 = RIG_HAND[1], h0 = (w0 + M.edge / 2) / 2, h1 = (w1 + M.edge / 2) / 2;
+    c.beginPath(); c.moveTo(P[0], P[1]);
+    for (let i = 1; i <= n; i++) c.lineTo(P[i * 4], P[i * 4 + 1]);
+    c.arc(bx, by, h1, a1 + Math.PI / 2, a1 - Math.PI / 2, true);     // round tip
+    for (let i = n; i >= 0; i--) c.lineTo(P[i * 4 + 2], P[i * 4 + 3]);
+    c.arc(ax, ay, h0, a0 - Math.PI / 2, a0 - Math.PI * 1.5, true);   // round root
+    c.closePath();
+    c.fillStyle = fill; c.fill(); rigShade(c, far);
+    c.strokeStyle = edge; c.lineWidth = M.edge / 2; c.lineJoin = 'round'; c.stroke();   // the same hairline as the torso
+    return a1;
+  }
+  // One arm, solved toward a hand placed `len` from the shoulder along `ang` (radians from
+  // hanging down, + toward facing) with segments `seg` long; the elbow folds back and down.
+  // Writes the hand point and the wrist angle (limb frame, +y away from the body).
   function rigArm(c, M, sx, sy, ang, len, seg, fill, edge, far) {
     const d = clamp(len, 2, seg * 2 - .01);
     const hx = sx + Math.sin(ang) * d, hy = sy + Math.cos(ang) * d;
     const h = Math.sqrt(Math.max(0, seg * seg - d * d / 4));
     const ex = (sx + hx) / 2 - Math.cos(ang) * h, ey = (sy + hy) / 2 + Math.sin(ang) * h;
-    c.lineCap = 'round'; c.lineJoin = 'round';
-    c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.lineTo(hx, hy);
-    c.strokeStyle = edge; c.lineWidth = M.arm.w + M.edge; c.stroke();
-    c.strokeStyle = fill; c.lineWidth = M.arm.w; c.stroke();
-    if (far) { c.strokeStyle = RIG_FAR; c.stroke(); }
-    RIG_HAND[0] = hx; RIG_HAND[1] = hy; RIG_HAND[2] = Math.atan2(hy - ey, hx - ex) - Math.PI / 2;
+    const tip = rigLimb(c, M, sx, sy, ex, ey, hx, hy, M.arm.w * 1.04, M.arm.w * .92, fill, edge, far);
+    RIG_HAND[0] = hx; RIG_HAND[1] = hy; RIG_HAND[2] = tip - Math.PI / 2;
     return RIG_HAND;
   }
   // The glove's cuff: a band exactly one sleeve wide, so the forearm runs into it with
@@ -563,12 +586,13 @@ const characterHats = {
     c.restore();
   }
   // A mitten: a padded palm a little wider than the cuff with the thumb tucked under
-  // it toward facing, and one knuckle crease. curl closes it into a fist.
-  function rigMitten(c, M, P, x, y, angle, far, curl = 0) {
+  // it toward facing, and one knuckle crease. curl closes it into a fist. At gameplay
+  // sizes (scale < 2.5) the thumb is a sub-pixel speck, so the mitten is one clean shape.
+  function rigMitten(c, M, P, x, y, angle, far, curl = 0, thumb = true) {
     const rx = M.hand.rx, ry = M.hand.ry - curl * .3;
     c.save(); c.translate(x, y); c.rotate(angle);
     c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = M.line;
-    c.beginPath(); c.ellipse(rx * .78, ry * .3, rx * .38, ry * .55, .55 - curl * .5, 0, TAU); c.fill(); c.stroke(); rigShade(c, far);   // thumb
+    if (thumb) { c.beginPath(); c.ellipse(rx * .78, ry * .3, rx * .38, ry * .55, .55 - curl * .5, 0, TAU); c.fill(); c.stroke(); rigShade(c, far); }   // thumb, close-ups only
     c.fillStyle = P.suit; c.beginPath(); c.ellipse(0, ry * .55, rx, ry, 0, 0, TAU); c.fill(); c.stroke(); rigShade(c, far);           // palm
     c.lineWidth = .45; c.beginPath(); c.moveTo(-rx * .55, ry * 1.1); c.quadraticCurveTo(-rx * .1, ry * 1.35 - curl, rx * .35, ry * 1.15); c.stroke();
     c.restore();
@@ -668,24 +692,23 @@ const characterHats = {
     // Overlap: the head settles a beat after the torso, and an idle pilot shifts its
     // weight from foot to foot with the helmet trailing the hips.
     const headBob = (onGround ? Math.sin(cyc * 2 - .8) * 1.5 * gait : 0) * .45 + crouch * 1.7;
-    const shift = idle && !calm ? Math.sin(t * 1.4) * .45 : 0, headShift = idle && !calm ? Math.sin(t * 1.4 - .9) * .55 : 0;
+    const headShift = 0;   // the body never slides over its own hips; idle life is breath, sway and head tilt
 
     // Legs: two-bone IK (the Run's solver) to the ankle, the far leg first under the shade wash.
     // The boot owns the ankle, so the shin always ends inside its shaft.
     const L = RIG_LEG_IN;
     L.runCycle = cyc; L.speed = speed; L.onGround = onGround; L.pose = air * 4; L.hang = hang; L.hangT = num(pose.hangT, 0);
     L.launch = calm ? 0 : clamp(num(pose.launch, 0), 0, 1); L.stomp = pop; L.hipY = M.hip.y + crouch * 2.6;
-    L.hipX = M.hip.x - crouch * .8;   // a crouch gathers the feet under the hips L.groundY = M.leg.ankle; L.len = M.leg.seg; L.tuck = M.leg.tuck;
+    L.hipX = M.hip.x - crouch * .8;   // a crouch gathers the feet under the hips L.groundY = M.leg.ankle; L.len = M.leg.seg; L.tuck = M.leg.tuck; L.stride = M.leg.stride; L.lift = M.leg.lift;
     const leg = rigLegs(L, RIG_LEG);
     c.lineCap = 'butt'; c.lineJoin = 'round';   // a flat ankle end hides inside the boot shaft
     for (let k = 0; k < 2; k++) {
       const i = k * 6, far = k === 0;
       const kx = leg[i + 2], ky = leg[i + 3], ax = leg[i + 4], ay = leg[i + 5], sl = Math.hypot(ax - kx, ay - ky) || 1;
-      // The shin stops 1.4 short of the ankle so its flat end never shows past a tilted boot.
-      c.beginPath(); c.moveTo(leg[i] + shift * .5, leg[i + 1]); c.lineTo(kx, ky); c.lineTo(ax - (ax - kx) / sl * 1.4, ay - (ay - ky) / sl * 1.4);
-      c.strokeStyle = P.legB; c.lineWidth = M.leg.w + M.edge; c.stroke();
-      c.strokeStyle = P.legF; c.lineWidth = M.leg.w; c.stroke();
-      if (far) { c.strokeStyle = RIG_FAR; c.stroke(); }
+      // One tapered piece, thigh to ankle; its round tip stops 1.2 short of the ankle so
+      // it always ends inside the boot. The far leg takes the darker legB value step.
+      rigLimb(c, M, leg[i], leg[i + 1], kx, ky, ax - (ax - kx) / sl * 1.2, ay - (ay - ky) / sl * 1.2,
+        M.leg.w * 1.04, M.leg.w * .94, P.legF, P.legB, far);
       // Planted boots stay flat on the slab; in the air (and mid-swing) they follow the
       // shin, toes pointing as the foot trails and lifting as it reaches.
       const shin = Math.atan2(ax - kx, ay - ky);
@@ -693,7 +716,7 @@ const characterHats = {
       rigBoot(c, M, P, accent, ax, ay, clamp(-shin * .7, -.5, .7) * lifted - (onGround && !hang ? lifted * .3 : 0), far);
     }
 
-    c.save(); c.translate(shift, 0);   // upper body: pack, arms and torso ride the weight shift
+    c.save();   // upper body
     // Pack: the Run's warm canister in the suit's pack colour, with the Arena's slate
     // vent carrying the crew/team accent, and a nozzle for the jetpack read.
     c.fillStyle = P.pack; c.strokeStyle = P.legB; c.lineWidth = M.line; rrPath(c, M.pack.x, M.pack.y + bob, M.pack.w, M.pack.h, M.pack.r); c.fill(); c.stroke();
@@ -708,8 +731,8 @@ const characterHats = {
     let nearA, farA, reach = A.reach - A.runFold * speed, farReach = A.farReach - A.runFold * 1.15 * speed;
     if (onGround) {
       const swing = Math.sin(cyc + Math.PI - .35) * .49 * speed;
-      nearA = pose.gear ? mix(.55 + sway, 1.35 + swing * .2, speed) : mix(A.rest + sway, .5 - swing * 1.1, speed);
-      farA = mix(A.farRest + sway, -.15 + swing * 1.1, speed);
+      nearA = pose.gear ? mix(.55 + sway, 1.35 + swing * .2, speed) : mix(A.rest + sway, .3 - swing * 1.1, speed);
+      farA = mix(A.farRest + sway, -.1 + swing * 1.1, speed);
     } else {
       const fall = air * .5 + .5;
       nearA = mix(2.18, 1.75, fall); farA = mix(-.85, -.55, fall);
@@ -742,9 +765,9 @@ const characterHats = {
 
     // Far arm behind the torso, from the pack-side shoulder: the same sleeve in shade.
     const S = M.shoulder, T = M.torso;
-    const fh = rigArm(c, M, S.farX, S.y + bob, farA, farReach, A.farSeg, P.arm, P.legB, true);
+    const fh = rigArm(c, M, S.farX, S.y + bob, farA, farReach, A.farSeg, P.legF, P.legB, false);
     const fhx = fh[0], fhy = fh[1], fw = fh[2];
-    rigCuff(c, M, P, accent, fhx, fhy, fw); rigMitten(c, M, P, fhx, fhy, fw, true, cheer * .8);
+    rigCuff(c, M, P, accent, fhx, fhy, fw); rigMitten(c, M, P, fhx, fhy, fw, true, cheer * .8, scale >= 2.5);
 
     c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = M.line; rrPath(c, T.x, T.y + bob, T.w, T.h, T.r); c.fill(); c.stroke();
     suitDetails(c, 0, bob, style);
@@ -766,7 +789,7 @@ const characterHats = {
       c.fillStyle = P.arm; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(0, .4, 2.4, 0, TAU); c.fill(); c.stroke();   // glove wraps the grip
       if (typeof pose.gearFx === 'function') pose.gearFx(c);
       c.restore();
-    } else rigMitten(c, M, P, nhx, nhy, nw, false, cheer);
+    } else rigMitten(c, M, P, nhx, nhy, nw, false, cheer, scale >= 2.5);
     c.restore();   // upper body
 
     // Head group, last: rides a softened, later bob, nods with the crouch and tips with a hit.
@@ -775,7 +798,7 @@ const characterHats = {
     const aerial = calm ? 0 : clamp(-num(pose.lean, 0) * facing * 1.6 + Math.sin(cyc * 2 - 1.6) * .14 * gait - air * .3
       + (idle ? Math.sin(t * 1.4 - 1.8) * .08 : 0) + (cheer ? Math.cos(t * 12) * .2 * cheer : 0) + crouch * .25, -.6, .6);
     c.save(); c.translate(headShift, M.head.y + headBob);
-    c.rotate(tilt - pop * .08 - hit * .16 + strike * .05 + headShift * .03);
+    c.rotate(tilt - pop * .08 - hit * .16 + strike * .05 + (idle && !calm ? Math.sin(t * 1.4 - .9) * .03 : 0));
     if (pose.halo) c.drawImage(pose.halo, -20, -12, 40, 40);
     const mood = pose.mood ?? (hit > .2 ? 2 : cheer > .2 || wave > .15 ? 1 : 0);
     characterHelmet(c, 0, 0, style, { mood, lid: num(pose.lid, 0), lookX: num(pose.lookX, 0), lookY: num(pose.lookY, 0),

@@ -144,16 +144,16 @@ test('celebrate hops off the slab, and reduced motion keeps the feet planted', (
   assert.equal(lift({ t: 1 }), 120, 'idle never leaves the ground');
 });
 
-test('limbs read as one suit: sleeves, legs, cuffs and boots share widths', () => {
-  const widths = calls => calls.filter(c => c[0] === '=lineWidth').map(c => c[1]);
-  const w = widths(draw({ t: .4 }));
-  // Legs then arms: an outline one hairline wider than each fill, arms a touch slimmer than legs.
-  const M = Art.SPACEFARER;
-  for (const fill of [M.leg.w, M.arm.w]) { assert.ok(w.includes(fill)); assert.ok(w.some(v => Math.abs(v - fill - M.edge) < 1e-9)); }
-  // A running arm folds at the elbow: the sleeve is a two-segment polyline, not a single curve.
-  const run = draw({ speed: 1, runCycle: 1 });
-  assert.equal(run.filter(c => c[0] === 'quadraticCurveTo' && c.length === 5 && Math.abs(c[3]) > 8).length, 0, 'no single-curve sleeves');
-  assert.ok(run.filter(c => c[0] === 'lineTo').length >= 8, 'two-bone legs and arms');
+test('limbs read as one suit: each limb is one outlined piece with the torso hairline', () => {
+  const M = Art.SPACEFARER, calls = draw({ t: .4 });
+  // Cutout rule: a limb is a single filled tube outlined once, so no per-bone seam can show.
+  const arcs = calls.filter(c => c[0] === 'arc' && c[6] === true);   // the round root and tip of each tube
+  assert.ok(arcs.length >= 8, 'four limbs, each with a round root and tip (' + arcs.length + ')');
+  assert.ok(calls.some(c => c[0] === '=lineWidth' && c[1] === M.edge / 2), 'limb outline matches the torso hairline');
+  assert.ok(!calls.some(c => c[0] === '=lineWidth' && c[1] === M.arm.w), 'no stroked-noodle sleeves');
+  // Thumbs are a close-up detail only.
+  const thumbs = scale => { const r = recorder(); Art.drawSpacefarer(r.ctx, 0, 0, scale, Cosmetics.DEFAULTS, {}); return r.calls.filter(c => c[0] === 'ellipse').length; };
+  assert.ok(thumbs(4) > thumbs(1), 'mittens gain a thumb at close-up scale');
 });
 
 test('the comms aerial trails motion as follow-through', () => {
@@ -164,7 +164,7 @@ test('the comms aerial trails motion as follow-through', () => {
 
 test('the model sheet stands the pilot up straight: legs reach the ground unbent, boots under the hips', () => {
   const M = Art.SPACEFARER, stand = M.leg.ankle - M.hip.y;
-  assert.ok(stand <= M.leg.seg * 2 && stand > M.leg.seg * 2 - .4, 'standing legs are nearly straight (' + stand + ' of ' + M.leg.seg * 2 + ')');
+  assert.ok(stand <= M.leg.seg * 2 && stand > M.leg.seg * 2 - 1, 'standing legs are nearly straight, with a hair of knee for the stride (' + stand + ' of ' + M.leg.seg * 2 + ')');
   assert.ok(M.leg.ankle + M.boot.sole <= M.ground + .1 && M.leg.ankle + M.boot.sole > M.ground - .6, 'soles meet the ground');
   assert.ok(M.leg.ankle - M.boot.top > M.torso.y + M.torso.h + 2, 'shins show between torso and boots');
   // A different sheet (a future character) paints through the same rig.

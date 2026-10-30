@@ -116,7 +116,7 @@
         // Run: the foot traces a flattened loop; planted half hugs the baseline,
         // swing half lifts. Idle: feet planted a little apart.
         const ph = o.runCycle + (leg === 0 ? 0 : Math.PI);
-        const stride = 5.5 * o.speed, lift = 4.2 * o.speed;
+        const stride = (o.stride ?? 5.5) * o.speed, lift = (o.lift ?? 4.2) * o.speed;   // o.stride/lift: per-rig gait
         fx = hx * 0.7 + Math.sin(ph) * stride;
         fy = base - Math.max(0, Math.cos(ph)) * lift;
         fx += (leg === 0 ? 0.8 : -0.8) * (1 - o.speed);
