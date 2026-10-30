@@ -830,6 +830,7 @@ body.gamepad-active .race-root [data-for=key] { display: none; }
   .sm-watch .sm-watch-step { width: 46px; height: 46px; }
   .sm-watch-row { grid-template-columns: 46px minmax(0, 1fr) 46px; }
   .sm-watch-name { font-size: 17px; }
+  .sm-watch-hint { display: none; }
   .sm-watch .sm-watch-action { flex: 0 0 auto; min-width: 0; }
 }
 @media (prefers-reduced-motion: reduce) { .sm-watch .sm-watch-step:active:not(:disabled) { transform: none; } }
