@@ -1242,6 +1242,7 @@
 <script src="src/seasons.js"></script>
 <script src="src/art.js"></script>
 <script src="src/fx.js"></script>
+<script src="src/spectate.js"></script>
 <script src="src/home.js"></script>
 <script src="src/anim.js"></script>
 <!-- Arena is opt-in: pure simulation + an inert, lazy-created presentation shell. -->
@@ -2554,6 +2555,7 @@ function syncInputKind() {
   const h = document.getElementById('deadTapHint');
   if (h && h.classList.contains('show')) h.textContent = RETRY_HINT[kind];
 }
+const runPadWatch = window.SpaceManSpectate ? SpaceManSpectate.padReader() : { read() { return null; }, reset() {} };
 function pollGamepad() {
   if (modeOverlayActive()) return;
   if (!navigator.getGamepads) return;
@@ -2599,6 +2601,10 @@ function pollGamepad() {
   input.firePad = !!padState.fire && (pressed(2) || pressed(5) || pressed(7));
   if (padState.fire && (just(2) || just(5) || just(7))) { input.shoot = true; input.usingGamepad = true; input.usingTouch = false; input.usingKeys = false; }
   if (just(8) && netInRun() && G.mode === 'play') { crew.peek = false; toggleCrew(); }   // Share / Select / View: the crew standings
+  if (netSpectating() && netInRun() && !topOverlayId()) {
+    const watchPad = runPadWatch.read(gp);
+    if (watchPad === 'overview') toggleTour(); else if (watchPad) cycleWatch(watchPad === 'prev' ? -1 : 1);
+  } else runPadWatch.reset();
   const menuTook = pollMenuNav(gp, just);
   // A menu activation may have transferred input ownership in this same poll.
   if (modeOverlayActive()) return;
@@ -2677,8 +2683,10 @@ function onKey(e, down) {
     // never while the initials overlay is swallowing keys. Solo: no NET, no-op.
     if (k >= '1' && k <= '6' && netInRun() && !$('ovInitials').classList.contains('show')) { sendEmote(+k - 1); return; }
     if (netSpectating() && netInRun()) {
-      if (act === 'left') { cycleWatch(-1); return; }
-      if (act === 'right') { cycleWatch(1); return; }
+      const watchKey = window.SpaceManSpectate && SpaceManSpectate.keyAction(e);
+      if (watchKey === 'overview') { if (!e.repeat) toggleTour(); return; }
+      if (act === 'left' || watchKey === 'prev') { if (!e.repeat) cycleWatch(-1); return; }
+      if (act === 'right' || watchKey === 'next') { if (!e.repeat) cycleWatch(1); return; }
       if (k === 'l' && down) { const g = leaderGhost(); if (g) watchByP(g.p); return; }
       if (k === 'enter') { startRun(); return; }
     }
@@ -8666,7 +8674,7 @@ function spectateTarget() {
 }
 function watchByP(p) {
   const g = ghostByP.get(p); if (!watchable(g)) return false;
-  spec.watchP = p; spec.tour = false; spec.cutAt = 0; announceWatch(g); return true;
+  spec.watchP = p; spec.tour = false; spec.cutAt = 0; announceWatch(g); syncRunWatch(); return true;
 }
 function announceWatch(g) {
   const live = spectateOrder(), i = live.indexOf(g);
@@ -8883,12 +8891,12 @@ function drawEmoteBubble(wx, wy, id, t) {
 
 /* ---- screen-space net HUD: race strip (always on), spectator chrome, emote
        wheel, unstable banner. Called every frame netInRun(); view-px coords. */
-let _specHits = null, _unstableHit = null, _crewHit = null;
+let _unstableHit = null, _crewHit = null;
 const _raceHits = [];   // runner dots on the strip, CSS px: tap one to watch them
 function drawNetHUD() {
+  syncRunWatch();
   if (!netInRun()) { _crewHit = null; return; }
   drawCrewChip();
-  if (netSpectating()) drawSpectatorHUD(); else { _specHits = null; }
   drawRoundStatus();
   // The banner goes first: it publishes the LEAVE hit area the emote tray (and the teammate cue that steps around the tray)
   // lay themselves out around, so nothing is drawn or hit against last frame's banner.
@@ -9107,34 +9115,50 @@ function drawCrewDirections() {
     ctx.fillText((dir < 0 ? '‹ ' : '') + (g.callsign || 'P' + g.p) + ' · ' + distance + 'm' + (dir > 0 ? ' ›' : ''), x, ly, view.w * 0.42);
   }
 }
-function drawSpectatorHUD() {
-  const us = uiScale(), t = spectateTarget(), down = !!(t && t.dead), g = t && !down ? t : null, left = 12 + viewInset('left');
-  const y = 60 + viewInset('top');
+// The spectator dock (src/spectate.js) is the same bar Star Circuit and Orbital Arena use: who you are watching, where they
+// stand, and the next steps (switch, auto camera, join the run, leave). The race strip above stays a tap-to-watch map.
+let runWatch = null;
+function runWatchBar() {
+  if (runWatch || !window.SpaceManSpectate) return runWatch;
+  runWatch = SpaceManSpectate.createBar({
+    doc: document, parent: document.body, prefix: 'runWatch', mode: 'run', announce: false,   // announceWatch() says it
+    prevLabel: 'Watch the runner ahead', nextLabel: 'Watch the runner behind',
+    onPrev: () => cycleWatch(-1), onNext: () => cycleWatch(1),
+    onOverview: toggleTour, overviewLabel: 'Auto cam', followLabel: 'Auto cam on',
+    actions: [
+      { id: 'join', label: 'Join run', primary: true, onClick: () => startRun() },
+      { id: 'leave', label: 'Leave', onClick: () => leaveRoom() },
+    ],
+  });
+  SpaceManSpectate.bindSwipe(canvas, { enabled: () => !!runWatch && runWatch.isActive(), onPrev: () => cycleWatch(-1), onNext: () => cycleWatch(1) });
+  return runWatch;
+}
+function toggleTour() {
+  spec.tour = !spec.tour; spec.tourAt = netClock();
+  if (spec.tour) directorPick(spec.tourAt);
+  announce(spec.tour ? 'Auto camera on: it cuts to the best moment.' : 'Auto camera off.');
+  syncRunWatch();
+}
+const runWatchKind = () => input.usingGamepad ? 'pad' : input.usingTouch || FORCE_TOUCH ? 'touch' : 'keys';
+function syncRunWatch() {
+  const on = netInRun() && netSpectating() && (G.mode === 'play' || G.mode === 'resume') && !topOverlayId() && !modeOverlayActive();
+  const bar = on ? runWatchBar() : runWatch;
+  if (!bar) return;
+  if (!on) { bar.update({ active: false }); return; }
+  const t = spectateTarget(), down = !!(t && t.dead), g = t && !down ? t : null;
   const st = crewGlance(), name = t ? (t.callsign || 'P' + t.p) : '';
-  let head, sub;
+  let eyebrow = 'WATCHING', who = name, detail, tone = 'live';
   if (g) {
     const row = st.rows.find((r) => r.p === g.p);
-    head = 'WATCHING ' + name;
-    sub = Math.round(g.dist) + 'm · ' + Math.floor(g.score) + ' points' + (row && row.place ? ' · ' + ordinal(row.place) + ' of ' + (st.counts.running + st.counts.out) : '') + (g.chain > 1 ? ' · ×' + (1 << Math.min(3, g.chain)) : '');
-  } else if (down) { head = name + ' WENT DOWN'; sub = Math.round(t.dist) + 'm · ' + Math.floor(t.score) + ' points · cutting to the next runner'; }
-  else if (st.winner) { head = 'ROUND OVER · ' + st.winner.name + ' WINS'; sub = Math.floor(st.winner.dist).toLocaleString() + 'm · the host starts the next round, or join the run'; }
-  else { head = 'WAITING FOR A RUNNER'; sub = 'Stay here for the next round, or join the run'; }
-  ctx.textAlign = 'center'; ctx.fillStyle = down ? '#FF8A6B' : '#9FF1FF'; ctx.font = '700 ' + hudPx(13 * us) + 'px ' + FONT_NUM;
-  ctx.fillText(head, view.w / 2, y, view.w - 2 * left);
-  ctx.font = '600 ' + hudPx(11 * us) + 'px ' + FONT_NUM;
-  ctx.fillText(sub, view.w / 2, y + 18 * us, view.w - 2 * left);
-  const kx = vpW() / view.w, ky = vpH() / view.h;
-  const labels = [['prev', '‹ PREV'], ['next', 'NEXT ›'], ['tour', spec.tour ? 'TOUR ON' : 'TOUR'], ['play', G.rolePending ? 'JOINING…' : 'JOIN RUN']];
-  const w = (view.w - 2 * left - 18) / 4, h = Math.max(32 * us, 44 / ky), by = view.h - viewInset('bottom') - h - 12;
-  _specHits = {};
-  labels.forEach(([key, label], i) => {
-    const x = left + i * (w + 6);
-    ctx.fillStyle = key === 'play' || (key === 'tour' && spec.tour) ? '#38E1FF' : 'rgba(10,14,32,.9)';
-    roundRect(x, by, w, h, 8); ctx.fill();
-    ctx.fillStyle = key === 'play' || (key === 'tour' && spec.tour) ? '#06122A' : '#CFE3FF';
-    ctx.font = '700 ' + hudPx(10 * us) + 'px ' + FONT_NUM;
-    ctx.fillText(label, x + w / 2, by + h / 2 + 4 * us, w - 8);
-    _specHits[key] = { x0: x * kx, x1: (x + w) * kx, y0: by * ky, y1: (by + h) * ky };
+    detail = Math.round(g.dist) + 'm · ' + Math.floor(g.score) + ' pts' + (row && row.place ? ' · ' + ordinal(row.place) + ' of ' + (st.counts.running + st.counts.out) : '') + (g.chain > 1 ? ' · ×' + (1 << Math.min(3, g.chain)) : '');
+    if (spec.tour) eyebrow = 'AUTO CAM · WATCHING';
+  } else if (down) { eyebrow = 'WENT DOWN'; tone = 'down'; detail = Math.round(t.dist) + 'm · ' + Math.floor(t.score) + ' pts · cutting to the next runner'; }
+  else if (st.winner) { eyebrow = 'ROUND OVER'; tone = 'wait'; who = st.winner.name + ' wins'; detail = Math.floor(st.winner.dist).toLocaleString() + 'm · the host starts the next round, or join in'; }
+  else { eyebrow = 'WAITING'; tone = 'wait'; who = 'Next round soon'; detail = 'Stay to watch it, or join the run'; }
+  bar.update({
+    active: true, eyebrow, name: who, detail, tone, overview: spec.tour, inputKind: runWatchKind(),
+    count: spectateOrder().length,
+    actions: { join: { label: G.rolePending ? 'Joining…' : 'Join run', disabled: !!G.rolePending } },
   });
 }
 // One source for the banner's geometry (view px) and its LEAVE target (CSS px), so nothing that lays itself out around the
@@ -9173,13 +9197,7 @@ function netPointerDown(e) {
     let dot = null, dd = 1e9;
     for (const h of _raceHits) { const d = (p.x - h.x) ** 2 + (p.y - h.y) ** 2; if (d <= h.r * h.r && d < dd) { dd = d; dot = h; } }
     if (dot && watchByP(dot.p)) return true;      // the strip is the map of the field: tap a runner to ride with them
-    if (_specHits) {
-      if (inRect(p, _specHits.play)) { startRun(); return true; }
-      if (inRect(p, _specHits.prev)) { cycleWatch(-1); return true; }
-      if (inRect(p, _specHits.next)) { cycleWatch(1); return true; }
-      if (_specHits.tour && inRect(p, _specHits.tour)) { spec.tour = !spec.tour; spec.tourAt = netClock(); return true; }
-    }
-    return true;                                    // spectators never drive the sim
+    return true;                                    // spectators never drive the sim (the dock owns the buttons)
   }
   // The emote button and its tray are a dedicated control: nothing about holding jump can open them any more.
   if (emoteAvailable()) {

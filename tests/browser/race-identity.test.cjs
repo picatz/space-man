@@ -150,7 +150,7 @@ test('non-first-seat pilot and spectator keep distinct identity through watch cy
       await watcher.page.locator('#raceWatchNext').click();
       await watcher.page.waitForFunction(() => {
         const name = document.querySelector('.race-identity-name').textContent;
-        return document.querySelector('#raceWatchName').textContent === 'WATCHING ' + name;
+        return document.querySelector('#raceWatchName').textContent === name;
       });
       const id = await watcher.page.locator('.race-identity').getAttribute('data-actor-id');
       await identity(watcher.page, 'watching', id);

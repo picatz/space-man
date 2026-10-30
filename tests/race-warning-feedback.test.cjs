@@ -160,7 +160,7 @@ test('role, transport P and followed human ownership changes invalidate native I
 function controllerLifecycle(actor,onRelease=()=>{}) {
  const x=inputLifecycle(onRelease),physical={index:0,connected:true,mapping:'standard',axes:[0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0}))};
  Object.assign(x.ui,{root:{navigator:{getGamepads:()=>[physical]}},ownsInput:()=>true,isRunning:()=>true,canControl:()=>true,ownActor:()=>actor,
-  lastPad:null,padNeutral:true,padPrevious:{},pad:{steer:0,item:false},modal:{hidden:true},escape(){},focusStep(){}});
+  lastPad:null,padNeutral:true,padPrevious:{},pad:{steer:0,item:false},modal:{hidden:true},escape(){},focusStep(){},padWatch:null,watchShown:()=>false});
  const source=fs.readFileSync(require.resolve('../src/race-ui.js'),'utf8');
  vm.runInContext(source.slice(source.indexOf('    function pollPad() {'),source.indexOf('    function input() {')),x.ui);
  return{...x,physical,press(on){physical.buttons[5]={pressed:on,value:on?1:0};x.ui.pollPad();}};
