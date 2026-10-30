@@ -1,4 +1,4 @@
-// Tabletop kit and Lantern Lines rules: pure, deterministic, validated bytes.
+// Tabletop kit and Constellations rules: pure, deterministic, validated bytes.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const T = require('../src/tabletop.js');
@@ -24,7 +24,7 @@ test('a fourth lantern lets the oldest one go dark, and the fading lantern is kn
 });
 
 test('only lit lanterns count: a line through a gone-dark lantern does not win', () => {
-  // Seat 1 lights 0, 1, 8 then 2: lantern 0 goes dark at the same moment, so 0-1-2 is not a line.
+  // Seat 1 lights 0, 1, 8 then 2: star 0 fades at the same moment, so 0-1-2 is not a line.
   const s = playAll([0, 3, 1, 4, 8, 7, 2]);
   assert.equal(g.outcome(s), null);
   const win = playAll([0, 3, 1, 4, 2]);
@@ -87,7 +87,7 @@ test('hard beats easy far more often than not, and the game is deterministic', (
   assert.ok(hard >= 8, 'hard won ' + hard + ' of 10');
 });
 
-test('mode registry: unique ids and buttons, a region for each, and Lantern Lines on the table wire', () => {
+test('mode registry: unique ids and buttons, a region for each, and Constellations on the table wire', () => {
   const ids = M.list().map(m => m.id), buttons = M.list().flatMap(m => [m.home, m.host]);
   assert.equal(new Set(ids).size, ids.length); assert.equal(new Set(buttons).size, buttons.length);
   const regions = ['orbital', 'bloom', 'ember', 'prism', 'aurora', 'neon', 'nebula'];

@@ -1067,7 +1067,7 @@ verbatim through `joinStatus()`: `relay` → `hello` → `slow` (8 s without a W
 
 ### 12.6 Tabletop rooms (mode 4)
 
-Turn-based games (Lantern Lines first) share one arcade mode instead of taking a
+Turn-based games (Constellations first) share one arcade mode instead of taking a
 mode each. The invite sets both the Arena and Race bits (`0x30`), a combination
 builds before tabletop rooms already read as invalid, so an old client says
 "not compatible, refresh" instead of joining the wrong game. HELLO/WELCOME carry
@@ -1088,7 +1088,7 @@ Inside `0x44` the first byte is an opcode (`src/table-room.js`):
 `match…` is `SpaceManTabletop.encodeMatch` (match format 1, independent of PROTO): `format u8, gameWire u8, revision
 u16 LE, phase u8 (0 playing, 1 between rounds, 2 over), round, target,
 score1, score2, starter, last+1, resultSeat+1 (0 = none), lineLen, line…,
-stateLen, state…`. Game ids: `1` Lantern Lines. A new game adds a wire id, not a
+stateLen, state…`. Game ids: `1` Constellations (id `lanterns`). A new game adds a wire id, not a
 mode. The host is the only authority: it applies a MOVE only from the seated
 guest, for the current revision, when the rules list it as legal, then
 broadcasts the whole match (a few dozen bytes). Guests decode with full

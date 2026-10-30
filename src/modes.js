@@ -13,7 +13,7 @@
     { id: 'run', name: 'Endless Run', caption: 'Outrun the flare', region: 'orbital', loop: 'realtime', seats: [1, 32], solo: true, local: false, online: true, wire: 'runner', home: 'btnPlay', host: 'btnCreateRoom' },
     { id: 'arena', name: 'Orbital Arena', caption: 'Bump, dodge, KO.', region: 'orbital', loop: 'realtime', seats: [2, 4], solo: true, local: true, online: true, wire: 'arena', home: 'btnArena', host: 'btnHostArena' },
     { id: 'race', name: 'Star Circuit', caption: 'Catch a boost', region: 'orbital', loop: 'realtime', seats: [1, 4], solo: true, local: false, online: true, wire: 'race', home: 'btnRace', host: 'btnHostRace' },
-    { id: 'lanterns', name: 'Lantern Lines', caption: 'Keep three lit', region: 'prism', loop: 'turns', seats: [2, 2], solo: true, local: true, online: true, wire: 'table', game: 'lanterns', home: 'btnLanterns', host: 'btnHostLanterns' },
+    { id: 'lanterns', name: 'Constellations', caption: 'Connect three stars', region: 'prism', loop: 'turns', seats: [2, 2], solo: true, local: true, online: true, wire: 'table', game: 'lanterns', home: 'btnLanterns', host: 'btnHostLanterns' },
   ].map(Object.freeze));
   const byId = new Map(LIST.map(m => [m.id, m]));
   const api = Object.freeze({

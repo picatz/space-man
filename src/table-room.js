@@ -125,7 +125,7 @@
         active = true; busy = false; changed(); return true;
       } catch (e) { if (mine === serial) { error = e && e.message || 'Could not join this table.'; cleanup(); changed(); } return false; }
     }
-    /** Light a lantern (or make any move) for the local pilot. Returns false when it is not their turn. */
+    /** Light a star (or make any move) for the local pilot. Returns false when it is not their turn. */
     function play(move) {
       if (!active || !match || connection) return false;
       const s = mySeat();

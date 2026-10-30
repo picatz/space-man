@@ -1,4 +1,4 @@
-/* Space Man · Lantern Lines
+/* Space Man · Constellations
    A two-pilot duel on a Prism star chart. Rules live in src/tabletop.js and
    Play Together in src/table-room.js; this file is presentation only. Lazy:
    no DOM, listeners, frames, storage or audio before open().
@@ -12,10 +12,10 @@
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const easeOut = t => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
   const back = t => { t = clamp(t, 0, 1); const s = 1.7; return 1 + (s + 1) * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2); };
-  // Seat colours are a colour-blind safe pair (cyan / amber), and each seat has its own lantern shape.
+  // Seat colours are a colour-blind safe pair (cyan / amber), and each seat has its own star shape.
   const SEATS = [null,
     Object.freeze({ color: '#38E1FF', light: '#CFF7FF', glow: '#9FF1FF', shape: 'round', word: 'cyan round' }),
-    Object.freeze({ color: '#FFB454', light: '#FFE6BF', glow: '#FFD08A', shape: 'diamond', word: 'amber diamond' })];
+    Object.freeze({ color: '#FFB454', light: '#FFE6BF', glow: '#FFD08A', shape: 'spark', word: 'amber five-pointed' })];
   // Rivals are friends (docs/art-direction.md): Flare wears her amber and a bright, friendly look.
   const RIVAL = Object.freeze({ name: 'Flare', appearance: Object.freeze({ v: 1, suit: 'gold', hat: 'none', eyes: 'bright', helmet: 'round', detail: 'plain', ship: 'comet' }) });
   const FRIEND = Object.freeze({ v: 1, suit: 'mint', hat: 'none', eyes: 'happy', helmet: 'round', detail: 'plain', ship: 'comet' });
@@ -111,28 +111,33 @@
     }
     g.globalAlpha = 1; return c;
   }
-  // A Lantern Reach lantern: a glowing body (round for seat 1, diamond for seat 2), a cap and a hanging loop.
-  function lantern(c, x, y, r, seat, { alpha = 1, lit = 1, flicker = 0 } = {}) {
-    const s = SEATS[seat];
-    c.save(); c.globalAlpha = alpha;
-    c.globalAlpha = alpha * (.38 + .3 * lit - flicker * .25);
+  // A lit star: a glowing core with light rays. Seat 1 is a round star with four soft rays, seat 2 a
+  // classic five-pointed star, so the two read apart by shape as well as colour.
+  function star(c, x, y, r, seat, { alpha = 1, lit = 1, flicker = 0 } = {}) {
+    const s = SEATS[seat], on = lit > .5;
+    c.save();
+    c.globalAlpha = alpha * (.42 + .34 * lit - flicker * .25);
     c.drawImage(glowSprite(s.glow), x - r * 1.7, y - r * 1.7, r * 3.4, r * 3.4);
-    c.globalAlpha = alpha;
-    c.fillStyle = '#1B1630'; c.strokeStyle = '#1B1630'; c.lineWidth = Math.max(1.5, r * .12);
-    c.beginPath(); c.arc(x, y - r * 1.22, r * .2, Math.PI, 0); c.stroke();
-    c.fillRect(x - r * .45, y - r * 1.08, r * .9, r * .26);
-    c.fillStyle = lit > .5 ? s.color : '#4A4560';
-    c.beginPath();
-    if (s.shape === 'round') c.ellipse(x, y, r * .78, r * .92, 0, 0, TAU);
-    else { c.moveTo(x, y - r * 1.0); c.lineTo(x + r * .86, y); c.lineTo(x, y + r * 1.0); c.lineTo(x - r * .86, y); c.closePath(); }
-    c.fill();
-    // Ribs and a warm core, so a lantern reads as paper and flame rather than a dot.
-    c.strokeStyle = '#1B163055'; c.lineWidth = Math.max(1, r * .07);
-    c.beginPath(); c.moveTo(x, y - r * .9); c.lineTo(x, y + r * .9); c.stroke();
-    c.fillStyle = s.light; c.globalAlpha = alpha * (.4 + .6 * lit - flicker * .3);
-    c.beginPath(); c.ellipse(x - r * .18, y - r * .1, r * .24, r * .42, 0, 0, TAU); c.fill();
-    c.globalAlpha = alpha; c.fillStyle = '#1B1630';
-    c.fillRect(x - r * .3, y + r * (s.shape === 'round' ? .86 : .92), r * .6, r * .2);
+    c.globalAlpha = alpha * (.55 + .45 * lit - flicker * .3);
+    c.fillStyle = on ? s.color : '#4A4560';
+    if (s.shape === 'round') {
+      // Four long, thin rays and a round body.
+      for (const a of [0, Math.PI / 2]) {
+        c.save(); c.translate(x, y); c.rotate(a);
+        c.beginPath(); c.moveTo(-r * 1.12, 0); c.quadraticCurveTo(0, r * .14, r * 1.12, 0); c.quadraticCurveTo(0, -r * .14, -r * 1.12, 0); c.fill();
+        c.restore();
+      }
+      c.beginPath(); c.arc(x, y, r * .62, 0, TAU); c.fill();
+    } else {
+      // A classic five-pointed star, point up.
+      c.beginPath();
+      for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, d = k % 2 ? r * .46 : r * 1.06; c.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d + r * .06); }
+      c.closePath(); c.fill();
+    }
+    // A white-hot centre, so a lit star reads as light rather than a flat token.
+    c.globalAlpha = alpha * (.35 + .65 * lit - flicker * .35);
+    c.fillStyle = s.light; c.beginPath(); c.arc(x, y, r * (s.shape === 'round' ? .36 : .26), 0, TAU); c.fill();
+    c.fillStyle = '#FFFFFF'; c.beginPath(); c.arc(x - r * .08, y - r * .08, r * .12, 0, TAU); c.fill();
     c.restore();
   }
   function socket(c, x, y, r, t, calm, hot) {
@@ -142,9 +147,8 @@
     c.strokeStyle = '#D9D0FF'; c.lineWidth = 1.5;
     c.beginPath(); c.arc(x, y, r * .78, 0, TAU); c.stroke();
     c.globalAlpha = .7 + (hot ? .3 : 0); c.fillStyle = '#EDE8FF';
-    const k = r * (.16 + pulse * .04);
-    c.beginPath(); c.moveTo(x, y - k * 2.2); c.lineTo(x + k * .5, y - k * .5); c.lineTo(x + k * 2.2, y); c.lineTo(x + k * .5, y + k * .5);
-    c.lineTo(x, y + k * 2.2); c.lineTo(x - k * .5, y + k * .5); c.lineTo(x - k * 2.2, y); c.lineTo(x - k * .5, y - k * .5); c.closePath(); c.fill();
+    // An unlit star: a small dim point, so it never shares a shape with either seat's lit star.
+    c.beginPath(); c.arc(x, y, r * (.12 + pulse * .03), 0, TAU); c.fill();
     c.restore();
   }
   function roundedRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
@@ -218,19 +222,19 @@
     /* ---- DOM ---- */
     function build() {
       if (!document.getElementById('tt-style')) { const s = el('style'); s.id = 'tt-style'; s.textContent = STYLES; document.head.appendChild(s); }
-      rootEl = el('div', 'tt-root'); rootEl.hidden = true; rootEl.setAttribute('role', 'application'); rootEl.setAttribute('aria-label', 'Lantern Lines');
+      rootEl = el('div', 'tt-root'); rootEl.hidden = true; rootEl.setAttribute('role', 'application'); rootEl.setAttribute('aria-label', 'Constellations');
       canvas = el('canvas', 'tt-canvas'); canvas.setAttribute('aria-hidden', 'true'); ctx = canvas.getContext('2d');
       live = el('div', 'tt-sr'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite');
       // Lobby
       lobbyEl = el('div', 'tt-lobby');
       const inner = el('div', 'tt-lobby-inner');
       const head = el('div', 'tt-head'), backBtn = el('button', 'tt-back', '‹ Home'); backBtn.type = 'button'; backBtn.addEventListener('click', () => close());
-      const titles = el('div'); titles.append(el('p', 'tt-kicker', 'Prism star chart · 2 pilots'), el('h1', 'tt-title', 'Lantern Lines'));
+      const titles = el('div'); titles.append(el('p', 'tt-kicker', 'Prism star chart · 2 pilots'), el('h1', 'tt-title', 'Constellations'));
       head.append(backBtn, titles);
       heroCanvas = el('canvas', 'tt-hero'); heroCanvas.width = 1040; heroCanvas.height = 440; heroCanvas.setAttribute('role', 'img');
-      heroCanvas.setAttribute('aria-label', 'You and Flare face each other across a three by three star chart of lanterns.');
+      heroCanvas.setAttribute('aria-label', 'You and Flare face each other across a three by three star chart.');
       const rules = el('ol', 'tt-rules'); rules.setAttribute('aria-label', 'How to play');
-      for (const [i, html] of [[0, '<b>Light</b> a lantern on any free star.'], [1, 'Keep <b>three</b> lit. Your fourth lets the <b>oldest</b> go dark.'], [2, '<b>Three in a line</b> wins the round. First to two.']]) {
+      for (const [i, html] of [[0, '<b>Light</b> any dark star.'], [1, 'Keep <b>three</b> lit. Your fourth lets the <b>oldest</b> fade.'], [2, '<b>Three in a line</b> makes a constellation. First to two.']]) {
         const li = el('li'), c = el('canvas'); c.width = c.height = 128; c.setAttribute('aria-hidden', 'true'); c.dataset.rule = String(i);
         const p = el('span'); p.innerHTML = html; li.append(c, p); rules.append(li);
       }
@@ -249,10 +253,10 @@
       row.append(pass, btnHost);
       friendCard = el('div'); friendCard.hidden = true; friendCard.style.display = 'flex'; friendCard.style.flexDirection = 'column'; friendCard.style.gap = '10px';
       friendStatus = el('p', 'tt-note'); friendStatus.setAttribute('role', 'status');
-      inviteCard = root.SpaceManRoomInvite ? root.SpaceManRoomInvite.create({ document, game: 'Lantern Lines table' }) : null;
+      inviteCard = root.SpaceManRoomInvite ? root.SpaceManRoomInvite.create({ document, game: 'Constellations table' }) : null;
       inviteLink = '';
       btnShare = button('Share invite link', 'ghost', async () => {
-        try { if (root.navigator.share) await root.navigator.share({ title: 'Space Man · Lantern Lines', url: inviteLink }); else { await root.navigator.clipboard.writeText(inviteLink); friendStatus.textContent = 'Invite copied. Send it to your friend.'; } } catch (_) {}
+        try { if (root.navigator.share) await root.navigator.share({ title: 'Space Man · Constellations', url: inviteLink }); else { await root.navigator.clipboard.writeText(inviteLink); friendStatus.textContent = 'Invite copied. Send it to your friend.'; } } catch (_) {}
       });
       const leave = button('Close table', 'ghost', () => { if (room) room.close(); mode = null; syncLobby(); });
       friendCard.append(friendStatus);
@@ -405,7 +409,7 @@
       const m = current(); if (!m) return;
       const seat = game.turn(m.state);
       if (!canAct(seat)) { if (m.phase === 'playing') { buzz('select'); announce(statusText(m)); } return; }
-      if (!game.moves(m.state).includes(i)) { buzz('select'); announce(SPOT[i] + ' already has a lantern.'); return; }
+      if (!game.moves(m.state).includes(i)) { buzz('select'); announce(SPOT[i] + ' is already lit.'); return; }
       if (mode === 'online') { room.play(i); return; }
       match = kit.play(game, match, seat, i); sync();
     }
@@ -422,7 +426,7 @@
       const t = now(), before = shown, newRound = !before || before.round !== m.round || before.scores[0] + before.scores[1] > m.scores[0] + m.scores[1] || (before.phase !== 'playing' && m.phase === 'playing');
       if (newRound) {
         anim.placed.clear(); anim.gone = []; anim.winAt = 0; anim.roundAt = t;
-        // The finished round's lanterns go out one after another, so a new round reads as a fresh chart, not a blink.
+        // The finished round's stars go out one after another, so a new round reads as a fresh chart, not a blink.
         if (before && before.round !== m.round) game.cells(before.state).forEach((seat, i) => { if (seat) anim.gone.push({ i, seat, t: t + i * 40 }); });
         if (before && dialogWrap.dataset.kind === 'over') hideDialog();
       }
@@ -458,8 +462,8 @@
       if (m.phase === 'round') return m.result.seat ? pilot(m.result.seat).name + (pilot(m.result.seat).name === 'You' ? ' light' : ' lights') + ' a line!' : 'A long night. Nobody lit a line.';
       if (m.phase === 'over') return pilot(m.scores[0] > m.scores[1] ? 1 : 2).name + (pilot(m.scores[0] > m.scores[1] ? 1 : 2).name === 'You' ? ' win the chart!' : ' wins the chart!');
       const seat = game.turn(m.state), who = pilot(seat);
-      if (mode === 'solo') return seat === 1 ? 'Your turn · light a lantern' : 'Flare is choosing a star…';
-      if (mode === 'online') return roomStatus && roomStatus.mySeat === seat ? 'Your turn · light a lantern' : roomStatus && !roomStatus.mySeat ? who.name + ' to light' : who.name + ' is choosing a star…';
+      if (mode === 'solo') return seat === 1 ? 'Your turn · light a star' : 'Flare is choosing a star…';
+      if (mode === 'online') return roomStatus && roomStatus.mySeat === seat ? 'Your turn · light a star' : roomStatus && !roomStatus.mySeat ? who.name + ' to light' : who.name + ' is choosing a star…';
       return who.name + ' · your turn';
     }
     function renderStatus() {
@@ -468,7 +472,7 @@
       statusEl.textContent = statusText(m);
       roundEl.textContent = 'Round ' + m.round + ' · first to ' + m.target;
       const seat = game.turn(m.state), fade = m.phase === 'playing' ? game.fading(m.state, seat) : -1;
-      hintEl.textContent = m.phase !== 'playing' ? '' : fade >= 0 && canAct(seat) ? 'Your ' + SPOT[fade] + ' lantern goes dark when you light the next one.' : m.state.ply < 2 && canAct(seat) ? 'Tap a star · keys 1-9 or arrows · A on a controller' : '';
+      hintEl.textContent = m.phase !== 'playing' ? '' : fade >= 0 && canAct(seat) ? 'Your ' + SPOT[fade] + ' star fades when you light the next one.' : m.state.ply < 2 && canAct(seat) ? 'Tap a star · keys 1-9 or arrows · A on a controller' : '';
       announce(statusText(m) + (hintEl.textContent && fade >= 0 ? '. ' + hintEl.textContent : ''));
     }
     function syncCells() {
@@ -476,7 +480,7 @@
       const fades = m ? [game.fading(m.state, 1), game.fading(m.state, 2)] : [-1, -1], act = !!m && canAct(seat);
       cells.forEach((b, i) => {
         const owner = c[i] ? pilot(c[i]) : null;
-        b.setAttribute('aria-label', SPOT[i] + ' star' + (owner ? ', ' + (owner.name === 'You' ? 'your' : owner.name + '’s') + ' ' + SEATS[c[i]].word + ' lantern' + (fades[c[i] - 1] === i ? ', goes dark next' : '') : ', free'));
+        b.setAttribute('aria-label', SPOT[i] + ' star' + (owner ? ', ' + (owner.name === 'You' ? 'your' : owner.name + '’s') + ' ' + SEATS[c[i]].word + ' star' + (fades[c[i] - 1] === i ? ', fades next' : '') : ', dark'));
         b.setAttribute('aria-disabled', String(!act || !!c[i]));
         b.tabIndex = i === cursor ? 0 : -1;
       });
@@ -499,7 +503,7 @@
       const score = el('div', 'tt-score');
       for (const [text, color] of [[String(m.scores[0]), SEATS[1].color], [' – ', '#FFF6E6'], [String(m.scores[1]), SEATS[2].color]]) { const span = el('span', '', text); span.style.color = color; score.append(span); } score.setAttribute('aria-label', pilot(1).name + ' ' + m.scores[0] + ', ' + pilot(2).name + ' ' + m.scores[1]);
       const mine = mode === 'online' ? roomStatus && roomStatus.mySeat === winner : winner === 1;
-      const note = el('p', '', mode === 'solo' ? (winner === 1 ? 'Flare tips her helmet. Try a sharper Flare?' : 'Flare reads the chart well. Watch which lantern fades next.')
+      const note = el('p', '', mode === 'solo' ? (winner === 1 ? 'Flare tips her helmet. Try a sharper Flare?' : 'Flare reads the chart well. Watch which star fades next.')
         : mode === 'pass' ? 'Swap seats and go again.' : roomStatus && !roomStatus.mySeat ? 'What a chart. The pilots decide on a rematch.' : mine ? 'Nicely lit.' : 'So close. One more?');
       const ready = el('p', 'tt-note', readyText(m)); ready.dataset.ready = '1';
       const actions = mode === 'online'
@@ -516,12 +520,12 @@
       return r & (1 << (me - 1)) ? (r === 3 ? 'Starting…' : 'Ready. Waiting for ' + pilot(3 - me).name + '…') : r ? pilot(3 - me).name + ' wants a rematch.' : '';
     }
     function openMenu() {
-      const rules = el('p', '', 'Light a lantern on a free star. You keep three lit; lighting a fourth lets your oldest go dark (it flickers first). Three of yours in a straight line wins the round. First to two rounds takes the chart.');
+      const rules = el('p', '', 'Light any dark star. You keep three lit; lighting a fourth lets your oldest fade (it flickers first). Three of yours in a straight line makes a constellation and wins the round. First to two rounds takes the chart.');
       const actions = [button('Resume', 'primary', () => { hideDialog(); try { cells[cursor].focus({ preventScroll: true }); } catch (_) {} })];
       if (mode === 'online') actions.push(button('Leave table', 'ghost', () => { hideDialog(); room.close(); view = 'lobby'; mode = null; showView(); }));
       else actions.push(button('Restart match', 'ghost', () => { hideDialog(); startLocal(mode); }), button('Back to the chart room', 'ghost', () => { clearTimers(); hideDialog(); view = 'lobby'; mode = null; match = null; showView(); }));
       actions.push(button('Home', 'ghost', () => close()));
-      dialog('menu', 'Lantern Lines', [rules], actions);
+      dialog('menu', 'Constellations', [rules], actions);
     }
 
     /* ---- Input: keys and gamepad move the same focus ring the board buttons use. ---- */
@@ -584,7 +588,7 @@
       const tw = Math.max(70, c.measureText(label).width + 40);
       c.fillStyle = turn ? '#2E2A52' : '#0E1026cc'; roundedRect(c, x - tw / 2, py, tw, 26, 13); c.fill();
       c.strokeStyle = turn ? s.color : '#B4A6E833'; c.lineWidth = 1.5; c.stroke();
-      lantern(c, x - tw / 2 + 14, py + 13, 6, seat);
+      star(c, x - tw / 2 + 14, py + 13, 6, seat);
       c.fillStyle = '#FFF6E6'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(label, x + 6, py + 13.5);
       if (m) for (let k = 0; k < m.target; k++) {
         const px = x + (k - (m.target - 1) / 2) * 20, won = m.scores[seat - 1] > k;
@@ -616,13 +620,13 @@
       for (let i = 0; i < 9; i++) {
         const [x, y] = cellXY(i);
         socket(c, x, y, r * 1.4, t / 1000, still, act && !owners[i] && (i === hover || (keyNav && i === cursor)));
-        if (!owners[i] && act && (i === hover || (keyNav && i === cursor && document.activeElement === cells[i]))) lantern(c, x, y, r, turn, { alpha: .32, lit: .6 });
+        if (!owners[i] && act && (i === hover || (keyNav && i === cursor && document.activeElement === cells[i]))) star(c, x, y, r, turn, { alpha: .32, lit: .6 });
       }
-      // Lanterns going dark: they sink, shrink and shed a few embers.
+      // Stars fading: they sink, shrink and shed a few sparks.
       anim.gone = anim.gone.filter(g => t - g.t < 650);  // g.t may be in the future for a staggered sweep
       for (const g of anim.gone) {
         const k = Math.max(0, (t - g.t) / 650), [x, y] = cellXY(g.i);
-        lantern(c, x, y + k * r * .6, r * (1 - k * .5), g.seat, { alpha: 1 - k, lit: 1 - k });
+        star(c, x, y + k * r * .6, r * (1 - k * .5), g.seat, { alpha: 1 - k, lit: 1 - k });
         if (!still) { c.fillStyle = SEATS[g.seat].glow; for (let e = 0; e < 4; e++) { c.globalAlpha = (1 - k) * .8; c.fillRect(x + (e - 1.5) * r * .4, y + r * (.4 + k * (1.2 + e * .3)), 2, 2); } c.globalAlpha = 1; }
       }
       for (let i = 0; i < 9; i++) {
@@ -630,14 +634,14 @@
         const [x, y] = cellXY(i), born = anim.placed.get(i), k = born ? (t - born) / 360 : 1, fading = fades[owners[i] - 1] === i;
         const scale = still ? 1 : born && k < 1 ? back(k) : 1, flick = fading ? (still ? .5 : .5 + .5 * Math.sin(t / 90 + i)) : 0;
         const bob = still ? 0 : Math.sin(t / 900 + i * 1.3) * r * .05;
-        lantern(c, x, y + bob, r * scale, owners[i], { lit: fading ? .5 : 1, flicker: flick });
+        star(c, x, y + bob, r * scale, owners[i], { lit: fading ? .5 : 1, flicker: flick });
         if (fading) {
           // Goes dark next: a dashed ring that the eye can find without colour.
           c.save(); c.strokeStyle = SEATS[owners[i]].light; c.globalAlpha = .9; c.lineWidth = 2.5; c.setLineDash([5, 5]);
           c.lineDashOffset = still ? 0 : -t / 40; c.beginPath(); c.arc(x, y, r * 1.45, 0, TAU); c.stroke(); c.restore();
         }
       }
-      // A won line: a beam of light runs through the three lanterns.
+      // A won line: a beam of light runs through the three stars.
       if (m && m.result && m.result.seat && m.result.line.length) {
         const k = still ? 1 : easeOut((t - (anim.winAt || t - 1000)) / 420), line = m.result.line, [x1, y1] = cellXY(line[0]), [x2, y2] = cellXY(line[line.length - 1]);
         c.save(); c.lineCap = 'round';
@@ -645,7 +649,7 @@
         c.strokeStyle = '#FFFFFF'; c.globalAlpha = .9; c.lineWidth = 3; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x1 + (x2 - x1) * k, y1 + (y2 - y1) * k); c.stroke();
         c.restore();
       }
-      // Shared FX kit for the sparkle on a new lantern and the star on a win.
+      // Shared FX kit for the sparkle on a new star and the star on a win.
       if (root.SpaceManFX && !still) {
         anim.fx = anim.fx.filter(f => t - f.t < (root.SpaceManFX.LIFE[f.kind] || 30) * 16.7);
         for (const f of anim.fx) { const [x, y] = cellXY(f.i); root.SpaceManFX.draw(c, f.kind, x, y, (t - f.t) / ((root.SpaceManFX.LIFE[f.kind] || 30) * 16.7), { scale: step / 120, color: SEATS[f.seat].color, seed: f.i + 1 }); }
@@ -684,7 +688,7 @@
       const side = 132, bx = W / 2 - side / 2, by = 48, step = side / 3;
       c.fillStyle = '#0B0D22c0'; roundedRect(c, bx - 8, by - 8, side + 16, side + 16, 18); c.fill();
       const demo = [1, 2, 0, 0, 1, 2, 2, 0, 1];
-      for (let i = 0; i < 9; i++) { const x = bx + (i % 3 + .5) * step, y = by + (Math.floor(i / 3) + .5) * step; socket(c, x, y, step * .36, 0, true, false); if (demo[i]) lantern(c, x, y, step * .24, demo[i], { lit: i === 1 ? .7 : 1 }); }
+      for (let i = 0; i < 9; i++) { const x = bx + (i % 3 + .5) * step, y = by + (Math.floor(i / 3) + .5) * step; socket(c, x, y, step * .36, 0, true, false); if (demo[i]) star(c, x, y, step * .24, demo[i], { lit: i === 1 ? .7 : 1 }); }
       c.save(); c.strokeStyle = '#FFFFFF'; c.globalAlpha = .85; c.lineWidth = 2.5; c.lineCap = 'round'; c.beginPath(); c.moveTo(bx + step * .5, by + step * .5); c.lineTo(bx + step * 2.5, by + step * 2.5); c.stroke(); c.restore();
       if (root.SpaceManArt && root.SpaceManArt.drawAvatar) {
         root.SpaceManArt.drawAvatar(c, 96, 62, 104, typeof opts.appearance === 'function' ? opts.appearance() : null, { reduceMotion: true, lookX: 1, lookY: .3, mood: 1 });
@@ -696,7 +700,7 @@
         const at = i => [24 + (i % 3) * 40, 24 + Math.floor(i / 3) * 40];
         for (let i = 0; i < 9; i++) { const [x, y] = at(i); socket(g, x, y, 14, 0, true, false); }
         const boards = [[0, 0, 0, 0, 1, 0, 0, 0, 0], [1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 1, 0, 1, 0, 1, 0, 0]];
-        boards[k].forEach((s, i) => { if (s) { const [x, y] = at(i); lantern(g, x, y, 10, 1, { lit: k === 1 && i === 0 ? .6 : 1, flicker: k === 1 && i === 0 ? .6 : 0 }); } });
+        boards[k].forEach((s, i) => { if (s) { const [x, y] = at(i); star(g, x, y, 10, 1, { lit: k === 1 && i === 0 ? .6 : 1, flicker: k === 1 && i === 0 ? .6 : 0 }); } });
         if (k === 1) { const [x, y] = at(0); g.strokeStyle = SEATS[1].light; g.setLineDash([3, 4]); g.lineWidth = 2; g.beginPath(); g.arc(x, y, 17, 0, TAU); g.stroke(); g.setLineDash([]); }
         if (k === 2) { g.strokeStyle = '#fff'; g.lineWidth = 2.5; g.lineCap = 'round'; const [x1, y1] = at(2), [x2, y2] = at(6); g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
         if (k === 0) { g.strokeStyle = '#FFE59A'; g.lineWidth = 2; const [x, y] = at(4); roundedRect(g, x - 18, y - 18, 36, 36, 9); g.stroke(); }

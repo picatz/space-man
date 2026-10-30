@@ -1,4 +1,4 @@
-// Lantern Lines over Play Together: the real transport and encrypted relay
+// Constellations over Play Together: the real transport and encrypted relay
 // (harness hub), the host-owned match and its validation of guest requests.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -26,7 +26,7 @@ async function setup(t) {
 }
 const turn = c => c.room.match && c.context.SpaceManTabletop.LANTERNS.turn(c.room.match.state);
 
-test('host and guest play a full Lantern Lines match and a rematch over the encrypted relay', async t => {
+test('host and guest play a full Constellations match and a rematch over the encrypted relay', async t => {
   const { host, join } = await setup(t);
   assert.equal(host.room.status().info.mode, 'table');
   assert.equal(host.room.match, null, 'no match until a rival sits down');
