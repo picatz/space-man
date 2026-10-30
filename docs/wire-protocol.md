@@ -1085,7 +1085,7 @@ Inside `0x44` the first byte is an opcode (`src/table-room.js`):
 | `0x02` MOVE | seated guest → host | `revision u16 LE, move u8` |
 | `0x03` READY | seated guest → host | `revision u16 LE` (rematch request) |
 
-`match…` is `SpaceManTabletop.encodeMatch`: `version=1, gameWire u8, revision
+`match…` is `SpaceManTabletop.encodeMatch` (match format 1, independent of PROTO): `format u8, gameWire u8, revision
 u16 LE, phase u8 (0 playing, 1 between rounds, 2 over), round, target,
 score1, score2, starter, last+1, resultSeat+1 (0 = none), lineLen, line…,
 stateLen, state…`. Game ids: `1` Lantern Lines. A new game adds a wire id, not a
