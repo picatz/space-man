@@ -1068,6 +1068,8 @@
     <div class="section-head">Top Runs</div>
     <table class="scores" id="trophyScores"></table>
     <div id="trophyStats" class="stats-line"></div>
+    <div class="section-head">Medals</div>
+    <div id="trophyMedals" class="stats-line"></div>
     <div class="section-head">Logbook</div>
     <div id="logbook"></div>
     <div id="logCount" class="stats-line"></div>
@@ -7179,10 +7181,24 @@ function commitInitials() {
 }
 
 /* ---- records: top-5 → stats → discovery logbook ---- */
+// Medals live with each mode's records: Arena stores the best tier per stage
+// (src/arena-ui.js), Star Circuit the best place per circuit (src/race-ui.js).
+function medalSummary() {
+  const read = (key) => { try { return JSON.parse(localStorage.getItem(BUILD.storageKey(key)) || '{}') || {}; } catch (e) { return {}; } };
+  const arenaMedals = read('sm2.arena.v1.medals'), raceBest = read('sm2.race.v1.best');
+  const stages = window.SpaceManArena ? SpaceManArena.arenas : [], tracks = window.SpaceManRace ? SpaceManRace.tracks : [];
+  const tiers = { gold: 0, silver: 0, bronze: 0 };
+  let arenaN = 0, raceN = 0;
+  for (const a of stages) { const m = arenaMedals[a.id]; if (Object.hasOwn(tiers, m)) { tiers[m]++; arenaN++; } }
+  for (const t of tracks) { const m = ['gold', 'silver', 'bronze'][(raceBest[t.id] && raceBest[t.id].position) - 1]; if (m) { tiers[m]++; raceN++; } }
+  if (!arenaN && !raceN) return 'Win an Arena match or place top 3 in a Star Circuit race to start your collection.';
+  return `ARENA ${arenaN}/${stages.length} · CIRCUIT ${raceN}/${tracks.length} · ${tiers.gold} GOLD · ${tiers.silver} SILVER · ${tiers.bronze} BRONZE`;
+}
 function logbookCount() { return DISCOVERIES.reduce((n, d) => n + (found(d.id) ? 1 : 0), 0); }
 function showTrophy() {
   renderScoreTable('trophyScores', false);
   $('trophyStats').innerHTML = `RUNS ${stats.runs} · KILLS ${stats.kills} · BEST DIST ${stats.bestDist}m`;
+  $('trophyMedals').textContent = medalSummary();
   let lb = '';
   for (const d of DISCOVERIES) {
     lb += found(d.id)

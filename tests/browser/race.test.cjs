@@ -670,3 +670,16 @@ test(
     await capture(page, "race-challenge-hud");
   },
 );
+
+test(
+  "a circuit's best place shows as a medal on its lobby card",
+  { timeout: 60000 },
+  async (t) => {
+    const { page } = await launch(t, { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }, () => {
+      localStorage.setItem("sm2.race.v1.best", JSON.stringify({ neon: { time: 99.5, position: 2 } }));
+    });
+    assert.equal(await page.locator('.race-track[data-track="neon"] .race-medal').textContent(), "SILVER");
+    assert.equal(await page.locator('.race-track[data-track="starlight"] .race-medal').isVisible(), false);
+    await capture(page, "race-lobby-medals-phone");
+  },
+);

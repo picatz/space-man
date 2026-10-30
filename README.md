@@ -209,6 +209,13 @@ next pace up) on the result card; two straight losses, or two 4th-5th place
 finishes, offer the level below. It is always an offer, one tap away, never a
 silent change. Friend rooms and couch play are left alone.
 
+## Medals
+
+Each Arena stage keeps the hardest CPU skill you have beaten on it solo: Cadet
+bronze, Pilot silver, Ace gold. Each Star Circuit keeps your best place
+(1st gold, 2nd silver, 3rd bronze). Medals show on the lobby cards, and Records
+counts the whole shelf across modes.
+
 ## Daily Course and challenges
 
 **Daily Course** on the title screen (or Y / Triangle on a controller) runs the
