@@ -179,6 +179,12 @@ Carve corners, catch boost strips, manage rechargeable boost and recover from a
 missed bend. Ordered checkpoints, race position, timing and results are part of
 the actual simulation. Race again, switch circuits or return to the runner.
 
+**Share your time** on the results card (any finished three-lap solo race) sends
+the time plus a challenge link: `#circuit=<track>&pace=<easy|normal|hard>&beat=<centiseconds>&by=<adj>.<noun>`.
+Opening it lands in the lobby on that circuit and pace, the HUD carries
+"BEAT 1:42.31" under the clock, and the results say by how much you beat it or
+fell short. The sender is callsign indexes only, so a link can never carry text.
+
 Auto-drive is on. A/D or Left/Right steer. S/Down brakes; hold it while turning
 to drift, then release after a sustained corner for a short exit boost. Space/Shift boosts,
 R rescues and Escape pauses. Touch and standard controllers are supported;
@@ -194,6 +200,14 @@ whole race when stepping away. Guests can take a local pit-stop menu. A lost
 connection releases controls and reserves the seat for ten seconds, then marks
 it unfinished. A guest's page reload rejoins that seat automatically. New arrivals watch the current race and
 take the next free seat when it ends. A host's reload reopens the room in its lobby. There is no host migration. Racing does not change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
+
+## Adaptive CPU skill
+
+Solo Arena matches and Star Circuit races keep a streak per CPU level
+(`src/adapt.js`). Two straight wins put "Two wins straight · Try Ace" (or the
+next pace up) on the result card; two straight losses, or two 4th-5th place
+finishes, offer the level below. It is always an offer, one tap away, never a
+silent change. Friend rooms and couch play are left alone.
 
 ## Daily Course and challenges
 

@@ -255,7 +255,7 @@ test(
     await capture(page, "race-results-desktop");
     for (const [width, height] of [[390,844], [844,390], [768,1024], [1440,900]]) {
       await page.setViewportSize({ width, height });
-      for (const selector of ['#raceRematch', '#raceNext', '#raceResultExit']) {
+      for (const selector of ['#raceRematch', '#raceShareTime', '#raceNext', '#raceResultExit']) {
         const action = page.locator(selector);
         await action.scrollIntoViewIfNeeded();
         const b = await action.boundingBox();
@@ -645,5 +645,28 @@ test(
     await page.waitForFunction(() => /^Cockpit · /.test(document.querySelector(".race-deck-status").textContent));
     await page.locator(".race-deck-summary").click();
     await capture(page, "race-lobby-stage");
+  },
+);
+
+test(
+  "a friend's challenge link opens its circuit and pace with the time to beat on the lobby and HUD",
+  { timeout: 60000 },
+  async (t) => {
+    const { page } = await launch(t);
+    const base = new URL(page.url());
+    base.hash = "";
+    await page.goto("about:blank");
+    await page.goto(base.href + "#circuit=neon&pace=hard&beat=10231&by=999.999");
+    await screen(page, "lobby");
+    assert.equal(await page.evaluate(() => location.hash), "", "the link is consumed so a reload lands home");
+    assert.equal(await page.locator('[data-track="neon"]').first().getAttribute("aria-pressed"), "true");
+    assert.equal(await page.locator('[data-difficulty="hard"]').first().getAttribute("aria-pressed"), "true");
+    // An out-of-range sender reads as a friend, never as raw indexes.
+    assert.match(await page.locator(".race-launch-bar > .race-local-note").textContent(), /^Beat a friend's 1:42\.31 · 3 laps/);
+    await page.locator(".race-launch").click();
+    await playing(page);
+    assert.equal(await page.locator(".race-target").textContent(), "BEAT 1:42.31");
+    assert.equal(await page.locator(".race-target").isVisible(), true);
+    await capture(page, "race-challenge-hud");
   },
 );

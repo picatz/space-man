@@ -60,6 +60,10 @@ Each of these shipped once. Check for the class, not just the instance.
   real flex footer under a scrolling body (PR 121).
 - **Static copy that names inputs.** Text like "keyboard, controller & touch" or "Press Space" on a
   touch-only phone. Name inputs only in `[data-help]`/`[data-for]` blocks keyed to `body[data-input]`.
+- **Ids assigned by button position.** Arena and Star Circuit dialogs set ids with
+  `querySelectorAll('button')[n]`; adding a button shifts them and silently renames another control
+  (PR 128 briefly turned Cancel auto-start into `arenaNext`). Update every index and keep the id
+  checks in `arena.test.cjs` and `race.test.cjs` passing.
 - **The first ten seconds.** A newcomer who has not touched a control yet must not lose a life or a
   race in the opening seconds (`an idle newcomer survives` in `tests/arena.test.cjs`). Tuning that
   makes the opening harsher needs a reason in the PR.
