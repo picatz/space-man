@@ -106,7 +106,7 @@
 .race-button{min-height:46px;padding:10px 17px;color:#d9edf8;border:1px solid #38536b;border-radius:13px;background:#192f45;font-weight:700;font-size:12px;line-height:1.4;max-width:100%}.race-button:hover{background:#26445b}.race-button:active,.race-pressed{transform:translateY(2px);background:#38617b!important}.race-primary{background:#c7f47d;color:#152b30;border-color:#deffae;min-height:54px;box-shadow:0 4px 0 #53783d;font-size:14px}.race-primary:hover{background:#e0ffa9}.race-text{border-color:#38536b99;background:#192f4566;color:#c3d9e8}.race-small{padding:8px 12px;min-height:44px}.race-kicker{font-size:calc(10px * var(--ui-scale, 1));font-weight:800;letter-spacing:.18em;color:#90acbf}.race-tag{color:#c7f47d;font-size:calc(10px * var(--ui-scale, 1));font-weight:800;letter-spacing:.12em}.race-pill{padding:7px 11px;border:1px solid #628754;border-radius:20px;background:#172d2e;display:inline-block;color:#d3f9a6;font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.12em;font-weight:750}
 .race-modal{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:calc(var(--race-top) + 20px) calc(var(--race-right) + 24px) calc(var(--race-bottom) + 20px) calc(var(--race-left) + 24px);background:linear-gradient(110deg,#080f24ed,#080f2466);overflow:hidden}.race-dialog{width:min(1060px,100%);max-height:100%;overflow-y:auto;overflow-x:hidden;touch-action:pan-y;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#38617b transparent;min-width:0}.race-lobby-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:12px}.race-grid{display:grid;grid-template-columns:1fr 1.12fr;align-items:center;gap:48px}.race-intro{min-width:0}.race-title{font-size:clamp(42px,5vw,68px);font-weight:950;letter-spacing:-.06em;line-height:.95;margin:20px 0}.race-title span{display:block;color:#c7f47d}.race-lede{max-width:310px;color:#a9bed0;font-size:14px;line-height:1.65}.race-hero{width:100%;height:auto;display:block;max-width:390px;margin:-8px 0}.race-facts{display:flex;gap:18px;color:#9eb8ca;font-size:calc(11px * var(--ui-scale, 1));flex-wrap:wrap}.race-facts strong{color:#eef7fb;display:block;font-size:15px}
 .race-setup{padding:23px;border:1px solid #344e64;border-radius:22px;background:linear-gradient(130deg,#172b41ef,#0e1e33ef);min-width:0}.race-label{margin:0 0 10px;color:#a9bed0;font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.12em;font-weight:800}.race-track-list{display:grid;gap:8px;max-height:min(332px,34vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#38617b transparent;padding-right:2px}.race-track{width:100%;display:flex;align-items:center;gap:13px;text-align:left;min-height:78px;padding:9px 12px;background:#0d1e32;min-width:0}.race-track[aria-pressed=true]{border-color:#c7f47d;background:#203b3d}.race-track canvas{width:95px;height:57px;flex:0 0 95px}.race-track strong{display:block;font-size:12px;color:#eff9ff;letter-spacing:-.01em}.race-track small{font-size:calc(9px * var(--ui-scale, 1));font-weight:800;letter-spacing:.15em;color:#8faaBE}.race-track-description{color:#91aabf;font-size:calc(11px * var(--ui-scale, 1));min-height:30px;margin:10px 0 14px}.race-options{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 20px}.race-segments{display:flex;gap:3px;background:#0b1a2b;border:1px solid #2a4258;padding:3px;border-radius:10px}.race-segment{background:transparent;border-color:transparent;min-height:36px;padding:7px 12px;font-size:calc(11px * var(--ui-scale, 1))}.race-segment[aria-pressed=true]{background:#35516a;color:#fff}.race-launch{width:100%}.race-local-note{font-size:calc(10px * var(--ui-scale, 1));color:#92aabf;text-align:center;margin:15px 0 0}.race-help{border-top:1px solid #293f56;padding-top:10px;margin-top:17px;color:#a4bdcf;font-size:calc(11px * var(--ui-scale, 1))}.race-help summary{min-height:35px;cursor:pointer;color:#c4d9e7;padding:7px 0}.race-help p{margin:5px 0 12px}
-.race-hud{position:absolute;left:calc(var(--race-left) + 20px);right:calc(var(--race-right) + 20px);top:calc(var(--race-top) + 16px);z-index:3;pointer-events:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.race-hud-box{display:flex;align-items:center;gap:18px;background:#091727df;border:1px solid #426174;border-radius:15px;padding:11px 15px;box-shadow:0 4px 24px #0004;min-width:0}.race-position{font-size:39px;font-weight:900;line-height:1;color:#c7f47d;letter-spacing:-.05em}.race-position small{font-size:14px;color:#8facbf}.race-metric{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}.race-metric strong{font-size:17px}.race-metric span{font-size:calc(9px * var(--ui-scale, 1));color:#93adbf;font-weight:700;letter-spacing:.14em}.race-hud-left{display:grid;gap:6px;min-width:0;max-width:190px}.race-identity{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 4px;background:transparent;border:0;border-radius:0;color:#EAF7FF;text-shadow:0 1px 3px #071522}.race-identity canvas{width:30px;height:30px;flex:0 0 30px;background:transparent;border-radius:0}.race-identity-copy{display:flex;flex-direction:column;min-width:0;line-height:1.25}.race-identity-role{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.08em;font-weight:700}.race-identity-name{font-size:calc(11px * var(--ui-scale, 1));font-weight:650;color:#eef7fb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-hud-right{display:flex;gap:8px;align-items:center}.race-pause{pointer-events:auto;width:48px;height:48px;padding:10px;font-size:19px;background:#112a3ee8}.race-time{color:#e7f3fb;font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;background:#091727df;border:1px solid #344e64;border-radius:12px;padding:10px 13px}.race-speed{position:absolute;left:calc(var(--race-left) + 23px);bottom:calc(var(--race-bottom) + 22px);z-index:3;color:#e5f6ff;pointer-events:none;background:#091727d9;border:1px solid #34505d80;border-radius:10px;padding:8px 10px}.race-speed strong{font-size:29px;line-height:1;font-variant-numeric:tabular-nums}.race-speed span{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.1em;color:#94b7ca}.race-drive-feedback{font-size:calc(10px * var(--ui-scale, 1));font-weight:900;letter-spacing:.08em;color:#8ceaff;margin-top:6px}.race-drive-feedback[data-kind=boost]{color:#d6ff96}.race-boostbar{width:130px;height:5px;background:#2d4456;border-radius:9px;overflow:hidden;margin-top:7px}.race-boostfill{height:100%;background:#c7f47d;transform-origin:left}.race-hint{position:absolute;bottom:calc(var(--race-bottom) + 23px);left:50%;transform:translateX(-50%);padding:6px 10px;background:#091727d9;color:#a8c7d9;z-index:3;font-size:calc(10px * var(--ui-scale, 1));white-space:nowrap;border-radius:8px;pointer-events:none}.race-minimap{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 20px);width:170px;height:120px;background:#091727a9;border:1px solid #426174;border-radius:14px;z-index:3;pointer-events:none}.race-banner{position:absolute;left:50%;top:26%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:4;color:#eefaff;font-size:72px;font-weight:950;text-shadow:0 5px 0 #122c42}.race-banner small{display:block;font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.18em;color:#c7f47d;background:#091727c9;border-radius:18px;padding:7px 12px;text-shadow:none}.race-warning{position:absolute;top:calc(var(--race-top) + 142px);left:50%;transform:translateX(-50%);background:#543421e0;border:1px solid #c18c5e;border-radius:20px;padding:6px 14px;font-size:calc(10px * var(--ui-scale, 1));color:#ffe0b5;z-index:3;pointer-events:none;white-space:nowrap}
+.race-hud{position:absolute;left:calc(var(--race-left) + 20px);right:calc(var(--race-right) + 20px);top:calc(var(--race-top) + 16px);z-index:3;pointer-events:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.race-hud-box{display:flex;align-items:center;gap:18px;background:#091727df;border:1px solid #426174;border-radius:15px;padding:11px 15px;box-shadow:0 4px 24px #0004;min-width:0}.race-position{font-size:39px;font-weight:900;line-height:1;color:#c7f47d;letter-spacing:-.05em}.race-position small{font-size:14px;color:#8facbf}.race-metric{display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums}.race-metric strong{font-size:17px}.race-metric span{font-size:calc(9px * var(--ui-scale, 1));color:#93adbf;font-weight:700;letter-spacing:.14em}.race-hud-left{display:grid;gap:6px;min-width:0;max-width:190px}.race-identity{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 4px;background:transparent;border:0;border-radius:0;color:#EAF7FF;text-shadow:0 1px 3px #071522}.race-identity canvas{width:30px;height:30px;flex:0 0 30px;background:transparent;border-radius:0}.race-identity-copy{display:flex;flex-direction:column;min-width:0;line-height:1.25}.race-identity-role{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.08em;font-weight:700}.race-identity-name{font-size:calc(11px * var(--ui-scale, 1));font-weight:650;color:#eef7fb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.race-hud-right{display:flex;gap:8px;align-items:center}.race-pause{pointer-events:auto;width:48px;height:48px;padding:10px;font-size:19px;background:#112a3ee8}.race-time{color:#e7f3fb;font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;background:#091727df;border:1px solid #344e64;border-radius:12px;padding:10px 13px}.race-target{display:block;margin-top:2px;font-size:calc(9px * var(--ui-scale, 1));font-weight:800;letter-spacing:.12em;color:#c7f47d}.race-target[hidden]{display:none}.race-challenge-result{margin:12px 0 0;padding:9px 12px;border-radius:12px;background:#2c4229;border:1px solid #6f9a4c;color:#e3ffc0;font-weight:750}.race-challenge-result[data-beat=false]{background:#3a2c20;border-color:#a77a4e;color:#ffe0b5}.race-speed{position:absolute;left:calc(var(--race-left) + 23px);bottom:calc(var(--race-bottom) + 22px);z-index:3;color:#e5f6ff;pointer-events:none;background:#091727d9;border:1px solid #34505d80;border-radius:10px;padding:8px 10px}.race-speed strong{font-size:29px;line-height:1;font-variant-numeric:tabular-nums}.race-speed span{font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.1em;color:#94b7ca}.race-drive-feedback{font-size:calc(10px * var(--ui-scale, 1));font-weight:900;letter-spacing:.08em;color:#8ceaff;margin-top:6px}.race-drive-feedback[data-kind=boost]{color:#d6ff96}.race-boostbar{width:130px;height:5px;background:#2d4456;border-radius:9px;overflow:hidden;margin-top:7px}.race-boostfill{height:100%;background:#c7f47d;transform-origin:left}.race-hint{position:absolute;bottom:calc(var(--race-bottom) + 23px);left:50%;transform:translateX(-50%);padding:6px 10px;background:#091727d9;color:#a8c7d9;z-index:3;font-size:calc(10px * var(--ui-scale, 1));white-space:nowrap;border-radius:8px;pointer-events:none}.race-minimap{position:absolute;right:calc(var(--race-right) + 20px);bottom:calc(var(--race-bottom) + 20px);width:170px;height:120px;background:#091727a9;border:1px solid #426174;border-radius:14px;z-index:3;pointer-events:none}.race-banner{position:absolute;left:50%;top:26%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;z-index:4;color:#eefaff;font-size:72px;font-weight:950;text-shadow:0 5px 0 #122c42}.race-banner small{display:block;font-size:calc(10px * var(--ui-scale, 1));letter-spacing:.18em;color:#c7f47d;background:#091727c9;border-radius:18px;padding:7px 12px;text-shadow:none}.race-warning{position:absolute;top:calc(var(--race-top) + 142px);left:50%;transform:translateX(-50%);background:#543421e0;border:1px solid #c18c5e;border-radius:20px;padding:6px 14px;font-size:calc(10px * var(--ui-scale, 1));color:#ffe0b5;z-index:3;pointer-events:none;white-space:nowrap}
 .race-touch{display:none;position:absolute;inset:0;z-index:4;pointer-events:none}.race-root[data-touch=true] .race-touch{display:block}.race-root[data-touch=true] .race-hint,.race-root[data-screen=lobby] .race-hint{display:none}.race-touch-group{display:flex;align-items:end;gap:10px;position:absolute;bottom:calc(var(--race-bottom) + 22px);pointer-events:auto;touch-action:none}.race-steering{left:calc(var(--race-left) + 18px)}.race-actions{right:calc(var(--race-right) + 18px)}.race-touch-button{width:65px;height:65px;border-radius:20px;background:#102e42d9;border:1.5px solid #73a9bd;color:#e7faff;font-size:27px;padding:5px;box-shadow:0 4px 0 #071522;touch-action:none}.race-touch-button small{display:block;font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.08em;color:#b3d1e1}.race-touch-boost{background:#334735db;border-color:#c7f47d;color:#daffae}.race-touch-boost span{font-size:22px}.race-root[data-handed=left] .race-steering{left:auto;right:calc(var(--race-right) + 18px)}.race-root[data-handed=left] .race-actions{right:auto;left:calc(var(--race-left) + 18px)}.race-root[data-touch=true] .race-speed{bottom:calc(var(--race-bottom) + 104px)}.race-root[data-touch=true] .race-minimap{bottom:calc(var(--race-bottom) + 106px);width:132px;height:92px}.race-recover{position:absolute;left:50%;bottom:calc(var(--race-bottom) + 25px);transform:translateX(-50%);pointer-events:auto;background:#0b2235d9;font-size:calc(9px * var(--ui-scale, 1));padding:7px 10px;min-height:44px}
 .race-compact{width:min(430px,100%);padding:25px;background:#0d2035f5;border:1px solid #456174;border-radius:23px;box-shadow:0 18px 100px #0006}.race-compact h2{font-size:34px;letter-spacing:-.05em;line-height:1.08;margin:16px 0 12px}.race-compact p{color:#aac3d3;font-size:13px}.race-compact>.race-button{width:100%;margin-top:10px}.race-results{margin:20px 0}.race-result-row{display:flex;align-items:center;gap:14px;padding:10px 4px;border-bottom:1px solid #294054;color:#d2e6f3;font-size:12px}.race-result-row strong{flex:1}.race-result-row span:first-child{font-size:19px;color:#c7f47d;font-weight:800}.race-result-row span:last-child{font-variant-numeric:tabular-nums;color:#93b2c6}.race-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 @media(max-width:760px){.race-grid{gap:22px;grid-template-columns:1fr}.race-intro{display:grid;grid-template-columns:1fr .8fr;column-gap:10px;align-items:center}.race-intro>.race-pill{grid-column:1;justify-self:start;font-size:calc(9px * var(--ui-scale, 1));letter-spacing:.1em;padding:6px 9px}.race-title{font-size:34px;line-height:1;margin:13px 0;grid-column:1}.race-lede{font-size:12px;margin:0;grid-column:1/-1;max-width:none}.race-hero{grid-column:2;grid-row:1/4;width:100%;margin:0}.race-facts{display:none}.race-lobby-header{margin-bottom:8px}.race-setup{padding:17px}.race-track{min-height:68px}.race-track canvas{width:85px;height:50px;flex-basis:85px}.race-options{margin-bottom:15px}.race-modal{padding:calc(var(--race-top) + 12px) calc(var(--race-right) + 16px) calc(var(--race-bottom) + 14px) calc(var(--race-left) + 16px)}.race-hud{left:calc(var(--race-left) + 12px);right:calc(var(--race-right) + 12px);top:calc(var(--race-top) + 12px);gap:7px}.race-hud-box{gap:13px;padding:10px 12px}.race-position{font-size:32px}.race-metric strong{font-size:15px}.race-time{font-size:14px;padding:11px 10px}.race-pause{width:44px;height:44px;min-height:44px}.race-touch-group{gap:7px}.race-touch-button{width:59px;height:63px}.race-steering{left:calc(var(--race-left) + 13px)}.race-actions{right:calc(var(--race-right) + 13px)}.race-recover{font-size:calc(9px * var(--ui-scale, 1));padding:7px;bottom:calc(var(--race-bottom) + 31px)}.race-hint{max-width:60%;white-space:normal;text-align:center}.race-warning{top:calc(var(--race-top) + 128px)}}
@@ -162,6 +162,10 @@
       identitySignature = "",
       lap,
       time,
+      target,
+      shareButton,
+      lastFinish = null,
+      raceChallenge = null,
       speed,
       fuel,
       driveFeedback,
@@ -198,6 +202,8 @@
     const flatCamera = root.SpaceManRaceCamera?.createTopdown();
     const audioControls = [], audioOverrides = {};
     let localSession = null, sharedSession = null, inputSuspended = false;
+    // A friend's time to beat from a #circuit= link: { trackId, difficulty, time, by }.
+    let challenge = null;
     let selected = { trackId: "starlight", difficulty: "normal" },
       keys = new Map(),
       touches = new Map(),
@@ -322,7 +328,7 @@
         rootEl.querySelector(".race-launch-bar > .race-local-note"),
         online
           ? "Shared laps, boost and collisions. Empty grid slots get CPUs."
-          : "3 laps · You + 4 CPU pilots",
+          : (activeChallenge() ? "Beat " + challengeWho() + " " + fmt(activeChallenge().time) + " · " : "") + "3 laps · You + 4 CPU pilots",
       );
       touch.hidden = view !== "play" || paused || (online && !canControl());
       watchTools.hidden = !online || view !== "play" || paused || !!ownActor();
@@ -1279,10 +1285,14 @@
       identity.append(identityPortrait, identityCopy);
       left.append(stats, identity);
       const right = el("div", "race-hud-right");
-      time = el("div", "race-time", "0:00.00");
+      const clock = el("div", "race-time");
+      time = el("span", "", "0:00.00");
+      target = el("small", "race-target");
+      target.hidden = true;
+      clock.append(time, target);
       const pb = button("Ⅱ", "race-pause", () => pause());
       pb.setAttribute("aria-label", "Pause race");
-      right.append(time, pb);
+      right.append(clock, pb);
       hud.append(left, right);
       rootEl.append(hud);
       const speedWrap = el("div", "race-speed");
@@ -1560,6 +1570,7 @@
           if (onlineActive() && !room.isHost) room.vote("again");
           else start();
         }),
+        button("Share your time", "", shareTime),
         button("Next circuit  ↗", "", () => {
           selected.trackId =
             R.tracks[
@@ -1586,9 +1597,11 @@
       pausePanel.querySelectorAll("button")[1].id = "raceRestart";
       pausePanel.querySelectorAll("button")[2].id = "raceLobby";
       pausePanel.querySelectorAll("button")[3].id = "raceExit";
-      resultPanel.querySelectorAll("button")[3].id = "raceResultExit";
+      resultPanel.querySelectorAll("button")[4].id = "raceResultExit";
       resultPanel.querySelectorAll("button")[0].id = "raceRematch";
-      resultPanel.querySelectorAll("button")[1].id = "raceNext";
+      shareButton = resultPanel.querySelectorAll("button")[1];
+      shareButton.id = "raceShareTime";
+      resultPanel.querySelectorAll("button")[2].id = "raceNext";
       buildRoomControls();
 
       buildAudioControls(pausePreferences);
@@ -1638,6 +1651,9 @@
       rescueRequest = false;
       preferences();
       state = R.create(localSession ? { ...localSession.config, ...selected, expedition: true, laps: 1, seed: localSession.seed } : selected);
+      raceChallenge = localSession ? null : activeChallenge();
+      target.hidden = !raceChallenge;
+      if (raceChallenge) setText(target, "BEAT " + fmt(raceChallenge.time));
       cosmeticRound++;
       if (root.SpaceManCosmetics && typeof opts.appearance === "function") { const human = state.actors.find(a => a.controller === "human"); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       previousPose = null;
@@ -1772,11 +1788,23 @@
           ? root.SpaceManLogbook.discover("photo") : null;
         if (photo) resultRows.append(el("p", "race-cosmetic-reward", "Logbook: " + photo.name));
       }
-      if (me?.finished && me.time !== null && state.laps === 3 && !onlineActive()) {
+      const shareable = !!(me?.finished && me.time !== null && state.laps === 3 && !onlineActive());
+      if (shareable) {
         const faster = recordBest(state.trackId, me.time, me.position);
         if (faster) resultRows.append(el("p", "race-cosmetic-reward", "New personal best on " + R.course(state.trackId).name + ": " + fmt(me.time)));
+        const c = raceChallenge;
+        if (c) {
+          const gap = Math.abs(me.time - c.time).toFixed(2);
+          const verdict = me.time < c.time ? "You beat " + challengeWho() + " " + fmt(c.time) + " by " + gap + " s!" : me.time === c.time ? "Dead heat with " + challengeWho() + " " + fmt(c.time) + "." : gap + " s short of " + challengeWho() + " " + fmt(c.time) + ". Again?";
+          const p = el("p", "race-challenge-result", verdict);
+          p.dataset.beat = String(me.time < c.time);
+          resultRows.append(p);
+        }
+        lastFinish = { trackId: state.trackId, difficulty: state.difficulty, time: me.time };
         syncChoices();
-      }
+      } else lastFinish = null;
+      shareButton.hidden = !shareable;
+      setText(shareButton, "Share your time");
       setPanel(resultPanel);
       announce(
         "Race complete. You placed " +
@@ -2089,6 +2117,29 @@
       records[trackId] = { time: faster ? time : old.time, position: Math.min(position, old?.position ?? position) };
       try { root.localStorage.setItem(recordsKey(), JSON.stringify(records)); } catch (_) {}
       return faster;
+    }
+    // The challenge applies while its circuit and pace are the ones picked, offline.
+    function activeChallenge() {
+      return challenge && !onlineActive() && !localSession && !sharedSession &&
+        challenge.trackId === selected.trackId && challenge.difficulty === selected.difficulty ? challenge : null;
+    }
+    function challengeWho() {
+      const name = challenge?.by && opts.net?.callsignText ? opts.net.callsignText(challenge.by[0], challenge.by[1]) : null;
+      return name ? name + "'s" : "a friend's";
+    }
+    async function shareTime() {
+      if (!lastFinish) return;
+      const me = typeof opts.identity === "function" ? opts.identity() : null;
+      const c = Object.assign({}, lastFinish, { by: Number.isInteger(me?.adjIdx) && Number.isInteger(me?.nounIdx) ? [me.adjIdx, me.nounIdx] : null });
+      const base = typeof opts.baseUrl === "function" ? opts.baseUrl() : root.location.href.split("#")[0];
+      const url = challengeLink(base, c);
+      const text = "SPACE MAN · Star Circuit · " + R.course(c.trackId).name + " " + fmt(c.time) + " (" + PACE_NAMES[c.difficulty] + " pace). Can you beat it?";
+      const data = { title: "Space Man · Star Circuit", text, url };
+      try {
+        if (root.navigator.share && (!root.navigator.canShare || root.navigator.canShare(data))) { await root.navigator.share(data); return; }
+      } catch (e) { if (e && e.name === "AbortError") return; }
+      try { await root.navigator.clipboard.writeText(text + "\n" + url); setText(shareButton, "Copied ✓"); announce("Time and challenge link copied."); }
+      catch (_) { try { root.prompt("Copy your challenge", text + " " + url); } catch (_) {} }
     }
     function recordText(trackId, lead) {
       const r = records[trackId];
@@ -2768,6 +2819,20 @@
         roomDetails.open = true;
         return room.join(payload, role, true, resumeKey);
       },
+      // A friend's #circuit= link: open the lobby on that circuit and pace with
+      // their time to beat. Returns false for a malformed link.
+      acceptChallenge(hash) {
+        const c = parseChallenge(hash);
+        if (!c) return false;
+        if (!active) open();
+        if (onlineActive()) return false;
+        challenge = c;
+        selected = Object.assign({}, selected, { trackId: c.trackId, difficulty: c.difficulty });
+        syncChoices();
+        syncRoomChoices();
+        announce("Challenge: beat " + challengeWho() + " " + fmt(c.time) + " on " + R.course(c.trackId).name + ".");
+        return true;
+      },
       // Play Together hub: open the lobby with a fresh friend room already
       // hosting (or the current one).
       hostRoom() {
@@ -2805,5 +2870,24 @@
       },
     });
   }
-  root.SpaceManRaceUI = Object.freeze({ create, createWarningReceipt, createItemRequest, pulseGuide, sourceBearingArrow, hapticFor });
+  // Star Circuit challenge links: #circuit=<track>&pace=<easy|normal|hard>&beat=<centiseconds>[&by=<adj>.<noun>].
+  // The sender is callsign indexes, never free text, so a link can only name a valid callsign.
+  const PACE_NAMES = Object.freeze({ easy: "Chill", normal: "Sport", hard: "Expert" });
+  function parseChallenge(hash) {
+    const R = root.SpaceManRace, params = {};
+    for (const part of String(hash || "").replace(/^#/, "").split("&")) {
+      const at = part.indexOf("=");
+      if (at > 0) params[part.slice(0, at)] = part.slice(at + 1);
+    }
+    const track = R?.tracks.find((t) => t.id === params.circuit);
+    const beat = /^\d{1,6}$/.test(params.beat || "") ? Number(params.beat) : 0;
+    if (!track || !Object.hasOwn(PACE_NAMES, params.pace) || beat < 1000 || beat > 360000) return null;
+    const by = /^\d{1,4}\.\d{1,4}$/.test(params.by || "") ? params.by.split(".").map(Number) : null;
+    return { trackId: track.id, difficulty: params.pace, time: beat / 100, by };
+  }
+  function challengeLink(base, c) {
+    return String(base || "").split("#")[0] + "#circuit=" + encodeURIComponent(c.trackId) + "&pace=" + c.difficulty +
+      "&beat=" + Math.round(c.time * 100) + (c.by ? "&by=" + c.by[0] + "." + c.by[1] : "");
+  }
+  root.SpaceManRaceUI = Object.freeze({ parseChallenge, challengeLink, create, createWarningReceipt, createItemRequest, pulseGuide, sourceBearingArrow, hapticFor });
 })(typeof window !== "undefined" ? window : globalThis);

@@ -179,6 +179,12 @@ Carve corners, catch boost strips, manage rechargeable boost and recover from a
 missed bend. Ordered checkpoints, race position, timing and results are part of
 the actual simulation. Race again, switch circuits or return to the runner.
 
+**Share your time** on the results card (any finished three-lap solo race) sends
+the time plus a challenge link: `#circuit=<track>&pace=<easy|normal|hard>&beat=<centiseconds>&by=<adj>.<noun>`.
+Opening it lands in the lobby on that circuit and pace, the HUD carries
+"BEAT 1:42.31" under the clock, and the results say by how much you beat it or
+fell short. The sender is callsign indexes only, so a link can never carry text.
+
 Auto-drive is on. A/D or Left/Right steer. S/Down brakes; hold it while turning
 to drift, then release after a sustained corner for a short exit boost. Space/Shift boosts,
 R rescues and Escape pauses. Touch and standard controllers are supported;
