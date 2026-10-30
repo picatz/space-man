@@ -64,10 +64,10 @@ const SHELL = [
   './favicon.png',
   './screenshots/gameplay-wide.png',
   './screenshots/gameplay-portrait.png',
-  './icons/icon-192x192.png',
-  './icons/icon-512x512.png',
-  './icons/maskable-512.png',
-  './icons/apple-touch-icon.png',
+  './icons/icon-192x192-v2.png',
+  './icons/icon-512x512-v2.png',
+  './icons/maskable-512-v2.png',
+  './icons/apple-touch-icon-v2.png',
 ];
 
 // ONE BUILD PER PAGE. The page and every script it runs come from the same

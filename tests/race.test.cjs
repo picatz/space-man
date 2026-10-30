@@ -875,3 +875,21 @@ test("lane strips pay out only inside their narrow lane, and the original tracks
   assert.equal(hit(-d).padTicks, 0, "the opposite side of the road does not trigger it");
   assert.ok(hit(-d).fuel < 55, "and refills nothing");
 });
+
+test("a held Boost on a drained reserve does not strobe: it stays off until the reserve refills", () => {
+  const state = playing({ trackId: "starlight" }), a = state.actors[0];
+  a.fuel = 3;
+  let flips = 0, last = null;
+  for (let i = 0; i < 400; i++) {
+    Race.step(state, { [a.id]: { throttle: 1, steer: 0, boost: true } });
+    if (last !== null && a.boosting !== last) flips++;
+    last = a.boosting;
+  }
+  assert.ok(flips <= 10, `held boost changed state ${flips} times in 400 ticks`);
+  a.fuel = 10; a.boosting = false;
+  Race.step(state, { [a.id]: { throttle: 1, steer: 0, boost: true } });
+  assert.equal(a.boosting, false, "a low reserve will not start a new boost");
+  a.fuel = 60;
+  Race.step(state, { [a.id]: { throttle: 1, steer: 0, boost: true } });
+  assert.equal(a.boosting, true);
+});

@@ -9,7 +9,7 @@
     const now=()=>root.performance.now();
     const roster=()=>net.roster().map(r=>({...r,identity:r.p===1?'host':r.pubHex||'peer-'+r.p}));
     function info(){const i=net.info(),c=client.current;return{...i,role:c&&((c.mode==='runner'&&localRunnerDone)||(['running','paused'].includes(c.phase)&&!online.hasPlayer(c.players,i.myP)))?1:i.role,seed:c?c.config.seed:i.seed,runId:c?c.epoch:i.runId};}
-    function status(){return{active,busy,host:!!host,error,closedReason,connection,info:info(),roster:roster(),current:presented,journey:client.current,stale:active&&!host&&now()-lastReceived>1500,pendingRole};}
+    function status(){return{active,busy,host:!!host,error,closedReason,connection,info:info(),roster:roster(),current:presented,journey:client.current,stale:active&&!host&&now()-lastReceived>1500,joinText:busy&&net.joinStatus?(net.joinStatus()||{}).text||'':'',pendingRole};}
     function changed(){const s=status();options.onChange?.(s);for(const l of listeners)l.onChange?.(s);}
     function present(c){
       if(!c.engine){presented=null;return;}const sim=c.mode==='arena'?root.SpaceManArena:root.SpaceManRace;
@@ -55,6 +55,7 @@
     function subscribe(){
       off=net.onEvent((event,data)=>{
         if(!active&&!busy)return;
+        if(event==='join-progress'){changed();return;}
         if(event==='journey-data'){if(host){host.receive(data.p,data.p===1?'host':data.pubHex,data.bytes,now());}else adopt(data.bytes);}
         else if(['join','rejoin','roster','role','leave','kick','banned','welcomed','ok','appearance'].includes(event))sync();
         else if(event==='reconnecting'||event==='hostaway'){client.cancel(true);connection=host?'Connection lost · expedition paused':'Reconnecting · controls released';if(host){autoPaused=host.phase==='running';host.pause(true);}changed();}

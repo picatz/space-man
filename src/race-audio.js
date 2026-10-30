@@ -208,6 +208,17 @@
       if (!available()) return;
       cue("pad", [69, 74], 0.075, 0.4);
     }
+    // Lobby selection tick: works outside a race, rises through a pentatonic
+    // scale with the circuit's position so a sweep through the cards plays a run.
+    function select(index = 0) {
+      if (disposed || !available()) return;
+      sync();
+      if (!settings().sfx) return;
+      const scale = [74, 77, 79, 82, 84, 86, 89, 91], t = time();
+      if (lastCue.select !== undefined && t - lastCue.select < 0.05) return;
+      lastCue.select = t;
+      note("sfx", scale[Math.abs(Math.floor(finite(index))) % scale.length], t, 0.14, 0.05, "sine", 0.01);
+    }
     function checkpoint() {
       if (phaseName === "racing") cue("checkpoint", [74], 0, 0.15, 0.035);
     }
@@ -428,7 +439,7 @@
         engineVoices: engine ? engine.oscs.length : 0,
       });
     }
-    return Object.freeze({ unlock: () => unlock(false), resume, update, phase, countdown, checkpoint, pad, recover, lap, finish, boost, threat, draft, pause, stop, destroy, diagnostics });
+    return Object.freeze({ unlock: () => unlock(false), resume, update, phase, countdown, select, checkpoint, pad, recover, lap, finish, boost, threat, draft, pause, stop, destroy, diagnostics });
   }
   return Object.freeze({ create });
 });
