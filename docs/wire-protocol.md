@@ -125,8 +125,21 @@ IDLE → CONNECTING → HANDSHAKE → ESTABLISHED → (DOWN) → CLOSED
   the host for **4 ping ticks** (~8 s), or a host that hears nothing from any member for
   **80 snap ticks** (~8 s), drops the socket and reconnects at once (normal backoff, first
   retry ~0.5 s). The reconnect re-HELLOs and resumes the same seat ([§10.8](#108-frames-now-implemented-emote--host-control-stage)).
-- **Nudge.** When the browser reports the network is back (`online`) or the tab becomes
-  visible, a client waiting out a backoff delay reconnects immediately.
+- **Relay-silence sweep (v5.1, client-only).** The liveness sweep also counts sweeps in which
+  the socket received nothing at all. After **2** quiet sweeps (~10 s) the client pings the relay
+  each sweep; after **4** (~20 s, so at least two unanswered `Ping`s) it declares the socket dead
+  and reconnects. This covers the case the app watchdog cannot: a host alone in its lobby has no
+  members to hear from, and a phone that changed networks or came back from the lock screen can
+  hold a socket that still reads OPEN but carries nothing. Like the watchdog it counts sweeps, not
+  clock differences.
+- **Nudge.** When the browser reports the network is back (`online`), the tab becomes visible, or
+  the page is shown again (`pageshow`, `resume`), a client waiting out a backoff delay reconnects
+  immediately, and a client whose socket is ESTABLISHED sends a `Ping` and replaces the socket if
+  nothing at all arrives within **4 s** (`resumeProbeMs`). A healthy socket is never replaced.
+- **Screen wake lock.** While a room is open or a join is in progress, the client holds a
+  `navigator.wakeLock` screen lock where the browser offers one (re-requested on nudge, since the
+  browser drops it when the tab hides), so a phone showing the invite does not lock and fall off
+  the relay.
 - A client ignores every event (message, close) from a socket it has already replaced, so a
   late close from a dead socket can never tear down its successor.
 
@@ -1039,7 +1052,15 @@ client self-contained.
 the time zone → pick the 5 nearest regions by great-circle distance → probe each
 (`fetch('https://'+host+'/derp/probe', {mode:'no-cors', cache:'no-store'})`, 2 attempts, first
 discarded as warmup, 3 s timeout, timing only) → bake the winner's region code into the
-invite. A custom relay in settings skips probing and sets `flags` bit1 + the host string.
+invite. The host connects to the region's first node and, if that one does not establish within
+13 s, to the next (up to 3 nodes). The invite names only the region; guests walk the same node
+order and the region's nodes forward between each other.
+
+**Guest admission.** Once its relay socket is up, a guest re-sends HELLO every 5.5 s for up to
+**90 s** (`joinAdmitMs`) before giving up, because the usual quiet host is a phone that locked or
+switched apps while showing the invite. The join reports `join-progress` stages the UI shows
+verbatim through `joinStatus()`: `relay` → `hello` → `slow` (8 s without a WELCOME) / `away`
+(the relay reported the host key gone) / `reconnect` (the guest's own socket dropped). A custom relay in settings skips probing and sets `flags` bit1 + the host string.
 
 ---
 

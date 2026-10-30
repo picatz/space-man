@@ -157,6 +157,13 @@
     backlogSoft: 4096,   // socket send buffer (bytes) above which presence/snapshots thin out
     backlogHard: 16384,  // …and above which non-essential presence is skipped outright
     joinConnectMs: 20000, // guest: budget per relay host while joining (slow links need more than 13 s)
+    hostConnectMs: T_CONNECT + T_HANDSHAKE,   // host: budget per relay node before trying the region's next one
+    joinAdmitMs: 90000,  // guest: how long a connected join keeps knocking for a host that is not answering yet
+    joinSlowMs: 8000,    // …and when the join screen starts saying why it is still waiting
+    relayTickMs: 5000,   // relay socket liveness sweep
+    relayIdleTicks: 2,   // sweeps with nothing received before the socket pings the relay itself
+    relayDeadTicks: 4,   // sweeps with nothing received (not even a PONG) before the socket is declared dead
+    resumeProbeMs: 4000, // tab came back / network changed: an open socket must answer a PING this fast or is replaced
   };
   const REPLAY_WIN = 32;  // receive window: a frame up to 32 counters behind the newest is accepted once
   const BACKOFF_BASE = 500, BACKOFF_CAP = 10000, BACKOFF_RESET = 30000;
@@ -869,10 +876,11 @@
       rx: null, rxLen: 0, boxK: null, serverInfo: null,
       lastRecv: 0, lastSend: 0, pingCtr: 0, pingSent: new Map(), rtt: 0,
       attempts: 0, timers: [], hq: Promise.resolve(), hqState: { n: 0, bytes: 0 },
+      rxN: 0, probing: false,
     };
     const now = () => performance.now();
     const later = (fn, ms) => { const t = setTimeout(fn, ms); c.timers.push(t); return t; };
-    const clearTimers = () => { for (const t of c.timers) clearTimeout(t); c.timers.length = 0; };
+    const clearTimers = () => { for (const t of c.timers) clearTimeout(t); c.timers.length = 0; c.probing = false; };
     const log = (m) => { if (cb.onLog) cb.onLog(m); };
 
     function sendFrame(type, payload) {
@@ -960,6 +968,7 @@
 
     function onMessage(ev) {
       const d = new Uint8Array(ev.data);
+      c.rxN++;                                          // any byte from the relay proves the socket is alive
       if (c.rxLen + d.length > c.rx.length) return fail('rx overflow');
       c.rx.set(d, c.rxLen);
       c.rxLen += d.length;
@@ -1004,12 +1013,21 @@
         c.state = 'handshake';
         c.lastRecv = now();
         later(() => { if (c.state === 'handshake') fail('handshake timeout'); }, T_HANDSHAKE);
-        // liveness: server keepalives ≥1/60s refresh lastRecv; 90s of silence = dead
+        // Liveness. Server keepalives (≥1/60 s) refresh lastRecv and 90 s of silence is dead, but
+        // that is far too slow for a phone: after a network switch or an app switch the socket can
+        // stay "open" while carrying nothing, and a host alone in its lobby would sit deaf to every
+        // knock. So a socket that has heard nothing for a couple of sweeps pings the relay itself,
+        // and one that still hears nothing (no PONG either) is replaced. Counted in sweeps, not clock
+        // diffs, so a throttled or suspended tab can never fake an outage.
+        let seen = c.rxN, quiet = 0;
         const live = setInterval(() => {
           if (c.closed || !c.ws) { clearInterval(live); return; }
           if (now() - c.lastRecv > T_DEAD) { clearInterval(live); fail('liveness'); return; }
-          if (c.state === 'established' && now() - c.lastSend > T_PING_IDLE) c.ping();
-        }, 5000);
+          if (c.state !== 'established') return;
+          if (c.rxN !== seen) { seen = c.rxN; quiet = 0; } else quiet++;
+          if (quiet >= TUNE.relayDeadTicks) { clearInterval(live); fail('relay silent'); return; }
+          if (quiet >= TUNE.relayIdleTicks || now() - c.lastSend > T_PING_IDLE) c.ping();
+        }, TUNE.relayTickMs);
         c.timers.push(live);
       };
       ws.onmessage = (ev) => { if (c.ws === ws) onMessage(ev); };   // a replaced socket's late bytes never reach the new stream
@@ -1022,8 +1040,19 @@
     // The app layer decided the socket is dead (no traffic where traffic is due):
     // drop it and reconnect now rather than waiting out T_DEAD.
     c.kick = (why) => { if (!c.closed && c.state === 'established') fail(why || 'stale link'); };
-    // Network came back (online event / tab visible): skip the rest of a backoff wait.
-    c.nudge = () => { if (!c.closed && c.state === 'down') { clearTimers(); c.attempts = 0; c.connect(); } };
+    // Network came back (online event / tab visible): skip the rest of a backoff wait, and make an
+    // open socket prove itself. A phone back from the lock screen or another app often holds a
+    // socket that still reads OPEN but died with the old network; waiting for the sweep (or the
+    // 90 s keepalive) leaves friends knocking at a host who cannot hear them.
+    c.nudge = () => {
+      if (c.closed) return;
+      if (c.state === 'down') { clearTimers(); c.attempts = 0; c.connect(); return; }
+      if (c.state !== 'established' || c.probing) return;
+      const n = c.rxN;
+      c.probing = true;
+      c.ping();
+      later(() => { c.probing = false; if (c.state === 'established' && c.rxN === n) fail('stale after resume'); }, TUNE.resumeProbeMs);
+    };
     c.ping = () => {
       const p = new Uint8Array(8);
       new DataView(p.buffer).setUint32(0, ++c.pingCtr, true);
@@ -2355,16 +2384,18 @@
         S.seed = new DataView(rand(4).buffer).getUint32(0, true);
         S.expiryMin = opts.expiryMin || Math.floor(Date.now() / 60000) + 1440;
       }
-      let region = null, relayHost = opts.relayHost || '';
+      let region = null, relayHost = opts.relayHost || '', candidates = [relayHost];
       if (!relayHost) {
         region = opts.region ? regionOf(opts.region) : await pickRegion();
         if (!region) throw new Error('unknown region');
         S.region = region.code;
-        relayHost = region.hosts[0];
+        // The invite names the region, not the node: guests walk its nodes in the same order, and a
+        // region's nodes forward to each other, so a host whose first node is unreachable takes the next.
+        candidates = region.hosts.slice(0, 3);
+        relayHost = candidates[0];
       } else {
         S.region = opts.region || RELAY_MAP.regions[0].code;
       }
-      S.relayHostName = relayHost;
       S.invite = encodeInvite({
         flags: (opts.relayHost ? 2 : 0) | modeFlag(S), roomId: S.roomId, epoch: S.epoch, hostPub: S.keys.pub,
         region: S.region, relayHost: opts.relayHost || '', secret: S.secret,
@@ -2373,10 +2404,10 @@
       S.link = linkBase(opts.baseUrl) + '#j=' + S.invite;
       S.started = performance.now();
       if (S.closed) throw new Error('Room cancelled');
-      await new Promise((resolve, reject) => {
+      const connectTo = (host) => new Promise((resolve, reject) => {
         let settled = false;
         S.cancelConnect = () => { if (!settled) { settled = true; reject(new Error('Room cancelled')); } };
-        S.relay = RelayClient(relayHost, S.keys, {
+        S.relay = RelayClient(host, S.keys, {
           onOpen: () => {
             if (!settled) { settled = true; resolve(); }
             S.rxTicks = 0;
@@ -2393,8 +2424,19 @@
           onLog: (m) => S.ev.emit('log', { m }),
         });
         S.relay.connect();
-        setTimeout(() => { if (!settled) { settled = true; reject(new Error('relay connect failed')); } }, T_CONNECT + T_HANDSHAKE);
+        setTimeout(() => { if (!settled) { settled = true; reject(new Error('relay connect failed')); } }, TUNE.hostConnectMs);
       });
+      for (let i = 0; ; i++) {
+        relayHost = candidates[i];
+        try { await connectTo(relayHost); break; }
+        catch (e) {
+          if (S.relay) S.relay.close();
+          S.relay = null;
+          if (S.closed || i + 1 >= candidates.length) throw e;
+        }
+      }
+      S.cancelConnect = null;
+      S.relayHostName = relayHost;
       if (opts.code !== false) {
         // A restored room keeps the code its friends were already reading out (the old page is gone, so nobody else
         // answers for it); a fresh room mints one.
@@ -2943,7 +2985,7 @@
       let lastErr = null;
       for (const h of hosts) {
         if (S.closed) throw new Error('Join cancelled');
-        S.ev.emit('join-progress', { stage: 'relay', host: h });
+        S.joinStage = 'relay'; S.ev.emit('join-progress', { stage: 'relay', host: h });
         try {
           await new Promise((resolve, reject) => {
             let settled = false;
@@ -2955,7 +2997,7 @@
                 S.rxTicks = 0;
                 helloLoop();                             // (re)connect always re-hellos
                 if (S.everUp) S.ev.emit('reconnected', {});
-                else S.ev.emit('join-progress', { stage: 'hello' });
+                else { S.joinStage = 'hello'; S.ev.emit('join-progress', { stage: 'hello' }); }
                 S.everUp = true;
                 S.ev.emit('state', { state: 'established' });
                 emitQuality();
@@ -3155,6 +3197,36 @@
      wire call sites once.
      ------------------------------------------------------------------------- */
   let session = null, roomOperation = 0;
+  // Screen wake lock while in a room. A phone that dims and locks while it shows the invite QR, or
+  // while its player waits in a lobby, suspends the page and drops off the relay; friends then knock
+  // at nobody. The lock is released by the browser whenever the tab is hidden, so nudge() (tab back
+  // in view) asks again. Best effort: a browser without the API, or one that refuses, changes nothing.
+  let wakeLock = null, wakeWanted = false;
+  function keepAwake(on) {
+    wakeWanted = !!on;
+    if (!on) {
+      const held = wakeLock; wakeLock = null;
+      if (held && held !== 'pending') { try { held.release().catch(() => {}); } catch (e) {} }
+      return;
+    }
+    const api = root.navigator && root.navigator.wakeLock;
+    if (wakeLock || !api || typeof api.request !== 'function' || (root.document && root.document.hidden)) return;
+    wakeLock = 'pending';
+    let req;
+    try { req = api.request('screen'); } catch (e) { wakeLock = null; return; }
+    Promise.resolve(req).then((lock) => {
+      if (wakeLock !== 'pending' || !wakeWanted) { if (wakeLock === 'pending') wakeLock = null; try { lock.release().catch(() => {}); } catch (e) {} return; }
+      wakeLock = lock;
+      if (lock && lock.addEventListener) lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+    }, () => { if (wakeLock === 'pending') wakeLock = null; });
+  }
+  const JOIN_COPY = {
+    relay: 'Connecting…',
+    hello: 'Connected. Asking the host to let you in…',
+    slow: "Still waiting for the host's game to answer. Ask them to keep Space Man open on their screen. You'll get in automatically.",
+    away: "The host's game is offline right now. Their screen may have locked, or they switched apps. Ask them to open Space Man and you'll get in automatically.",
+    reconnect: 'Your connection dropped. Reconnecting…',
+  };
   const ev = emitter();
   async function loadRelayDirectory(mode, o, operation) {
     if (operation != null && operation !== roomOperation) throw new Error('Room cancelled');
@@ -3190,8 +3262,9 @@
       if (operation !== roomOperation) throw new Error('Room cancelled');
       const next = session = HostSession(o);
       next.ev.on((e, d) => { if (session === next) ev.emit(e, d); });   // a closed session's late packets stay silent
+      keepAwake(true);
       try { await next.open(); }
-      catch (e) { next.close(); if (session === next) session = null; throw e; }
+      catch (e) { next.close(); if (session === next) session = null; keepAwake(!!session); throw e; }
       if (operation !== roomOperation || session !== next) { next.close(); throw new Error('Room cancelled'); }
       NET.active = true;
       return NET.info();
@@ -3210,27 +3283,54 @@
       const next = session = GuestSession(dec.inv, opts || {});
       next.payload = String(payloadStr);
       next.ev.on((e, d) => { if (session === next) ev.emit(e, d); });   // a closed session's late packets stay silent
+      keepAwake(true);
       // A relay socket is not room admission. Do not expose seed=0 / player=0
       // or claim success until the host has authenticated and welcomed us.
-      let timer, unsubscribe;
+      let timer, slow, unsubscribe;
       const admitted = new Promise((resolve, reject) => {
-        // The 30 s admission clock starts once the relay answers, so a slow connection
-        // doesn't eat the host's time to approve (the relay stage has its own budget).
-        const arm = () => { clearTimeout(timer); timer = setTimeout(() => reject(new Error('Host did not admit this join. Ask them to check the room and approvals.')), 30000); };
-        timer = setTimeout(() => reject(new Error('Host did not admit this join. Ask them to check the room and approvals.')), 30000 + TUNE.joinConnectMs * 2);
+        // The admission clock starts once the relay answers, so a slow connection doesn't eat the
+        // host's time (the relay stage has its own budget). It is long on purpose: the usual reason a
+        // host is quiet is a phone that locked or switched apps while showing the invite, and the
+        // HELLO loop gets us in the moment it comes back. Meanwhile the stage says what we wait for.
+        const unanswered = () => reject(new Error("The host didn't answer. Ask them to open Space Man and check the room is still open, then try again."));
+        const arm = () => { clearTimeout(timer); timer = setTimeout(unanswered, TUNE.joinAdmitMs); };
+        const stage = (name, announced) => {                          // announced: the session already emitted it
+          if ((next.joinStage === name && !announced) || next.welcomed) return;
+          next.joinStage = name;
+          clearTimeout(slow);
+          if (name === 'hello') slow = setTimeout(() => stage('slow'), TUNE.joinSlowMs);
+          if (!announced) next.ev.emit('join-progress', { stage: name });
+        };
+        next.joinStage = 'relay';
+        timer = setTimeout(unanswered, TUNE.joinAdmitMs + TUNE.joinConnectMs * 2);
         next.cancelAdmit = () => reject(new Error('Join cancelled'));
         unsubscribe = next.ev.on((e, d) => {
-          if (e === 'join-progress' && d.stage === 'hello') arm();
-          if (e === 'welcomed') resolve();
+          if (e === 'join-progress') {
+            if (d.stage === 'hello') { arm(); stage('hello', true); }   // the session set joinStage before telling anyone
+            else if (d.stage === 'relay') stage('relay', true);
+          }
+          if (next.welcomed) { if (e === 'welcomed') resolve(); return; }
+          if (e === 'hostaway') stage('away');                        // the relay says the host's key is not connected
+          if (e === 'hostback') stage('hello');
+          if (e === 'state' && d.state === 'down' && next.everUp) stage('reconnect');   // our own socket dropped mid-knock
+          if (e === 'reconnected') { arm(); stage('hello'); }
           if (e === 'bye') reject(d.reason === 3 && d.detail === INV_RACE && next.mode === 'race' ? raceVersionError() : d.reason === 3 && d.detail === INV_JOURNEY && next.mode === 'journey' ? journeyVersionError() : d.reason === 3 && (d.detail === INV_ARENA || d.detail === INV_RACE || d.detail === INV_JOURNEY) ? modeError() : new Error(d.reason === 4 ? 'That room is full for this role.' : 'The host declined or ended this room.'));
         });
       });
       try { await Promise.all([next.join(), admitted]); }
-      catch (e) { next.close(); if (session === next) session = null; throw e; }
-      finally { clearTimeout(timer); unsubscribe(); next.cancelAdmit = null; }
+      catch (e) { next.close(); if (session === next) session = null; keepAwake(!!session); throw e; }
+      finally { clearTimeout(timer); clearTimeout(slow); unsubscribe(); next.cancelAdmit = null; next.joinStage = ''; }
       if (operation !== roomOperation || session !== next) { next.close(); throw new Error('Join cancelled'); }
       NET.active = true;
       return NET.info();
+    },
+    // What a join in progress is waiting for, in words for the join screen of every mode:
+    // {stage, text} while connecting or knocking, null otherwise. Stages arrive as
+    // 'join-progress' events: relay → hello → (slow | away | reconnect) → welcomed.
+    joinStatus() {
+      if (!session || session.isHost || session.welcomed || !session.joinStage) return null;
+      const stage = session.joinStage;
+      return { stage, text: JOIN_COPY[stage] || JOIN_COPY.relay };
     },
     // Peek an invite's host key WITHOUT connecting — pure decode, no sockets,
     // keys, crypto, or storage (safe to call on the join prompt before the user
@@ -3264,6 +3364,7 @@
       roomOperation++;
       if (session) session.close();
       session = null;
+      keepAwake(false);
       NET.active = false;
       NET.mockActive = false;
     },
@@ -3361,6 +3462,7 @@
     // The network is back (online event, tab visible again): reconnect now instead of
     // sitting out a backoff timer. Cheap no-op when the socket is fine.
     nudge() {
+      keepAwake(!!session);
       if (!session || !session.relay || !session.relay.nudge) return;
       session.relay.nudge();
       if (session.codeRelay && session.codeRelay.nudge) session.codeRelay.nudge();

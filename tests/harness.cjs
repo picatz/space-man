@@ -13,7 +13,7 @@ function client(hub, { game = true, width = 1280, height = 720, storage = new Ma
   const timers = new Set();
   // Per-client network link (tests/netbench.cjs shapes it): every socket this client opens carries it.
   const link = { latency: 0, jitter: 0, loss: 0, reorder: 0, bandwidth: 0, queueMax: 64, down: false, rng: null };
-  const Socket = class extends hub.Socket { constructor(...a) { super(...a); this.link = link; this.born = Date.now(); } };
+  const Socket = class extends hub.Socket { constructor(...a) { super(...a); this.url = String(a[0]); this.link = link; this.born = Date.now(); } };
   const drawing = new Proxy({}, { get(target, key) {
     if (key in target) return target[key];
     if (key === 'measureText') return (s) => ({ width: String(s).length * 7 });
@@ -74,6 +74,7 @@ function relay() {
       sockets.add(this); this.readyState = 0;
       setImmediate(() => {
         if (this.closed) return;
+        if (this.link && this.link.refuse && this.link.refuse(this.url)) return;   // a relay node this client cannot reach: never opens
         this.readyState = 1; this.onopen?.();
         frame(this, 1, hub.api.bytes.cat(new Uint8Array([0x44,0x45,0x52,0x50,0xf0,0x9f,0x94,0x91]), hub.server.pub));
       });
@@ -95,6 +96,7 @@ function relay() {
       } else if (type === 4 && !hub.admissionPaused) {
         const dst = clients.get(api.bytes.hex(p.slice(0, 32)));
         if (dst) { hub.packetCount++; hub.byteCount = (hub.byteCount || 0) + b.length; frame(dst, 5, api.bytes.cat(this.pub, p.slice(32))); }
+        else if (hub.notHere) frame(this, 8, api.bytes.cat(p.slice(0, 32), new Uint8Array([1])));   // PeerGone(NotHere): a real relay's answer to a send to an absent key
       } else if (type === 0x12) frame(this, 0x13, p);
     }
     close() {
