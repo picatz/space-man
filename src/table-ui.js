@@ -329,6 +329,8 @@
     function clearTimers() { root.clearTimeout(cpuTimer); root.clearTimeout(nextTimer); cpuTimer = nextTimer = 0; }
     function showView() {
       lobbyEl.hidden = view !== 'lobby'; matchEl.hidden = view !== 'match'; rootEl.dataset.screen = view;
+      // A calm lobby stops the frame loop; the board always needs one.
+      if (active && !raf) raf = root.requestAnimationFrame(frame);
       if (view === 'lobby') { dialogWrap.hidden = true; syncLobby(); }
     }
     function resize() {

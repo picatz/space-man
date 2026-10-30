@@ -76,6 +76,10 @@ for (const [width, height] of [[390, 844], [768, 1024], [1280, 800], [844, 390]]
     const boxes = await page.locator('.tt-cell').evaluateAll(cells => cells.map(c => c.getBoundingClientRect()).map(r => ({ w: r.width, b: r.bottom, r: r.right })));
     assert.equal(boxes.length, 9);
     for (const b of boxes) { assert.ok(b.w >= 44, 'star target ' + b.w); assert.ok(b.b <= height + 1 && b.r <= width + 1, 'star on screen'); }
+    // The chart is painted (reduced motion included): a free star's centre glints near white.
+    await page.waitForTimeout(150);
+    const glint = await page.evaluate(() => { const b = document.querySelector('.tt-cell[data-cell="1"]').getBoundingClientRect(), c = document.querySelector('.tt-canvas'), k = c.width / innerWidth; return Array.from(c.getContext('2d').getImageData(Math.round((b.left + b.width / 2) * k), Math.round((b.top + b.height / 2) * k), 1, 1).data); });
+    assert.ok(glint[0] > 150 && glint[1] > 150, 'star painted: ' + glint);
     const first = await debug(page);
     assert.equal(first.status, 'Your turn · light a lantern');
     if (width < 1000) await page.locator('.tt-cell[data-cell="4"]').tap(); else await page.locator('.tt-cell[data-cell="4"]').click();
