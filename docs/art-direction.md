@@ -131,9 +131,21 @@ reference it matches and will move onto it next. No mode adds its own body.
 - **Parts, back to front.** IK legs (far, then near) with boots; the pack; the far
   arm; the 16 x 16 torso with `suitDetails`; the near arm and its gear; the head
   group (optional halo sprite, helmet, hat, frost). The helmet is always last.
-- **Proportions.** Arms are the Run's capsules: shoulders at (+-5, -6) under the
-  neck seal, near arm 10 long, far arm 12, about 4 units wide with the outline.
-  Legs are two 6.4 segments from hips at (+-4, 4).
+- **Proportions.** Arms are two-bone limbs (upper arm and forearm, 6 each near, 6.6
+  far) from shoulders at (+-6, -2.5), just inside the helmet rim, so a sleeve leaves
+  the body at shoulder height rather than the neck and a short reach folds the
+  elbow. Legs are two 6.4 segments from hips at (+-4.6, 4) to the ankle at y 15.2.
+  One limb language: sleeves 3.7 and legs 4.5 wide inside a 1.3 hairline edge;
+  cuffs are exactly one sleeve wide and boot shafts one leg wide, so wrists and
+  ankles have no step. Mittens are a padded palm a little wider than the cuff with
+  a tucked thumb; boots are rounded moon boots (shaft, toe cap, darker sole) whose
+  shaft swallows the shin end. The torso is 16 x 15.
+- **Motion.** Overlap and follow-through come from phase, not state: the head bobs
+  a beat after the torso, arms swing a beat behind the legs and fold at the elbow
+  as pace rises, an idle pilot shifts weight with the helmet trailing the hips, the
+  wave flutters the wrist late, a jump stretches on the rise, celebrate is a
+  victory hop that squashes on each touchdown, and the comms aerial whips behind
+  lean, stride and hop.
 - **Palette slots.** `suit` torso and helmet, `arm` near sleeve, `legF` near leg,
   `legB` outline, shade, far limbs and cuffs, `pack` canister, `visTop`/`visBot`
   blaster. The crew or team `accent` lights the cuffs, boots, pack vent, chest panel

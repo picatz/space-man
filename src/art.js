@@ -299,8 +299,13 @@
     c.fillStyle = accent; c.fillRect(-10.2, -1.6, 1.7, 1.2);
     // Integrated short comms aerial, distinct from the tall antenna accessory.
     if (a.hat === 'none') {
-      c.strokeStyle = accent; c.lineWidth = 1.4; c.beginPath(); c.moveTo(-5, -10); c.lineTo(-7, -14); c.stroke();
-      c.fillStyle = accent; c.beginPath(); c.arc(-7, -14, 1.8, 0, TAU); c.fill();
+      // expression.aerial (radians) lets a moving pilot's aerial trail behind it: the stem
+      // bends from its root, so the tip whips more than the base (follow-through).
+      const bend = num(expression.aerial, 0), cs = Math.cos(bend), sn = Math.sin(bend);
+      const tx = -5 + (-2 * cs + 4 * sn), ty = -10 + (-2 * sn - 4 * cs);
+      const mb = bend * .35, mx = -5 + (-1 * Math.cos(mb) + 2 * Math.sin(mb)), my = -10 + (-1 * Math.sin(mb) - 2 * Math.cos(mb));
+      c.strokeStyle = accent; c.lineWidth = 1.4; c.beginPath(); c.moveTo(-5, -10); c.quadraticCurveTo(mx, my, tx, ty); c.stroke();
+      c.fillStyle = accent; c.beginPath(); c.arc(tx, ty, 1.8, 0, TAU); c.fill();
     }
     if (a.detail === 'stars') {
       c.fillStyle = accent; c.beginPath(); c.moveTo(-6, 3); c.lineTo(-5, 5); c.lineTo(-3, 6); c.lineTo(-5, 7); c.lineTo(-6, 9); c.lineTo(-7, 7); c.lineTo(-9, 6); c.lineTo(-7, 5); c.fill();
@@ -490,7 +495,8 @@ const characterHats = {
      hanging-down, + toward facing (the Run's convention). Pure: no state, no
      Math.random, no gradients or blur; the same pose always paints the same calls,
      and the helmet always paints last so no limb or shoulder can cross the visor. */
-  const RIG_LEG_IN = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 16, hipY: 4, hipX: 4, len: 6.4 };
+  // tuck 3.4 (the Run's is 5.5): the rig's chunkier boots stay visible under the torso in a jump.
+  const RIG_LEG_IN = { runCycle: 0, speed: 0, onGround: true, pose: 0, hang: false, hangT: 0, crouch: 0, launch: 0, stomp: 0, groundY: 15.2, hipY: 4, hipX: 4.6, len: 6.4, tuck: 3.4 };
   const RIG_LEG = new Float32Array(12), RIG_HAND = new Float32Array(3);
   const RIG_FAR = 'rgba(8,18,40,.2)', RIG_SLATE = '#415D78';
   const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -506,39 +512,69 @@ const characterHats = {
     }
     return out;
   }
-  // One sleeve: a quadratic capsule (the Run's armCapsule) with a hairline edge.
-  // Writes the hand point and the wrist angle (limb frame, +y away from the body).
-  function rigSleeve(c, sx, sy, ang, len, bend, fill, edge, far) {
-    const hx = sx + Math.sin(ang) * len, hy = sy + Math.cos(ang) * len;
-    const mx = (sx + hx) / 2 + Math.cos(ang) * bend, my = (sy + hy) / 2 - Math.sin(ang) * bend;
-    c.lineCap = 'round'; c.beginPath(); c.moveTo(sx, sy); c.quadraticCurveTo(mx, my, hx, hy);
-    c.strokeStyle = edge; c.lineWidth = 4.1; c.stroke();
-    c.strokeStyle = fill; c.lineWidth = 2.8; c.stroke();
+  // Limb widths, shared by arms and legs so the whole body reads as one suit: the fill
+  // sits inside a hairline edge, and cuffs, mittens and boot shafts are sized from them.
+  const RIG_ARM_W = 3.7, RIG_LEG_W = 4.5, RIG_EDGE = 1.3;
+  // One arm: a two-bone limb (upper arm and forearm, each `seg` long) solved toward a
+  // hand placed `len` from the shoulder along `ang`. The elbow folds to the same side the
+  // Run's capsule bowed (bend < 0: back when hanging, down when reaching forward), so a
+  // short reach reads as a bent elbow instead of a squashed noodle. Writes the hand
+  // point and the wrist angle (limb frame, +y away from the body).
+  function rigArm(c, sx, sy, ang, len, seg, bend, fill, edge, far) {
+    const d = clamp(len, 2, seg * 2 - .01);
+    const hx = sx + Math.sin(ang) * d, hy = sy + Math.cos(ang) * d;
+    const h = Math.sqrt(Math.max(0, seg * seg - d * d / 4)) * (bend < 0 ? 1 : -1);
+    const ex = (sx + hx) / 2 - Math.cos(ang) * h, ey = (sy + hy) / 2 + Math.sin(ang) * h;
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); c.moveTo(sx, sy); c.lineTo(ex, ey); c.lineTo(hx, hy);
+    c.strokeStyle = edge; c.lineWidth = RIG_ARM_W + RIG_EDGE; c.stroke();
+    c.strokeStyle = fill; c.lineWidth = RIG_ARM_W; c.stroke();
     if (far) { c.strokeStyle = RIG_FAR; c.stroke(); }
-    RIG_HAND[0] = hx; RIG_HAND[1] = hy; RIG_HAND[2] = Math.atan2(hy - my, hx - mx) - Math.PI / 2;
+    RIG_HAND[0] = hx; RIG_HAND[1] = hy; RIG_HAND[2] = Math.atan2(hy - ey, hx - ex) - Math.PI / 2;
     return RIG_HAND;
   }
+  // The glove's cuff: a band exactly one sleeve wide, so the forearm runs into it with
+  // no step, carrying the accent as a single stripe.
   function rigCuff(c, P, accent, x, y, angle) {
+    const w = RIG_ARM_W + RIG_EDGE + .5;
     c.save(); c.translate(x, y); c.rotate(angle);
-    c.fillStyle = P.legB; rrPath(c, -2, -1.9, 4, 2.2, 1); c.fill();
-    c.fillStyle = accent; c.fillRect(-1.6, -1.25, 3.2, .7);
+    c.fillStyle = P.legB; rrPath(c, -w / 2, -1.6, w, 2.2, 1); c.fill();
+    c.fillStyle = accent; c.fillRect(-w / 2 + .6, -.85, w - 1.2, .65);
     c.restore();
   }
-  function rigMitten(c, P, x, y, angle, far) {
+  // A mitten: a padded palm a little wider than the cuff (hands read at every scale)
+  // with the thumb tucked in under it toward facing, and one knuckle crease.
+  function rigMitten(c, P, x, y, angle, far, curl = 0) {
     c.save(); c.translate(x, y); c.rotate(angle);
-    c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
-    c.beginPath(); c.ellipse(0, 1.4, 2, 2.2, 0, 0, TAU); c.fill(); c.stroke();
-    c.beginPath(); c.ellipse(1.7, 1, .75, 1.2, .4, 0, TAU); c.fill(); c.stroke();   // thumb toward facing
-    if (far) { c.fillStyle = RIG_FAR; c.beginPath(); c.ellipse(0, 1.4, 2, 2.2, 0, 0, TAU); c.fill(); }
+    c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7;
+    c.beginPath(); c.ellipse(1.9, 1.1, .95, 1.45, .55 - curl * .5, 0, TAU); c.fill(); c.stroke();   // thumb
+    c.beginPath(); c.ellipse(0, 1.9, 2.45, 2.55 - curl * .35, 0, 0, TAU); c.fill(); c.stroke();     // palm
+    c.lineWidth = .45; c.beginPath(); c.moveTo(-1.3, 3.2); c.quadraticCurveTo(-.3, 3.8 - curl, .8, 3.3); c.stroke();
+    if (far) { c.fillStyle = RIG_FAR; c.beginPath(); c.ellipse(0, 1.9, 2.45, 2.55, 0, 0, TAU); c.fill(); }
     c.restore();
   }
+  // A moon boot, origin at the ankle (the IK foot point), sole about 1.7 below it and the
+  // toe toward facing. The shaft is exactly one leg wide and rises above the ankle, so
+  // the shin always ends inside it; a darker sole and a rounded toe give it a front,
+  // and the accent rides the shaft's top band.
   function rigBoot(c, P, accent, x, y, angle, far) {
+    const sw = RIG_LEG_W + RIG_EDGE, hw = sw / 2;
     c.save(); c.translate(x, y); c.rotate(angle);
-    c.fillStyle = P.legB; rrPath(c, -2.2, -2.4, 4.4, 2, .9); c.fill();
-    c.fillStyle = accent; c.fillRect(-1.7, -1.8, 3.4, .6);
-    c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .6;
-    c.beginPath(); c.ellipse(1, -.1, 2.9, 1.6, 0, 0, TAU); c.fill(); c.stroke();
-    if (far) { c.fillStyle = RIG_FAR; c.beginPath(); c.ellipse(1, -.1, 2.9, 1.6, 0, 0, TAU); c.fill(); }
+    c.fillStyle = far ? P.legB : P.suit; c.strokeStyle = P.legB; c.lineWidth = .7;
+    c.beginPath();
+    c.moveTo(-hw, -1.6); c.quadraticCurveTo(-hw, -2.8, -hw + 1.2, -2.8);   // shaft top, rounded
+    c.lineTo(hw - 1.2, -2.8); c.quadraticCurveTo(hw, -2.8, hw, -1.6);
+    c.lineTo(hw, -1.3);                                           // shaft front
+    c.quadraticCurveTo(hw + .3, -.8, 3, -.75);                    // instep
+    c.quadraticCurveTo(4.5, -.6, 4.5, .45);                       // toe
+    c.quadraticCurveTo(4.5, 1.4, 3.4, 1.4);
+    c.lineTo(-2.2, 1.4);                                          // sole line
+    c.quadraticCurveTo(-hw - .3, 1.4, -hw, -.3);                  // heel
+    c.lineTo(-hw, -1.6);
+    c.closePath(); c.fill(); c.stroke();
+    if (far) { c.fillStyle = RIG_FAR; c.fill(); }
+    c.fillStyle = P.legB; rrPath(c, -hw + .2, .55, 4.3 + hw, .9, .45); c.fill();   // sole
+    c.fillStyle = accent; rrPath(c, -hw + .8, -2.1, sw - 1.6, .6, .3); c.fill();   // accent band round the shaft
     c.restore();
   }
   // Gear sits grip-at-origin, emitter toward +x, so the hand is the recoil pivot.
@@ -601,107 +637,131 @@ const characterHats = {
     const strike = jab * jab * (3 - 2 * jab);
     const idle = onGround && !hang && speed < .05 && !wave && !hit && !cheer && !atk;
     const breathe = idle && !calm ? Math.sin(t * 3) * .03 : 0;
-    let sx = (num(pose.squashX, 1) + breathe) * (1 - pop * .1) * (1 - hit * .04), sy = (num(pose.squashY, 1) - breathe) * (1 + pop * .14) * (1 + hit * .05);
-    if (cheer && !calm) sy *= 1 + Math.sin(t * 12) * .04 * cheer;
+    // Celebrate is a little victory hop: the whole body leaves the slab, stretching up
+    // and squashing on each touchdown (reduced motion keeps the pose, not the hop).
+    const hopS = cheer && !calm ? Math.abs(Math.sin(t * 6)) : 0, hop = hopS * 3.2 * cheer;
+    const rise = onGround ? 0 : Math.max(0, -air) * (calm ? .5 : 1);
+    let sx = (num(pose.squashX, 1) + breathe) * (1 - pop * .1) * (1 - hit * .04) * (1 - rise * .05);
+    let sy = (num(pose.squashY, 1) - breathe) * (1 + pop * .14) * (1 + hit * .05) * (1 + rise * .07);
+    if (cheer && !calm) { const k2 = (hopS - .35) * cheer; sy *= 1 + k2 * .07; sx *= 1 - k2 * .05; }
     const lean = num(pose.lean, 0) + facing * (strike * .09 - windup * .05 - hit * .2);
-    c.save(); c.translate(x, y); c.scale(scale, scale);
+    c.save(); c.translate(x, y - hop * scale); c.scale(scale, scale);
     // Feet-anchored squash on the ground (a landing compresses toward the slab);
     // centre pivot in the air, where stretch reads along the jump.
     if (onGround) { c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); c.translate(0, -17); }
     else { c.translate(0, -17); c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); }
     // Torso bob twice per stride, plus the crouch sinking the upper body while the knees take it.
-    const bob = (onGround ? Math.sin(cyc * 2) * 1.5 * Math.min(1, speed * 3) : 0) + crouch * 2.6;
+    const gait = Math.min(1, speed * 3);
+    const bob = (onGround ? Math.sin(cyc * 2) * 1.5 * gait : 0) + crouch * 2.6;
+    // Overlap: the head settles a beat after the torso, and an idle pilot shifts its
+    // weight from foot to foot with the helmet trailing the hips.
+    const headBob = (onGround ? Math.sin(cyc * 2 - .8) * 1.5 * gait : 0) * .45 + crouch * 1.7;
+    const shift = idle && !calm ? Math.sin(t * 1.4) * .45 : 0, headShift = idle && !calm ? Math.sin(t * 1.4 - .9) * .55 : 0;
 
-    // Legs: two-bone IK (the Run's solver), far leg in the shade tone first.
+    // Legs: two-bone IK (the Run's solver) to the ankle, far leg in the shade tone first.
+    // The boot owns the ankle, so the shin always ends inside its shaft.
     const L = RIG_LEG_IN;
     L.runCycle = cyc; L.speed = speed; L.onGround = onGround; L.pose = air * 4; L.hang = hang; L.hangT = num(pose.hangT, 0);
     L.launch = calm ? 0 : clamp(num(pose.launch, 0), 0, 1); L.stomp = pop; L.hipY = 4 + crouch * 2.6;
     const leg = rigLegs(L, RIG_LEG);
-    c.lineCap = 'round'; c.lineJoin = 'round';
+    c.lineCap = 'butt'; c.lineJoin = 'round';   // a flat ankle end hides inside the boot shaft
     for (let k = 0; k < 2; k++) {
       const i = k * 6, far = k === 0;
-      c.beginPath(); c.moveTo(leg[i], leg[i + 1]); c.lineTo(leg[i + 2], leg[i + 3]); c.lineTo(leg[i + 4], leg[i + 5]);
-      c.strokeStyle = P.legB; c.lineWidth = 4.7; c.stroke();
-      c.strokeStyle = far ? P.legB : P.legF; c.lineWidth = 3.4; c.stroke();
+      const kx = leg[i + 2], ky = leg[i + 3], ax = leg[i + 4], ay = leg[i + 5], sl = Math.hypot(ax - kx, ay - ky) || 1;
+      // The shin stops 1.4 short of the ankle so its flat end never shows past a tilted boot.
+      c.beginPath(); c.moveTo(leg[i] + shift * .5, leg[i + 1]); c.lineTo(kx, ky); c.lineTo(ax - (ax - kx) / sl * 1.4, ay - (ay - ky) / sl * 1.4);
+      c.strokeStyle = P.legB; c.lineWidth = RIG_LEG_W + RIG_EDGE; c.stroke();
+      c.strokeStyle = far ? P.legB : P.legF; c.lineWidth = RIG_LEG_W; c.stroke();
       if (far) { c.strokeStyle = RIG_FAR; c.stroke(); }
-      // Boots stay flat on the ground and point their toes when the foot trails in the air.
-      const toe = onGround && !hang ? 0 : clamp((leg[i + 2] - leg[i + 4]) * .12, -.35, .6);
-      rigBoot(c, P, accent, leg[i + 4], leg[i + 5], toe, far);
+      // Planted boots stay flat on the slab; in the air (and mid-swing) they follow the
+      // shin, toes pointing as the foot trails and lifting as it reaches.
+      const shin = Math.atan2(ax - kx, ay - ky);
+      const lifted = hang || !onGround ? 1 : clamp((15.2 - ay) / 3, 0, 1);
+      rigBoot(c, P, accent, ax, ay, clamp(-shin * .7, -.5, .7) * lifted, far);
     }
 
+    c.save(); c.translate(shift, 0);   // upper body: pack, arms and torso ride the weight shift
     // Pack: the Run's warm canister in the suit's pack colour, with the Arena's slate
     // vent carrying the crew/team accent, and a nozzle for the jetpack read.
     c.fillStyle = P.pack; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -13, -6 + bob, 7, 16, 3); c.fill(); c.stroke();
     c.fillStyle = RIG_SLATE; rrPath(c, -12.3, -3 + bob, 2.8, 8.5, 1.2); c.fill(); rrPath(c, -12, 9.4 + bob, 4.2, 2, .8); c.fill();
     c.fillStyle = accent; c.fillRect(-11.8, -2 + bob, 1.8, 5);
 
-    // Arms: the Run's angles. Unarmed hands swing in counter-phase; an armed near hand
+    // Arms: the Run's angles, a beat behind the legs (follow-through), elbows folding
+    // as the pace picks up. Unarmed hands swing in counter-phase; an armed near hand
     // carries its gear level at speed. Air poses reach forward-up and trail back.
-    const sway = calm ? 0 : Math.sin(t * TAU * .8) * .07;
-    let nearA, farA, reach = 10;
+    const sway = calm ? 0 : Math.sin(t * TAU * .8 - .5) * .07;
+    let nearA, farA, reach = 11.2 - 2.8 * speed, farReach = 12.6 - 3.2 * speed;
     if (onGround) {
-      const swing = Math.sin(cyc + Math.PI) * .49 * speed;
-      nearA = pose.gear ? mix(.55 + sway, 1.35 + swing * .2, speed) : mix(.55 + sway, .5 - swing * 1.1, speed);
-      farA = mix(-.5 + sway, -.7 + swing, speed);
+      const swing = Math.sin(cyc + Math.PI - .35) * .49 * speed;
+      nearA = pose.gear ? mix(.55 + sway, 1.35 + swing * .2, speed) : mix(.3 + sway, .5 - swing * 1.1, speed);
+      farA = mix(-.28 + sway, -.7 + swing, speed);
     } else {
       const fall = air * .5 + .5;
       nearA = mix(2.18, 1.75, fall); farA = mix(-.85, -.55, fall);
     }
     const dip = Math.max(0, 1 - num(pose.squashY, 1)) * 1.1;
     nearA -= dip; farA -= dip;
-    if (aim) nearA = mix(nearA, 1.72, aim);
-    // Hello: the sleeve stretches a little so the mitten clears the helmet rim.
+    if (aim) { nearA = mix(nearA, 1.72, aim); reach = mix(reach, 10.4, aim); }
+    // Hello: the sleeve straightens so the mitten clears the helmet rim.
     if (wave) { nearA = mix(nearA, 2.35 + (calm ? 0 : Math.sin(t * 14) * .26), wave); reach += wave * 2.6; }
     if (atk) {
       nearA = mix(mix(nearA, .25, windup), 1.62 - clamp(num(pose.aimY, 0), -1, 1) * .55, strike);
-      farA = mix(farA, -.75, Math.max(strike, windup * .6)); reach += strike * 2;
+      farA = mix(farA, -.75, Math.max(strike, windup * .6)); reach = mix(reach - windup * 2, 11.2, strike);
     }
     if (cheer) {
-      const pump = calm ? 0 : Math.sin(t * 10) * .14;
+      const pump = calm ? 0 : Math.sin(t * 12 - .6) * .16;
       // A fist pump in front of the visor line and the far arm flung back: both read
       // beside the head, where a straight overhead V would vanish behind the helmet.
-      nearA = mix(nearA, 2.3 + pump, cheer); farA = mix(farA, -2.05 - pump, cheer); reach += cheer * 2.4;
+      nearA = mix(nearA, 2.3 + pump, cheer); farA = mix(farA, -2.05 - pump, cheer); reach += cheer * 2.4; farReach += cheer;
     }
     if (hit) { nearA = mix(nearA, 1.95, hit); farA = mix(farA, -1.25, hit); }   // flinch: guard up, far arm thrown back
-    if (hang) { const s = Math.sin(num(pose.hangT, 0) * 6) * .07; nearA = 2.78 + s; farA = 2.62 + s; }
+    if (hang) { const s = Math.sin(num(pose.hangT, 0) * 6) * .07; nearA = 2.78 + s; farA = 2.62 + s; reach = 11; farReach = 12.5; }
     nearA += rec * .24;
     if (Number.isFinite(pose.nearArm)) nearA = pose.nearArm;
     if (Number.isFinite(pose.farArm)) farA = pose.farArm;
+    // Hands overlap the arm: the wrist flutters a beat behind a wave, and a fist curls in a cheer.
+    const flutter = wave && !calm ? Math.sin(t * 14 - 1.1) * .4 * wave : 0;
 
     // Far arm behind the torso (shade tone + wash), from the pack-side shoulder.
-    const fh = rigSleeve(c, -5, -6 + bob, farA, 12, -1.8, P.legB, P.legB, true);
+    const fh = rigArm(c, -6, -2.5 + bob, farA, farReach, 6.6, -1, P.legB, P.legB, true);
     const fhx = fh[0], fhy = fh[1], fw = fh[2];
-    rigCuff(c, P, accent, fhx, fhy, fw); rigMitten(c, P, fhx, fhy, fw, true);
+    rigCuff(c, P, accent, fhx, fhy, fw); rigMitten(c, P, fhx, fhy, fw, true, cheer * .8);
 
-    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -8, -4 + bob, 16, 16, 6); c.fill(); c.stroke();
+    c.fillStyle = P.suit; c.strokeStyle = P.legB; c.lineWidth = .7; rrPath(c, -8, -4 + bob, 16, 15, 6); c.fill(); c.stroke();
     suitDetails(c, 0, bob, style);
     if (pose.guardian) {
       // Guardian plating and three charge cells; the helmet still paints over the shoulders.
       c.fillStyle = P.legB; rrPath(c, -12, -4 + bob, 6, 7, 2); c.fill(); rrPath(c, 6, -4 + bob, 6, 7, 2); c.fill();
-      c.fillStyle = accent; for (let i = 0; i < 3; i++) c.fillRect(-3 + i * 2.5, 9.6 + bob, 1.5, 1.6);
+      c.fillStyle = accent; for (let i = 0; i < 3; i++) c.fillRect(-3 + i * 2.5, 9.2 + bob, 1.5, 1.6);
     }
 
     // Near arm over the torso. The shoulder sits under the neck seal, inside the
     // helmet's footprint, so the helmet (painted next) always covers the joint.
-    const nh = rigSleeve(c, 5, -6 + bob, nearA, reach, -1.8, P.arm, P.legB, false);
-    const nhx = nh[0], nhy = nh[1], nw = nh[2];
+    const nh = rigArm(c, 6, -2.5 + bob, nearA, reach, 6, -1, P.arm, P.legB, false);
+    const nhx = nh[0], nhy = nh[1], nw = nh[2] + flutter;
     rigCuff(c, P, accent, nhx, nhy, nw);
     if (pose.gear) {
       const gearA = (1.35 - nearA) * .65 - rec * .2 + num(pose.gearSpin, 0);
       c.save(); c.translate(nhx, nhy); c.rotate(gearA);
       rigGear(c, P, pose.gear, pose.gearColor || accent);
-      c.fillStyle = P.arm; c.strokeStyle = P.legB; c.lineWidth = .6; c.beginPath(); c.arc(0, .4, 2.1, 0, TAU); c.fill(); c.stroke();   // glove wraps the grip
+      c.fillStyle = P.arm; c.strokeStyle = P.legB; c.lineWidth = .7; c.beginPath(); c.arc(0, .4, 2.4, 0, TAU); c.fill(); c.stroke();   // glove wraps the grip
       if (typeof pose.gearFx === 'function') pose.gearFx(c);
       c.restore();
-    } else rigMitten(c, P, nhx, nhy, nw, false);
+    } else rigMitten(c, P, nhx, nhy, nw, false, cheer);
+    c.restore();   // upper body
 
-    // Head group, last: rides a softened bob, nods with the crouch and tips with a hit.
+    // Head group, last: rides a softened, later bob, nods with the crouch and tips with a hit.
+    // The comms aerial trails the motion (follow-through), lagging lean, stride and hop.
     const tilt = calm ? 0 : num(pose.headTilt, 0);
-    c.save(); c.translate(0, -9 + bob * .35 + crouch * .8); c.rotate(tilt - pop * .08 - hit * .16 + strike * .05);
+    const aerial = calm ? 0 : clamp(-num(pose.lean, 0) * facing * 1.6 + Math.sin(cyc * 2 - 1.6) * .14 * gait - air * .3
+      + (idle ? Math.sin(t * 1.4 - 1.8) * .08 : 0) + (cheer ? Math.cos(t * 12) * .2 * cheer : 0) + crouch * .25, -.6, .6);
+    c.save(); c.translate(headShift, -9 + headBob);
+    c.rotate(tilt - pop * .08 - hit * .16 + strike * .05 + headShift * .03);
     if (pose.halo) c.drawImage(pose.halo, -20, -12, 40, 40);
     const mood = pose.mood ?? (hit > .2 ? 2 : cheer > .2 || wave > .15 ? 1 : 0);
     characterHelmet(c, 0, 0, style, { mood, lid: num(pose.lid, 0), lookX: num(pose.lookX, 0), lookY: num(pose.lookY, 0),
-      tick: num(pose.tick, 20), id: pose.id || 0, calm }, pose.hat !== false);
+      tick: num(pose.tick, 20), id: pose.id || 0, calm, aerial }, pose.hat !== false);
     if (pose.frost) {   // seasonal frost creeping in from the visor edge
       c.strokeStyle = 'rgba(228,248,255,0.9)'; c.lineWidth = 1.4; c.lineCap = 'round';
       c.beginPath(); c.ellipse(1, 0, 6.6, 5.6, 0, -2.8, -1.15); c.stroke();

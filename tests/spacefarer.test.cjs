@@ -135,3 +135,28 @@ test('drawAvatar renders through the rig, keeping the hoverpod branch', () => {
   const armed = recorder(); Art.drawAvatar(armed.ctx, 0, 0, 160, Cosmetics.DEFAULTS, { blaster: '#38E1FF' });
   assert.ok(armed.calls.some(c => c[0] === '=fillStyle' && c[1] === '#38E1FF'), 'the lobby emitter takes its colour');
 });
+
+test('celebrate hops off the slab, and reduced motion keeps the feet planted', () => {
+  // The first translate is the ground contact point; a hop lifts it above y = 120.
+  const lift = pose => draw(pose).find(c => c[0] === 'translate')[2];
+  assert.ok(lift({ celebrate: 1, t: Math.PI / 12 }) < 120 - 6, 'mid-hop the body clears the ground');
+  assert.equal(lift({ celebrate: 1, t: Math.PI / 12, calm: true }), 120);
+  assert.equal(lift({ t: 1 }), 120, 'idle never leaves the ground');
+});
+
+test('limbs read as one suit: sleeves, legs, cuffs and boots share widths', () => {
+  const widths = calls => calls.filter(c => c[0] === '=lineWidth').map(c => c[1]);
+  const w = widths(draw({ t: .4 }));
+  // Legs then arms: an outline one hairline wider than each fill, arms a touch slimmer than legs.
+  for (const fill of [4.5, 3.7]) { assert.ok(w.includes(fill)); assert.ok(w.some(v => Math.abs(v - fill - 1.3) < 1e-9)); }
+  // A running arm folds at the elbow: the sleeve is a two-segment polyline, not a single curve.
+  const run = draw({ speed: 1, runCycle: 1 });
+  assert.equal(run.filter(c => c[0] === 'quadraticCurveTo' && c.length === 5 && Math.abs(c[3]) > 8).length, 0, 'no single-curve sleeves');
+  assert.ok(run.filter(c => c[0] === 'lineTo').length >= 8, 'two-bone legs and arms');
+});
+
+test('the comms aerial trails motion as follow-through', () => {
+  const tip = pose => { const calls = draw(pose), i = calls.findIndex(c => c[0] === '=lineWidth' && c[1] === 1.4); return calls.slice(i).find(c => c[0] === 'quadraticCurveTo'); };
+  assert.deepEqual(tip({ calm: true }), tip({ calm: true, lean: .14 }), 'calm keeps the aerial still');
+  assert.notDeepEqual(tip({ t: 1 }), tip({ t: 1, lean: .14, speed: 1, runCycle: 1 }), 'a running pilot whips its aerial');
+});

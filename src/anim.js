@@ -126,7 +126,7 @@
         const tuck = Math.max(1 - fall, o.stomp) * (1 - o.launch * 0.7);
         const reach = leg === 0 ? -2.5 : 3;                   // front leg reaches ahead
         fx = hx * 0.6 + reach * (0.4 + fall * 0.6) - o.launch * (leg === 0 ? 3 : 1.5);
-        fy = base - tuck * 5.5 - (leg === 0 ? 0.6 : 0);
+        fy = base - tuck * (o.tuck ?? 5.5) - (leg === 0 ? 0.6 : 0);   // o.tuck: knee-lift height
       }
       if (fy > base) fy = base;   // feet never sink below the contact line
       // IK: equal segments, knee bends toward +x (the facing side).
