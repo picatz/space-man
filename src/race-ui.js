@@ -1789,14 +1789,23 @@
     }
     function resize() {
       if (!active) return;
+      // An iPhone home-screen app (black-translucent status bar) reports
+      // innerHeight, clientHeight and visualViewport.height short by the status
+      // bar while CSS 100dvh covers the screen, which left a dead strip under the
+      // lobby. Measure the CSS height and add back what the window misreports;
+      // a real shrink (keyboard, pinch zoom) still follows the visual viewport.
+      rootEl.style.height = "";
       const vv = root.visualViewport,
+        cssH = rootEl.getBoundingClientRect().height,
+        reported = document.documentElement.clientHeight || root.innerHeight,
+        missing = cssH > reported + 1 ? cssH - reported : 0,
         lw = document.documentElement.clientWidth || root.innerWidth,
-        lh = document.documentElement.clientHeight || root.innerHeight;
+        lh = reported + missing;
       const box = {
         left: Math.max(0, vv?.offsetLeft || 0),
         top: Math.max(0, vv?.offsetTop || 0),
         width: Math.max(1, vv?.width || lw),
-        height: Math.max(1, vv?.height || lh),
+        height: Math.max(1, (vv?.height || reported) + missing),
       };
       if (
         viewport &&
