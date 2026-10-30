@@ -201,6 +201,32 @@ for (const [id, dialog, scroller] of [['btnRace', '.race-lobby', '.race-lobby-bo
   });
 }
 
+// An iPhone home-screen app (black-translucent status bar) reports innerHeight,
+// clientHeight and visualViewport.height short by the status bar while CSS
+// 100dvh covers the whole screen. The lobby must follow the CSS screen, or a
+// dead strip shows under Launch race and the last circuits sit behind it.
+for (const [id, rootSel, lobbySel, launchSel] of [['btnRace', '.race-root', '.race-lobby', '.race-launch'], ['btnArena', '.arena-root', '.arena-modal', null]]) test(`${id} lobby fills an iPhone home-screen window that reports a short innerHeight`, { timeout: 30000 }, async t => {
+  const { page } = await launch(t, { width: 393, height: 852 });
+  await page.evaluate(() => {
+    const short = innerHeight - 59, vv = window.visualViewport;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => short });
+    Object.defineProperty(document.documentElement, 'clientHeight', { configurable: true, get: () => short });
+    if (vv) Object.defineProperty(vv, 'height', { configurable: true, get: () => short });
+  });
+  await page.locator('#' + id).tap();
+  await page.locator(rootSel + '[data-screen=lobby]').waitFor();
+  await page.waitForTimeout(300);
+  const m = await page.evaluate(([rootSel, lobbySel, launchSel]) => {
+    const probe = document.body.appendChild(Object.assign(document.createElement('div'), { style: 'position:fixed;left:0;top:0;width:1px;height:100dvh' }));
+    const screen = probe.getBoundingClientRect().height; probe.remove();
+    const rect = el => document.querySelector(el).getBoundingClientRect();
+    return { screen, root: rect(rootSel).bottom, lobby: rect(lobbySel).bottom, launch: launchSel ? rect(launchSel).bottom : innerHeight };
+  }, [rootSel, lobbySel, launchSel]);
+  assert.ok(Math.abs(m.root - m.screen) <= 1, `the game screen reaches the bottom of the display (${m.root} of ${m.screen})`);
+  assert.ok(Math.abs(m.lobby - m.screen) <= 1, 'the lobby runs to the bottom edge, with no dead band under Launch');
+  assert.ok(m.launch > m.screen - 120, 'Launch race sits at the bottom of the screen, not a status bar higher');
+});
+
 for (const [width, height] of [[1337, 600], [1100, 570], [820, 900]]) {
   test(`home ${width}x${height}: a slightly tall home shrinks to fit one viewport`, { timeout: 30000 }, async t => {
     const { page } = await launch(t, { width, height });
