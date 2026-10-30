@@ -152,11 +152,11 @@ runner using local assets, without contacting a relay. Like the other browser
 tests, it requires `npm ci` and Playwright Chromium; an existing Chromium can be
 selected with `SPACE_MAN_CHROMIUM_PATH`.
 
-## Lantern Lines · Duel of wits
+## Constellations · Duel of wits
 
-A two-pilot duel on a Prism star chart. Light a lantern on any free star; each
-pilot keeps three lit, and lighting a fourth lets your oldest one go dark (it
-flickers the turn before). Three of yours in a line wins the round, first to two
+A two-pilot duel on a Prism star chart. Light any dark star; each pilot keeps
+three lit, and lighting a fourth lets your oldest one fade (it flickers the turn
+before). Three of yours in a line makes a constellation and wins the round, first to two
 takes the chart. Play Flare (Easy, Normal, Hard), pass one screen between two
 pilots, or host a Play Together table by code or QR; extra friends watch. Touch,
 mouse, keys (arrows, 1-9, Enter) and controllers all work. Rules live in

@@ -80,7 +80,7 @@
       // A 3x3 star chart with a lit diagonal, you on the left and Flare on the right (kept inside the phone crop).
       const at=i=>[108+(i%3)*22,58+Math.floor(i/3)*22];
       for(let i=0;i<9;i++){const [x,y]=at(i);star(c,x,y,3,'#d9d0ff99');}
-      [[0,'#38E1FF'],[4,'#38E1FF'],[8,'#38E1FF'],[2,'#FFB454'],[6,'#FFB454']].forEach(([i,col])=>{const [x,y]=at(i);ellipse(c,x,y,10,10,col+'33');ellipse(c,x,y,6,7,col);});
+      [[0,'#38E1FF'],[4,'#38E1FF'],[8,'#38E1FF'],[2,'#FFB454'],[6,'#FFB454']].forEach(([i,col])=>{const [x,y]=at(i);ellipse(c,x,y,10,10,col+'33');if(col==='#38E1FF'){star(c,x,y,9,col);ellipse(c,x,y,3.5,3.5,col);}else{c.fillStyle=col;c.beginPath();for(let k=0;k<10;k++){const a=-Math.PI/2+k*Math.PI/5,d=k%2?3.4:7.6;c.lineTo(x+Math.cos(a)*d,y+Math.sin(a)*d+.5);}c.fill();}});
       line(c,[at(0),at(8)],'#ffffffcc',2.5);
       root.SpaceManArt.drawAvatar(c,70,62,56,appearance,{reduceMotion:true,lookX:1});
       root.SpaceManArt.drawAvatar(c,192,62,56,{...appearance,suit:'gold',hat:'none',eyes:'bright'},{reduceMotion:true,lookX:-1});

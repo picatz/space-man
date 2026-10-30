@@ -1,5 +1,5 @@
 'use strict';
-// Lantern Lines in a real browser: open it from home, play Flare by keyboard and
+// Constellations in a real browser: open it from home, play Flare by keyboard and
 // touch, pass and play, the menu, and no overflow at phone, tablet and laptop
 // sizes. Rules and rooms have unit tests (tabletop, table-room); this guards the
 // screen. SPACE_MAN_HOME_BROWSER picks the engine (CI runs it in the home suite).
@@ -66,9 +66,11 @@ const debug = page => page.evaluate(() => { const d = tableUI.debug(); return { 
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1 || [...document.querySelectorAll('.tt-root button')].filter(b => b.offsetParent).some(b => { const r = b.getBoundingClientRect(); return r.right > innerWidth + 1 || r.left < -1; }));
 
 for (const [width, height] of [[390, 844], [768, 1024], [1280, 800], [844, 390]]) {
-  test(`lantern lines ${width}x${height}: lobby and board fit, Flare answers, menu and home work`, async t => {
+  test(`constellations ${width}x${height}: lobby and board fit, Flare answers, menu and home work`, async t => {
     const page = await open(t, { width, height });
     assert.equal(await overflow(page), false, 'lobby fits');
+    // The mode reads as space, not a holiday: no lanterns anywhere a player looks.
+    assert.doesNotMatch(await page.locator('.tt-root').innerText(), /lantern/i);
     if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `lanterns-lobby-${width}x${height}.png`) });
     await page.locator('#ttPlayCpu').click();
     await page.locator('.tt-root[data-screen=match]').waitFor();
@@ -82,13 +84,13 @@ for (const [width, height] of [[390, 844], [768, 1024], [1280, 800], [844, 390]]
     const glint = await page.evaluate(() => { const b = document.querySelector('.tt-cell[data-cell="1"]').getBoundingClientRect(), c = document.querySelector('.tt-canvas'), k = c.width / innerWidth; return Array.from(c.getContext('2d').getImageData(Math.round((b.left + b.width / 2) * k), Math.round((b.top + b.height / 2) * k), 1, 1).data); });
     assert.ok(glint[0] > 150 && glint[1] > 150, 'star painted: ' + glint);
     const first = await debug(page);
-    assert.equal(first.status, 'Your turn · light a lantern');
+    assert.equal(first.status, 'Your turn · light a star');
     if (width < 1000) await page.locator('.tt-cell[data-cell="4"]').tap(); else await page.locator('.tt-cell[data-cell="4"]').click();
     await page.waitForFunction(() => tableUI.debug().match.state.ply === 2, null, { timeout: 4000 });
     const after = await debug(page);
-    assert.equal(after.cells[4], 1, 'your lantern on the centre star');
-    assert.equal(after.cells.filter(v => v === 2).length, 1, 'Flare lit one lantern');
-    assert.equal(await page.locator('.tt-cell[data-cell="4"]').getAttribute('aria-label'), 'centre star, your cyan round lantern');
+    assert.equal(after.cells[4], 1, 'your star on the centre point');
+    assert.equal(after.cells.filter(v => v === 2).length, 1, 'Flare lit one star');
+    assert.equal(await page.locator('.tt-cell[data-cell="4"]').getAttribute('aria-label'), 'centre star, your cyan round star');
     if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `lanterns-match-${width}x${height}.png`) });
     await page.keyboard.press('Escape');
     await page.locator('.tt-dialog-wrap:not([hidden]) .tt-dialog').waitFor();
@@ -99,7 +101,7 @@ for (const [width, height] of [[390, 844], [768, 1024], [1280, 800], [844, 390]]
   });
 }
 
-test('lantern lines by keyboard: arrows, number keys and a full round of pass and play', async t => {
+test('constellations by keyboard: arrows, number keys and a full round of pass and play', async t => {
   const page = await open(t, { width: 1280, height: 800 });
   await page.locator('#ttPass').click();
   await page.locator('.tt-root[data-screen=match]').waitFor();
@@ -116,22 +118,22 @@ test('lantern lines by keyboard: arrows, number keys and a full round of pass an
   assert.equal((await debug(page)).status, 'Pilot 2 · your turn', 'the loser lights first');
 });
 
-test('lantern lines: the oldest lantern goes dark when a fourth is lit, and the hint says which', async t => {
+test('constellations: the oldest star fades when a fourth is lit, and the hint says which', async t => {
   const page = await open(t, { width: 390, height: 844 });
   await page.locator('#ttPass').tap();
   await page.locator('.tt-root[data-screen=match]').waitFor();
   for (const cell of [0, 4, 8, 1, 7]) await page.locator(`.tt-cell[data-cell="${cell}"]`).tap();
   // Pilot 1 now has 0, 8 and 7 lit, so lighting a fourth lets 0 (the oldest) go dark.
   await page.locator('.tt-cell[data-cell="3"]').tap();
-  assert.match(await page.locator('.tt-hint').textContent(), /top left lantern goes dark/);
-  assert.match(await page.locator('.tt-cell[data-cell="0"]').getAttribute('aria-label'), /goes dark next/);
+  assert.match(await page.locator('.tt-hint').textContent(), /top left star fades/);
+  assert.match(await page.locator('.tt-cell[data-cell="0"]').getAttribute('aria-label'), /fades next/);
   await page.locator('.tt-cell[data-cell="2"]').tap();
   const d = await debug(page);
-  assert.equal(d.cells[0], 0, 'the oldest lantern went dark');
+  assert.equal(d.cells[0], 0, 'the oldest star faded');
   assert.deepEqual(d.cells, [0, 2, 1, 2, 2, 0, 0, 1, 1]);
 });
 
-test('lantern lines with iPhone tap haptics: the switch overlays never cover the menu', async t => {
+test('constellations with iPhone tap haptics: the switch overlays never cover the menu', async t => {
   // iOS has no navigator.vibrate, so the page lays a haptic switch label over every button; those must stay under dialogs.
   const page = await open(t, { width: 390, height: 844 }, () => { delete Navigator.prototype.vibrate; });
   assert.equal(await page.evaluate(() => iosTapHaptics), true);
