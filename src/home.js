@@ -56,6 +56,15 @@
     }
   }
   function hero(c,appearance) { backdrop(c);actors(c,appearance,null); }
+  // You in the middle, three friends in other suits gathering round: the hub's welcome.
+  function crew(c,appearance) {
+    star(c,30,24,2.5,'#ceebe988');star(c,292,20,3,'#ffd88799');star(c,250,70,2,'#ceebe966');star(c,70,74,2,'#ceebe966');
+    ellipse(c,160,86,128,9,'#9ff1ff14');
+    const friend=(x,y,size,suit,eyes)=>root.SpaceManArt.drawAvatar(c,x,y,size,{...appearance,suit,hat:'none',eyes},{reduceMotion:true});
+    friend(70,50,58,appearance.suit==='mint'?'lilac':'mint','bright');friend(252,50,58,appearance.suit==='rose'?'gold':'rose','determined');
+    friend(118,46,66,appearance.suit==='gold'?'coral':'gold','bright');
+    root.SpaceManArt.drawAvatar(c,184,42,78,appearance,{reduceMotion:true});
+  }
   function tile(c,mode,appearance) {
     star(c,207,27,3,'#ceebe966');star(c,47,22,2,'#ceebe966');
     if(mode==='run') {
@@ -67,6 +76,14 @@
       ellipse(c,131,108,105,23,'#193847');ellipse(c,131,101,105,17,'#6ca4a8');ellipse(c,131,99,91,9,'#376979');
       root.SpaceManArt.drawAvatar(c,92,62,84,appearance,{reduceMotion:true});
       root.SpaceManArt.drawAvatar(c,179,66,72,{...appearance,suit:'rose',hat:'none',eyes:'determined'},{reduceMotion:true});star(c,140,65,13,'#ffcc80');
+    } else if(mode==='lanterns') {
+      // A 3x3 star chart with a lit diagonal, you on the left and Flare on the right (kept inside the phone crop).
+      const at=i=>[108+(i%3)*22,58+Math.floor(i/3)*22];
+      for(let i=0;i<9;i++){const [x,y]=at(i);star(c,x,y,3,'#d9d0ff99');}
+      [[0,'#38E1FF'],[4,'#38E1FF'],[8,'#38E1FF'],[2,'#FFB454'],[6,'#FFB454']].forEach(([i,col])=>{const [x,y]=at(i);ellipse(c,x,y,10,10,col+'33');ellipse(c,x,y,6,7,col);});
+      line(c,[at(0),at(8)],'#ffffffcc',2.5);
+      root.SpaceManArt.drawAvatar(c,70,62,56,appearance,{reduceMotion:true,lookX:1});
+      root.SpaceManArt.drawAvatar(c,192,62,56,{...appearance,suit:'gold',hat:'none',eyes:'bright'},{reduceMotion:true,lookX:-1});
     } else {
       c.strokeStyle='#94cab444';c.lineWidth=31;c.beginPath();c.ellipse(127,102,110,50,-.2,0,TAU);c.stroke();
       c.strokeStyle='#add5b455';c.lineWidth=2;c.beginPath();c.ellipse(127,102,110,50,-.2,0,TAU);c.stroke();
@@ -214,7 +231,9 @@
   },render(appearance) {
     lastAppearance=appearance;
     const c=surface('homeHero',640,400);if(c&&root.SpaceManArt?.drawAvatar)hero(c,appearance);
-    [['homeRunArt','run'],['homeArenaArt','arena'],['homeRaceArt','race']].forEach(([id,mode])=>{const g=surface(id,260,156);if(g&&root.SpaceManArt?.drawAvatar)tile(g,mode,appearance);});
+    // The Play Together hub reuses the same game art and crew, so both doors into a game look alike.
+    [['homeRunArt','run'],['homeArenaArt','arena'],['homeRaceArt','race'],['togetherRunArt','run'],['togetherArenaArt','arena'],['togetherRaceArt','race'],['homeLanternArt','lanterns'],['togetherLanternArt','lanterns']].forEach(([id,mode])=>{const g=surface(id,260,156);if(g&&root.SpaceManArt?.drawAvatar)tile(g,mode,appearance);});
+    const k=surface('togetherCrew',320,96);if(k&&root.SpaceManArt?.drawAvatar)crew(k,appearance);
     queueFit();
   }});
 })(typeof window!=='undefined'?window:globalThis);

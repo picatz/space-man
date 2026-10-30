@@ -344,7 +344,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
     let frameId = 0, lastTime = 0, accumulator = 0, lastDraw = 0, lastHudTick = -1, lastCountdown = '', resultAt = 0, matchSerial = 0;
     let identitySafeTop = 0, identityHudBottom = 0, identityBoundsDirty = true;
     let thumbBounds = null, watchTop = 0;
-    let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
+    let width = 1, height = 1, dpr = 1, viewportBox = null, viewportMissing = 0, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
     // Presentation-only game feel. Nothing here reaches the simulation or wire:
     // hit-stop and KO slow-mo run in local matches only, shake/flash/squash
@@ -1249,10 +1249,16 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       if (!active || !rootEl) return;
       queueLobbyFit();
       const vv = root.visualViewport;
+      // An iPhone home-screen app reports the window short by its status bar
+      // while CSS 100dvh covers the screen; add back what it misreports so no
+      // dead strip shows along the bottom (a keyboard or zoom still shrinks vv).
+      rootEl.style.height = '';
+      const reported = document.documentElement.clientHeight || root.innerHeight || 1, cssHeight = rootEl.getBoundingClientRect().height;
+      viewportMissing = cssHeight > reported + 1 ? cssHeight - reported : 0;
       const layoutWidth = document.documentElement.clientWidth || root.innerWidth || 1;
-      const layoutHeight = document.documentElement.clientHeight || root.innerHeight || 1;
+      const layoutHeight = reported + viewportMissing;
       const box = { left: Math.max(0, vv ? vv.offsetLeft : 0), top: Math.max(0, vv ? vv.offsetTop : 0),
-        width: Math.max(1, vv ? vv.width : root.innerWidth || layoutWidth), height: Math.max(1, vv ? vv.height : root.innerHeight || layoutHeight) };
+        width: Math.max(1, vv ? vv.width : root.innerWidth || layoutWidth), height: Math.max(1, (vv ? vv.height : root.innerHeight || reported) + viewportMissing) };
       const moved = viewportBox && Object.keys(box).some(key => Math.abs(box[key] - viewportBox[key]) > 1);
       if (moved) resetTouchInput();
       viewportBox = box;
@@ -1774,7 +1780,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       // rotation size. Reconcile changed viewport metrics on the next frame;
       // unchanged frames avoid layout reads and canvas reallocation.
       const vv = root.visualViewport;
-      if (vv && viewportBox && (Math.abs(vv.width - viewportBox.width) > 1 || Math.abs(vv.height - viewportBox.height) > 1 || Math.abs(vv.offsetLeft - viewportBox.left) > 1 || Math.abs(vv.offsetTop - viewportBox.top) > 1)) resize();
+      if (vv && viewportBox && (Math.abs(vv.width - viewportBox.width) > 1 || Math.abs(vv.height + viewportMissing - viewportBox.height) > 1 || Math.abs(vv.offsetLeft - viewportBox.left) > 1 || Math.abs(vv.offsetTop - viewportBox.top) > 1)) resize();
       updatePrefs(); pollGamepad();
       if (!isRunning() || !canControl()) { actionBuffer.reset(); if (local2) local2.buffer.reset(); }
       if (view === 'lobby' && activeModal === lobby && ++lobbyTick % 20 === 0) syncPlayers();

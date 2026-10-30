@@ -437,10 +437,12 @@ async function assertExitBoostFeedback(page) {
   assert.equal(await feedback.getAttribute('data-kind'),'boost');
   assert.equal(await feedback.isVisible(),true);
   const text=await feedback.innerText();
-  // A genuine star pickup has one-second message priority over the ordinary
-  // exit-boost label. Keep the authoritative padTicks assertion at each call.
-  assert.ok(text==='BOOST!'||text==='+6 BOOST','boost or earned star pickup is announced');
+  // A genuine star or item pickup on the exit line has one-second message
+  // priority over the ordinary exit-boost label; each must be backed by real
+  // state. Keep the authoritative padTicks assertion at each call.
+  assert.ok(text==='BOOST!'||text==='+6 BOOST'||/^[A-Z]+ READY$/.test(text),`boost or an earned pickup is announced (got ${JSON.stringify(text)})`);
   if(text==='+6 BOOST')assert.ok(await page.evaluate(()=>raceUI.snapshot().actors[0].coinMask)>0,'pickup notice requires a real collected star');
+  if(text.endsWith(' READY'))assert.equal(await page.evaluate(()=>(raceUI.snapshot().actors[0].item||'').toUpperCase()+' READY'),text,'item notice names the item really held');
 }
 
 // Human-scale authored inputs, not a CPU following the course or injected poses.

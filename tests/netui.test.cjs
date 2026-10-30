@@ -117,3 +117,32 @@ test('the lobby shows the crew as astronauts and a friend who arrives pops in wi
   assert.match(el(host, 'roomCounts').textContent, /^2 players$/);
   assert.equal(el(host, 'roomCrew').textContent, '', 'no standings noise in the lobby');
 });
+
+test('home shows a live room as the way back, with Leave beside it, and another game asks before leaving', async (t) => {
+  const hub = relay(), c = client(hub);
+  t.after(() => c.close());
+  c.run('G.cosmetics.callsign = [0, 0]; showAttract()');
+  assert.equal(el(c, 'homeTogetherTitle').textContent, 'Play together');
+  assert.equal(el(c, 'btnHomeLeaveRoom').hidden, true);
+  await c.run('openRoomFlow()');
+  await until(() => c.net.active && shown(c, 'ovRoom'), 'room open');
+  c.run("$('btnRoomBack').onclick()");
+  assert.equal(shown(c, 'ovAttract'), true);
+  assert.equal(el(c, 'homeTogetherRow').dataset.room, 'true');
+  assert.equal(el(c, 'homeTogetherTitle').textContent, 'Back to your room');
+  assert.match(el(c, 'homeTogetherSub').textContent, /^Just you so far/);
+  assert.equal(el(c, 'btnHomeLeaveRoom').hidden, false);
+  // Another game from home: a clear choice instead of a dead-end toast, and nothing leaves silently.
+  c.run(`window.SpaceManArenaUI = { create() { return { active: false, open() { window.arenaOpened = true; } }; } }; $('btnArena').onclick()`);
+  assert.equal(shown(c, 'ovRoomSwitch'), true);
+  assert.equal(c.net.active, true, 'still in the room until they choose');
+  assert.match(el(c, 'roomSwitchText').textContent, /Leave it to play Orbital Arena\? Nobody else is in it yet\./);
+  c.run("$('btnRoomSwitchStay').onclick()");
+  assert.equal(shown(c, 'ovRoom'), true, 'back to the room');
+  c.run("$('btnRoomBack').onclick(); $('btnArena').onclick(); $('btnRoomSwitchGo').onclick()");
+  assert.equal(c.net.active, false, 'left the room');
+  assert.equal(c.run('window.arenaOpened'), true, 'and the game they picked opened');
+  c.run('showAttract()');
+  assert.equal(el(c, 'homeTogetherTitle').textContent, 'Play together');
+  assert.equal(el(c, 'btnHomeLeaveRoom').hidden, true);
+});

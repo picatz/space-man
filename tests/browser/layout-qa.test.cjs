@@ -25,6 +25,8 @@ const screens = {
   run: async page => { await activate(page, 'btnPlay'); await page.waitForFunction(() => G.mode === 'play'); await page.waitForTimeout(400); },
   arena: async page => { await activate(page, 'btnArena'); await page.locator('.arena-root[data-screen=lobby]').waitFor(); },
   circuit: async page => { await activate(page, 'btnRace'); await page.locator('.race-root[data-screen=lobby]').waitFor(); },
+  lanterns: async page => { await activate(page, 'btnLanterns'); await page.locator('.tt-root[data-screen=lobby]').waitFor(); },
+  'lanterns match': async page => { await activate(page, 'btnLanterns'); await page.locator('#ttPlayCpu').click(); await page.locator('.tt-root[data-screen=match]').waitFor(); await page.waitForTimeout(200); },
   together: async page => { await activate(page, 'btnTogether'); await page.locator('#ovTogether.show').waitFor(); },
   wardrobe: async page => { await activate(page, 'btnWardrobe'); await page.locator('#ovWardrobe.show').waitFor(); },
   records: async page => { await activate(page, 'btnTrophy'); await page.locator('#ovTrophy.show').waitFor(); },

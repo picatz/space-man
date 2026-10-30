@@ -389,7 +389,7 @@ An invite is a fixed-order binary payload, base64url-encoded (alphabet
 | offset | size | field | notes |
 |---|---|---|---|
 | 0 | 1 | `ver` | = PROTO (currently `6`); anything else → refuse ("update to play together") |
-| 1 | 1 | `flags` | bit0 = approve-joins hint; bit1 = custom relay present |
+| 1 | 1 | `flags` | bit0 = approve-joins hint; bit1 = custom relay present; mode bits: `0x10` Arena, `0x20` Race, `0x40` Journey, `0x30` (Arena + Race) Tabletop; any other combination is invalid |
 | 2 | 8 | `roomId` | random; room namespace + HKDF salt |
 | 10 | 1 | `epoch` | current epoch at issue time |
 | 11 | 32 | `hostPub` | pins the host — the trust root |
@@ -965,6 +965,7 @@ feature — features negotiate, they are never assumed.
 | 11 | `0x800` | RACE revision 4: Starlight feature rules/catalog and race codec v2 |
 | 12 | `0x1000` | JOURNEY revision 2: Starlight race compatibility and envelope v2 |
 | 15 | `0x8000` | ARENA_ITEMS: the peer decodes Arena item-drop snapshots (set only in Arena rooms, alongside bit 5) |
+| 16 | `0x10000` | TABLE: tabletop rooms (explicit mode 4, [§12.6](#126-tabletop-rooms-mode-4)) |
 
 Bit 15 is a pure feature flag, not an admission requirement: an Arena host sends peers without it
 a flagless snapshot variant (no drops block, no item events) so older builds keep decoding the
@@ -1063,6 +1064,37 @@ verbatim through `joinStatus()`: `relay` → `hello` → `slow` (8 s without a W
 (the relay reported the host key gone) / `reconnect` (the guest's own socket dropped). A custom relay in settings skips probing and sets `flags` bit1 + the host string.
 
 ---
+
+### 12.6 Tabletop rooms (mode 4)
+
+Turn-based games (Lantern Lines first) share one arcade mode instead of taking a
+mode each. The invite sets both the Arena and Race bits (`0x30`), a combination
+builds before tabletop rooms already read as invalid, so an old client says
+"not compatible, refresh" instead of joining the wrong game. HELLO/WELCOME carry
+mode byte **4**, admission requires capability bit 16, and the room uses the
+reserved encrypted application frame **`0x44`** with the same fragmenting,
+rate limits and spectator rules as the other arcade frames. Seat caps are 2
+players and 4 watchers; pilots who find both seats taken wait in the arcade
+seat queue and are seated when a chair frees up.
+
+Inside `0x44` the first byte is an opcode (`src/table-room.js`):
+
+| Op | Direction | Bytes |
+|---|---|---|
+| `0x01` SNAP | host → all | `seat1P u8, seat2P u8, readyMask u8, match…` |
+| `0x02` MOVE | seated guest → host | `revision u16 LE, move u8` |
+| `0x03` READY | seated guest → host | `revision u16 LE` (rematch request) |
+
+`match…` is `SpaceManTabletop.encodeMatch` (match format 1, independent of PROTO): `format u8, gameWire u8, revision
+u16 LE, phase u8 (0 playing, 1 between rounds, 2 over), round, target,
+score1, score2, starter, last+1, resultSeat+1 (0 = none), lineLen, line…,
+stateLen, state…`. Game ids: `1` Lantern Lines. A new game adds a wire id, not a
+mode. The host is the only authority: it applies a MOVE only from the seated
+guest, for the current revision, when the rules list it as legal, then
+broadcasts the whole match (a few dozen bytes). Guests decode with full
+validation and drop anything the rules could not reach, older revisions
+included. The host republishes every 2 s so a rejoining guest catches up
+without a request.
 
 ## 13. Protocol version & compatibility
 
