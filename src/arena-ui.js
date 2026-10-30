@@ -44,6 +44,7 @@
   // A scanned QR is taken only when it reads as an invite link or room code.
   function scanAccepts(net) { return text => { try { const k = net && net.parseJoin ? net.parseJoin(text).kind : 'invite'; return k === 'invite' || k === 'code'; } catch (_) { return false; } }; }
   function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
+  const SKILL_NAMES = Object.freeze({ easy: 'Cadet', normal: 'Pilot', hard: 'Ace' });
   function button(text, cls, fn) { const n = el('button', 'arena-button ' + (cls || ''), text); n.type = 'button'; if (fn) n.addEventListener('click', fn); return n; }
   const STYLES = `\n/* All arena rules are scoped. The runner's cascade stays untouched. */
 .arena-root{position:fixed;inset:0 auto auto 0;width:100%;height:100%;height:100dvh;min-width:0;min-height:0;z-index:1000;isolation:isolate;overflow:hidden;background:#060818;color:#CFE3FF;font-family:var(--font,ui-rounded,system-ui,sans-serif);font-size:14px;line-height:1.4;touch-action:none;-webkit-user-select:none;user-select:none;color-scheme:dark}
@@ -335,7 +336,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
     let active = false, built = false, destroyed = false, rootEl, canvas, ctx, modal, lobby, pausePanel, resultPanel;
     let lobbyFit = null, lobbyArtEl = null, lobbyFitQueued = false;
     let live, timerEl, rosterEl, rosterRect = null, rosterFaded = false, canvasLeft = 0, canvasTop = 0, statusEl, statusSub, matchTitle, touchEl, stickZone, stickBase, stickKnob, pulseButton, dashButton;
-    let pulseMeter, dashMeter, countdownEl, pauseButton, launchButton, resultTitle, resultText, resultRoster;
+    let pulseMeter, dashMeter, countdownEl, pauseButton, launchButton, resultTitle, resultText, resultRoster, suggestButton, suggestedLevel = null;
     let formatButtons = [], stageButtons = [], difficultyButtons = [], mirrorButton, stageDescription;
     let savedFocus = null, inertSiblings = [], savedBodyOverflow = '';
     const cosmeticSession = Date.now().toString(36) + ':' + Math.random().toString(36).slice(2, 9);
@@ -1046,7 +1047,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       againNote = el('p', 'arena-vote-note'); againNote.id = 'arenaAgainNote'; againCancel = button('Cancel auto-start', 'arena-text-button', () => room.cancelAuto()); againCancel.id = 'arenaAgainCancel'; againCancel.hidden = true;
       resultPanel = el('div', 'arena-small-panel arena-result-panel arena-dialog'); resultPanel.setAttribute('role', 'dialog'); resultPanel.setAttribute('aria-labelledby', 'arena-result-title');
       resultTitle = el('h2', 'arena-panel-title'); resultTitle.id = 'arena-result-title'; resultText = el('p', 'arena-panel-copy'); resultRoster = el('div', 'arena-result-roster');
-      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', () => { if (onlineActive() && !room.isHost) room.vote('again'); else startMatch(); }), againNote, againCancel, button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('All games', 'arena-text-button', close)); modal.append(resultPanel); rootEl.append(modal);
+      resultPanel.append(el('span', 'arena-pill', 'MISSION COMPLETE'), resultTitle, resultText, resultRoster, button('Rematch', 'arena-primary', () => { if (onlineActive() && !room.isHost) room.vote('again'); else startMatch(); }), suggestButton = button('', 'arena-suggest', acceptSuggestion), againNote, againCancel, button('Next arena  ↗', '', nextArena), button('Choose a match', 'arena-text-button', showLobby), recoveryButton('All games', 'arena-text-button', close)); suggestButton.hidden = true; modal.append(resultPanel); rootEl.append(modal);
       live = el('div', 'arena-sr-only'); live.setAttribute('role', 'status'); live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true'); rootEl.append(live);
       // Events stop at this overlay, before the runner's window-level handlers.
       for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'wheel']) rootEl.addEventListener(type, e => e.stopPropagation(), { passive: type.startsWith('touch') || type === 'wheel' });
@@ -1882,7 +1883,27 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
         const flawless = won && !result.tie && human.deaths === 0 && root.SpaceManLogbook ? root.SpaceManLogbook.discover('flawless') : null;
         if (flawless) resultText.textContent += ' Logbook: ' + flawless.name + '.';
       }
-      syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent);
+      adaptSkill(won ? 'win' : result.tie || !human ? 'tie' : 'loss');
+      syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent + (suggestButton.hidden ? '' : ' ' + suggestButton.textContent + '.'));
+    }
+    // Two straight wins or losses at one CPU level offer the next level up or
+    // down as a one-tap rematch; solo matches against CPUs only.
+    function adaptSkill(outcome) {
+      suggestedLevel = null; suggestButton.hidden = true;
+      const Adapt = root.SpaceManAdapt;
+      if (!Adapt || onlineActive() || local2 || localSession || sharedSession) return;
+      const key = (opts.storageKey || 'spaceman.arena.v1') + '.streak';
+      const streak = Adapt.record(Adapt.load(root.localStorage, key), selections.difficulty, outcome);
+      Adapt.save(root.localStorage, key, streak);
+      suggestedLevel = Adapt.suggestion(streak);
+      if (!suggestedLevel) return;
+      suggestButton.textContent = (streak.n > 0 ? 'Two wins straight · Try ' : 'Tough orbit · Try ') + SKILL_NAMES[suggestedLevel];
+      suggestButton.hidden = false;
+    }
+    function acceptSuggestion() {
+      if (!suggestedLevel) return;
+      selections.difficulty = suggestedLevel; suggestedLevel = null;
+      syncChoices(); saveSelection(); startMatch();
     }
     function onVisibility() {
       if (!active) return;

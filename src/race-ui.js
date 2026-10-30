@@ -164,6 +164,8 @@
       time,
       target,
       shareButton,
+      suggestButton,
+      suggestedLevel = null,
       lastFinish = null,
       raceChallenge = null,
       speed,
@@ -1571,6 +1573,13 @@
           else start();
         }),
         button("Share your time", "", shareTime),
+        button("", "", () => {
+          if (!suggestedLevel) return;
+          selected.difficulty = suggestedLevel;
+          suggestedLevel = null;
+          syncChoices();
+          start();
+        }),
         button("Next circuit  ↗", "", () => {
           selected.trackId =
             R.tracks[
@@ -1597,11 +1606,14 @@
       pausePanel.querySelectorAll("button")[1].id = "raceRestart";
       pausePanel.querySelectorAll("button")[2].id = "raceLobby";
       pausePanel.querySelectorAll("button")[3].id = "raceExit";
-      resultPanel.querySelectorAll("button")[4].id = "raceResultExit";
+      resultPanel.querySelectorAll("button")[5].id = "raceResultExit";
       resultPanel.querySelectorAll("button")[0].id = "raceRematch";
       shareButton = resultPanel.querySelectorAll("button")[1];
       shareButton.id = "raceShareTime";
-      resultPanel.querySelectorAll("button")[2].id = "raceNext";
+      suggestButton = resultPanel.querySelectorAll("button")[2];
+      suggestButton.id = "raceSuggest";
+      suggestButton.hidden = true;
+      resultPanel.querySelectorAll("button")[3].id = "raceNext";
       buildRoomControls();
 
       buildAudioControls(pausePreferences);
@@ -1805,6 +1817,7 @@
       } else lastFinish = null;
       shareButton.hidden = !shareable;
       setText(shareButton, "Share your time");
+      adaptPace(!me ? "none" : me.position === 1 ? "win" : !me.finished || me.position >= 4 ? "loss" : "none");
       setPanel(resultPanel);
       announce(
         "Race complete. You placed " +
@@ -2140,6 +2153,21 @@
       } catch (e) { if (e && e.name === "AbortError") return; }
       try { await root.navigator.clipboard.writeText(text + "\n" + url); setText(shareButton, "Copied ✓"); announce("Time and challenge link copied."); }
       catch (_) { try { root.prompt("Copy your challenge", text + " " + url); } catch (_) {} }
+    }
+    // Two straight wins (or straight 4th-5th places) at one CPU pace offer the
+    // next pace up (or down) as a one-tap race; solo races only.
+    function adaptPace(outcome) {
+      suggestedLevel = null;
+      suggestButton.hidden = true;
+      const Adapt = root.SpaceManAdapt;
+      if (!Adapt || onlineActive() || localSession || sharedSession) return;
+      const key = (opts.storageKey || "sm2.race.v1") + ".streak";
+      const streak = Adapt.record(Adapt.load(root.localStorage, key), selected.difficulty, outcome);
+      Adapt.save(root.localStorage, key, streak);
+      suggestedLevel = Adapt.suggestion(streak);
+      if (!suggestedLevel) return;
+      setText(suggestButton, (streak.n > 0 ? "Two wins straight · Try " : "Tough grid · Try ") + PACE_NAMES[suggestedLevel] + " pace");
+      suggestButton.hidden = false;
     }
     function recordText(trackId, lead) {
       const r = records[trackId];

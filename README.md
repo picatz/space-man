@@ -201,6 +201,14 @@ connection releases controls and reserves the seat for ten seconds, then marks
 it unfinished. A guest's page reload rejoins that seat automatically. New arrivals watch the current race and
 take the next free seat when it ends. A host's reload reopens the room in its lobby. There is no host migration. Racing does not change runner scores or missions. See [rules, controls and architecture](docs/star-circuit.md).
 
+## Adaptive CPU skill
+
+Solo Arena matches and Star Circuit races keep a streak per CPU level
+(`src/adapt.js`). Two straight wins put "Two wins straight · Try Ace" (or the
+next pace up) on the result card; two straight losses, or two 4th-5th place
+finishes, offer the level below. It is always an offer, one tap away, never a
+silent change. Friend rooms and couch play are left alone.
+
 ## Daily Course and challenges
 
 **Daily Course** on the title screen (or Y / Triangle on a controller) runs the
