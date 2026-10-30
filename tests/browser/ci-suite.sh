@@ -9,11 +9,11 @@ engine=${SPACE_MAN_ENGINE:?SPACE_MAN_ENGINE must be chromium or webkit}
 SHOTS=${SHOTS:-$(mktemp -d)}
 mkdir -p "$SHOTS"
 # Every suite selects its engine through its own variable; set them all.
-for v in ARENA ART COSMETICS PAUSE EXPEDITION HOME SECONDARY JOURNEY IDENTITY RACE THEME; do
+for v in ARENA ART COSMETICS PAUSE EXPEDITION HOME SECONDARY JOURNEY IDENTITY QA RACE THEME; do
   export "SPACE_MAN_${v}_BROWSER=$engine"
 done
 # Screenshot and trace directories also differ per suite.
-for v in ARENA ART COSMETICS PAUSE EXPEDITION HOME SECONDARY JOURNEY IDENTITY RACE_IDENTITY RACE THEME RACE_TRACES; do
+for v in ARENA ART COSMETICS PAUSE EXPEDITION HOME SECONDARY JOURNEY IDENTITY QA RACE_IDENTITY RACE THEME RACE_TRACES; do
   export "SPACE_MAN_${v}_SCREENSHOTS=$SHOTS" 2>/dev/null || true
 done
 export SPACE_MAN_RACE_TRACES=$SHOTS
@@ -45,6 +45,7 @@ case "$suite" in
   identity) node --test player-identity.test.cjs race-identity.test.cjs runner-identity.test.cjs ;;
   invite-qr) node --test journey-qr-pixels.test.cjs journey-qr.test.cjs ;;
   journey) node --test journey.test.cjs ;;
+  layout-qa) node --test layout-qa.test.cjs ;;
   perspective)
     node --test race-perspective.test.cjs
     node --test race.test.cjs ;;

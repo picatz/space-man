@@ -74,6 +74,8 @@ failing one once before assuming a real regression, but never skip or loosen a t
 - No external requests at runtime (the home tests assert this). No currencies, ads or purchases.
 - Accessibility is a feature: keyboard and gamepad parity, screen-reader announcements for toasts,
   no text under 9 px, respect reduced motion.
+- **UI changes** follow `docs/qa-checklist.md` before merge: run the `layout-qa` suite and attach
+  phone-size screenshots covering touch hints, grounded 3D props and held-input HUD states.
 - Prefer a test that fails first. New behavior gets a `tests/*.test.cjs` case; UI-only behavior gets
   a browser test.
 
@@ -81,5 +83,5 @@ failing one once before assuming a real regression, but never skip or loosen a t
 
 Work on a feature branch, open a PR against `main`, and wait for CI and the AI review to finish before
 merging. A PR runs `tests.yml` (unit tests plus preview and Arena browser checks) and `browser.yml`
-(28 suite/engine jobs); expect several minutes. Opt-in live-relay and deployed-preview checks are
+(30 suite/engine jobs); expect several minutes. Opt-in live-relay and deployed-preview checks are
 separate label- or dispatch-triggered workflows.
