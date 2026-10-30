@@ -152,6 +152,17 @@ runner using local assets, without contacting a relay. Like the other browser
 tests, it requires `npm ci` and Playwright Chromium; an existing Chromium can be
 selected with `SPACE_MAN_CHROMIUM_PATH`.
 
+## Lantern Lines · Duel of wits
+
+A two-pilot duel on a Prism star chart. Light a lantern on any free star; each
+pilot keeps three lit, and lighting a fourth lets your oldest one go dark (it
+flickers the turn before). Three of yours in a line wins the round, first to two
+takes the chart. Play Flare (Easy, Normal, Hard), pass one screen between two
+pilots, or host a Play Together table by code or QR; extra friends watch. Touch,
+mouse, keys (arrows, 1-9, Enter) and controllers all work. Rules live in
+`src/tabletop.js` (the shared turn-based kit), rooms in `src/table-room.js`, and
+`docs/universe.md` has the roadmap for the modes that build on it.
+
 ## Star Circuit · Arcade Racing
 
 Choose **Star Circuit** from the title for an original perspective

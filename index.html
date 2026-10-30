@@ -710,13 +710,13 @@
   .together-crew { display: block; width: min(300px, 100%); height: auto; aspect-ratio: 320 / 96; margin: -4px auto 2px; }
   .together-hub .sub { margin-bottom: 0; }
   /* Same cards as home: the game's art on top, its name under it. */
-  .together-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0 4px; }
+  .together-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 14px 0 4px; }
   .mode-pick { --mp: var(--orange); display: flex; flex-direction: column; align-items: stretch; gap: 2px; min-width: 0; padding: 0 0 10px; overflow: hidden;
     border: 1px solid rgba(207, 227, 255, 0.14); border-radius: 14px; cursor: pointer; text-align: center; color: var(--suit); font-family: inherit;
     background: linear-gradient(150deg, #273748, #182638); box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--mp) 70%, transparent);
     transition: transform var(--dur-1, 120ms) var(--ease-out, ease), border-color 120ms; }
   .mode-pick canvas { display: block; width: 100%; height: auto; aspect-ratio: 260 / 156; pointer-events: none; }
-  .mode-pick[data-mode=arena] { --mp: var(--cyan); } .mode-pick[data-mode=race] { --mp: var(--green); }
+  .mode-pick[data-mode=arena] { --mp: var(--cyan); } .mode-pick[data-mode=race] { --mp: var(--green); } .mode-pick[data-mode=lanterns] { --mp: #B4A6E8; }
   .mode-pick:hover, .mode-pick:focus-visible { border-color: var(--mp); transform: translateY(-2px); }
   .mode-pick:focus-visible { outline: 2px solid var(--mp); outline-offset: 2px; }
   .mode-pick:active { transform: translateY(1px); }
@@ -919,9 +919,9 @@
     </div>
     <main class="home-launch">
       <section class="home-adventure" aria-labelledby="homeAdventureTitle">
-        <div class="home-kicker"><span aria-hidden="true">✦</span> THREE WAYS TO PLAY</div>
+        <div class="home-kicker"><span aria-hidden="true">✦</span> THE LANTERN REACH</div>
         <h2 id="homeAdventureTitle">Pick your game.</h2>
-        <p>Run, battle or race. One game at a time.</p>
+        <p>Run, battle, race or duel. One game at a time.</p>
         <button class="btn" id="btnHero"><span class="home-play-icon" aria-hidden="true">▶</span><span id="heroLabel">Play · Endless Run</span><span class="home-play-arrow" aria-hidden="true">↗</span></button>
         <div class="home-play-actions" hidden>
           <button class="btn" id="btnExpedition" aria-label="Play solo. Start a continuous Star Expedition."><span class="home-play-icon" aria-hidden="true">▶</span> Play solo <span class="home-play-arrow" aria-hidden="true">↗</span></button>
@@ -936,9 +936,10 @@
           <button class="home-mode home-run" id="btnPlay" aria-label="Endless Run. Outrun the flare, solo or with friends."><canvas id="homeRunArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Endless Run</span><span class="home-mode-caption" aria-hidden="true">Outrun the flare</span></button>
           <button class="home-mode home-arena" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends."><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Orbital Arena</span><span class="home-mode-caption" aria-hidden="true">Bump, dodge, KO.</span></button>
           <button class="home-mode home-race" id="btnRace" aria-label="Star Circuit. Arcade hover racing."><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Star Circuit</span><span class="home-mode-caption" aria-hidden="true">Catch a boost</span></button>
+          <button class="home-mode home-lanterns" id="btnLanterns" aria-label="Lantern Lines. Keep three lanterns lit and make a line, against Flare or a friend."><canvas id="homeLanternArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Lantern Lines</span><span class="home-mode-caption" aria-hidden="true">Keep three lit</span></button>
         </div>
         <div class="home-together-row" id="homeTogetherRow">
-        <button class="home-run-together" id="btnTogether" aria-label="Play together. Run, battle or race with friends. Share a code or QR."><i class="home-together-icon" aria-hidden="true"><i class="home-room-live"></i><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2a5 5 0 0 1 5 4.8v1"/></svg></i><span class="home-together-text"><strong id="homeTogetherTitle">Play together</strong><em id="homeTogetherSub">Any game with friends · code or QR</em></span><b aria-hidden="true">↗</b></button>
+        <button class="home-run-together" id="btnTogether" aria-label="Play together. Run, battle, race or duel with friends. Share a code or QR."><i class="home-together-icon" aria-hidden="true"><i class="home-room-live"></i><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2a5 5 0 0 1 5 4.8v1"/></svg></i><span class="home-together-text"><strong id="homeTogetherTitle">Play together</strong><em id="homeTogetherSub">Any game with friends · code or QR</em></span><b aria-hidden="true">↗</b></button>
           <button class="home-room-leave" id="btnHomeLeaveRoom" hidden>Leave</button>
         </div>
       </section>
@@ -1094,6 +1095,7 @@
       <button class="mode-pick" data-mode="run" id="btnCreateRoom" aria-label="Host Endless Run. Race one course together."><canvas id="togetherRunArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Endless Run</span><span class="mp-cap" aria-hidden="true">Race one course</span></button>
       <button class="mode-pick" data-mode="arena" id="btnHostArena" aria-label="Host Orbital Arena. Knock friends out."><canvas id="togetherArenaArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Orbital Arena</span><span class="mp-cap" aria-hidden="true">Knock friends out</span></button>
       <button class="mode-pick" data-mode="race" id="btnHostRace" aria-label="Host Star Circuit. Hover kart race."><canvas id="togetherRaceArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Star Circuit</span><span class="mp-cap" aria-hidden="true">Kart race</span></button>
+      <button class="mode-pick" data-mode="lanterns" id="btnHostLanterns" aria-label="Host Lantern Lines. A two-pilot duel of wits."><canvas id="togetherLanternArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Lantern Lines</span><span class="mp-cap" aria-hidden="true">Duel of wits</span></button>
     </div>
     <div class="together-or" aria-hidden="true">or join a friend</div>
     <button class="btn ghost scan-btn" id="btnJoinScan"><svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9h3v3H8zM13 9h3M13 12v3h3M8 15h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Scan their QR code</button>
@@ -1274,6 +1276,10 @@
 <script src="src/journey-online.js"></script>
 <script src="src/journey-room.js"></script>
 <script src="src/journey-ui.js"></script>
+<script src="src/modes.js"></script>
+<script src="src/tabletop.js"></script>
+<script src="src/table-room.js"></script>
+<script src="src/table-ui.js"></script>
 
 <script>
 "use strict";
@@ -7844,7 +7850,7 @@ function paintHomeRoom() {
   if (!live) {
     $('homeTogetherTitle').textContent = 'Play together';
     $('homeTogetherSub').textContent = 'Any game with friends · code or QR';
-    $('btnTogether').setAttribute('aria-label', 'Play together. Run, battle or race with friends. Share a code or QR.');
+    $('btnTogether').setAttribute('aria-label', 'Play together. Run, battle, race or duel with friends. Share a code or QR.');
     return;
   }
   const info = NET.info(), name = roomName();
@@ -7974,7 +7980,7 @@ function syncOffline() {
   const off = isOffline() && !netLive();
   const note = $('offlineNote'); if (note) note.style.display = off && !SHOT ? '' : 'none';
   if ($('ovTogether').classList.contains('show') && !joinLookup) {
-    for (const id of ['btnCreateRoom', 'btnHostArena', 'btnHostRace', 'btnJoinScan', 'btnJoinGo']) $(id).disabled = off;
+    for (const id of ['btnCreateRoom', 'btnHostArena', 'btnHostRace', 'btnHostLanterns', 'btnJoinScan', 'btnJoinGo']) $(id).disabled = off;
     if (off) setTogetherHint(OFFLINE_TOGETHER, true);
     else if ($('joinHint').textContent === OFFLINE_TOGETHER) setTogetherHint(BUILD.preview ? 'Paste the full invite link from this exact preview build.' : TOGETHER_HINT);
   syncJoinGo();
@@ -8004,7 +8010,7 @@ let joinReq = 0;   // bumped whenever the screen is left or reopened, so a slow 
 function setTogetherHint(msg, isError) { const h = $('joinHint'); h.textContent = msg || ''; h.classList.toggle('err', !!isError); }
 function setTogetherBusy(on) {
   joinLookup = on;
-  for (const id of ['joinInput', 'btnJoinGo', 'btnCreateRoom', 'btnHostArena', 'btnHostRace', 'btnJoinScan', 'btnRejoinLast']) $(id).disabled = on;
+  for (const id of ['joinInput', 'btnJoinGo', 'btnCreateRoom', 'btnHostArena', 'btnHostRace', 'btnHostLanterns', 'btnJoinScan', 'btnRejoinLast']) $(id).disabled = on;
 }
 // SOC-03: offer the last room code for 20 minutes. The entry holds {region, code, mode, ts} only.
 function paintRejoinLast() {
@@ -8061,10 +8067,11 @@ function lookupFailMessage(e, p) {
 // already created and its Scan to join card in view. Run keeps its own room card.
 async function openFriendsFor(mode) {
   if (!netEnabled()) return false;
-  if (mode !== 'arena' && mode !== 'race') { openRoomFlow(); return true; }
+  if (mode !== 'arena' && mode !== 'race' && mode !== 'lanterns') { openRoomFlow(); return true; }
   if (isOffline()) { setTogetherHint(OFFLINE_TOGETHER, true); return false; }
   Audio.ensure();
   hideAllOverlays();
+  if (mode === 'lanterns') { $('btnLanterns').onclick(); return !!(tableUI && tableUI.active && await tableUI.hostRoom()); }
   $(mode === 'race' ? 'btnRace' : 'btnArena').onclick();
   const ui = mode === 'race' ? raceUI : arenaUI;
   return !!(ui && ui.active && ui.hostRoom && await ui.hostRoom());
@@ -8177,6 +8184,7 @@ async function acceptInvite(role) {
   joinOverride = false;                                    // override consumed (single-use)
   if (isOffline()) { setJoinState(OFFLINE_TOGETHER); return; }
   if (peek && peek.mode === 'journey') { hideAllOverlays(); await getJourneyUI().joinInvite(joinPayload, role); stripInviteHash(); return; }
+  if (peek && peek.mode === 'table') { $('btnLanterns').onclick(); if (tableUI && tableUI.active) { hideAllOverlays(); await tableUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
   if (peek && peek.mode === 'race') { $('btnRace').onclick(); if (raceUI && raceUI.active) { hideAllOverlays(); await raceUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
   if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
@@ -9383,6 +9391,23 @@ $('btnRace').onclick = () => {
   if (G.mode !== 'attract' || (arenaUI && arenaUI.active) || !window.SpaceManRaceUI) return;
   clearInput(); Audio.suspend(); getRaceUI().open();
 };
+// Lantern Lines: the first tabletop mode (src/tabletop.js rules, src/table-room.js rooms, src/table-ui.js).
+let tableUI = null;
+$('btnLanterns').onclick = () => {
+  if (expedition) return;
+  if (netLive()) { askRoomSwitch('Lantern Lines', () => $('btnLanterns').onclick()); return; }
+  if (G.mode !== 'attract' || (arenaUI && arenaUI.active) || (raceUI && raceUI.active) || !window.SpaceManTableUI) return;
+  clearInput(); Audio.suspend(); getTableUI().open();
+};
+function getTableUI() {
+  if (!tableUI) tableUI = window.SpaceManTableUI.create({
+    storageKey: BUILD.storageKey('sm2.lanterns.v1'), net: TRANSPORT, build: BUILD, identity: arcadeIdentity, baseUrl: appBaseUrl,
+    appearance: equippedAppearance, onReward: earnCosmeticEvent, buzz, hostOptions: relayHostOptions,
+    settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
+    onClose() { closeModeOverlay('btnLanterns'); },
+  });
+  return tableUI;
+}
 function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
     storageKey: BUILD.storageKey('sm2.race.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
@@ -9613,6 +9638,7 @@ $('btnTogether').onclick = () => (typeof openPlayTogether === 'function' ? openP
 $('btnCreateRoom').onclick = () => openRoomFlow();
 $('btnHostArena').onclick = () => openFriendsFor('arena');
 $('btnHostRace').onclick = () => openFriendsFor('race');
+$('btnHostLanterns').onclick = () => openFriendsFor('lanterns');
 $('btnJoinScan').onclick = () => scanToJoin();
 $('btnJoinGo').onclick = () => submitJoin();
 $('btnRejoinLast').onclick = () => { const c = $('btnRejoinLast').dataset.code; if (!c) return; $('joinInput').value = c; submitJoin(); };
