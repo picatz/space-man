@@ -311,3 +311,16 @@ body.battery-saver #ovAttract::before, body.battery-saver #ovAttract::after { an
 .home-pad-hint b:first-child { margin-left: 0; }
 body[data-input="pad"] .home-pad-hint { display: inline-block; }
 body[data-input="pad"] .home-footer-note { display: none; }
+/* In a room: the Play together card turns into the way back, lit with a live dot, and Leave sits beside it. */
+.home-together-row { display: flex; align-items: stretch; gap: 8px; width: 100%; }
+.home-together-row > .home-run-together { flex: 1 1 auto; min-width: 0; }
+.home-together-row[data-room=true] > .home-run-together { background: linear-gradient(135deg, #1d5a4a 0%, #1f3d5e 100%); border-color: #7ef0b8aa; box-shadow: 0 0 0 1px #7ef0b833, 0 8px 22px #02081a66; }
+.home-together-row[data-room=true] .home-together-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-together-icon { position: relative; }
+.home-room-live { display: none; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: #7ef0b8; box-shadow: 0 0 0 2px #10263b; }
+.home-together-row[data-room=true] .home-room-live { display: block; animation: homeLive 1.6s ease-in-out infinite; }
+@keyframes homeLive { 50% { box-shadow: 0 0 0 2px #10263b, 0 0 0 6px #7ef0b833; } }
+body.reduce-motion .home-room-live { animation: none !important; }
+#ovAttract .home-room-leave { flex: none; align-self: stretch; min-width: 64px; min-height: 48px; margin-top: 6px; padding: 0 14px; border: 1px solid #ff4f6670; border-radius: 16px; background: #ff4f6614; color: #ff9aa8; font: 700 calc(12px * var(--ui-scale, 1)) var(--sm-font-body); cursor: pointer; }
+#ovAttract .home-room-leave[hidden] { display: none; }
+#ovAttract .home-room-leave:focus-visible { outline: 3px solid var(--sm-focus); outline-offset: 2px; }
