@@ -88,12 +88,12 @@
 .home-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .home-section-heading h2 { margin: 0; font: 650 13px/1.5 var(--sm-font-body); color: #d3e4f0; }
 .home-section-heading > span { font: 650 calc(10px * var(--ui-scale, 1))/1.5 var(--sm-font-body); color: #89a9bd; letter-spacing: .11em; }
-#ovAttract .launch-modes { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+#ovAttract .launch-modes { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
 /* One semantic button owns each whole illustrated card. No nested control or
    pseudo-element hit area: pointer, touch, keyboard and pad activate the same ID. */
 .home-mode { appearance: none; -webkit-appearance: none; position: relative; display: block; width: 100%; min-width: 0; margin: 0; padding: 0; overflow: hidden; border: 1px solid #b4d2e512; border-radius: 14px; background: linear-gradient(150deg,#273748,#182638) #182638; color: #ecf6ff; font: inherit; text-align: center; cursor: pointer; box-shadow: none; transition: transform .18s, border-color .18s; }
 .home-mode:active { transform: translateY(1px) scale(.99); }
-.home-arena { background: linear-gradient(150deg,#283855,#192942); }.home-race { background: linear-gradient(150deg,#273f41,#182b34); }
+.home-arena { background: linear-gradient(150deg,#283855,#192942); }.home-race { background: linear-gradient(150deg,#273f41,#182b34); }.home-lanterns { background: linear-gradient(150deg,#2E2A52,#191732); }
 .home-mode canvas { display: block; width: 100%; height: auto; aspect-ratio: 260/156; pointer-events: none; }
 #ovAttract .home-mode .mode-link { position: static; display: block; width: 100%; min-height: 44px; margin: 0; padding: 3px 7px 19px; background: transparent; border: 0; border-radius: 0; box-shadow: none; color: #ecf6ff; font: 750 12px/1.3 var(--sm-font-body); text-align: center; letter-spacing: -.025em; pointer-events: none; }
 #ovAttract .home-mode .mode-link::before { display: none; content: none; }
@@ -251,6 +251,7 @@ body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: no
 #ovAttract.in .home-mode:nth-child(1) { animation-delay: 220ms; }
 #ovAttract.in .home-mode:nth-child(2) { animation-delay: 270ms; }
 #ovAttract.in .home-mode:nth-child(3) { animation-delay: 320ms; }
+#ovAttract.in .home-mode:nth-child(4) { animation-delay: 370ms; }
 @keyframes homeRise { from { opacity: 0; transform: translateY(14px); } }
 
 /* Primary action: full width of its column, aligned with the cards under it,
@@ -263,7 +264,7 @@ body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: no
 #ovAttract #btnDaily:active { transform: scale(.985); }
 
 /* Mode cards: each owns an accent, lights up on hover or focus, sinks on press. */
-#ovAttract #btnPlay { --mode-accent: #ffb86b; } #ovAttract #btnArena { --mode-accent: #8ff0ff; } #ovAttract #btnRace { --mode-accent: #b8f28a; }
+#ovAttract #btnPlay { --mode-accent: #ffb86b; } #ovAttract #btnArena { --mode-accent: #8ff0ff; } #ovAttract #btnRace { --mode-accent: #b8f28a; } #ovAttract #btnLanterns { --mode-accent: #d4c9ff; }
 .home-mode { box-shadow: inset 0 1px 0 #ffffff12, 0 6px 18px #0004; transition: transform .16s cubic-bezier(.34,1.4,.64,1), border-color .18s, box-shadow .18s; }
 .home-mode::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 0; height: 2px; border-radius: 2px; background: var(--mode-accent); opacity: .35; transition: opacity .18s, left .18s, right .18s; }
 .home-mode canvas { transition: transform .3s cubic-bezier(.2,.9,.3,1); }

@@ -324,7 +324,11 @@ test('race and arena invitations cannot cross modes, even with both invite marke
   const api = host.net._n1, mixed = api.invite.decodeInvite(invite).inv;
   mixed.flags |= host.net._room.arena.INV_ARENA;
   const mixedInvite = api.invite.encodeInvite(mixed);
-  assert.equal(host.net.peekInvite(mixedInvite).mode, 'invalid');
+  // Arena + Race together is the tabletop marker (older builds read it as invalid); it still never opens an arcade room.
+  assert.equal(host.net.peekInvite(mixedInvite).mode, 'table');
+  const triple = api.invite.decodeInvite(invite).inv;
+  triple.flags |= host.net._room.arena.INV_ARENA | host.net._room.journey.INV_JOURNEY;
+  assert.equal(host.net.peekInvite(api.invite.encodeInvite(triple)).mode, 'invalid');
   for (const mode of ['runner', 'arena', 'race']) {
     await assert.rejects(joiner.net.acceptJoin(mixedInvite, { mode }), /different game mode/);
     assert.equal(joiner.net._n1.session(), null);
