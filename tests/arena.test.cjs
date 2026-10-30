@@ -176,6 +176,36 @@ test('directional pulse damages once per swing and damage scales knockback', () 
   assert.ok(upward.actors[1].vy < -8);
 });
 
+test('fresh grounded fighters skid on side pulses until damage builds', () => {
+  const fresh = duelAtRange();
+  firstHit(fresh, { 1: { attackPressed: true } });
+  const b = fresh.actors[1];
+  assert.equal(b.vy, 0); assert.equal(b.onGround, true); assert.ok(b.vx > 0, 'still shoved away');
+  const startX = b.x;
+  for (let i = 0; i < 40; i++) Arena.step(fresh);
+  assert.ok(b.onGround && b.x - startX < 60, 'a 0% tap skids a short way along the deck');
+  const worn = duelAtRange(C.LAUNCH_DAMAGE);
+  firstHit(worn, { 1: { attackPressed: true } });
+  assert.ok(worn.actors[1].vy < 0 && !worn.actors[1].onGround, 'built-up damage launches');
+});
+
+// A newcomer who has not touched a control yet should not lose a life in the
+// first seconds of a Cadet match on any stage.
+test('an idle newcomer survives the opening seconds against a Cadet CPU', () => {
+  for (const arena of Arena.arenas) for (let seed = 1; seed <= 6; seed++) {
+    const s = Arena.create({ arenaId: arena.id, difficulty: 'easy', format: 'duel', seed });
+    const human = s.actors.find((a) => a.controller === 'human');
+    let played = 0;
+    while (played < 3.5 * 60 && s.phase !== 'over') {
+      const commands = {};
+      for (const a of s.actors) if (a !== human) commands[a.id] = Arena.cpuInput(s, a.id);
+      Arena.step(s, commands);
+      if (s.phase === 'playing') played++;
+    }
+    assert.equal(human.stocks, C.STOCKS, `${arena.id} seed ${seed}`);
+  }
+});
+
 test('simultaneous attacks trade and no actor has first-iteration immunity', () => {
   const s = duelAtRange();
   s.actors[1].facing = -1;
@@ -455,7 +485,8 @@ test('simultaneous opposing pulses combine independently of actor iteration orde
   const target = normal.actors.find((a) => a.id === 2);
   assert.equal(target.damage, 24);
   assert.equal(target.vx, 0, 'opposing equal pulses cancel horizontal force');
-  assert.ok(target.vy < 0);
+  assert.equal(target.vy, 0, 'two fresh grounded hits skid rather than launch');
+  assert.equal(target.onGround, true);
   assert.equal(target.lastHitBy, 1, 'equal contributors tie by stable ID');
   for (const state of [reversed, mixed]) {
     assert.deepEqual(state.actors.slice().sort((a, b) => a.id - b.id), normal.actors);

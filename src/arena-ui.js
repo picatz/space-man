@@ -1031,7 +1031,7 @@ body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help
       launchButton = button('Launch duel  ↗', 'arena-primary arena-launch', startMatch); launchButton.id = 'arenaStart'; setup.append(launchButton);
       setup.append(el('p', 'arena-local-note', 'Just you and the CPUs. Your sound, motion & power settings carry over.'));
       lobbyGrid.append(intro, setup);
-      const controls = el('details', 'arena-controls-help'); const summary = el('summary', '', 'How to play · keyboard, controller & touch'); const help = el('div', 'arena-help-grid');
+      const controls = el('details', 'arena-controls-help'); const summary = el('summary', '', 'How to play'); const help = el('div', 'arena-help-grid');
       // Only the current input's hints show (body[data-input]); a touch phone never sees keyboard or 2-player text.
       const tip = (kind, text) => { const p = el('p', '', text); p.dataset.help = kind; return p; };
       help.append(tip('keys', 'KEYBOARD · A/D or ←/→ move. Space/W/↑ jumps twice. F/J pulses. Shift/K dashes. Esc pauses.'), tip('pad', 'CONTROLLER · Stick or D-pad moves. A jumps. X pulses. B or either trigger dashes. Menu pauses.'), tip('touch', 'TOUCH · Drag the floating stick to move. Use JUMP, PULSE and DASH. Aim a pulse with the stick. Land to restore your jumps.'), tip('keys', '2 PLAYERS · One screen, offline. P1 uses A/D/W/S, F pulse, G dash; P2 uses the arrows, . pulse, / dash; pad 1 and pad 2 drive P1 and P2. It needs a keyboard or two controllers, so it is hidden on touch-only devices until two controllers connect.'));

@@ -17,7 +17,7 @@ const ROOT = path.resolve(__dirname, '../..');
 const engineName = process.env.SPACE_MAN_QA_BROWSER || 'chromium';
 const engine = engineName === 'webkit' ? webkit : chromium;
 const SHOTS = process.env.SPACE_MAN_QA_SCREENSHOTS;
-const viewports = [[390, 844], [768, 1024], [1280, 800]];
+const viewports = [[390, 844], [844, 390], [768, 1024], [1280, 800]];
 
 // Each screen opens from a fresh home and resolves once it is on screen.
 const screens = {
