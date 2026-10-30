@@ -122,8 +122,9 @@ The crew is drawn by `SpaceManArt` (2D) and `SpaceManRaceScene.actorMeshes`
 
 Every 2D astronaut is painted by one rig, `SpaceManArt.drawSpacefarer(c, x, y, scale,
 appearance, pose)`. Home, wardrobe, tiles and the Arena lobby reach it through
-`drawAvatar`; Arena matches call it directly; the Endless Run's `drawPlayer` is the
-reference it matches and will move onto it next. No mode adds its own body.
+`drawAvatar`; Arena matches and the Endless Run's `drawPlayer` call it directly (the Run
+adds pistol tricks and arrival morphs through the `gearFx`, `armBlend` and `frame`
+hooks). No mode adds its own body.
 
 - **Frame.** The Run sprite's units: a 24 x 34 hitbox, origin at the body centre,
   helmet r 11 at y -9, boots on y 16. `(x, y)` is the ground contact point under
@@ -134,6 +135,13 @@ reference it matches and will move onto it next. No mode adds its own body.
 - **Proportions.** Arms are the Run's capsules: shoulders at (+-5, -6) under the
   neck seal, near arm 10 long, far arm 12, about 4 units wide with the outline.
   Legs are two 6.4 segments from hips at (+-4, 4).
+- **Joints never show.** The shin ends inside a moon boot that rises over the ankle
+  (one shape: shaft, round toe, darker sole), never on a separate cuff and disc. A
+  wrist cuff is exactly the sleeve's outline width and the mitten overlaps it.
+- **Review.** Any rig change is judged on the 14-pose sheet against `main`
+  (`tests/browser/rig-sheet.cjs [ref]`), at close-up and gameplay size, still and in
+  motion, and ships only if no pose reads worse. Craft notes and sources:
+  project files `art-direction/character-research.md`.
 - **Palette slots.** `suit` torso and helmet, `arm` near sleeve, `legF` near leg,
   `legB` outline, shade, far limbs and cuffs, `pack` canister, `visTop`/`visBot`
   blaster. The crew or team `accent` lights the cuffs, boots, pack vent, chest panel

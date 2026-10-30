@@ -135,3 +135,22 @@ test('drawAvatar renders through the rig, keeping the hoverpod branch', () => {
   const armed = recorder(); Art.drawAvatar(armed.ctx, 0, 0, 160, Cosmetics.DEFAULTS, { blaster: '#38E1FF' });
   assert.ok(armed.calls.some(c => c[0] === '=fillStyle' && c[1] === '#38E1FF'), 'the lobby emitter takes its colour');
 });
+
+test('feet and wrists have no seams: the shin ends inside the boot, the cuff matches the sleeve', () => {
+  // The leg stroke stops short of the foot point, so its round end stays inside the boot shaft.
+  const calls = draw({ t: .4 });
+  const legEnds = [];
+  for (let i = 0; i < calls.length; i++) if (calls[i][0] === '=lineWidth' && calls[i][1] === 4.7) {
+    const line = calls.slice(0, i).reverse().find(c => c[0] === 'lineTo'); legEnds.push(line[2]);
+  }
+  assert.equal(legEnds.length, 2);
+  for (const y of legEnds) assert.ok(y < 16 - 1, 'shin ends above the foot point, inside the boot (' + y + ')');
+  // Cuffs are sleeve-outline wide (4.1), not a wider washer.
+  assert.ok(calls.some(c => c[0] === 'moveTo' && Math.abs(c[1] - (-2.05 + 1)) < 1e-9), 'cuff is one sleeve wide');
+});
+
+test('the Run hooks: a body-frame callback and an eased authored arm pose', () => {
+  let framed = 0; draw({ frame: () => framed++ }); assert.equal(framed, 1);
+  assert.notDeepEqual(draw({ armBlend: 1, nearArmTo: 2.6, farArmTo: -1 }), draw({}));
+  assert.deepEqual(draw({ armBlend: 0, nearArmTo: 2.6 }), draw({}));
+});
