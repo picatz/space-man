@@ -152,11 +152,13 @@
       starter: b[9], seed: 0, state, last: b[10] - 1, result });
   }
 
-  /* ---- Lantern Lines: the reference game. Each pilot keeps at most three
-     lanterns lit on a 3x3 star chart; lighting a fourth lets your oldest one
-     gutter out. Three of yours in a line wins the round. No board ever fills,
-     so there are no dead draws, only a long-night stalemate after MAX_PLY. ---- */
-  function lanternLines({ id = 'lanterns', wire = 1, name = 'Lantern Lines', cols = 3, lit = 3, run = 3, maxPly = 48 } = {}) {
+  /* ---- Constellations: the reference game. Each pilot keeps at most three
+     stars lit on a 3x3 star chart; lighting a fourth lets your oldest one
+     fade. Three of yours in a line makes a constellation and wins the round.
+     No board ever fills, so there are no dead draws, only a stalemate after
+     MAX_PLY. Ids keep their first name ('lanterns', LANTERNS) for saved
+     records and tests; players only ever see the name. ---- */
+  function lanternLines({ id = 'lanterns', wire = 1, name = 'Constellations', cols = 3, lit = 3, run = 3, maxPly = 48 } = {}) {
     const board = grid(cols), lines = board.lines(run), center = board.size % 2 ? (board.size - 1) / 2 : -1;
     const make = (queues, turn, ply) => Object.freeze({ queues: Object.freeze(queues.map(q => Object.freeze(q.slice()))), turn, ply });
     function cells(state) {
@@ -164,7 +166,7 @@
       state.queues.forEach((q, s) => { for (const i of q) out[i] = s + 1; });
       return out;
     }
-    // The lantern that goes dark when this seat next lights one, or -1.
+    // The star that fades when this seat next lights one, or -1.
     const fading = (state, seat) => { const q = state.queues[seat - 1]; return q.length >= lit ? q[0] : -1; };
     function outcome(state) {
       const c = cells(state);
@@ -172,7 +174,7 @@
       return state.ply >= maxPly ? { seat: 0, line: [] } : null;
     }
     function evaluate(state, seat) {
-      // Count lines each side could finish with the lanterns that will still be lit.
+      // Count lines each side could finish with the stars that will still be lit.
       let score = 0;
       const c = cells(state);
       for (const s of [1, 2]) { const f = fading(state, s); if (f >= 0 && s !== state.turn) c[f] = -s; }

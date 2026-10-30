@@ -936,7 +936,7 @@
           <button class="home-mode home-run" id="btnPlay" aria-label="Endless Run. Outrun the flare, solo or with friends."><canvas id="homeRunArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Endless Run</span><span class="home-mode-caption" aria-hidden="true">Outrun the flare</span></button>
           <button class="home-mode home-arena" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends."><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Orbital Arena</span><span class="home-mode-caption" aria-hidden="true">Bump, dodge, KO.</span></button>
           <button class="home-mode home-race" id="btnRace" aria-label="Star Circuit. Arcade hover racing."><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Star Circuit</span><span class="home-mode-caption" aria-hidden="true">Catch a boost</span></button>
-          <button class="home-mode home-lanterns" id="btnLanterns" aria-label="Lantern Lines. Keep three lanterns lit and make a line, against Flare or a friend."><canvas id="homeLanternArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Lantern Lines</span><span class="home-mode-caption" aria-hidden="true">Keep three lit</span></button>
+          <button class="home-mode home-lanterns" id="btnLanterns" aria-label="Constellations. Keep three stars lit and make a line, against Flare or a friend."><canvas id="homeLanternArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Constellations</span><span class="home-mode-caption" aria-hidden="true">Connect three stars</span></button>
         </div>
         <div class="home-together-row" id="homeTogetherRow">
         <button class="home-run-together" id="btnTogether" aria-label="Play together. Run, battle, race or duel with friends. Share a code or QR."><i class="home-together-icon" aria-hidden="true"><i class="home-room-live"></i><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2a5 5 0 0 1 5 4.8v1"/></svg></i><span class="home-together-text"><strong id="homeTogetherTitle">Play together</strong><em id="homeTogetherSub">Any game with friends · code or QR</em></span><b aria-hidden="true">↗</b></button>
@@ -1097,7 +1097,7 @@
       <button class="mode-pick" data-mode="run" id="btnCreateRoom" aria-label="Host Endless Run. Race one course together."><canvas id="togetherRunArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Endless Run</span><span class="mp-cap" aria-hidden="true">Race one course</span></button>
       <button class="mode-pick" data-mode="arena" id="btnHostArena" aria-label="Host Orbital Arena. Knock friends out."><canvas id="togetherArenaArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Orbital Arena</span><span class="mp-cap" aria-hidden="true">Knock friends out</span></button>
       <button class="mode-pick" data-mode="race" id="btnHostRace" aria-label="Host Star Circuit. Hover kart race."><canvas id="togetherRaceArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Star Circuit</span><span class="mp-cap" aria-hidden="true">Kart race</span></button>
-      <button class="mode-pick" data-mode="lanterns" id="btnHostLanterns" aria-label="Host Lantern Lines. A two-pilot duel of wits."><canvas id="togetherLanternArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Lantern Lines</span><span class="mp-cap" aria-hidden="true">Duel of wits</span></button>
+      <button class="mode-pick" data-mode="lanterns" id="btnHostLanterns" aria-label="Host Constellations. A two-pilot duel of wits."><canvas id="togetherLanternArt" width="260" height="156" aria-hidden="true"></canvas><span class="mp-name">Constellations</span><span class="mp-cap" aria-hidden="true">Duel of wits</span></button>
     </div>
     <div class="together-or" aria-hidden="true">or join a friend</div>
     <button class="btn ghost scan-btn" id="btnJoinScan"><svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M8 9h3v3H8zM13 9h3M13 12v3h3M8 15h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Scan their QR code</button>
@@ -9436,11 +9436,11 @@ $('btnRace').onclick = () => {
   if (G.mode !== 'attract' || (arenaUI && arenaUI.active) || !window.SpaceManRaceUI) return;
   clearInput(); Audio.suspend(); getRaceUI().open();
 };
-// Lantern Lines: the first tabletop mode (src/tabletop.js rules, src/table-room.js rooms, src/table-ui.js).
+// Constellations: the first tabletop mode (src/tabletop.js rules, src/table-room.js rooms, src/table-ui.js).
 let tableUI = null;
 $('btnLanterns').onclick = () => {
   if (expedition) return;
-  if (netLive()) { askRoomSwitch('Lantern Lines', () => $('btnLanterns').onclick()); return; }
+  if (netLive()) { askRoomSwitch('Constellations', () => $('btnLanterns').onclick()); return; }
   if (G.mode !== 'attract' || (arenaUI && arenaUI.active) || (raceUI && raceUI.active) || !window.SpaceManTableUI) return;
   clearInput(); Audio.suspend(); getTableUI().open();
 };

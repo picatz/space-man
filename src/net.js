@@ -83,7 +83,7 @@
   // modes cannot opt in accidentally, even with an advertised capability.
   const A_APPEARANCE = 0x43;
   const CAP_JOURNEY = 1 << 14, INV_JOURNEY = 0x40, MODE_JOURNEY = 3, A_JOURNEY = 0x42;
-  // Tabletop rooms (turn-based games such as Lantern Lines) carry a game id
+  // Tabletop rooms (turn-based games such as Constellations) carry a game id
   // inside their own frames. The invite sets both the Arena and Race bits, a
   // combination older builds already read as an incompatible invite.
   const CAP_TABLE = 1 << 16, INV_TABLE = INV_ARENA | INV_RACE, MODE_TABLE = 4, A_TABLE = 0x44;
@@ -107,7 +107,7 @@
   const modeCaps = (o) => CAPS | modeCap(o) | (modeName(o) === 'arena' ? CAP_ARENA_ITEMS : 0);
   const modeMatches = (mode, h) => h.mode === modeByte({ mode }) && (!modeCap({ mode }) || !!(h.caps & modeCap({ mode })));
   const modeRejection = (o, peerMode) => o.mode === 'journey' || peerMode === MODE_JOURNEY ? INV_JOURNEY : o.mode === 'table' || peerMode === MODE_TABLE ? INV_TABLE : o.mode === 'race' || peerMode === MODE_RACE ? INV_RACE : INV_ARENA;
-  const modeError = () => new Error('This invite is for a different game mode. Open Star Expedition for journey rooms, Star Circuit for racing rooms, Arena for arena rooms, Lantern Lines for table rooms or Run Together for runner rooms.');
+  const modeError = () => new Error('This invite is for a different game mode. Open Star Expedition for journey rooms, Star Circuit for racing rooms, Arena for arena rooms, Constellations for table rooms or Run Together for runner rooms.');
   const raceVersionError = () => new Error('This room uses a newer racing version. Leave the room, refresh all games, then ask the host for a new invite.');
   const journeyVersionError = () => new Error('This room uses a newer expedition version. Leave the room, refresh all games, then ask the host for a new invite.');
 

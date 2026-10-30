@@ -43,7 +43,7 @@ Market notes (October 2026) are in the project files at
 
 A mode ships when all of these are true, not when it runs:
 
-1. **One sentence of fun.** Lantern Lines: "keep three lanterns lit, the oldest
+1. **One sentence of fun.** Constellations: "keep three stars lit, the oldest
    goes dark, make a line before your rival does." If it takes two sentences,
    cut a rule.
 2. **First turn in under ten seconds** from the home card, without reading.
@@ -64,9 +64,9 @@ A mode ships when all of these are true, not when it runs:
 Status: **shipped**, **next** (has a design and a slot), **design** (waits for
 Kent to pick it).
 
-### Lantern Lines (shipped): two-pilot duel of wits
+### Constellations (shipped): two-pilot duel of wits
 
-Prism region. A 3x3 star chart. Each pilot keeps at most three lanterns lit;
+Prism region. A 3x3 star chart. Each pilot keeps at most three stars lit;
 lighting a fourth lets your oldest go dark, and it flickers the turn before so
 you can plan around it. Three of yours in a line wins the round; first to two
 takes the chart, and the loser of a round lights first next round.
@@ -96,7 +96,7 @@ silly. Three to start, all original:
 
 - **Flare Drift:** everyone steers a little hoverpod across the host screen while
   Old Flare's rings sweep outward; brush past friends to nudge them.
-- **Lantern Relay:** the room builds one long chain of lanterns, each phone
+- **Star Relay:** the room builds one long chain of stars, each phone
   adding the next colour in the pattern before its light runs out.
 - **Cargo Count:** crates tumble past the dock window; everyone guesses how many
   of their colour went by. Closest wins, wildly wrong guesses get a cheer.
@@ -113,12 +113,12 @@ stays on paper until Kent picks it. Original pillars:
   region's light shapes them: Bloom Starlings grow leaves, Ember ones crackle,
   Prism ones refract. They are not caught or owned. You **befriend** one by
   answering its light pattern in a short rhythm and pattern puzzle, and it
-  chooses to ride in your lantern.
+  chooses to ride along in your helmet light.
 - **Exploration** is a hoverpod flight over a seeded hex star map of the seven
   regions, with Guardians at the gates, crew to meet and secrets per season.
 - **Glow duels** reuse the tabletop board kit: Starlings take stars on a chart,
   and lines of matching light trigger their abilities. One rules engine, two
-  modes, and every Lantern Lines player already knows the board.
+  modes, and every Constellations player already knows the board.
 - **The codex** fills from every mode: a Starling might appear in a run, an
   arena or a circuit, which gives the whole game a collection loop without
   selling anything.
@@ -159,7 +159,7 @@ netcode load is the risk.
 | Daily seeds and shareable results | runner only | next |
 | Progression: logbook, cosmetics rewards, codex | `SpaceManLogbook`, `src/cosmetics.js` | partial; codex is design |
 | Host screen + phone controller surfaces | none | next (Dock Night) |
-| Mode shell: lobby, pause menu, results, input routing shared by every overlay | each mode builds its own | next; extract from Lantern Lines and Arena once a third mode needs it |
+| Mode shell: lobby, pause menu, results, input routing shared by every overlay | each mode builds its own | next; extract from Constellations and Arena once a third mode needs it |
 
 Rule of thumb: build a block when the second mode needs it, not before, and
 put it where the third mode will find it.
@@ -172,7 +172,7 @@ Agents ship most of this game, so the guard rails are part of the product:
   self-play tests catch a broken AI or a solved game before a player does.
 - **Rooms run over the real relay in tests.** `tests/table-room.test.cjs` plays a
   whole match host to guest through the encrypted harness relay.
-- **Layout QA** opens every screen, Lantern Lines included, at phone, tablet and
+- **Layout QA** opens every screen, Constellations included, at phone, tablet and
   laptop sizes (`tests/browser/layout-qa.test.cjs`).
 - **Screenshot review.** Every UI change ships phone, tablet and desktop
   screenshots; a separate reviewer (Fable) critiques art and the game loop
@@ -183,7 +183,7 @@ Agents ship most of this game, so the guard rails are part of the product:
 
 ## Roadmap
 
-1. Lantern Lines (this release): the tabletop kit, table rooms and registry.
+1. Constellations (shipped as Lantern Lines, renamed so it reads as space, not a holiday): the tabletop kit, table rooms and registry.
 2. Daily across the Reach, starting with the Daily Chart.
 3. Dock Night with three party games, plus the shared mode shell.
 4. Kent picks the large one: Starlings, Star Charts or Hold the Dock. Starlings
