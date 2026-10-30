@@ -20,6 +20,12 @@ Together, the wardrobe and records at 390x844, 768x1024 and 1280x800, and fails 
   when it is scrolled to either edge of its scroller, where keyboard focus and the last swipe leave it
   (WCAG 2.2 SC 2.4.11). Prefer a real flex footer under a scrolling body over a sticky overlay.
 
+It also plays an Arena free-for-all at 390x844 and 844x390 until the pilot is knocked out, and
+checks the in-match HUD: the phone scoreboard stays in the top fifth with untruncated names, the
+DASH meter clears its label, fighter controls give way to the spectator dock, the dock never
+overlaps the scoreboard (one slim row in landscape), the followed fighter is framed in the clear
+area, and arrow keys, a swipe, a card tap and Rematch all work.
+
 Add a screen to `screens` when you add one. A known failure goes in `KNOWN` with the issue to fix;
 it runs as a todo until the fix lands, then remove the entry. Never add an entry to get green.
 `SPACE_MAN_QA_SCREENSHOTS=<dir>` saves every screen for review.

@@ -25,6 +25,8 @@
   // Joining uses P2's action keys only: arrows keep moving menu focus.
   // Right Shift stays a P2 dash key but never joins: Shift+Tab must keep moving focus.
   const P2_JOIN_KEYS = Object.freeze(['Period', 'Numpad1', 'Slash', 'Numpad2']);
+  // A spectator flips between fighters; movement keys have nothing else to do.
+  const WATCH_KEYS = Object.freeze({ ArrowLeft: -1, KeyA: -1, KeyQ: -1, BracketLeft: -1, ArrowRight: 1, KeyD: 1, KeyE: 1, BracketRight: 1 });
   // Colour-blind safe pair (cyan / vermilion) plus a distinct shape per fighter.
   const LOCAL_COLORS = Object.freeze(['#38E1FF', '#FF7A45', '#B99AFF', '#8AECAB']);
   const LOCAL_GLYPHS = Object.freeze(['●', '■', '▲', '◆']);
@@ -139,8 +141,8 @@
 .arena-touch-symbol{font:700 24px/1 system-ui,sans-serif}.arena-touch-word{font:750 calc(10px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;letter-spacing:.06em}
 .arena-touch-jump{width:78px;height:78px;right:0;bottom:0;color:#BFF5FF;border-color:#80E1EF;background:#103A4DEB}
 .arena-touch-attack{width:72px;height:72px;left:0;bottom:16px;color:#FFEAC4;border-color:#EFC37E;background:#463526EB}
-.arena-touch-dash{width:60px;height:60px;right:17px;top:0}
-.arena-touch-attack:after,.arena-touch-dash:after{content:'';position:absolute;left:19px;right:19px;bottom:9px;height:3px;border-radius:3px;background:currentColor;transform:scaleX(var(--ready,1));transform-origin:left;opacity:.9}
+.arena-touch-dash{width:60px;height:60px;right:17px;top:0;gap:2px}.arena-touch-dash .arena-touch-symbol{font-size:20px}.arena-touch-dash{--meter-bottom:5px}
+.arena-touch-attack:after,.arena-touch-dash:after{content:'';position:absolute;left:19px;right:19px;bottom:var(--meter-bottom,9px);height:3px;border-radius:3px;background:currentColor;transform:scaleX(var(--ready,1));transform-origin:left;opacity:.9}
 .arena-touch-button.arena-pressed{transform:translateY(2px) scale(.97);filter:brightness(1.2);box-shadow:none}
 .arena-touch-button.arena-cooling{background:#0D1C2DDD;border-color:#7692A1;color:#9CB4C5}
 .arena-root[data-lefty=true] .arena-stick-zone{left:auto;right:calc(var(--arena-safe-right) + 12px)}
@@ -244,6 +246,55 @@
 .arena-root[data-lefty=true] .arena-touch-actions{left:calc(var(--arena-safe-left) + 24px)}
 }
 `;
+  // Spectating: one dock replaces the fighter controls, and the roster cards
+  // become tap targets that pick who the camera follows.
+  const WATCH_STYLES = `
+.arena-watch-tools{position:absolute;z-index:6;left:50%;transform:translateX(-50%);bottom:calc(var(--arena-safe-bottom) + 16px);box-sizing:border-box;width:min(420px,calc(100% - 24px - var(--arena-safe-left) - var(--arena-safe-right)));display:grid;grid-template-columns:48px minmax(0,1fr) 48px;align-items:center;gap:8px 10px;padding:10px;background:#071527F2;border:1px solid #36526D;border-top:2px solid #FFB454;border-radius:18px;box-shadow:0 12px 34px #00000080;color:#DCEFFF}
+.arena-root:not([data-screen=match]) .arena-watch-tools{display:none!important}
+.arena-watch-step{width:48px;height:48px;min-height:48px;font-size:20px}
+.arena-watch-copy{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;text-align:center}
+.arena-watch-eyebrow{font:750 calc(9px * var(--ui-scale, 1))/1.3 system-ui,sans-serif;letter-spacing:.12em;color:#FFC66B}
+.arena-watch-name{font:800 calc(14px * var(--ui-scale, 1))/1.25 system-ui,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#F4F7FF;overflow-wrap:anywhere}
+.arena-watch-hint{font:500 calc(10px * var(--ui-scale, 1))/1.35 system-ui,sans-serif;color:#9FBBD2}
+.arena-watch-hint span{display:none}
+body[data-input=touch] .arena-watch-hint [data-help=touch],body[data-input=keys] .arena-watch-hint [data-help=keys],body[data-input=pad] .arena-watch-hint [data-help=pad],
+body:not([data-input]) .arena-root[data-touch=true] .arena-watch-hint [data-help=touch],body:not([data-input]) .arena-root[data-touch=false] .arena-watch-hint [data-help=keys]{display:inline}
+.arena-watch-rematch{grid-column:1/-1;justify-self:center;min-height:44px;padding:9px 22px}
+.arena-watch-rematch[hidden]{display:none!important}
+.arena-root[data-spectating=true] .arena-player-card{pointer-events:auto;cursor:pointer}
+/* Landscape phones: one slim row (arrows, who, Rematch) so the stage keeps its middle. */
+@media(min-aspect-ratio:115/100) and (max-height:600px){
+.arena-watch-tools{grid-template-columns:44px minmax(0,1fr) auto 44px;width:min(560px,calc(100% - 24px - var(--arena-safe-left) - var(--arena-safe-right)));bottom:calc(var(--arena-safe-bottom) + 8px);padding:6px 8px;gap:8px;border-radius:14px}
+.arena-watch-step{width:44px;height:44px;min-height:44px}
+.arena-watch-rematch{grid-column:auto;order:1}#arenaWatchNext{order:2}
+}
+.arena-root[data-spectating=true] .arena-player-out{cursor:default}
+`;
+  // Phone portrait: the scoreboard is one row of compact chips (name, damage,
+  // lives) so the stage below it stays clear. Boss rows keep their own layout.
+  const CHIP_STYLES = `
+@media(max-width:650px) and (min-height:520px){
+.arena-root .arena-hud-top{margin-bottom:8px}
+.arena-root[data-screen] .arena-roster{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);grid-template-columns:none;gap:6px;max-width:none;margin:0}
+.arena-root[data-screen] .arena-roster:has([data-boss=true]){grid-auto-flow:row;grid-template-columns:repeat(4,minmax(0,1fr))}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]){display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"name name" "damage lives";align-items:end;gap:1px 4px;min-width:0;max-width:none;min-height:44px;box-sizing:border-box;padding:5px 7px 6px;border-radius:9px;border-top-width:3px}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-player-info{display:contents}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) :is(.arena-player-portrait,.arena-player-tag){display:none!important}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-player-name{grid-area:name;font-size:calc(10px * var(--ui-scale, 1));line-height:1.2}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-damage{grid-area:damage;font-size:18px;min-width:0;text-align:left}
+.arena-root[data-screen] .arena-roster .arena-player-out:not([data-boss=true]) .arena-damage{font-size:13px}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-stocks{grid-area:lives;justify-self:end;margin:0 0 3px;font-size:calc(9px * var(--ui-scale, 1));letter-spacing:0;white-space:nowrap}
+.arena-root[data-screen] .arena-roster .arena-player-card[data-you=true] .arena-player-name:after{content:'YOU';flex:none;font:800 calc(9px * var(--ui-scale, 1))/1 system-ui,sans-serif;letter-spacing:.04em;color:#071522;background:#EAF7FF;border-radius:4px;padding:2px 3px}
+.arena-root[data-screen] .arena-roster .arena-player-card[data-watching=true]{border:1.5px solid #EAF7FF;border-top:3px solid var(--fighter);background:#1A2C40}
+.arena-root[data-screen] .arena-roster .arena-player-card[data-watching=true]:after{content:'';position:absolute;left:50%;bottom:-6px;width:10px;height:10px;background:#EAF7FF;transform:translateX(-50%) rotate(45deg);border-radius:2px}
+}
+/* The narrowest phones: YOU replaces your own name, and damage steps down a size. */
+@media(max-width:360px) and (min-height:520px){
+.arena-root[data-screen] .arena-roster .arena-player-card[data-you=true] .arena-player-name-text{display:none}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]){padding:5px 5px 6px}
+.arena-root[data-screen] .arena-roster .arena-player-card:not([data-boss=true]) .arena-damage{font-size:15px}
+}
+`;
   const TWO_STYLES = `
 .arena-pcount{min-height:34px;border-color:transparent;border-radius:6px;background:transparent;font:600 calc(11px * var(--ui-scale, 1))/1.2 system-ui,sans-serif;padding:7px 13px;color:#7F9BB5}
 .arena-pcount[aria-pressed=true]{background:#20354C;color:#DEF0FF;border-color:#3D5870}
@@ -267,8 +318,7 @@
 .arena-room-code{font:700 18px system-ui;letter-spacing:.08em;color:#9ff1ff}.arena-room-members{margin:0;padding-left:22px;font:12px/1.8 system-ui;color:#bfd4e8}
 
 .arena-ready-row{display:grid;gap:8px}.arena-ready-row[hidden],.arena-ready-row>[hidden]{display:none!important}.arena-auto-label{display:flex;gap:8px;align-items:center;font:13px system-ui;min-height:44px}.arena-auto-label input{width:22px;height:22px;flex:none}.arena-vote-note:empty{display:none}.arena-vote-note{margin:0;font:13px/1.5 system-ui;color:#bfd4e8}
-.arena-watch-tools{position:absolute;z-index:6;bottom:calc(var(--arena-safe-bottom) + 22px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:8px;background:#071527ed;border:1px solid #36526d;border-radius:14px;max-width:calc(100% - 24px)}
-.arena-watch-tools span{font:700 calc(10px * var(--ui-scale, 1)) system-ui;text-align:center;flex:1 1 110px;min-width:0;overflow-wrap:anywhere}.arena-watch-tools>button{flex:0 0 auto}.arena-root button:disabled{opacity:.48;cursor:default}
+.arena-root button:disabled{opacity:.48;cursor:default}
 `;
   function create(options) {
     const opts = options || {};
@@ -292,7 +342,7 @@
     let arena, actionBuffer, state = null, view = 'lobby', paused = false, activeModal = null, selections = { arenaId: '', format: 'duel', difficulty: 'normal' };
     let frameId = 0, lastTime = 0, accumulator = 0, lastDraw = 0, lastHudTick = -1, lastCountdown = '', resultAt = 0, matchSerial = 0;
     let identitySafeTop = 0, identityHudBottom = 0, identityBoundsDirty = true;
-    let thumbBounds = null;
+    let thumbBounds = null, watchTop = 0;
     let width = 1, height = 1, dpr = 1, viewportBox = null, background = null, bgKey = '', resizeObserver = null;
     let camera = { x: 0, y: 0, scale: 1, initialized: false }, effects = [], spectatorId = null;
     // Presentation-only game feel. Nothing here reaches the simulation or wire:
@@ -310,7 +360,7 @@
     let audio = null, audioGain = null, lastSfx = -999, lastFar = -999, leftyOverride = null, currentPrefs = {}, prefersReduced = false;
     let room = null, roomBox, roomEntry, roomMembers, roomHint, roomInput, roomInvite, roomCode, roomQR, roomRole, roomLeave, roomCopy, roomShare, roomInviteCard, roomHost, roomJoin, roomWatch, roomDetails;
     let roomStatus = null, roomSignature = '', rosterSignature = '', roomPaused = false, localRoomMenu = false, roomClosing = false, networkReceived = 0, playout = null, priorNetworkTick = -1, networkEventHigh = 0;
-    let watchTools, watchName;
+    let watchTools, watchName, watchEyebrow, watchRematch, swipe = null;
     const onlineActive = () => !!(room && room.active);
     const localActor = () => state && state.actors.find(a => a.controller === 'human');
     const canControl = () => !onlineActive() || !!(localActor() && localActor().stocks > 0 && !(roomStatus && (roomStatus.stale || roomStatus.connection)));
@@ -320,6 +370,9 @@
     const calm = () => typeof currentPrefs.reduceMotion === 'boolean' ? currentPrefs.reduceMotion : typeof currentPrefs.reducedMotion === 'boolean' ? currentPrefs.reducedMotion : prefersReduced;
     const saver = () => !!currentPrefs.batterySaver;
     const isMatch = () => view === 'match' && !!state;
+    // Watching, not fighting: an online spectator, or a solo pilot knocked out
+    // while the CPUs play on. Couch play and expedition rescues never watch.
+    const spectating = () => isMatch() && state.phase !== 'over' && !local2 && !localSession && (onlineActive() ? !canControl() : !!(localActor() && localActor().stocks <= 0));
     const localRescue = () => !!localSession && !!state && state.actors.some(a => a.controller === 'human' && a.stocks <= 0);
     const isRunning = () => isMatch() && !paused && !roomPaused && state.phase !== 'over';
     const selectedArena = () => arena.getArena ? arena.getArena(selections.arenaId) : (arena.arenas.find(a => a.id === selections.arenaId) || arena.arenas[0]);
@@ -503,7 +556,7 @@
         else if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.code)) { e.preventDefault(); focusStep(e.code === 'ArrowDown' || e.code === 'ArrowRight' ? 1 : -1); }
         return;
       }
-      if (onlineActive() && !canControl() && ['ArrowLeft','ArrowRight'].includes(e.code)) { e.preventDefault(); if (!e.repeat) cycleWatch(e.code === 'ArrowLeft' ? -1 : 1); return; }
+      if (spectating() && WATCH_KEYS[e.code]) { e.preventDefault(); if (!e.repeat) cycleWatch(WATCH_KEYS[e.code]); return; }
       if (local2) {
         const action2 = LOCAL_KEYS[2][e.code];
         if (action2) {
@@ -605,7 +658,7 @@
       if (!p) { if (lastPadId !== null) { pad = { moveX: 0, moveY: 0, jump: false }; padPrevious = {}; padNeedsNeutral = true; lastPadId = null; } return; }
       if (p.index !== lastPadId) { padNeedsNeutral = true; padPrevious = {}; lastPadId = p.index; }
       const b = i => !!(p.buttons[i] && (p.buttons[i].pressed || p.buttons[i].value > .55));
-      const raw = { jump: b(0), attack: b(2), dash: b(1) || b(6) || b(7), pause: b(9), up: b(12) || p.axes[1] < -.65, down: b(13) || p.axes[1] > .65, left: b(14) || p.axes[0] < -.65, right: b(15) || p.axes[0] > .65 };
+      const raw = { jump: b(0), attack: b(2), dash: b(1) || b(6) || b(7), pause: b(9), up: b(12) || p.axes[1] < -.65, down: b(13) || p.axes[1] > .65, left: b(14) || p.axes[0] < -.65, right: b(15) || p.axes[0] > .65, lb: b(4), rb: b(5) };
       const x = b(14) ? -1 : b(15) ? 1 : (Math.abs(p.axes[0] || 0) > .19 ? p.axes[0] : 0);
       const y = b(12) ? -1 : b(13) ? 1 : (Math.abs(p.axes[1] || 0) > .19 ? p.axes[1] : 0);
       if (padNeedsNeutral) { padPrevious = raw; if (!Object.values(raw).some(Boolean) && !x && !y) padNeedsNeutral = false; return; }
@@ -615,6 +668,10 @@
         if (edge('down') || edge('right')) focusStep(1); else if (edge('up') || edge('left')) focusStep(-1);
         if (edge('jump') && document.activeElement && activeModal.contains(document.activeElement)) { if (!swallow) document.activeElement.click(); }
         else if (edge('dash')) escapeAction();
+      } else if (spectating()) {
+        // A spectator's pad flips between fighters: d-pad/stick or the bumpers.
+        pad = { moveX: 0, moveY: 0, jump: false };
+        if (edge('left') || edge('lb')) cycleWatch(-1); else if (edge('right') || edge('rb')) cycleWatch(1);
       } else { pad.moveX = x; pad.moveY = y; pad.jump = raw.jump; pad.attack = raw.attack; if (edge('jump')) jumpEdge = true; if (edge('attack')) attackEdge = true; if (edge('dash')) dashEdge = true; }
       padPrevious = raw;
     }
@@ -778,8 +835,16 @@
       if (!state) return; const candidates = watchCandidates(); if (!candidates.length) return;
       const index = candidates.findIndex(a => a.id === spectatorId);
       const next = index < 0 ? (direction > 0 ? 0 : candidates.length - 1) : (index + direction + candidates.length) % candidates.length;
-      spectatorId = candidates[next].id; camera.initialized = false;
-      if (watchName) watchName.textContent = watchLabel(candidates.find(a => a.id === spectatorId).name);
+      watchActor(candidates[next].id);
+    }
+    // Follow one fighter by id (Next/Previous, a roster card, a swipe). The
+    // camera glides there instead of cutting, and the change is announced.
+    function watchActor(id) {
+      const target = state && watchCandidates().find(a => a.id === id); if (!target) return false;
+      const changed = target.id !== spectatorId; spectatorId = target.id;
+      if (watchName) watchName.textContent = watchLabel(target.name);
+      if (changed) { announce('Watching ' + target.name); updateHud(true); }
+      return true;
     }
     function resetRoomPresentation() {
       roomPaused = localRoomMenu = false; priorNetworkTick = -1; networkEventHigh = 0;
@@ -867,7 +932,6 @@
       roomReadyRow.append(roomReady,roomVotes,roomAutoLabel,roomAutoCancel);
       roomBox.append(...(roomInviteCard?[roomInviteCard.el]:[]),roomCode,shareRow,roomMembers,roomReadyRow,roomInvite);
       roomHint=el('p','arena-local-note');roomHint.id='arenaRoomHint';roomHint.setAttribute('role','status');roomLeave=button('Leave arena room','arena-text-button',leaveArenaRoom);roomLeave.id='arenaRoomLeave';roomLeave.hidden=true;roomDetails.append(roomEntry,roomBox,roomHint,roomLeave);roomDetails.addEventListener('toggle',paintRejoin);roomDetails.addEventListener('toggle',queueLobbyFit);(lobbyFit || lobby).append(roomDetails);
-      watchTools=el('div','arena-watch-tools');watchTools.hidden=true;const prev=button('←','arena-icon-button',()=>cycleWatch(-1));prev.id='arenaWatchPrevious';prev.setAttribute('aria-label','Watch previous fighter');const next=button('→','arena-icon-button',()=>cycleWatch(1));next.id='arenaWatchNext';next.setAttribute('aria-label','Watch next fighter');watchName=el('span','','WATCHING');watchTools.append(prev,watchName,next);rootEl.append(watchTools);
       room=root.SpaceManArenaRoom.create({net:opts.net,build:opts.build,identity:opts.identity,hostOptions:opts.hostOptions,baseUrl:opts.baseUrl,lastRoom:opts.lastRoom,resume:opts.resume,onAutoStart:()=>{if(room&&room.isHost)startMatch();},canStart:()=>!(selections.format==='duel'&&roomStatus&&roomStatus.info.players>2),onChange:roomChanged,onSnapshot:networkSnapshot});
     }
     // Bring the fresh invite card into view so the host can hand the phone over straight away.
@@ -883,7 +947,7 @@
       actionBuffer = arena.createActionBuffer();
       if (!arena || !Array.isArray(arena.arenas) || !arena.arenas.length) throw new Error('Arena simulation is not available.');
       loadSelection();
-      rootEl = el('section', 'arena-root'); rootEl.id = 'arenaRoot'; const scopedStyle = el('style'); scopedStyle.textContent = STYLES + TWO_STYLES + ONLINE_STYLES + IDENTITY_STYLES + THUMB_STYLES; rootEl.append(scopedStyle); rootEl.hidden = true; rootEl.setAttribute('aria-label', 'Space Man Orbital Arena'); rootEl.dataset.touch = 'false';
+      rootEl = el('section', 'arena-root'); rootEl.id = 'arenaRoot'; const scopedStyle = el('style'); scopedStyle.textContent = STYLES + TWO_STYLES + ONLINE_STYLES + IDENTITY_STYLES + THUMB_STYLES + WATCH_STYLES + CHIP_STYLES; rootEl.append(scopedStyle); rootEl.hidden = true; rootEl.setAttribute('aria-label', 'Space Man Orbital Arena'); rootEl.dataset.touch = 'false';
       canvas = el('canvas', 'arena-canvas'); canvas.tabIndex = -1; canvas.setAttribute('aria-label', 'Orbital Arena match. Move with A and D or arrows. Space jumps twice. F pulses. Shift dashes. Escape pauses.');
       ctx = canvas.getContext('2d', { alpha: false }); rootEl.append(canvas);
       const header = el('header', 'arena-hud');
@@ -909,6 +973,22 @@
         touchActions.append(b); if (spec[0] === 'attack') pulseButton = b; if (spec[0] === 'dash') dashButton = b;
       }
       touchEl.append(stickZone, touchActions); rootEl.append(touchEl);
+      // Spectating replaces the fighter controls with one dock: who you watch,
+      // how to switch (arrows, a roster card, a swipe, ←/→ or the bumpers) and,
+      // offline, a rematch so a knocked-out pilot is never just waiting.
+      watchTools = el('div', 'arena-watch-tools'); watchTools.hidden = true; watchTools.setAttribute('role', 'group'); watchTools.setAttribute('aria-label', 'Spectator controls');
+      const prev = button('←', 'arena-icon-button arena-watch-step', () => cycleWatch(-1)); prev.id = 'arenaWatchPrevious'; prev.setAttribute('aria-label', 'Watch previous fighter');
+      const next = button('→', 'arena-icon-button arena-watch-step', () => cycleWatch(1)); next.id = 'arenaWatchNext'; next.setAttribute('aria-label', 'Watch next fighter');
+      const watchCopy = el('div', 'arena-watch-copy'); watchEyebrow = el('small', 'arena-watch-eyebrow', 'SPECTATING'); watchName = el('span', 'arena-watch-name', 'WATCHING'); watchName.id = 'arenaWatchName';
+      const hint = el('small', 'arena-watch-hint'); for (const [kind, text] of [['touch', 'Swipe or tap a card to switch'], ['keys', '← → or Q E to switch'], ['pad', 'LB RB or d-pad to switch']]) { const h = el('span', '', text); h.dataset.help = kind; hint.append(h); }
+      watchCopy.append(watchEyebrow, watchName, hint);
+      watchRematch = button('Rematch', 'arena-text-button arena-watch-rematch', () => startMatch()); watchRematch.id = 'arenaWatchRematch'; watchRematch.hidden = true;
+      watchTools.append(prev, watchCopy, next, watchRematch); rootEl.append(watchTools);
+      // A horizontal swipe across the stage flips fighters; taps and vertical drags do nothing.
+      canvas.addEventListener('pointerdown', e => { swipe = spectating() && e.isPrimary ? { x: e.clientX, y: e.clientY } : null; });
+      canvas.addEventListener('pointerup', e => { if (!swipe || !spectating()) return; const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y; swipe = null; if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) cycleWatch(dx < 0 ? 1 : -1); });
+      canvas.addEventListener('pointercancel', () => { swipe = null; });
+      rosterEl.addEventListener('click', e => { const card = e.target.closest('.arena-player-card'); if (card && spectating()) watchActor(Number(card.dataset.actor)); });
       modal = el('div', 'arena-modal');
       lobby = el('div', 'arena-lobby arena-dialog'); lobby.setAttribute('role', 'dialog'); lobby.setAttribute('aria-labelledby', 'arena-lobby-title');
       const lobbyTop = el('div', 'arena-lobby-top'); lobbyTop.append(el('span', 'arena-eyebrow', 'SPACE MAN / ORBITAL ARENA'), recoveryButton('← All games', 'arena-text-button', close));
@@ -1219,7 +1299,8 @@
       // Couch play frames the pair: follow their midpoint wherever the camera follows.
       const portrait = width < height * 1.15, human = local2 ? pairFocus() : watchedActor();
       const touch = (usingTouch || rootEl.dataset.touch === 'true') && !touchEl.hidden;
-      const top = touch && !portrait && identityHudBottom ? identityHudBottom : Math.max(identityHudBottom, (portrait ? (state.actors.length > 2 && width < 600 ? (state.actors.some(a => a.boss) ? 198 : 178) : 125) : 95) + identitySafeTop);
+      // The measured HUD is the top of play on phones; fixed guesses only cover the first frame.
+      const top = (touch || portrait) && identityHudBottom ? identityHudBottom : Math.max(identityHudBottom, (portrait ? (state.actors.length > 2 && width < 600 ? (state.actors.some(a => a.boss) ? 198 : 178) : 125) : 95) + identitySafeTop);
       if (touch && !thumbBounds) {
         const origin = rootEl.getBoundingClientRect(), zones = [stickZone, rootEl.querySelector('.arena-touch-actions')].map(n => n.getBoundingClientRect());
         // A resize may arrive while Pause hides the controls. Never cache
@@ -1227,13 +1308,18 @@
         if (zones.every(r => r.width > 0 && r.height > 0)) thumbBounds = { pods: zones.map(r => ({x:r.left-origin.left,y:r.top-origin.top,w:r.width,h:r.height})).sort((a,b)=>a.x-b.x), top: Math.min(...zones.map(r => r.top - origin.top)), side: Math.max(...zones.map(r => r.width + Math.min(r.left - origin.left, origin.right - r.right))) + 14 };
       }
       const lowerDeck = portrait || height > 600;
-      const bottom = touch && thumbBounds ? (lowerDeck ? height - thumbBounds.top + 16 : 24) : 66;
+      const dock = watchTools && !watchTools.hidden && watchTop > 0 ? height - watchTop + 12 : 0;
+      const bottom = dock || (touch && thumbBounds ? (lowerDeck ? height - thumbBounds.top + 16 : 24) : 66);
       const playHeight = Math.max(100, height - top - bottom), cy = top + playHeight / 2;
       let scale, x, y;
       if (portrait) {
-        scale = clamp(width / 390, .86, 1.32); const span = width / scale;
+        // Frame the stage's vertical extent (top shelf to lowest deck) in the
+        // clear area between the HUD and the thumbs: a tall phone shows every
+        // platform instead of empty void below the floor or sky above it.
+        const ys = a.platforms && a.platforms.length ? a.platforms.map(p => p.y) : [245, 460], lo = Math.min(...ys) - 70, hi = Math.max(...ys) + 70;
+        scale = clamp(Math.min(width / 360, playHeight / (hi - lo)), .86, 1.32); const span = width / scale, half = playHeight / 2 / scale;
         x = clamp(lerp(human.px, human.x, alpha) + human.w / 2 + human.facing * 28, span * .38, a.width - span * .38);
-        y = clamp(lerp(human.py, human.y, alpha) + human.h / 2, 245, 460);
+        y = hi - lo <= half * 2 ? (lo + hi) / 2 : clamp(lerp(human.py, human.y, alpha) + human.h / 2, lo + half, hi - half);
       } else {
         const safeWidth = touch && thumbBounds && !lowerDeck ? width - thumbBounds.side * 2 : width - 65;
         scale = Math.min(safeWidth / 880, playHeight / 430, 1.7);
@@ -1415,7 +1501,8 @@
       drawEdgeDanger(a, t);
       drawIdentity(c, alpha);
       drawIndicators(c, alpha);
-      if (isMatch() && localActor() && localActor().stocks <= 0 && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText(localSession ? 'Rescue shuttle incoming' : 'You’re out · watching ' + watchedActor().name, width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
+      // A knocked-out solo pilot gets the spectator dock; an expedition rescue says help is coming.
+      if (localRescue() && state.phase !== 'over') { ctx.textAlign = 'center'; ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = '#D9EAFF'; ctx.fillText('Rescue shuttle incoming', width / 2, height - (rootEl.dataset.touch === 'true' ? 170 : 85)); }
     }
     function actorIdentity(actor) {
       if (local2 && actor.controller === 'human' && !actor.boss) return { role: 'local', text: 'P' + actor.id, tag: 'PLAYER ' + actor.id };
@@ -1507,7 +1594,7 @@
       for (const actor of state.actors) {
         const card = rosterEl.querySelector('[data-actor="' + actor.id + '"]'); if (!card) continue;
         const identity = actorIdentity(actor); card.dataset.watching = String(identity.role === 'watching');
-        if (!actor.boss) card.querySelector('.arena-player-tag').textContent = identity.role === 'watching' ? 'WATCHING · ' + identity.tag : identity.tag;
+        if (!actor.boss) card.querySelector('.arena-player-tag').textContent = identity.role === 'watching' ? 'WATCHING' : identity.tag;
         if (actor.boss) {
           card.querySelector('.arena-player-tag').textContent = actor.boss.phase === 'recover' ? 'EXPOSED · PULSE' : actor.boss.phase === 'charging' ? (actor.boss.move === 'shockwave' ? 'JUMP WAVE' : 'DASH CLEAR') : 'GUARDIAN';
           card.querySelector('.arena-damage').textContent = Math.max(0, Math.ceil(actor.boss.health)) + ' HP';
@@ -1521,8 +1608,17 @@
         card.setAttribute('aria-label', actor.name + (local2 && actor.controller === 'human' ? ', player ' + actor.id : actor.controller === 'human' ? ', you' : '') + (state.format === 'teams' ? (actor.team === 0 ? ', blue team' : ', gold team') : '') + ', ' + actor.stocks + ' lives, ' + Math.round(actor.damage) + ' percent damage');
       }
       const human = state.actors.find(a => a.controller === 'human') || state.actors[0];
-      if (watchTools) { watchTools.hidden = !onlineActive() || canControl(); if (!watchTools.hidden) watchName.textContent = watchLabel(watchedActor().name); }
-      touchEl.hidden = (onlineActive() && !canControl()) || !!local2;
+      const watching = spectating(); rootEl.dataset.spectating = String(watching);
+      if (watchTools) {
+        watchTools.hidden = !watching; watchRematch.hidden = !watching || onlineActive();
+        watchTop = watching ? watchTools.getBoundingClientRect().top - (viewportBox?.top || 0) : 0;
+        if (watching) {
+          const left = state.actors.filter(a => a.stocks > 0 && !a.boss).length;
+          setText(watchEyebrow, (localActor() ? 'YOU’RE OUT' : 'SPECTATING') + ' · ' + left + ' LEFT');
+          setText(watchName, watchLabel(watchedActor().name));
+        }
+      }
+      touchEl.hidden = watching || (onlineActive() && !canControl()) || !!local2;
       const K = arena.constants, remaining = human.attackTicks > 0 ? human.attackTicks + K.ATTACK_RECOVERY : (human.attackCooldown || 0);
       const attackReady = human.charge > 0 ? clamp(human.charge / K.CHARGE_MAX, 0, 1) : 1 - clamp(remaining / (K.ATTACK_TICKS + K.ATTACK_RECOVERY), 0, 1), dashReady = 1 - clamp(human.dashCooldown / arena.constants.DASH_COOLDOWN, 0, 1);
       pulseMeter.style.transform = 'scaleX(' + attackReady + ')'; dashMeter.style.transform = 'scaleX(' + dashReady + ')';
