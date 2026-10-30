@@ -620,6 +620,7 @@ const characterHats = {
      (feet-anchored on the ground, centred in the air), crouch 0..1.2, launch, pop
      (stomp stretch), nearArm/farArm (override angles), wave, recoil, attack
      (0..1 progress), aimY (-1 up..1 down), hit, celebrate, hang, hangT, headTilt,
+     armBlend with nearArmTo/farArmTo (ease toward authored arm angles), frame(c) (body-frame hook),
      lookX, lookY, mood, lid, tick, id, eyes (expression override), gear ('blaster'
      | 'emitter' | null), gearColor, gearSpin, gearFx(c) (hand frame), accent, palette,
      guardian, halo (cached sprite behind the helmet), frost, hat (false hides it). */
@@ -650,6 +651,7 @@ const characterHats = {
     // centre pivot in the air, where stretch reads along the jump.
     if (onGround) { c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); c.translate(0, -17); }
     else { c.translate(0, -17); c.rotate(lean); c.scale(facing, 1); c.scale(sx, sy); }
+    if (typeof pose.frame === 'function') pose.frame(c);   // body frame (origin at the body centre): e.g. a clip
     // Torso bob twice per stride, plus the crouch sinking the upper body while the knees take it.
     const gait = Math.min(1, speed * 3);
     const bob = (onGround ? Math.sin(cyc * 2) * 1.5 * gait : 0) + crouch * 2.6;
@@ -718,6 +720,8 @@ const characterHats = {
     if (hit) { nearA = mix(nearA, 1.95, hit); farA = mix(farA, -1.25, hit); }   // flinch: guard up, far arm thrown back
     if (hang) { const s = Math.sin(num(pose.hangT, 0) * 6) * .07; nearA = 2.78 + s; farA = 2.62 + s; reach = 11; farReach = 12.5; }
     nearA += rec * .24;
+    const blend = clamp(num(pose.armBlend, 0), 0, 1);   // a caller's authored arm pose, eased over the motion
+    if (blend) { nearA = mix(nearA, num(pose.nearArmTo, nearA), blend); farA = mix(farA, num(pose.farArmTo, farA), blend); }
     if (Number.isFinite(pose.nearArm)) nearA = pose.nearArm;
     if (Number.isFinite(pose.farArm)) farA = pose.farArm;
     // Hands overlap the arm: the wrist flutters a beat behind a wave, and a fist curls in a cheer.

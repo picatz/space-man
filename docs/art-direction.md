@@ -122,8 +122,9 @@ The crew is drawn by `SpaceManArt` (2D) and `SpaceManRaceScene.actorMeshes`
 
 Every 2D astronaut is painted by one rig, `SpaceManArt.drawSpacefarer(c, x, y, scale,
 appearance, pose)`. Home, wardrobe, tiles and the Arena lobby reach it through
-`drawAvatar`; Arena matches call it directly; the Endless Run's `drawPlayer` is the
-reference it matches and will move onto it next. No mode adds its own body.
+`drawAvatar`; Arena matches and the Endless Run's `drawPlayer` call it directly (the Run
+feeds its sim and presentation rig, and adds pistol tricks and arrival morphs through
+the `gearFx`, `armBlend` and `frame` hooks). No mode adds its own body.
 
 - **Frame.** The Run sprite's units: a 24 x 34 hitbox, origin at the body centre,
   helmet r 11 at y -9, boots on y 16. `(x, y)` is the ground contact point under

@@ -6119,8 +6119,7 @@ function drawPlayer(alpha) {
     }
     return;
   }
-  const hw = p.w / 2, hh = p.h / 2;
-  const breathe = p.idle > 0 ? Math.sin(G.time * 3) * 0.03 : 0;
+  const hh = p.h / 2;
   // E13: arrival choreography — pure render morphs (offset/rot/scale/alpha/scan)
   // over the LIVE simulated player; tickAlive has already begun the ≤150ms
   // dissolve (V.k → 0) the instant any input lands.
@@ -6147,132 +6146,52 @@ function drawPlayer(alpha) {
     ctx.save(); ctx.globalAlpha = R.stomp * 0.8; ctx.strokeStyle = '#FFE59A'; ctx.lineWidth = 2.2 * R.stomp + 0.4;
     ctx.beginPath(); ctx.ellipse(R.stompX, R.stompY, rr, rr * 0.32, 0, 0, TAU); ctx.stroke(); ctx.restore();
   }
-  const crouch = clamp(R.crouch.x, 0, 1.2) * (calm ? 0.5 : 1);
-  const pop = calm ? 0 : R.stomp;                          // stomp: stretch tall, then settle
-  const sxR = 1 - pop * 0.1, syR = 1 + pop * 0.14;
-  ctx.save();
-  if (V && V.a < 1) ctx.globalAlpha = V.a;
-  if (p.onGround) {
-    // Feet-anchored squash (E8.1): pivot at the contact point so the 0.8/1.2
-    // squash compresses toward the platform instead of sinking the feet into
-    // it. Center pivot (else branch) stays for airborne stretch.
-    ctx.translate(vX, vY + hh);
-    ctx.rotate(lean);
-    ctx.scale(p.facing, 1);
-    ctx.scale((p.sqX + breathe) * sxR, (p.sqY - breathe) * syR);
-    ctx.translate(0, -hh);
-  } else {
-    ctx.translate(vX, vY);
-    ctx.rotate(lean);
-    ctx.scale(p.facing, 1);
-    ctx.scale((p.sqX + breathe) * sxR, (p.sqY - breathe) * syR);
-  }
-  if (V && V.s !== 1) ctx.scale(V.s, V.s);            // star delivery uncurl
-  if (V && V.scan < 0.999) scanClip(hh, V.scan);      // beam materialize bands
-  // Torso bob twice per stride, plus the landing crouch sinking the upper body
-  // while the feet stay planted (the knees take it).
-  const bob = (p.onGround ? Math.sin(p.runCycle * 2) * 1.5 : 0) + crouch * 2.6;
-
-  // Legs: two-bone IK (hip → knee → boot) in a cooler shade than the torso;
-  // back leg a touch darker for depth. The run cycle lifts the swing foot and
-  // bends the knee; air poses tuck on the rise and reach down to land.
-  const L = _legIn;
-  L.runCycle = p.runCycle; L.speed = p.onGround ? Math.min(Math.abs(p.vx) / CFG.maxRun, 1) : 0;
-  L.onGround = !!p.onGround; L.pose = p.pose; L.hang = !!p.hang; L.hangT = p.hang ? p.hang.t : 0;
-  L.launch = calm ? 0 : R.launch; L.stomp = pop; L.groundY = hh - 1; L.hipY = hh - 13 + crouch * 2.6; L.hipX = 4;
-  ANIM.legPose(L, _leg);
-  ctx.lineWidth = 4.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  for (let k = 0; k < 2; k++) {
-    const i = k * 6;
-    ctx.strokeStyle = k ? PAL.legF : PAL.legB;
-    ctx.beginPath(); ctx.moveTo(_leg[i], _leg[i + 1]); ctx.lineTo(_leg[i + 2], _leg[i + 3]); ctx.lineTo(_leg[i + 4], _leg[i + 5]); ctx.stroke();
-  }
-
-  ctx.fillStyle = PAL.pack; roundRect(-hw - 1, -6 + bob, 7, 16, 3); ctx.fill();
-
-  // Arms (E12): far arm in the legB tone behind the torso, near arm in
-  // PAL.arm over it, pistol always in the near glove. Angles are radians from
-  // hanging-down; +x is the facing direction, so the flip comes free.
-  const run = Math.min(Math.abs(p.vx) / CFG.maxRun, 1);
-  let nearA, farA;
-  if (p.onGround) {
-    const swing = Math.sin(p.runCycle + Math.PI) * 0.49 * run;   // ±28°, counter-phase vs the legs
-    const sway = Math.sin(G.time * TAU * 0.8) * 0.07;            // idle sway ±4° at 0.8 Hz
-    nearA = lerp(0.55 + sway, 1.35 + swing * 0.2, run);          // near arm carries the pistol level
-    // Far arm pumps from a lifted runner's carriage: the shoulder sits under a
-    // 16px torso and an 11px helmet, so only the backswing past the pack is
-    // ever on silhouette (it draws at leg length, 12, for the same reason).
-    farA = lerp(-0.5 + sway, -0.7 + swing, run);
-  } else {
-    const fall = clamp(p.pose / 4, -1, 1) * 0.5 + 0.5;   // 0 rising → 1 falling, eased upstream
-    nearA = lerp(2.18, 1.75, fall);    // reach 35° forward-up → floaty 10°-up fall drift
-    farA = lerp(-0.85, -0.55, fall);   // trail back past the pack → drift up
-  }
-  const dip = Math.max(0, 1 - p.sqY) * 1.1;   // landing: arms dip with the squash, recover with it
-  nearA -= dip; farA -= dip;
-  if (G.wave > 0) nearA = 2.35 + Math.sin(G.time * 14) * 0.26;   // attract hello, clear of the helmet
+  // The body is the shared Spacefarer rig (src/art.js): the same limbs, boots,
+  // mittens and motion as home, Arena and every lobby. The Run feeds it its live
+  // sim state and presentation rig; everything Run-only (pistol tricks, muzzle
+  // flash, arrival morphs) rides the rig's hooks.
+  const run = p.onGround ? Math.min(Math.abs(p.vx) / CFG.maxRun, 1) : 0;
   const ft = 0.15 - G.fireT;   // time since the last shot (sim-stepped clock)
   const rec = Math.pow(clamp(1 - ft / 0.09, 0, 1), 3);   // 14° recoil kick, cubic-out return
-  nearA += rec * 0.24;
-  if (V && V.nearA !== undefined && V.armW > 0) {   // E13: nap fold/stretch, hop reach, hang grip, goodbye wave
-    nearA = lerp(nearA, V.nearA, V.armW); farA = lerp(farA, V.farA, V.armW);
-  }
-  if (p.hang) {   // both arms up, clasping the lip; a subtle sway sells the dangle
-    const sway = Math.sin(p.hang.t * 6) * 0.07;
-    nearA = 2.78 + sway; farA = 2.62 + sway;
-  }
-  ctx.strokeStyle = PAL.legB; ctx.lineWidth = 4;
-  armCapsule(-5, -6 + bob, farA, 12, -1.8);
-
-  ctx.fillStyle = PAL.suit; roundRect(-8, -4 + bob, 16, 16, 6); ctx.fill();
-  ART.suitDetails(ctx, 0, bob, style);
-
-  ctx.strokeStyle = PAL.arm; ctx.lineWidth = 4;
-  const hand = armCapsule(5, -6 + bob, nearA, 10, -1.8);
-  let pa = (1.35 - nearA) * 0.65 - rec * 0.2;   // wrist keeps the pistol level at speed, tips with the pose
-  if (G.twirlT > 0) pa += (1 - G.twirlT / 0.22) * TAU;          // 360° twirl, 220 ms (chain ×3 / inspect)
-  else if (G.holsterT > 0) pa += (1 - G.holsterT / 0.3) * TAU;  // chain-bank holster spin
-  ctx.save(); ctx.translate(hand[0], hand[1]); ctx.rotate(pa);
-  drawPistol(PAL);
-  ctx.fillStyle = PAL.arm; ctx.beginPath(); ctx.arc(0, 0.4, 2.1, 0, TAU); ctx.fill();   // glove wraps the grip
-  if (G.fireT > 0) {   // muzzle flash: 2 frames/50 ms; emitter glow lingers 150 ms
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 1 - ft / 0.15;
-    ctx.drawImage(lanceGlow(G.cosmetics.suit), 6.5 - 5, -2.5 - 5, 10, 10);
-    if (ft < 0.05) {
-      const s = ft < 0.025 ? 16 : 11;   // two authored flash frames, no per-frame gradients
-      ctx.globalAlpha = 1;
-      ctx.drawImage(muzzleFlash(G.cosmetics.suit), 6.5 - s / 2, -2.5 - s / 2, s, s);
-    }
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-  }
+  let spin = 0;
+  if (G.twirlT > 0) spin = (1 - G.twirlT / 0.22) * TAU;          // 360° twirl, 220 ms (chain ×3 / inspect)
+  else if (G.holsterT > 0) spin = (1 - G.holsterT / 0.3) * TAU;  // chain-bank holster spin
+  const pose = _runnerPose;
+  pose.facing = p.facing; pose.t = G.time; pose.calm = calm; pose.onGround = !!p.onGround; pose.speed = run;
+  pose.runCycle = p.runCycle; pose.air = clamp(p.pose / 4, -1, 1); pose.lean = lean;
+  pose.squashX = p.sqX; pose.squashY = p.sqY; pose.crouch = R.crouch.x; pose.pop = R.stomp; pose.launch = R.launch;
+  pose.hang = !!p.hang; pose.hangT = p.hang ? p.hang.t : 0;
+  pose.wave = G.wave > 0 ? 1 : 0; pose.recoil = rec;
+  pose.armBlend = V && V.nearA !== undefined && V.armW > 0 ? V.armW : 0;   // E13: nap fold/stretch, hop reach, hang grip, goodbye wave
+  pose.nearArmTo = V ? V.nearA : 0; pose.farArmTo = V ? V.farA : 0;
+  pose.gear = POW.hidesPistol() ? null : 'blaster'; pose.gearSpin = spin; pose.gearFx = G.fireT > 0 ? runnerMuzzle : null;
+  pose.frame = V && V.scan < 0.999 ? runnerScan : null; _scanT = V ? V.scan : 1;
+  pose.palette = PAL; pose.halo = suitGlow(G.cosmetics.suit); pose.frost = !!SEASON.frost;
+  // Head: idle life tilts the helmet a hair (a slow look-around); the runner's own
+  // reaction rig drives lids and mood, so the rig's clock blink stays off (tick 10).
+  pose.headTilt = (!calm && p.idle > 1.5 && p.onGround) ? Math.sin(p.idle * 0.9) * 0.06 : 0;
+  pose.mood = ANIM.eyeMood(R, p.idle || 0); pose.lid = ANIM.lidAmount(R); pose.tick = 10;
+  pose.lookX = clamp((G.flare.x - x) / 300, -1, 1) * p.facing * G.glanceT; pose.lookY = p.onGround ? 0 : (p.vy < 0 ? -.5 : .5);
+  ctx.save();
+  if (V && V.a < 1) ctx.globalAlpha = V.a;
+  ART.drawSpacefarer(ctx, vX, vY + hh, V ? V.s : 1, G.cosmetics, pose);
   ctx.restore();
-
-  // Head group: idle life tilts the helmet a hair (a slow look-around) and the
-  // landing crouch nods it; everything below rides this one transform.
-  const idleTilt = (!calm && p.idle > 1.5 && p.onGround) ? Math.sin(p.idle * 0.9) * 0.06 : 0;
-  const headDip = crouch * 0.8;
-  ctx.save(); ctx.translate(0, -hh + 8 + bob * 0.35 + headDip); ctx.rotate(idleTilt - pop * 0.08); ctx.translate(0, hh - 8);
-  ctx.drawImage(suitGlow(G.cosmetics.suit), -20, -hh - 4, 40, 40);
-  const lookLocal = clamp((G.flare.x - x) / 300, -1, 1) * p.facing * G.glanceT;
-  // Arena's dark glass/LED read, with the runner's existing reaction rig.
-  ART.characterHelmet(ctx, 0, -hh + 8, style, {
-    mood: ANIM.eyeMood(R, p.idle || 0), lid: ANIM.lidAmount(R),
-    lookX: lookLocal, lookY: p.onGround ? 0 : (p.vy < 0 ? -.5 : .5),
-    tick: 10, calm: true,
-  }, false);
-  if (SEASON.frost) {   // E13 seasonal: frost creeps in from the visor edge (render-only, off under SHOT)
-    ctx.strokeStyle = 'rgba(228,248,255,0.9)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.ellipse(1, -hh + 8, 6.6, 5.6, 0, -2.8, -1.15); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(1, -hh + 8, 6.6, 5.6, 0, 0.7, 1.4); ctx.stroke();
-    ctx.fillStyle = 'rgba(228,248,255,0.85)';
-    ctx.fillRect(-3.4, -hh + 3.2, 1.2, 1.2); ctx.fillRect(4.2, -hh + 11, 1, 1);
+}
+const _runnerPose = {};
+let _scanT = 1;
+function runnerScan(g) { scanClip(G.player.h / 2, _scanT); }   // beam materialize bands, in the body frame
+// Muzzle flash in the glove's frame: 2 frames/50 ms; emitter glow lingers 150 ms.
+function runnerMuzzle(g) {
+  const ft = 0.15 - G.fireT;
+  g.globalCompositeOperation = 'lighter';
+  g.globalAlpha = 1 - ft / 0.15;
+  g.drawImage(lanceGlow(G.cosmetics.suit), 6.5 - 5, -2.5 - 5, 10, 10);
+  if (ft < 0.05) {
+    const s = ft < 0.025 ? 16 : 11;   // two authored flash frames, no per-frame gradients
+    g.globalAlpha = 1;
+    g.drawImage(muzzleFlash(G.cosmetics.suit), 6.5 - s / 2, -2.5 - s / 2, s, s);
   }
-  // Hat rides inside the same transform — it inherits facing flip and squash
-  // (the beanie squashes on landing for free).
-  ctx.save(); ctx.translate(0, -hh + 8); drawHat(G.cosmetics.hat, 1); ctx.restore();
-  ctx.restore();   // head group
-  ctx.restore();
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
 }
 
 /* ---- particles ---- */
