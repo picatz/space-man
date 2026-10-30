@@ -628,8 +628,11 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 .race-root .race-lobby-body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
   touch-action: pan-y; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #38617b transparent;
-  scroll-padding-block: 12px;
+  scroll-padding-block: 12px; padding-bottom: 16px;
 }
+/* The footer, not the dialog, owns the bottom edge: a slim safe-area margin, no
+   fade mask over the Launch caption, and no dead band under it. */
+.race-root .race-dialog.race-lobby { padding-bottom: calc(var(--race-bottom) + 8px); -webkit-mask-image: none; mask-image: none; }
 .race-root .race-track-list { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; max-height: none; overflow: visible; padding-right: 0; }
 .race-root .race-track { min-height: 58px; gap: 10px; padding: 6px 10px; }
 .race-root .race-track canvas { width: 68px; height: 41px; flex: 0 0 68px; }
@@ -750,9 +753,7 @@ body.gamepad-active .race-root [data-for=key] { display: none; }
 /* Phones: the lobby fills the screen down to the home indicator, cards share
    one height, and the stage reads as a framed window, not a clipped box. */
 @media (max-width: 760px) {
-  .race-root .race-modal:has(> .race-lobby:not([hidden])) { padding-bottom: calc(var(--race-bottom) + 6px); }
   .race-root .race-lobby { height: 100%; }
-  .race-root .race-lobby-body { padding-bottom: 14px; }
   .race-root .race-launch-bar .race-launch { min-height: 52px; }
   .race-root .race-setup .race-track-list { grid-auto-rows: 1fr; }
   .race-root .race-hero { border-radius: 14px; border: 1px solid #2a4258; background: radial-gradient(120% 90% at 50% 40%, #12223a, #0a1426 70%); }
