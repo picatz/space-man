@@ -1196,6 +1196,8 @@
         // A returned lobby or reopened pause menu must not focus an offscreen
         // control left above the previous scroll position.
         panel.scrollTop = 0;
+        const body = panel.querySelector(".race-lobby-body");
+        if (body) body.scrollTop = 0;
         const b = panel.querySelector("button");
         b?.focus({ preventScroll: true });
       } else canvas.focus({ preventScroll: true });
@@ -1490,7 +1492,7 @@
         description,
         options,
       );
-      // Sticky footer of the dialog: Start stays reachable at every size.
+      // Footer of the dialog: Start stays reachable at every size.
       const launchBar = el("div", "race-launch-bar");
       launchBar.append(
         launch,
@@ -1515,7 +1517,11 @@
       preferences.append(help);
       roomUtilities.append(preferences);
       grid.append(intro, setup, roomUtilities);
-      lobby.append(header, grid, launchBar);
+      // The lobby scrolls inside its body; Launch is a footer below it, never a
+      // sticky layer over the circuits, so nothing can hide behind it.
+      const lobbyBody = el("div", "race-lobby-body");
+      lobbyBody.append(header, grid);
+      lobby.append(lobbyBody, launchBar);
       pausePanel = el("div", "race-dialog race-compact race-pause-panel");
       pausePanel.setAttribute("role", "dialog");
       pausePanel.setAttribute("aria-modal", "true");
@@ -2096,9 +2102,11 @@
       const h = hero.getContext("2d"), W = 780, H = 340, c = R.course(selected.trackId);
       h.clearRect(0, 0, W, H);
       // Region glow behind the circuit, tinted by the course's planet.
-      const glow = h.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, W / 2);
+      // An ellipse that fades out before every edge, so the stage never reads as a clipped box.
+      const glow = h.createRadialGradient(0, 0, 0, 0, 0, 1);
       glow.addColorStop(0, c.planet + "40"); glow.addColorStop(1, c.planet + "00");
-      h.fillStyle = glow; h.fillRect(0, 0, W, H);
+      h.save(); h.translate(W / 2, H / 2); h.scale(W / 2, H / 2);
+      h.fillStyle = glow; h.fillRect(-1, -1, 2, 2); h.restore();
       for (let i = 0; i < 28; i++) {
         const tw = calm() ? .6 : .45 + .35 * Math.sin(now / 700 + i * 1.7);
         h.fillStyle = "rgba(220,238,255," + tw.toFixed(2) + ")";
@@ -2106,7 +2114,7 @@
       }
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const g of c.segments) { x0 = Math.min(x0, g.x); x1 = Math.max(x1, g.x); y0 = Math.min(y0, g.y); y1 = Math.max(y1, g.y); }
-      const pad = 46, k = Math.min((W - pad * 2) / (x1 - x0), (H - pad * 2) / (y1 - y0)),
+      const pad = 62, k = Math.min((W - pad * 2) / (x1 - x0), (H - pad * 2) / (y1 - y0)),
         ox = (W - (x1 - x0) * k) / 2 - x0 * k, oy = (H - (y1 - y0) * k) / 2 - y0 * k,
         map = (p) => [p.x * k + ox, p.y * k + oy];
       h.beginPath();

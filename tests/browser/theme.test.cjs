@@ -103,7 +103,7 @@ for (const [width,height] of sizes) test(`shared chrome ${width}x${height}: laun
   assert.ok(Number(await page.locator('#raceRoomInput').evaluate(n => parseFloat(getComputedStyle(n).fontSize))) >= 16, 'room input avoids iPhone focus zoom');
   await reachable(page, '#raceJoin');
   await page.locator('.race-online-panel > summary').click();
-  await page.locator('.race-lobby').evaluate(n => { n.scrollTop = 0; });
+  await page.locator('.race-lobby-body').evaluate(n => { n.scrollTop = 0; });
   await capture(page, `after-${width}x${height}-race`);
   await page.locator('.race-launch').click(); await page.locator('.race-root[data-screen=play]').waitFor();
   await capture(page, `after-${width}x${height}-race-driving`);
