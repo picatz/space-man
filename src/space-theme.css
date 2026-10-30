@@ -397,7 +397,7 @@ body.reduce-motion .overlay .btn { animation: none; transition: none; }
 #ovTogether .sub { margin-bottom: 24px; }
 #ovTogether .together-or { font: 600 13px/1.5 var(--sm-font-body); letter-spacing: 0; text-transform: none; margin: 26px 0 12px; color: var(--sm-copy); }
 #ovTogether .join-label, #ovTogether .join-hint { font: 450 14px/1.5 var(--sm-font-body); letter-spacing: 0; text-transform: none; }
-#ovTogether #btnTogetherBack { background: rgba(56,225,255,.045); border-color: rgba(143,197,230,.3); box-shadow: none; color: var(--sm-copy); }
+#ovTogether #btnTogetherBack { background: none; border: 0; box-shadow: none; color: var(--sm-copy); }
 #ovCallsign .callsign-cols { gap: 24px; margin: 28px 0; }
 #ovCallsign .callsign-col { min-width: 0; flex: 1; }
 #ovCallsign .callsign-word { font: 700 clamp(18px,4vw,24px)/1.4 var(--sm-font-body); width: 100%; letter-spacing: 0; text-shadow: none; text-transform: none; color: var(--sm-ink); overflow-wrap: anywhere; }

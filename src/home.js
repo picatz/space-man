@@ -56,6 +56,15 @@
     }
   }
   function hero(c,appearance) { backdrop(c);actors(c,appearance,null); }
+  // You in the middle, three friends in other suits gathering round: the hub's welcome.
+  function crew(c,appearance) {
+    star(c,30,24,2.5,'#ceebe988');star(c,292,20,3,'#ffd88799');star(c,250,70,2,'#ceebe966');star(c,70,74,2,'#ceebe966');
+    ellipse(c,160,86,128,9,'#9ff1ff14');
+    const friend=(x,y,size,suit,eyes)=>root.SpaceManArt.drawAvatar(c,x,y,size,{...appearance,suit,hat:'none',eyes},{reduceMotion:true});
+    friend(70,50,58,appearance.suit==='mint'?'lilac':'mint','bright');friend(252,50,58,appearance.suit==='rose'?'gold':'rose','determined');
+    friend(118,46,66,appearance.suit==='gold'?'coral':'gold','bright');
+    root.SpaceManArt.drawAvatar(c,184,42,78,appearance,{reduceMotion:true});
+  }
   function tile(c,mode,appearance) {
     star(c,207,27,3,'#ceebe966');star(c,47,22,2,'#ceebe966');
     if(mode==='run') {
@@ -214,7 +223,9 @@
   },render(appearance) {
     lastAppearance=appearance;
     const c=surface('homeHero',640,400);if(c&&root.SpaceManArt?.drawAvatar)hero(c,appearance);
-    [['homeRunArt','run'],['homeArenaArt','arena'],['homeRaceArt','race']].forEach(([id,mode])=>{const g=surface(id,260,156);if(g&&root.SpaceManArt?.drawAvatar)tile(g,mode,appearance);});
+    // The Play Together hub reuses the same game art and crew, so both doors into a game look alike.
+    [['homeRunArt','run'],['homeArenaArt','arena'],['homeRaceArt','race'],['togetherRunArt','run'],['togetherArenaArt','arena'],['togetherRaceArt','race']].forEach(([id,mode])=>{const g=surface(id,260,156);if(g&&root.SpaceManArt?.drawAvatar)tile(g,mode,appearance);});
+    const k=surface('togetherCrew',320,96);if(k&&root.SpaceManArt?.drawAvatar)crew(k,appearance);
     queueFit();
   }});
 })(typeof window!=='undefined'?window:globalThis);
