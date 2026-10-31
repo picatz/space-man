@@ -298,6 +298,12 @@ body.reduce-motion #ovAttract *, body.battery-saver #ovAttract * { animation: no
   #ovAttract #btnHero:hover:not(:active) { transform: translateY(-2px); box-shadow: 0 6px 0 #b9802a, 0 14px 34px #ffbf3c4a; }
 }
 
+/* Shorter tablet portrait (768x1024): a smaller hero and tighter rows leave room
+   for the Today strip, so the home fits without zooming its 44px targets down. */
+@media (min-width: 760px) and (max-width: 1000px) and (min-height: 700px) and (max-height: 1100px) {
+  #ovAttract .home-stage { gap: 16px; }
+  #homeHero { width: 300px; height: 188px; }
+}
 /* Tablet portrait: Suit Up sits under the callsign instead of floating at the edge. */
 @media (min-width: 760px) and (max-width: 1000px) and (min-height: 700px) {
   #ovAttract #btnWardrobe { position: static; margin: 8px auto 0; }
