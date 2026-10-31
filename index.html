@@ -8113,6 +8113,16 @@ function rejectMessage(e) {
   return 'relay unreachable — the room may have ended, or your network blocks it. A host can supply a custom relay in Settings.';
 }
 let joinResumeKey = null;   // set when this join is a return to a seat we already held (page reload)
+// Play/Watch give way to Cancel while a join is pending. Focus that sat on a
+// choice (restored there when the callsign picker closed, or landed there by
+// the dialog's first-control focus a frame earlier) moves to Cancel instead of
+// falling to <body>, so keyboard and controller players are never stranded.
+function hideJoinChoices() {
+  const choices = $('joinChoices'), active = document.activeElement;
+  const stranded = (choices.contains && choices.contains(active)) || ((!active || active === document.body) && topOverlayId() === 'ovJoin');
+  choices.style.display = 'none';
+  if (stranded && !SHOT && typeof $('btnJoinNotNow').focus === 'function') $('btnJoinNotNow').focus({ preventScroll: true });
+}
 async function acceptInvite(role) {
   if (!joinPayload) return;
   const resuming = !!joinResumeKey, resumeKey = joinResumeKey; joinResumeKey = null;
@@ -8132,7 +8142,7 @@ async function acceptInvite(role) {
   if (peek && peek.mode === 'race') { $('btnRace').onclick(); if (raceUI && raceUI.active) { hideAllOverlays(); await raceUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
   if (peek && peek.mode === 'arena') { $('btnArena').onclick(); if (arenaUI && arenaUI.active) { hideAllOverlays(); await arenaUI.joinInvite(joinPayload, role, resumeKey || undefined); stripInviteHash(); } return; }
   if (peek && peek.custom) $('joinCustomDir').classList.add('show');
-  $('joinChoices').style.display = 'none';
+  hideJoinChoices();
   // Cancel stays reachable the whole time: a slow relay or a host who never answers must not
   // strand anyone on a spinner. Each stage says what it is waiting for.
   $('btnJoinNotNow').textContent = 'Cancel';
@@ -8222,7 +8232,7 @@ async function resumeHosting(tok) {
   const req = ++joinReq;
   joining = true;
   $('joinTitle').textContent = 'Restoring Your Room…';
-  $('joinChoices').style.display = 'none'; $('btnJoinNotNow').style.display = ''; $('btnJoinNotNow').textContent = 'Cancel';
+  hideJoinChoices(); $('btnJoinNotNow').style.display = ''; $('btnJoinNotNow').textContent = 'Cancel';
   setJoinState('Reconnecting to the relay…');
   hideAllOverlays(); showOverlay('ovJoin');
   try {
