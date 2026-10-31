@@ -163,6 +163,15 @@ mouse, keys (arrows, 1-9, Enter) and controllers all work. Rules live in
 `src/tabletop.js` (the shared turn-based kit), rooms in `src/table-room.js`, and
 `docs/universe.md` has the roadmap for the modes that build on it.
 
+## Starlings · Echo the light
+
+Starlings are small creatures of light in the Bloom garden rafts. One sings a
+short call on four points (left, up, right, down) and you echo it in time:
+tap the points, use the arrows or WASD, or the d-pad or face buttons. Three clean
+echoes and it chooses to ride in your helmet light and joins your diary; a sloppy
+echo makes it slow down and sing again. Nothing is caught or fought. Rules live
+in `src/starling.js`, the scene in `src/starling-ui.js`.
+
 ## Star Circuit · Arcade Racing
 
 Choose **Star Circuit** from the title for an original perspective

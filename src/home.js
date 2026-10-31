@@ -84,6 +84,14 @@
       line(c,[at(0),at(8)],'#ffffffcc',2.5);
       root.SpaceManArt.drawAvatar(c,70,62,56,appearance,{reduceMotion:true,lookX:1});
       root.SpaceManArt.drawAvatar(c,192,62,56,{...appearance,suit:'gold',hat:'none',eyes:'bright'},{reduceMotion:true,lookX:-1});
+    } else if(mode==='starlings') {
+      // A Bloom raft, you looking up, and a Starling singing to one lit point.
+      ellipse(c,92,128,70,10,'#1f9e4e');ellipse(c,92,126,62,6,'#4ef07a88');
+      root.SpaceManArt.drawAvatar(c,84,84,70,appearance,{reduceMotion:true,lookX:1,lookY:-.6,mood:1});
+      ellipse(c,214,66,14,6,'#2c6b57');ellipse(c,172,30,14,6,'#2c6b57');ellipse(c,214,110,14,6,'#2c6b57');ellipse(c,138,66,14,6,'#4ef07acc');
+      const S=root.SpaceManStarlingUI;
+      if(S&&S.drawStarling) S.drawStarling(c,176,66,15,{core:'#4EF07A',petal:'#1F9E4E'},{open:.9,glowBoost:.4,look:[-.6,.3]});
+      star(c,152,66,5,'#e6fff2');
     } else {
       c.strokeStyle='#94cab444';c.lineWidth=31;c.beginPath();c.ellipse(127,102,110,50,-.2,0,TAU);c.stroke();
       c.strokeStyle='#add5b455';c.lineWidth=2;c.beginPath();c.ellipse(127,102,110,50,-.2,0,TAU);c.stroke();
@@ -232,7 +240,7 @@
     lastAppearance=appearance;
     const c=surface('homeHero',640,400);if(c&&root.SpaceManArt?.drawAvatar)hero(c,appearance);
     // The Play Together hub reuses the same game art and crew, so both doors into a game look alike.
-    [['homeRunArt','run'],['homeArenaArt','arena'],['homeRaceArt','race'],['togetherRunArt','run'],['togetherArenaArt','arena'],['togetherRaceArt','race'],['homeLanternArt','lanterns'],['togetherLanternArt','lanterns']].forEach(([id,mode])=>{const g=surface(id,260,156);if(g&&root.SpaceManArt?.drawAvatar)tile(g,mode,appearance);});
+    [['homeRunArt','run'],['homeArenaArt','arena'],['homeRaceArt','race'],['togetherRunArt','run'],['togetherArenaArt','arena'],['togetherRaceArt','race'],['homeLanternArt','lanterns'],['homeStarlingArt','starlings'],['togetherLanternArt','lanterns']].forEach(([id,mode])=>{const g=surface(id,260,156);if(g&&root.SpaceManArt?.drawAvatar)tile(g,mode,appearance);});
     const k=surface('togetherCrew',320,96);if(k&&root.SpaceManArt?.drawAvatar)crew(k,appearance);
     queueFit();
   }});

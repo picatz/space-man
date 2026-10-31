@@ -88,18 +88,21 @@ test('hard beats easy far more often than not, and the game is deterministic', (
 });
 
 test('mode registry: unique ids and buttons, a region for each, and Constellations on the table wire', () => {
-  const ids = M.list().map(m => m.id), buttons = M.list().flatMap(m => [m.home, m.host]);
+  const ids = M.list().map(m => m.id), buttons = M.list().flatMap(m => [m.home, m.host]).filter(Boolean);
   assert.equal(new Set(ids).size, ids.length); assert.equal(new Set(buttons).size, buttons.length);
   const regions = ['orbital', 'bloom', 'ember', 'prism', 'aurora', 'neon', 'nebula'];
   for (const m of M.list()) assert.ok(regions.includes(m.region), m.id + ' region');
   assert.equal(M.forWire('table', 'lanterns').id, 'lanterns');
   assert.equal(M.get('lanterns').game, g.id);
+  assert.equal(M.get('starlings').region, 'bloom');
+  assert.equal(M.forWire(null), null, 'a solo mode never answers for a room');
 });
 
 test('every registered mode has its home card and Play Together pick in the page', () => {
   const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'index.html'), 'utf8');
   for (const m of M.list()) {
     assert.match(html, new RegExp('id="' + m.home + '"[^>]*>.*' + m.name), m.id + ' home card');
-    assert.match(html, new RegExp('id="' + m.host + '"'), m.id + ' Play Together pick');
+    if (m.online) assert.match(html, new RegExp('id="' + m.host + '"'), m.id + ' Play Together pick');
+    else assert.equal(m.host, null, m.id + ' is solo, so it has no Play Together pick');
   }
 });
