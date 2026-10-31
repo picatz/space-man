@@ -45,7 +45,7 @@
     const lamp = root.SpaceManSeasons && season ? root.SpaceManSeasons.lanternColor(season) : null;
     return Object.freeze({ region: region.name, top, horizon, glow: mixRgb(horizon, accent, 0.16),
       ground: top, haze: mixRgb(horizon, top, 0.5), stars: 320,
-      lanterns: lamp ? 24 : 0, lanternColor: lamp ? unitRgb(lamp) : null });
+      lanterns: lamp ? 44 : 0, lanternColor: lamp ? unitRgb(lamp) : null });
   }
 
   // Render-only Circuit design tokens. Physics retains its authored course data.

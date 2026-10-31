@@ -169,12 +169,10 @@
       const n = at(0, size * 1.3), s = at(0, -size * 1.3), e = at(size, 0), w = at(-size, 0);
       push(n, color); push(e, color); push(s, color); push(n, color); push(s, color); push(w, color);
     }
-    // Seasonal lanterns: warm hexagons on the horizon line, each with a dim halo.
-    // They stay under about 7 degrees so they read as a distant festival, never
-    // as clutter up among the HUD chips at the top of a phone screen.
+    // Seasonal lanterns: warm hexagons low over the horizon, each with a dim halo.
     const lanterns = clamp(Math.floor(finite(sky.lanterns, 0)), 0, 64), lamp = vector(sky.lanternColor, [1, 0.6, 0.3]);
     for (let i = 0; i < lanterns; i++) {
-      const e = 1.5 + 5.5 * ((i * 0.3819660113) % 1), a = i * 2.39996323 + 0.7, d = point(e, a).map(n => n * 0.97);
+      const e = 2 + 12 * ((i * 0.3819660113) % 1), a = i * 2.39996323 + 0.7, d = point(e, a).map(n => n * 0.97);
       const east = normalize(cross([0, 1, 0], d), [1, 0, 0]), north = cross(d, east), size = 0.005 + 0.004 * ((i * 0.7548776662) % 1);
       const at = (x, y) => [d[0] + east[0] * x + north[0] * y, d[1] + east[1] * x + north[1] * y, d[2] + east[2] * x + north[2] * y];
       for (const [scale, color] of [[1.9, mix(tint(e), lamp, 0.18)], [1, lamp]]) {

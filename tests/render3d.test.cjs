@@ -463,7 +463,7 @@ test('seasonal sky lanterns sit low over the horizon in their own warm color', (
   assert.equal((lit.length - plain.length) / 9, 5 * 2 * 6 * 3, 'each lantern is a hexagon with a halo');
   let lamps = 0;
   for (let i = plain.length; i < lit.length; i += 9) {
-    assert.ok(lit[i + 1] > 0 && lit[i + 1] < .15, 'between the horizon and about 8 degrees, clear of the HUD');
+    assert.ok(lit[i + 1] > 0 && lit[i + 1] < .3, 'between the horizon and about 15 degrees');
     if (lit[i + 6] === 1 && Math.abs(lit[i + 7] - .5) < 1e-6) lamps++;
   }
   assert.equal(lamps, 5 * 6 * 3);

@@ -635,20 +635,13 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 .race-root .race-track strong { font-size: 12px; line-height: 1.3; }
 .race-root .race-track small { font-size: calc(9px * var(--ui-scale, 1)); letter-spacing: .06em; }
 .race-root .race-launch-bar {
-  position: relative; z-index: 1; flex: 0 0 auto; padding: 12px 0 2px;
+  position: relative; flex: 0 0 auto; padding: 12px 0 2px;
   display: flex; flex-direction: column; align-items: stretch;
 }
-/* The footer is a solid dock: options scrolling beneath it (Audio on a phone)
-   must never show through around Launch. It bleeds sideways and down to the
-   screen edge so no strip of the body peeks past it; a short fade above it
-   hints that the body scrolls. Both paint only. */
-.race-root .race-launch-bar::after {
-  content: ''; position: absolute; z-index: -1; inset: 0 -24px calc(-1 * var(--race-bottom) - 24px); pointer-events: none;
-  background: #080f24; border-top: 1px solid #ffffff10;
-}
+/* A short fade above the footer hints that the body scrolls; it paints only. */
 .race-root .race-launch-bar::before {
-  content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 18px; pointer-events: none;
-  background: linear-gradient(0deg, #080f24, #080f2400);
+  content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 14px; pointer-events: none;
+  background: linear-gradient(0deg, #080f24c0, #080f2400);
 }
 .race-root .race-launch-bar .race-local-note { margin: 8px 0 0 auto; }
 .race-root .race-track:last-child:nth-child(odd) { grid-column: 1 / -1; }
