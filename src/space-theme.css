@@ -119,9 +119,6 @@ body.gamepad-active :is(.arena-root, .race-root) :is(button, summary, input):foc
 #ovAttract .mode-link::before { content: '›'; position: absolute; right: 17px; top: 50%; transform: translateY(-50%); color: var(--mode-accent); font: 500 25px/1 var(--sm-font-body); }
 #ovAttract .mode-link:hover:not(:disabled):not(:active) { background: #193049; border-color: var(--mode-accent); box-shadow: none; }
 #ovAttract .mode-link:active { transform: translateY(1px); }
-#ovAttract #btnDaily { margin: 12px 0 0; padding: 9px 12px; min-height: 50px; font-size: calc(11px * var(--ui-scale, 1)); background: rgba(9,20,37,.46); }
-#ovAttract #btnDaily .daily-theme { font-family: var(--sm-font-body); letter-spacing: .04em; color: var(--sm-copy); }
-#ovAttract #btnDaily .daily-info { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: .01em; color: var(--sm-gold); }
 #ovAttract .daily-blurb { margin: 6px 0 0; max-width: none; color: var(--sm-muted); opacity: 1; text-align: left; font-size: calc(11px * var(--ui-scale, 1)); }
 #ovAttract #attractMedals { margin: 0 0 10px !important; color: var(--sm-muted); }
 #ovAttract .medal-empty { font: 500 calc(10px * var(--ui-scale, 1))/1.5 var(--sm-font-body); letter-spacing: .05em; opacity: 1; }
@@ -171,7 +168,6 @@ body.gamepad-active :is(.arena-root, .race-root) :is(button, summary, input):foc
   #ovAttract .panel { --px: 12px; --py: 12px; }
   .launch-heading h1 { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: .09em; }
   #ovAttract .mode-link { font-size: 12px; }
-  #ovAttract #btnDaily { font-size: calc(10px * var(--ui-scale, 1)); }
   #ovAttract #attractRow .btn { font-size: calc(10px * var(--ui-scale, 1)); }
 }
 @media (orientation: landscape) and (max-height: 560px) {
@@ -180,7 +176,6 @@ body.gamepad-active :is(.arena-root, .race-root) :is(button, summary, input):foc
   #ovAttract .mode-link { min-height: 52px; padding-top: 7px; padding-bottom: 7px; font-size: 12px; }
   #ovAttract .mode-link::after { font-size: calc(10px * var(--ui-scale, 1)); }
   #ovAttract .launch-heading { margin-bottom: 8px; }
-  #ovAttract #btnDaily { margin-top: 8px; min-height: 44px; padding: 6px 10px; }
   #ovAttract .daily-blurb { display: none !important; }
   .race-root .race-title { font-size: 34px; }
 }

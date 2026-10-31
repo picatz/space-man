@@ -225,9 +225,17 @@ bronze, Pilot silver, Ace gold. Each Star Circuit keeps your best place
 (1st gold, 2nd silver, 3rd bronze). Medals show on the lobby cards, and Records
 counts the whole shelf across modes.
 
-## Daily Course and challenges
+## Today: dailies, streak and challenges
 
-**Daily Course** on the title screen (or Y / Triangle on a controller) runs the
+The **Today** strip on the home screen holds one daily per game, the same for
+everyone that UTC day (`src/daily.js`): the Daily Course, an Orbital Arena match
+(stage, format and CPU skill), a Star Circuit race (circuit and pace) and a
+**Daily Chart**, a Constellations puzzle where you light a line in two moves
+(three on Sundays) against a perfect Flare, with three tries. Each tile shows
+today's result, a streak counts the days you play any daily, and **Share** copies
+a spoiler-free summary of all four. Settling all four in one day logs Full Sky.
+
+**Daily Course** (the Run tile, or Y / Triangle on a controller) runs the
 same course for everyone in the world that UTC day, under one of seven themes
 (low gravity, alien swarm, star rush, sky bridges, meteor field, heavy metal,
 afterburner) named on the card. The card shows today's best and attempts; they

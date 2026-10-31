@@ -108,7 +108,11 @@ test('daily record tracks today only and the death card reports it', (t) => {
   assert.equal(c.run('loadDaily().runs'), 3);
   assert.equal(c.run('loadDaily().best'), 450);
   c.run('renderDailyCard()');
-  assert.equal(c.elements.get('dailyInfo').textContent, 'BEST 450 · 3 RUNS');
+  assert.equal(c.elements.get('dailyInfo').textContent, 'BEST 450');
+  // The Today strip's record and streak follow the same runs.
+  assert.deepEqual(JSON.parse(c.run('JSON.stringify(todayRec().run)')), { best: 450, runs: 3 });
+  assert.equal(c.run('todayRec().streak.count'), 1);
+  assert.equal(c.elements.get('btnDaily').dataset.state, 'done');
 });
 
 test('the death card shares a spoiler-free result with a challenge link', async (t) => {
@@ -130,10 +134,10 @@ test('the death card shares a spoiler-free result with a challenge link', async 
 test('a title screen left up across 00:00 UTC rolls the Daily card to the new day', (t) => {
   const c = solo(t), t0 = Date.UTC(2026, 8, 28, 23, 59, 30);
   c.run(`Date.now = () => ${t0}; saveJSON(LS.daily, {day:'2026-09-28', best:777, bestDist:10, runs:2, gen:2}); showAttract();`);
-  assert.equal(c.elements.get('dailyInfo').textContent, 'BEST 777 · 2 RUNS');
+  assert.equal(c.elements.get('dailyInfo').textContent, 'BEST 777');
   c.run(`Date.now = () => ${t0 + 60000}; for (let i=0;i<60;i++) update();`);
   assert.equal(c.run('G.mode'), 'attract');
-  assert.equal(c.elements.get('dailyInfo').textContent, 'NEW TODAY');
+  assert.equal(c.elements.get('dailyInfo').textContent, 'NEW');
   assert.equal(c.run('dailyCardDay'), '2026-09-29');
   assert.equal(c.run('dailyCourse().day'), '2026-09-29');
 });

@@ -1769,6 +1769,7 @@
       raceChallenge = localSession ? null : activeChallenge();
       target.hidden = !raceChallenge;
       if (raceChallenge) setText(target, "BEAT " + fmt(raceChallenge.time));
+      else if (!localSession && isDaily()) { target.hidden = false; setText(target, dailySpec.best ? "TODAY " + fmt(dailySpec.best) : "DAILY CIRCUIT"); }
       cosmeticRound++;
       if (root.SpaceManCosmetics && typeof opts.appearance === "function") { const human = state.actors.find(a => a.controller === "human"); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       previousPose = null;
@@ -1918,6 +1919,16 @@
         lastFinish = { trackId: state.trackId, difficulty: state.difficulty, time: me.time };
         syncChoices();
       } else lastFinish = null;
+      if (me && state.laps === 3 && isDaily() && typeof opts.onDaily === "function") {
+        let rec = null;
+        try { rec = opts.onDaily("race", { time: me.finished ? me.time : null, place: me.position }); } catch (_) {}
+        if (rec?.race?.best) {
+          dailySpec.best = rec.race.best;
+          const p = el("p", "race-challenge-result", rec.improved ? "Today’s best on the daily circuit: " + fmt(rec.race.best) + "." : "Today’s best stands at " + fmt(rec.race.best) + ".");
+          p.dataset.beat = String(!!rec.improved);
+          resultRows.append(p);
+        }
+      }
       shareButton.hidden = !shareable;
       setText(shareButton, "Share your time");
       adaptPace(!me ? "none" : me.position === 1 ? "win" : !me.finished || me.position >= 4 ? "loss" : "none");
@@ -2235,6 +2246,12 @@
       return faster;
     }
     // The challenge applies while its circuit and pace are the ones picked, offline.
+    // Today's circuit (src/daily.js) applies while its circuit and pace are the ones picked, solo.
+    let dailySpec = null;
+    function isDaily() {
+      return !!dailySpec && !onlineActive() && !localSession && !sharedSession &&
+        dailySpec.trackId === selected.trackId && dailySpec.difficulty === selected.difficulty;
+    }
     function activeChallenge() {
       return challenge && !onlineActive() && !localSession && !sharedSession &&
         challenge.trackId === selected.trackId && challenge.difficulty === selected.difficulty ? challenge : null;
@@ -2998,6 +3015,19 @@
         if (!room) return Promise.resolve(false);
         roomDetails.open = true;
         return room.join(payload, role, true, resumeKey);
+      },
+      // Home's Today strip: today's circuit and pace, straight onto the grid.
+      daily(spec) {
+        if (!spec || !R.tracks.some((t) => t.id === spec.trackId)) return false;
+        if (!active) open();
+        if (onlineActive() || localSession || sharedSession) return false;
+        dailySpec = { trackId: spec.trackId, difficulty: Object.hasOwn(PACE_NAMES, spec.difficulty) ? spec.difficulty : "normal", best: spec.best || null };
+        challenge = null;
+        selected = Object.assign({}, selected, { trackId: dailySpec.trackId, difficulty: dailySpec.difficulty });
+        syncChoices();
+        syncRoomChoices();
+        start();
+        return view === "play";
       },
       // A friend's #circuit= link: open the lobby on that circuit and pace with
       // their time to beat. Returns false for a malformed link.

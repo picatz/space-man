@@ -86,3 +86,6 @@ Each of these shipped once. Check for the class, not just the instance.
   (restored there when the callsign picker closed), so focus fell to `<body>` and a keyboard or pad
   player was stranded. It only showed on slow machines. When a state change hides a control, move
   focus to its replacement (`hideJoinChoices()` in `index.html`).
+- **A taller home shrinks tablet targets.** The home zooms itself down to fit desktop and tablet
+  windows (`SpaceManHome.fit`), so adding a home row on a 768x1024 iPad shrank Settings below 44 px.
+  Anything new on the home must fit 768x1024 unzoomed; `theme.test.cjs` checks the targets there.

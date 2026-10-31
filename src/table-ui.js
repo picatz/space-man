@@ -158,6 +158,8 @@
     let rootEl = null, canvas = null, ctx = null, lobbyEl = null, matchEl = null, dialogWrap = null, dialogEl = null, statusEl = null, hintEl = null, roundEl = null, live = null;
     let heroCanvas = null, levelButtons = [], friendCard = null, friendStatus = null, friendError = null, inviteCard = null, inviteLink = null, btnHost = null, btnShare = null, recordEl = null;
     let inertSiblings = [], cells = [], active = false, view = 'lobby', mode = null, level = 'normal', match = null, room = null, roomStatus = null;
+    // Today's chart (mode 'daily'): { day, par, state } plus the tries spent and whether this attempt still counts.
+    let daily = null;
     let raf = 0, width = 0, height = 0, dpr = 1, sky = null, layout = null, cursor = 4, hover = -1, keyNav = false;
     let anim = { placed: new Map(), gone: [], winAt: 0, roundAt: 0, shake: 0, fx: [] }, shown = null, cpuTimer = 0, nextTimer = 0, padPrev = {}, padRepeat = 0, audio = null, lastAnnounced = '';
     const listeners = [];
@@ -188,7 +190,7 @@
     function canAct(seat) {
       const m = current();
       if (!m || m.phase !== 'playing' || game.turn(m.state) !== seat) return false;
-      if (mode === 'solo') return seat === 1;
+      if (mode === 'solo' || mode === 'daily') return seat === 1;
       if (mode === 'pass') return true;
       return !!roomStatus && roomStatus.mySeat === seat && !roomStatus.connection && !!roomStatus.seats[1];
     }
@@ -411,12 +413,19 @@
       if (!canAct(seat)) { if (m.phase === 'playing') { buzz('select'); announce(statusText(m)); } return; }
       if (!game.moves(m.state).includes(i)) { buzz('select'); announce(SPOT[i] + ' is already lit.'); return; }
       if (mode === 'online') { room.play(i); return; }
+      if (mode === 'daily' && !daily.practice && m.state.ply === daily.state.ply) {
+        let rec = null;
+        if (typeof opts.onDaily === 'function') try { rec = opts.onDaily('chart', { started: true }); } catch (_) {}
+        if (rec && rec.chart) daily.tries = rec.chart.tries;
+        daily.live = true;
+      }
       match = kit.play(game, match, seat, i); sync();
     }
     function cpuTurn() {
       cpuTimer = 0;
-      if (mode !== 'solo' || !match || match.phase !== 'playing' || game.turn(match.state) !== 2) return;
-      const move = kit.bestMove(game, match.state, Object.assign({ seed: (match.seed ^ match.revision * 2654435761) >>> 0 }, kit.LEVELS[level]));
+      if ((mode !== 'solo' && mode !== 'daily') || !match || match.phase !== 'playing' || game.turn(match.state) !== 2) return;
+      // On the daily chart Flare defends perfectly, so a line found is a line earned.
+      const move = kit.bestMove(game, match.state, Object.assign({ seed: (match.seed ^ match.revision * 2654435761) >>> 0 }, kit.LEVELS[mode === 'daily' ? 'hard' : level]));
       match = kit.play(game, match, 2, move); sync();
     }
     // One place reacts to every change, local or from the host: diff what is on screen against the new match.
@@ -443,10 +452,53 @@
       }
       shown = m;
       clearTimers();
-      if (m.phase === 'playing' && mode === 'solo' && game.turn(m.state) === 2) cpuTimer = root.setTimeout(cpuTurn, 520 + (m.revision * 137 % 380));
+      if (mode === 'daily' && dailyEnded(m)) { renderStatus(); syncCells(); return; }
+      if (m.phase === 'playing' && (mode === 'solo' || mode === 'daily') && game.turn(m.state) === 2) cpuTimer = root.setTimeout(cpuTurn, 520 + (m.revision * 137 % 380));
       if (m.phase === 'round' && mode !== 'online') nextTimer = root.setTimeout(() => { match = kit.next(game, match); sync(); }, ROUND_PAUSE_MS);
       if (m.phase === 'over') { recordResult(m); showOver(m); }
       renderStatus(); syncCells();
+    }
+    /* ---- Daily chart ---- */
+    const SpaceDaily = () => root.SpaceManDaily;
+    // Your moves left in this attempt: par minus the stars you have lit since the chart was set.
+    const dailyMovesLeft = m => daily.par - Math.ceil((m.state.ply - daily.state.ply) / 2);
+    function startDaily(spec) {
+      if (!spec || !spec.state) return false;
+      if (!active) open();
+      clearTimers(); if (room && room.active) room.close();
+      daily = { day: spec.day, par: spec.par, state: spec.state, tries: spec.tries | 0, practice: !!spec.practice, live: false };
+      mode = 'daily'; restartDaily(true);
+      return true;
+    }
+    function restartDaily(first) {
+      match = Object.freeze(Object.assign({}, kit.startMatch(game, { seed: 1, target: 1 }), { state: daily.state }));
+      shown = null; if (first) enterMatch(); else { hideDialog(); sync(); try { cells[cursor].focus({ preventScroll: true }); } catch (_) {} }
+      announce('Daily chart. Light a line in ' + daily.par + (daily.par === 1 ? ' move.' : ' moves.') + ' Your oldest star fades when you light a fourth.');
+    }
+    // The attempt is over when a line is lit or your moves run out; report it once and offer the next step.
+    function dailyEnded(m) {
+      const solved = m.phase !== 'playing' && m.result && m.result.seat === 1;
+      if (!solved && m.phase === 'playing' && !(game.turn(m.state) === 1 && dailyMovesLeft(m) <= 0)) return false;
+      if (dialogWrap.dataset.kind === 'daily') return true;
+      let rec = null;
+      const counted = !daily.practice && daily.live;
+      if (counted && solved && typeof opts.onDaily === 'function') try { rec = opts.onDaily('chart', { solved: true }); } catch (_) {}
+      daily.live = false;
+      const D = SpaceDaily(), chartRec = rec && rec.chart;
+      const out = !solved && counted && daily.tries >= D.CHART_TRIES, left = D.CHART_TRIES - daily.tries;
+      if (solved || out) daily.practice = true;
+      const ORD = ['', 'first', 'second', 'third'];
+      const title = solved ? 'Chart solved!' : out ? 'Flare held the chart' : 'Not this time';
+      const note = el('p', '', solved ? (chartRec && chartRec.solved ? 'Lit on your ' + ORD[chartRec.solved] + ' try. Share it, then see you tomorrow.' : 'Nicely lit. Practice runs never change your daily result.')
+        : out ? 'Three tries spent. Tomorrow brings a new chart; keep practising this one if you like.'
+        : !counted ? 'Flare found the block. Watch which of your stars fades next.'
+        : 'Flare found the block. Watch which of your stars fades next. ' + left + (left === 1 ? ' try' : ' tries') + ' left today.');
+      const actions = [];
+      if (solved && typeof opts.onShareDaily === 'function') actions.push(button('Share today', 'primary', () => opts.onShareDaily()));
+      actions.push(button(solved || out ? 'Practice this chart' : 'Try again', solved ? 'ghost' : 'primary', () => restartDaily()), button('Home', 'ghost', () => close()));
+      buzz(solved ? 'celebrate' : 'warn');
+      dialog('daily', title, [note], actions);
+      return true;
     }
     let recorded = 0;
     function recordResult(m) {
@@ -462,6 +514,7 @@
       if (m.phase === 'round') return m.result.seat ? pilot(m.result.seat).name + (pilot(m.result.seat).name === 'You' ? ' light' : ' lights') + ' a line!' : 'A long night. Nobody lit a line.';
       if (m.phase === 'over') return pilot(m.scores[0] > m.scores[1] ? 1 : 2).name + (pilot(m.scores[0] > m.scores[1] ? 1 : 2).name === 'You' ? ' win the chart!' : ' wins the chart!');
       const seat = game.turn(m.state), who = pilot(seat);
+      if (mode === 'daily') { const left = dailyMovesLeft(m); return seat === 1 ? 'Your move · ' + left + (left === 1 ? ' move' : ' moves') + ' left' : 'Flare defends…'; }
       if (mode === 'solo') return seat === 1 ? 'Your turn · light a star' : 'Flare is choosing a star…';
       if (mode === 'online') return roomStatus && roomStatus.mySeat === seat ? 'Your turn · light a star' : roomStatus && !roomStatus.mySeat ? who.name + ' to light' : who.name + ' is choosing a star…';
       return who.name + ' · your turn';
@@ -470,9 +523,9 @@
       const m = current();
       if (!m) { statusEl.textContent = mode === 'online' ? 'Connecting to the table…' : ''; hintEl.textContent = ''; roundEl.textContent = ''; return; }
       statusEl.textContent = statusText(m);
-      roundEl.textContent = 'Round ' + m.round + ' · first to ' + m.target;
+      roundEl.textContent = mode === 'daily' ? (daily.practice ? 'Daily chart · practice' : 'Daily chart · try ' + Math.min(SpaceDaily().CHART_TRIES, daily.live ? daily.tries : daily.tries + 1) + ' of ' + SpaceDaily().CHART_TRIES) : 'Round ' + m.round + ' · first to ' + m.target;
       const seat = game.turn(m.state), fade = m.phase === 'playing' ? game.fading(m.state, seat) : -1;
-      hintEl.textContent = m.phase !== 'playing' ? '' : fade >= 0 && canAct(seat) ? 'Your ' + SPOT[fade] + ' star fades when you light the next one.' : m.state.ply < 2 && canAct(seat) ? 'Tap a star · keys 1-9 or arrows · A on a controller' : '';
+      hintEl.textContent = m.phase !== 'playing' ? '' : mode === 'daily' && m.state.ply === daily.state.ply ? 'Light a line in ' + daily.par + '. Flare blocks every threat.' : fade >= 0 && canAct(seat) ? 'Your ' + SPOT[fade] + ' star fades when you light the next one.' : m.state.ply < 2 && canAct(seat) ? 'Tap a star · keys 1-9 or arrows · A on a controller' : '';
       announce(statusText(m) + (hintEl.textContent && fade >= 0 ? '. ' + hintEl.textContent : ''));
     }
     function syncCells() {
@@ -523,6 +576,7 @@
       const rules = el('p', '', 'Light any dark star. You keep three lit; lighting a fourth lets your oldest fade (it flickers first). Three of yours in a straight line makes a constellation and wins the round. First to two rounds takes the chart.');
       const actions = [button('Resume', 'primary', () => { hideDialog(); try { cells[cursor].focus({ preventScroll: true }); } catch (_) {} })];
       if (mode === 'online') actions.push(button('Leave table', 'ghost', () => { hideDialog(); room.close(); view = 'lobby'; mode = null; showView(); }));
+      else if (mode === 'daily') { if (daily.practice) actions.push(button('Restart chart', 'ghost', () => { hideDialog(); restartDaily(); })); }
       else actions.push(button('Restart match', 'ghost', () => { hideDialog(); startLocal(mode); }), button('Back to the chart room', 'ghost', () => { clearTimers(); hideDialog(); view = 'lobby'; mode = null; match = null; showView(); }));
       actions.push(button('Home', 'ghost', () => close()));
       dialog('menu', 'Constellations', [rules], actions);
@@ -708,11 +762,11 @@
     }
 
     return Object.freeze({
-      open, close, hostRoom, joinInvite,
+      open, close, hostRoom, joinInvite, daily: startDaily,
       get active() { return active; },
       get screen() { return !active ? 'closed' : view === 'lobby' ? 'lobby' : !dialogWrap.hidden ? dialogWrap.dataset.kind : 'match'; },
       // Test and automation seam: the visible match, pilots and mode.
-      debug: () => ({ mode, level, match: current(), pilots: [pilot(1), pilot(2)], status: statusEl ? statusEl.textContent : '', room: room ? room.status() : null }),
+      debug: () => ({ mode, level, daily, match: current(), pilots: [pilot(1), pilot(2)], status: statusEl ? statusEl.textContent : '', room: room ? room.status() : null }),
     });
   }
   root.SpaceManTableUI = Object.freeze({ create, seats: SEATS });

@@ -250,7 +250,7 @@ for (const [width, height] of SIZES) test(`secondary ${width}x${height}: records
   assert.deepEqual(await page.locator('#trophyScores td:nth-child(2)').allTextContents(), TOP5.map(r => r.initials));
   assert.equal(await page.locator('#trophyScores tr').first().locator('.sc').innerText(), (98765).toLocaleString('en-US'));
   assert.match(await page.locator('#trophyStats').innerText(), /RUNS 27 · KILLS 148 · BEST DIST 1782m/);
-  assert.match(await page.locator('#logCount').innerText(), /^3 \/ 22 FOUND$/);
+  assert.match(await page.locator('#logCount').innerText(), /^3 \/ 23 FOUND$/);
   assert.equal(await page.locator('#logbook .log-row:not(.unfound)').count(), 3);
   assert.equal(await page.locator('#logbook').evaluate(n => getComputedStyle(n).overflowY), 'visible', 'logbook shares the full-panel scroll');
   await fit(page, 'ovTrophy'); await targets(page, 'ovTrophy');

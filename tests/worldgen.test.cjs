@@ -261,7 +261,7 @@ test('the Daily card names today’s theme', (t) => {
   const c = solo(t), C = course();
   c.run('renderDailyCard()');
   const th = C.theme(c.run('COURSE.dayKey(Date.now())'));
-  assert.equal(c.elements.get('dailyTheme').textContent, th.title);
+  assert.equal(c.elements.get('dailyTheme').textContent.toUpperCase(), th.title);
   assert.equal(c.elements.get('dailyBlurb').textContent, th.blurb);
 });
 
@@ -517,7 +517,7 @@ test('a same-day Daily record from the gen-1 Daily never becomes the gen-2 cours
   // What the previous build wrote on an upgrade day: no generator field (= gen 1).
   c.run(`saveJSON(LS.daily, { day: '${day}', best: 777, bestDist: 90, runs: 4 })`);
   c.run('renderDailyCard()');
-  assert.equal(c.elements.get('dailyInfo').textContent, 'NEW TODAY', 'the card must not show a best from a different course');
+  assert.equal(c.elements.get('dailyInfo').textContent, 'NEW', 'the card must not show a best from a different course');
   assert.equal(c.run('dailyCourse().target'), 0, 'the old score is not the themed course’s target');
   c.run('startRun({ course: dailyCourse() }); G.score = 300; G.dist = 40; G.finalScore = undefined; finalizeDeath();');
   assert.deepEqual(json(c, 'return loadJSON(LS.daily, null)'), { day, best: 300, bestDist: 40, runs: 1, gen: 2 }, 'a fresh, versioned record');

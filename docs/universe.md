@@ -76,17 +76,27 @@ fills, every move also schedules a loss, and the flicker turns that into a
 readable threat. In 30 games of Hard against Hard, 28 ended in a line rather
 than a stalemate, so the game is not solved at the top level.
 
-Next for it: a **Daily Chart** (one seeded mid-game position, "light a line in
-three", a result grid to share), and a **Comet** variant on 4x4 where a comet
+Shipped for it: the **Daily Chart** (see Today in the Reach below). Next: a **Comet** variant on 4x4 where a comet
 crosses one row each round and snuffs what it touches.
 
-### Daily across the Reach (next): one seed a day for every mode
+### Today in the Reach (shipped): one daily for every mode
 
-Endless Run already has a Daily Course. Extend it to one daily card per mode
-(a run seed, a circuit and ghost, a chart puzzle), a streak in Records, and a
-copyable result like `Space Man 10/30 ✦ Run 4,210 · Circuit 1:12.4 · Chart ✓✓·`.
-Small effort, the strongest retention evidence, and it sends players into
-every mode.
+`src/daily.js` (`SpaceManDaily`) picks one daily per mode from the UTC day, so
+everyone plays the same ones: the Daily Course (Run, themed by `src/course.js`),
+an Arena stage, format and CPU skill, a Star Circuit and pace, and a **Daily
+Chart**: a Constellations position where you light a line within two moves
+(three on Sundays) while Flare defends perfectly, in three tries. Every chart is
+checked by the solver to need exactly that many moves. Stages and circuits cycle
+through every option before repeating and never run two days in a row.
+
+The home **Today** strip shows the four with their status, a streak (days with
+any daily played; missing a day starts a new one, the best is kept) and a Share
+button with a spoiler-free result:
+`Space Man · Today 2026-10-31 / Run 4,210 · Arena ✓ ♥♥ · Circuit 1:12.40 · Chart ✓ 1st try / ✦ 3-day streak`.
+Settling all four in a day logs **Full Sky** in the logbook.
+
+Next: a Circuit ghost of your daily best, a weekly Arena boss, and a streak
+shelf in Records.
 
 ### Dock Night (next): party pack for 2 to 8 on one screen plus phones
 
@@ -166,7 +176,7 @@ netcode load is the risk.
 | Spacefarer rig, crew, regions, seasons, FX | `src/art.js`, `src/fx.js`, `src/seasons.js` | shipped |
 | Room invite card, QR scan, join by code | `src/room-invite.js`, `src/qr*.js` | shipped |
 | Spectating | arena watch, race strip; tabletop watchers see the board | partial (thread "Build spectating for every mode") |
-| Daily seeds and shareable results | runner only | next |
+| Daily seeds, streak and shareable results | `src/daily.js` (`SpaceManDaily`), home Today strip | shipped |
 | Progression: logbook, cosmetics rewards, codex | `SpaceManLogbook`, `src/cosmetics.js` | partial; codex is design |
 | Host screen + phone controller surfaces | none | next (Dock Night) |
 | Mode shell: lobby, pause menu, results, input routing shared by every overlay | each mode builds its own | next; extract from Constellations and Arena once a third mode needs it |
@@ -194,7 +204,7 @@ Agents ship most of this game, so the guard rails are part of the product:
 ## Roadmap
 
 1. Constellations (shipped as Lantern Lines, renamed so it reads as space, not a holiday): the tabletop kit, table rooms and registry.
-2. Daily across the Reach, starting with the Daily Chart.
+2. Today in the Reach: a daily for every mode, with the Daily Chart (shipped).
 3. Dock Night with three party games, plus the shared mode shell.
 4. Starlings (picked by Fable): the befriending call first, then Starlings in
    the existing modes, glow duels and the map.
