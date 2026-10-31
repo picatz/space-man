@@ -2,7 +2,7 @@
 // Grounded props (docs/qa-checklist.md, "Grounded 3D props"): every piece of
 // Star Circuit scenery stands on the ground or on another piece that does.
 // Only a landmark's own art may float, on purpose (Nebula's orb gates and their
-// studs, Forge's cinder shards); anything else that hovers reads as a bug.
+// studs); anything else that hovers reads as a bug.
 const test = require('node:test'), assert = require('node:assert/strict');
 const R = require('../src/race.js'), Scene = require('../src/race-scene.js');
 
@@ -35,7 +35,11 @@ const rests = (p, on) => p.min[0] <= on.max[0] + .5 && on.min[0] <= p.max[0] + .
 for (const { id } of R.tracks) {
   test(`${id}: scenery near the racing line stands on the ground`, () => {
     const c = R.course(id), scene = Scene.course(c, R.at), scenery = scene.meshes[scene.meshes.length - 1];
-    const all = pieces(scenery.vertices), standing = all.filter(p => p.min[1] <= 1);
+    // The far skyline (sky mesh) counts too, below the stars, curtains and
+    // planets that hang high on purpose: a tower or furnace on the horizon
+    // must still meet the ground.
+    const skyline = pieces(scene.meshes[0].vertices).filter(p => p.min[1] < 150);
+    const all = [...pieces(scenery.vertices), ...skyline], standing = all.filter(p => p.min[1] <= 1);
     let loose = all.filter(p => p.min[1] > 1);
     for (let grew = true; grew;) {
       grew = false;
