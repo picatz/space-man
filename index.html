@@ -937,6 +937,7 @@
           <button class="home-mode home-arena" id="btnArena" aria-label="Orbital Arena. Battle CPUs or friends."><canvas id="homeArenaArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Orbital Arena</span><span class="home-mode-caption" aria-hidden="true">Bump, dodge, KO.</span></button>
           <button class="home-mode home-race" id="btnRace" aria-label="Star Circuit. Arcade hover racing."><canvas id="homeRaceArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Star Circuit</span><span class="home-mode-caption" aria-hidden="true">Catch a boost</span></button>
           <button class="home-mode home-lanterns" id="btnLanterns" aria-label="Constellations. Keep three stars lit and make a line, against Flare or a friend."><canvas id="homeLanternArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Constellations</span><span class="home-mode-caption" aria-hidden="true">Connect three stars</span></button>
+          <button class="home-mode home-starlings" id="btnStarlings" aria-label="Starlings. Echo a little light in time and it may choose to ride with you."><canvas id="homeStarlingArt" width="260" height="156" aria-hidden="true"></canvas><span class="mode-link">Starlings</span><span class="home-mode-caption" aria-hidden="true">Echo the light</span></button>
         </div>
         <div class="home-together-row" id="homeTogetherRow">
         <button class="home-run-together" id="btnTogether" aria-label="Play together. Run, battle, race or duel with friends. Share a code or QR."><i class="home-together-icon" aria-hidden="true"><i class="home-room-live"></i><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.2a5 5 0 0 1 5 4.8v1"/></svg></i><span class="home-together-text"><strong id="homeTogetherTitle">Play together</strong><em id="homeTogetherSub">Any game with friends · code or QR</em></span><b aria-hidden="true">↗</b></button>
@@ -1284,6 +1285,8 @@
 <script src="src/tabletop.js"></script>
 <script src="src/table-room.js"></script>
 <script src="src/table-ui.js"></script>
+<script src="src/starling.js"></script>
+<script src="src/starling-ui.js"></script>
 
 <script>
 "use strict";
@@ -2992,6 +2995,7 @@ const DISCOVERIES = [
   // Across the Reach: Orbital Arena and Star Circuit log here too (SpaceManLogbook).
   { id: 'flawless', name: 'UNTOUCHED ORBIT', glyph: '◎', hint: 'win an arena match without losing a life.' },
   { id: 'photo',  name: 'PHOTO FINISH',    glyph: '⚑', hint: 'win a star circuit race by a whisker.' },
+  { id: 'starling', name: 'FIRST STARLING', glyph: '✿', hint: 'echo a small light in the garden rafts.' },
   // Season stamps (src/seasons.js): finish any game while the Reach celebrates.
   { id: 'dusk',   name: 'HALLOWEEN',       glyph: '◈', hint: 'play while the pumpkins are out, late october.' },
   { id: 'harvest', name: 'THANKSGIVING',   glyph: '❦', hint: 'drop by for the harvest, late november.' },
@@ -9371,6 +9375,22 @@ function getTableUI() {
     onClose() { closeModeOverlay('btnLanterns'); },
   });
   return tableUI;
+}
+// Starlings: befriend small creatures of light (src/starling.js rules, src/starling-ui.js scene).
+let starlingUI = null;
+$('btnStarlings').onclick = () => {
+  if (expedition) return;
+  if (G.mode !== 'attract' || (arenaUI && arenaUI.active) || (raceUI && raceUI.active) || (tableUI && tableUI.active) || !window.SpaceManStarlingUI) return;
+  clearInput(); Audio.suspend(); getStarlingUI().open();
+};
+function getStarlingUI() {
+  if (!starlingUI) starlingUI = window.SpaceManStarlingUI.create({
+    storageKey: BUILD.storageKey('sm2.starlings.v1'), appearance: equippedAppearance, buzz,
+    settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
+    onBefriend() { window.SpaceManLogbook.discover('starling'); },
+    onClose() { closeModeOverlay('btnStarlings'); },
+  });
+  return starlingUI;
 }
 function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({

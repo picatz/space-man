@@ -104,10 +104,17 @@ silly. Three to start, all original:
 Needs: a host-screen layout, a phone controller surface, a party round loop on
 top of the room layer.
 
-### Starlings (design): exploring the Reach and befriending its light
+### Starlings (building): exploring the Reach and befriending its light
 
-The large dream, and the one most likely to become a clone if rushed, so it
-stays on paper until Kent picks it. Original pillars:
+The large dream, and the one most likely to become a clone if rushed. Fable
+picked it as the next big mode (October 31) because it ties every other mode
+together. **Slice 1, Starling Call, is shipped:** a Starling in the Bloom rafts
+sings two to six pulses of light on four points, and you echo them in time.
+Three clean echoes and it chooses to ride in your helmet light and joins your
+diary; a sloppy echo makes it slow down and sing again; three missed beats and
+it is shy today. Rules in `src/starling.js`, scene in `src/starling-ui.js`.
+Never: catching, owning, levelling, types, fights, "collect them all" copy, or a
+growing Simon-style memory test. Original pillars:
 
 - **Starlings** are small creatures of light shed by Old Flare's flares. Each
   region's light shapes them: Bloom Starlings grow leaves, Ember ones crackle,
@@ -123,8 +130,11 @@ stays on paper until Kent picks it. Original pillars:
   arena or a circuit, which gives the whole game a collection loop without
   selling anything.
 
-Staged plan: codex and three Starlings that appear in existing modes, then the
-befriending puzzle, then glow duels, then the explorable map.
+Staged plan: the befriending call (shipped), then Ember and Prism Starlings
+that appear briefly in Run and Arena, then glow duels on the Constellations
+board, then the explorable map. Fable's next ideas: a Starling sings its own
+name, befriended ones drift round the home hero, and duet rooms where two
+pilots alternate verses.
 
 ### Star Charts (design): a solo roguelike voyage of cards
 
@@ -186,6 +196,5 @@ Agents ship most of this game, so the guard rails are part of the product:
 1. Constellations (shipped as Lantern Lines, renamed so it reads as space, not a holiday): the tabletop kit, table rooms and registry.
 2. Daily across the Reach, starting with the Daily Chart.
 3. Dock Night with three party games, plus the shared mode shell.
-4. Kent picks the large one: Starlings, Star Charts or Hold the Dock. Starlings
-   is the recommendation because it ties every mode together, but it starts as a
-   codex inside the existing modes, not as a new world.
+4. Starlings (picked by Fable): the befriending call first, then Starlings in
+   the existing modes, glow duels and the map.

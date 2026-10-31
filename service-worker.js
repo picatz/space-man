@@ -63,7 +63,7 @@ const SHELL = [
   './src/qr-scan.js',
   './src/netsmooth.js',
   './src/net.js', './src/journey-online.js', './src/journey-room.js', './src/journey-ui.js',
-  './src/modes.js', './src/tabletop.js', './src/table-room.js', './src/table-ui.js',
+  './src/modes.js', './src/tabletop.js', './src/table-room.js', './src/table-ui.js', './src/starling.js', './src/starling-ui.js',
   './manifest.json',
   './favicon.png',
   './screenshots/gameplay-wide.png',
