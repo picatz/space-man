@@ -554,6 +554,9 @@ test('secondary first invite: cancel before choosing; commit dismisses picker; C
   assert.equal(await page.locator('#ovCallsign').isVisible(), false, 'committed picker is fully dismissed during the pending join');
   assert.equal(await page.locator('.overlay.show').count(), 1, 'only the pending Join dialog owns input');
   assert.equal(await page.locator('#btnJoinNotNow').innerText(), 'Cancel');
+  // Whichever order the pending state and the dialog's focus land in, focus
+  // on a hidden Play/Watch moves to Cancel instead of dropping to <body>.
+  assert.equal(await page.evaluate(() => { $('joinChoices').style.display = ''; $('btnJoinPlay').focus(); hideJoinChoices(); return document.activeElement.id; }), 'btnJoinNotNow', 'a pending join keeps focus on Cancel');
   await require('../harness.cjs').until(() => relayClient.encryptedSent > 0, 'guest sends its genuine encrypted admission request');
   assert.ok(relayClient.sockets > 0 && relayClient.encryptedSent > 0, 'pending state follows a real simulated-relay connection attempt');
   const saved = (await stored(page, 'cosmetics')).callsign;

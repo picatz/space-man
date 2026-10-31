@@ -81,3 +81,7 @@ Each of these shipped once. Check for the class, not just the instance.
   floated above the road. Scenery is now checked for support in `race-grounded-props.test.cjs`.
 - **Sky decor among the HUD.** Dusk Week lanterns floated up to 14 degrees high and read as HUD pips
   beside the timer chip. Keep sky decor within a few degrees of eye level (`render3d.test.cjs`).
+- **Focus on a control that then hides.** A pending join hid Play/Watch while focus sat on Play
+  (restored there when the callsign picker closed), so focus fell to `<body>` and a keyboard or pad
+  player was stranded. It only showed on slow machines. When a state change hides a control, move
+  focus to its replacement (`hideJoinChoices()` in `index.html`).
