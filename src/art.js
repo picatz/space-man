@@ -38,14 +38,14 @@
   // Sky dome colors for a circuit (SpaceManRender3D scene.sky): the region's
   // gradient, a horizon glow lit by its accent and darker space below. haze is
   // the fog color, so distant track sinks into the sky instead of into black.
-  // A lantern season (SpaceManSeasons state) floats lanterns over the horizon.
+  // A lantern season (SpaceManSeasons state) strings lanterns along the skyline.
   function circuitSky(course, season = root.SpaceManSeasons && root.SpaceManSeasons.current()) {
     const region = REGIONS[CIRCUIT_REGIONS[course && course.id]] || REGIONS.orbital;
     const top = unitRgb(region.skyTop), horizon = unitRgb(region.horizon), accent = unitRgb(region.accent);
     const lamp = root.SpaceManSeasons && season ? root.SpaceManSeasons.lanternColor(season) : null;
     return Object.freeze({ region: region.name, top, horizon, glow: mixRgb(horizon, accent, 0.16),
       ground: top, haze: mixRgb(horizon, top, 0.5), stars: 320,
-      lanterns: lamp ? 44 : 0, lanternColor: lamp ? unitRgb(lamp) : null });
+      lanterns: lamp ? 30 : 0, lanternColor: lamp ? unitRgb(lamp) : null });
   }
 
   // Render-only Circuit design tokens. Physics retains its authored course data.

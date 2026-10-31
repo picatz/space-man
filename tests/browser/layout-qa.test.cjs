@@ -101,19 +101,24 @@ function audit([W, H]) {
   for (const n of controls) {
     let b = n.getBoundingClientRect();
     if (b.width < 1 || b.height < 1) continue;
+    // The center and four points 20% in from each corner: a button half under
+    // a bar still reads as broken even when its middle is clear.
     const covered = () => {
       b = n.getBoundingClientRect();
-      const x = Math.min(W - 1, Math.max(0, b.left + b.width / 2)), y = b.top + b.height / 2;
-      if (y < 0 || y >= H) return null;
-      const top = document.elementFromPoint(x, y);
-      if (!top || top === n || n.contains(top) || top.contains(n)) return null;
-      const cover = pinned(top);
-      return cover && !cover.contains(n) ? cover : null;
+      for (const [fx, fy] of [[.5, .5], [.2, .2], [.8, .2], [.2, .8], [.8, .8]]) {
+        const x = b.left + b.width * fx, y = b.top + b.height * fy;
+        if (x < 0 || x >= W || y < 0 || y >= H) continue;
+        const top = document.elementFromPoint(x, y);
+        if (!top || top === n || n.contains(top) || top.contains(n)) continue;
+        const cover = pinned(top);
+        if (cover && !cover.contains(n)) return cover;
+      }
+      return null;
     };
     if (!covered()) continue;
     n.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
     const cover = covered();
-    if (cover) problems.push(`${label(n)} is covered by fixed/sticky ${label(cover)}`);
+    if (cover) problems.push(`${label(n)} is covered or partly covered by fixed/sticky ${label(cover)}`);
   }
   // Edge pass: only content inside a vertical scroller that shares it with
   // pinned chrome can slide under that chrome. Each control and line of copy
@@ -173,12 +178,20 @@ test('layout qa: the audit catches overflow, off-screen and covered controls', a
     const cover = Object.assign(document.createElement('div'), { id: 'qaCover' });
     const b = document.getElementById('btnPlay').getBoundingClientRect();
     cover.style.cssText = `position:fixed;left:0;right:0;top:${b.top}px;height:${b.height}px;z-index:2147483647`;
-    document.body.append(wide, cover);
+    // A bar over only the lower 40% of a control: its middle stays clear.
+    const tray = document.createElement('div'), lone = Object.assign(document.createElement('button'), { id: 'qaLone', textContent: 'lone' });
+    tray.style.cssText = 'position:fixed;left:20px;top:8px;z-index:2147483646';
+    lone.style.cssText = 'width:200px;height:50px';
+    tray.append(lone);
+    const half = Object.assign(document.createElement('div'), { id: 'qaHalf' });
+    half.style.cssText = 'position:fixed;left:0;right:0;top:38px;height:40px;z-index:2147483647';
+    document.body.append(wide, cover, tray, half);
     return eval(`(${audit})`)([390, 844]);
   }, audit.toString());
   assert.ok(problems.some(p => p.startsWith('page overflows horizontally')), problems.join('\n'));
   assert.ok(problems.some(p => p.startsWith('#qaWide extends past')), problems.join('\n'));
-  assert.ok(problems.some(p => /is covered by fixed\/sticky #qaCover$/.test(p)), problems.join('\n'));
+  assert.ok(problems.some(p => / covered or partly covered by fixed\/sticky #qaCover$/.test(p)), problems.join('\n'));
+  assert.ok(problems.some(p => /^#qaLone .*partly covered by fixed\/sticky #qaHalf$/.test(p)), problems.join('\n'));
 });
 
 test('layout qa: the audit catches copy and controls hidden behind a sticky footer', async t => {
@@ -272,5 +285,97 @@ for (const [width, height] of [[390, 844], [844, 390]]) {
     await page.waitForFunction(() => arenaUI.snapshot()?.actors[0].stocks > 0);
     await page.locator('.arena-touch').waitFor();
     assert.equal(await page.locator('.arena-watch-tools').isVisible(), false, 'a rematch puts the pilot back in control');
+  });
+}
+
+// Held input must not make the HUD flicker or collide. With buttons held,
+// every frame for about two seconds: no HUD element blinks on and off (more
+// than two visibility changes; a toast that shows once and leaves is two),
+// the HUD chips never overlap each other, and held buttons keep their pressed
+// look. Runs in the page; returns human-readable problems.
+function watchHud({ root, chips, held, pressed, frames }) {
+  const host = document.querySelector(root);
+  const label = n => n.tagName.toLowerCase() + (typeof n.className === 'string' && n.className.trim() ? '.' + n.className.trim().split(/\s+/).join('.') : '') + (n.textContent.trim() ? ` "${n.textContent.trim().slice(0, 18)}"` : '');
+  const visible = n => !!n.getClientRects().length && n.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  const flips = new Map(), last = new Map(), problems = new Set();
+  const overlaps = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+  return new Promise(resolve => {
+    let frame = 0;
+    const tick = () => {
+      for (const n of host.querySelectorAll('*')) {
+        if (n.tagName === 'CANVAS' || n.closest('[role=dialog]') || n.parentElement?.closest('[hidden]')) continue;
+        const on = visible(n);
+        if (last.has(n) && last.get(n) !== on) flips.set(n, (flips.get(n) || 0) + 1);
+        last.set(n, on);
+      }
+      const boxes = [...host.querySelectorAll(chips)].filter(visible).map(n => [n, n.getBoundingClientRect()]).filter(([, b]) => b.width > 0 && b.height > 0);
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++)
+        if (!boxes[i][0].contains(boxes[j][0]) && !boxes[j][0].contains(boxes[i][0]) && overlaps(boxes[i][1], boxes[j][1])) problems.add(`${label(boxes[i][0])} overlaps ${label(boxes[j][0])}`);
+      for (const s of held) { const n = host.querySelector(s); if (n && !n.matches(pressed)) problems.add(`${s} lost its pressed look while held`); }
+      if (++frame < frames) requestAnimationFrame(tick);
+      else {
+        for (const [n, count] of flips) if (count > 2) problems.add(`${label(n)} flickers (${count} visibility changes in ${frames} frames)`);
+        resolve([...problems]);
+      }
+    };
+    requestAnimationFrame(tick);
+  });
+}
+// Holds touch buttons with synthetic touch pointers, one pointer per button.
+const holdTouch = (page, selectors, down = true) => page.evaluate(([selectors, down]) => selectors.forEach((s, i) => {
+  const n = document.querySelector(s), b = n.getBoundingClientRect();
+  n.dispatchEvent(new PointerEvent(down ? 'pointerdown' : 'pointerup', { pointerId: 40 + i, pointerType: 'touch', isPrimary: i === 0, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, bubbles: true, cancelable: true }));
+}), [selectors, down]);
+
+for (const [width, height] of [[390, 844], [844, 390]]) {
+  test(`layout qa: star circuit HUD holds steady under held boost and drift ${width}x${height}`, async t => {
+    const { page, base } = await launch(t, { width, height });
+    await home(page, base);
+    await activate(page, 'btnRace'); await page.locator('.race-root[data-screen=lobby]').waitFor();
+    await page.locator('.race-launch').tap();
+    await page.waitForFunction(() => parseInt(document.querySelector('.race-speed strong')?.textContent, 10) > 40, null, { timeout: 15000 });
+    const chips = '.race-view-controls,.race-hud-box,.race-identity,.race-time,.race-pause,.race-speed,.race-minimap,.race-item,.race-touch-group,.race-recover';
+    const held = ['.race-touch-button[data-action=boost]', '.race-touch-button[data-action=right]', '.race-touch-button[data-action=brake]'];
+    await holdTouch(page, held);
+    const problems = await page.evaluate(watchHud, { root: '.race-root', chips, held, pressed: '.race-pressed', frames: 120 });
+    if (SHOTS) { await fs.mkdir(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, `qa-${engineName}-circuit-held-${width}x${height}.png`) }); }
+    await holdTouch(page, held, false);
+    assert.deepEqual(problems, [], 'held-input HUD problems');
+    assert.equal(await page.locator('.race-pressed').count(), 0, 'releasing restores the idle buttons');
+  });
+}
+
+test('layout qa: the HUD watch catches flicker, colliding chips and a dropped press', async t => {
+  const { page, base } = await launch(t, { width: 390, height: 844 });
+  await home(page, base);
+  const problems = await page.evaluate(watch => {
+    const host = Object.assign(document.createElement('div'), { id: 'qaHud' });
+    host.innerHTML = '<span class="qa-blink">!</span><b class="qa-chip">a</b><b class="qa-chip">b</b><button class="qa-held">hold</button>';
+    host.style.cssText = 'position:fixed;inset:0;z-index:2147483647';
+    for (const n of host.querySelectorAll('.qa-chip')) n.style.cssText = 'position:absolute;left:10px;top:10px;width:60px;height:30px';
+    document.body.append(host);
+    let f = 0; const blink = () => { host.querySelector('.qa-blink').hidden = f++ % 6 < 3; if (f < 200) requestAnimationFrame(blink); }; blink();
+    return eval(`(${watch})`)({ root: '#qaHud', chips: '.qa-chip', held: ['.qa-held'], pressed: '.never', frames: 40 });
+  }, watchHud.toString());
+  assert.ok(problems.some(p => /^span\.qa-blink .*flickers/.test(p)), problems.join('\n'));
+  assert.ok(problems.some(p => /^b\.qa-chip "a" overlaps b\.qa-chip "b"$/.test(p)), problems.join('\n'));
+  assert.ok(problems.includes('.qa-held lost its pressed look while held'), problems.join('\n'));
+});
+
+for (const [width, height] of [[390, 844], [844, 390]]) {
+  test(`layout qa: arena HUD holds steady under held jump and pulse ${width}x${height}`, async t => {
+    const { page, base } = await launch(t, { width, height });
+    await home(page, base);
+    await arenaKnockout(page);
+    await page.touchscreen.tap(width / 2, height / 2);
+    await page.locator('.arena-touch-jump').waitFor();
+    await page.waitForFunction(() => !document.querySelector('.arena-countdown')?.checkVisibility(), null, { timeout: 10000 });
+    const held = ['.arena-touch-jump', '.arena-touch-attack'];
+    await holdTouch(page, held);
+    const problems = await page.evaluate(watchHud, { root: '.arena-root', chips: '.arena-hud-top > *,.arena-roster,.arena-stick-zone,.arena-touch-button', held, pressed: '.arena-pressed', frames: 120 });
+    if (SHOTS) { await fs.mkdir(SHOTS, { recursive: true }); await page.screenshot({ path: path.join(SHOTS, `qa-${engineName}-arena-held-${width}x${height}.png`) }); }
+    await holdTouch(page, held, false);
+    assert.deepEqual(problems, [], 'held-input HUD problems');
+    assert.equal(await page.locator('.arena-pressed').count(), 0, 'releasing restores the idle buttons');
   });
 }

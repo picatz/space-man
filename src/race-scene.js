@@ -294,14 +294,15 @@
         }
       } else if (c.id === "forge") {
         // Smelter stacks: a tapering chimney with a molten collar, a glowing slag
-        // pool at its foot and a drifting cinder shard.
+        // pool at its foot and a cooling cinder shard standing in the pool (a
+        // floating shard read as a dark square hanging in the sky).
         const h = 120 + (i % 5) * 36;
         b.ellipsoid(x, 2, z, 66, 8, 48, shade(accent, .55), i, 8, 3);
         b.box(x, -5, z, 30, h, 30, [0.2, 0.12, 0.1], i);
         b.box(x, h * .55, z, 22, h * .45, 22, [0.26, 0.15, 0.12], i);
         b.box(x, h * .5, z, 34, 6, 34, accent, i);
         b.box(x, h - 8, z, 26, 8, 26, edge, i);
-        b.crystal(x + 38, 70 + (i % 4) * 22, z - 14, 8, 22, shade(accent, .8), 4);
+        b.crystal(x + 26, 0, z - 10, 7, 18 + (i % 4) * 4, shade(accent, .8), 4);
       } else if (c.id === "ember") {
         b.crystal(
           x,
@@ -369,10 +370,11 @@
     for (const [fraction, d] of c.hazards || []) {
       const p = at(c, fraction * c.length), h = Math.atan2(p.ty, p.tx),
         x = p.x - p.ty * d, z = p.y + p.tx * d, hot = rgb("#ff7a3d");
-      // A jagged cluster of glowing debris: readable from the chase camera.
+      // A jagged cluster of glowing debris resting on the road (set a hair into
+      // it, so no gap or z-fight shows): readable from the chase camera.
       for (let i = 0; i < 5; i++) {
         const a = i * 1.26 + h, r = i ? 15 : 0, size = 9 + (i * 5) % 7;
-        b.box(x + Math.cos(a) * r, size * .5, z + Math.sin(a) * r, size, size * .5, size, shade(hot, i % 2 ? .6 : 1), a);
+        b.box(x + Math.cos(a) * r, -0.5, z + Math.sin(a) * r, size, size * .6, size, shade(hot, i % 2 ? .6 : 1), a);
       }
     }
     for (const fraction of c.pads) {
@@ -467,17 +469,20 @@
         }
       }
     } else if (c.id === "neon") {
-      // Distant skyline silhouette and its lit rooftops.
+      // Distant skyline silhouette and its lit rooftops. The world has no floor
+      // out at the horizon, so towers rise from far below eye level (box()
+      // builds up from its base) instead of hanging over the void.
       for (let k = 0; k < 48; k++) {
         const a = k * .1309 + (k % 3) * .02, h = 160 + ((k * 53) % 9) * 55;
-        sky.box(900 + Math.cos(a) * 2900, h / 2 - 20, 750 + Math.sin(a) * 2900, 70, h, 60, shade(rgb(c.sky), 1.9), a);
-        sky.box(900 + Math.cos(a) * 2900, h - 12, 750 + Math.sin(a) * 2900, 72, 5, 62, k % 2 ? edge : accent, a);
+        sky.box(900 + Math.cos(a) * 2900, -400, 750 + Math.sin(a) * 2900, 70, h + 380, 60, shade(rgb(c.sky), 1.9), a);
+        sky.box(900 + Math.cos(a) * 2900, h - 22, 750 + Math.sin(a) * 2900, 72, 5, 62, k % 2 ? edge : accent, a);
       }
     } else if (c.id === "forge") {
-      // A ring of low furnace glows on the horizon, brighter than the dark sky.
+      // A ring of low furnace glows on the horizon, brighter than the dark sky,
+      // rising from below eye level like the Neon skyline.
       for (let k = 0; k < 36; k++) {
         const a = k * Math.PI / 18 + (k % 3) * .03, h = 40 + ((k * 37) % 6) * 22;
-        sky.box(900 + Math.cos(a) * 3000, h / 2 - 20, 750 + Math.sin(a) * 3000, 90, h, 70, shade(accent, k % 2 ? .45 : .3), a);
+        sky.box(900 + Math.cos(a) * 3000, -400, 750 + Math.sin(a) * 3000, 90, h + 380, 70, shade(accent, k % 2 ? .45 : .3), a);
       }
     } else if (c.id === "nebula") {
       // A banded ring around the sky planet, tilted so it reads from the road.

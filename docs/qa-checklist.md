@@ -16,7 +16,8 @@ and fails on:
 
 - horizontal page overflow (including a mobile browser widening its layout to fit content),
 - a control extending past the left or right edge (outside a horizontal scroller),
-- a control covered by fixed or sticky chrome even after it is scrolled into view.
+- a control covered, even partly, by fixed or sticky chrome after it is scrolled into view (the
+  center and four points 20% in from its corners are probed),
 - a control or line of copy (card names, labels, captions) hidden behind a sticky footer or header
   when it is scrolled to either edge of its scroller, where keyboard focus and the last swipe leave it
   (WCAG 2.2 SC 2.4.11). Prefer a real flex footer under a scrolling body over a sticky overlay.
@@ -26,6 +27,14 @@ checks the in-match HUD: the phone scoreboard stays in the top fifth with untrun
 DASH meter clears its label, fighter controls give way to the spectator dock, the dock never
 overlaps the scoreboard (one slim row in landscape), the followed fighter is framed in the clear
 area, and arrow keys, a swipe, a card tap and Rematch all work.
+
+Held input gets its own pass: in a Star Circuit race (boost, steer and brake held) and an Arena match
+(jump and pulse held) at 390x844 and 844x390, every frame for two seconds, no HUD element blinks on
+and off more than twice, no HUD chips overlap, and held buttons keep their pressed look until
+released. Add a mode's in-match HUD to this pass when it gets touch controls.
+
+`tests/race-grounded-props.test.cjs` checks that every piece of Star Circuit scenery stands on the
+ground or on another piece that does; only a landmark's own art may float on purpose.
 
 Add a screen to `screens` when you add one. A known failure goes in `KNOWN` with the issue to fix;
 it runs as a todo until the fix lands, then remove the entry. Never add an entry to get green.
@@ -39,7 +48,8 @@ it runs as a todo until the fix lands, then remove the entry. Never add an entry
 2. **Touch-only hints.** With `hasTouch` and no keyboard or pad, no key or button glyphs show
    (`body[data-input]`, `[data-for=key|pad]`); with a pad connected, touch hints are gone.
 3. **Grounded 3D props.** Trees, landmarks, items and characters sit on the ground with contact
-   shadows: no floating, no sinking, no z-fighting, at every camera distance used in play.
+   shadows: no floating, no sinking, no z-fighting, at every camera distance used in play. Seasonal
+   sky decor stays on the skyline, never up in the band of the top HUD chips.
 4. **Held-input HUD states.** Hold boost, charge, jump and fire for several seconds: meters fill
    and drain without flicker, held buttons show their pressed state, and releasing restores the
    idle HUD.
@@ -67,3 +77,7 @@ Each of these shipped once. Check for the class, not just the instance.
 - **The first ten seconds.** A newcomer who has not touched a control yet must not lose a life or a
   race in the opening seconds (`an idle newcomer survives` in `tests/arena.test.cjs`). Tuning that
   makes the opening harsher needs a reason in the PR.
+- **Hovering track props.** Star Circuit hazard debris was built from half its size up, so it
+  floated above the road. Scenery is now checked for support in `race-grounded-props.test.cjs`.
+- **Sky decor among the HUD.** Dusk Week lanterns floated up to 14 degrees high and read as HUD pips
+  beside the timer chip. Keep sky decor within a few degrees of eye level (`render3d.test.cjs`).

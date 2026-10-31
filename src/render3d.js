@@ -169,11 +169,14 @@
       const n = at(0, size * 1.3), s = at(0, -size * 1.3), e = at(size, 0), w = at(-size, 0);
       push(n, color); push(e, color); push(s, color); push(n, color); push(s, color); push(w, color);
     }
-    // Seasonal lanterns: warm hexagons low over the horizon, each with a dim halo.
+    // Seasonal lanterns: warm hexagons strung along the skyline, each with a dim
+    // halo. The chase camera looks down, so they sit at or just under eye level
+    // (the far terrain occludes the lowest) and read as distant scenery, never as
+    // pips floating up among the top HUD chips.
     const lanterns = clamp(Math.floor(finite(sky.lanterns, 0)), 0, 64), lamp = vector(sky.lanternColor, [1, 0.6, 0.3]);
     for (let i = 0; i < lanterns; i++) {
-      const e = 2 + 12 * ((i * 0.3819660113) % 1), a = i * 2.39996323 + 0.7, d = point(e, a).map(n => n * 0.97);
-      const east = normalize(cross([0, 1, 0], d), [1, 0, 0]), north = cross(d, east), size = 0.005 + 0.004 * ((i * 0.7548776662) % 1);
+      const e = -2.4 + 2.4 * ((i * 0.3819660113) % 1), a = i * 2.39996323 + 0.7, d = point(e, a).map(n => n * 0.97);
+      const east = normalize(cross([0, 1, 0], d), [1, 0, 0]), north = cross(d, east), size = 0.004 + 0.003 * ((i * 0.7548776662) % 1);
       const at = (x, y) => [d[0] + east[0] * x + north[0] * y, d[1] + east[1] * x + north[1] * y, d[2] + east[2] * x + north[2] * y];
       for (const [scale, color] of [[1.9, mix(tint(e), lamp, 0.18)], [1, lamp]]) {
         const ring = [0, 1, 2, 3, 4, 5].map(k => at(Math.cos(k * Math.PI / 3) * size * scale, Math.sin(k * Math.PI / 3) * size * scale * 1.35)), mid = at(0, 0);
