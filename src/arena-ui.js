@@ -216,6 +216,7 @@
 @media(max-height:600px) and (min-width:651px){.arena-player-portrait{display:none}.arena-player-card{min-width:0}.arena-player-tag{font-size:calc(9px * var(--ui-scale, 1))}.arena-player-name{font-size:calc(9px * var(--ui-scale, 1))}.arena-player-card[data-you=true]{padding:6px}}
 @media(max-width:360px){.arena-player-portrait{display:none}.arena-player-tag{font-size:calc(9px * var(--ui-scale, 1))}}
 .arena-root[data-touch=true] .arena-player-card[data-you=true] .arena-player-portrait{display:block;flex-basis:22px;width:22px;height:30px}
+@media(max-height:600px) and (max-width:720px){.arena-root[data-touch=true] .arena-player-card[data-you=true] .arena-player-portrait{display:none}}
 .arena-root[data-touch=true] .arena-player-card[data-you=true]{gap:4px}
 
 `;

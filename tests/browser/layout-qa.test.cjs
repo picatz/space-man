@@ -17,7 +17,8 @@ const ROOT = path.resolve(__dirname, '../..');
 const engineName = process.env.SPACE_MAN_QA_BROWSER || 'chromium';
 const engine = engineName === 'webkit' ? webkit : chromium;
 const SHOTS = process.env.SPACE_MAN_QA_SCREENSHOTS;
-const viewports = [[390, 844], [844, 390], [768, 1024], [1280, 800]];
+// 667x375 is the smallest landscape phone in use (iPhone SE): the tightest HUD.
+const viewports = [[390, 844], [844, 390], [667, 375], [768, 1024], [1280, 800]];
 
 // Each screen opens from a fresh home and resolves once it is on screen.
 const screens = {
@@ -328,7 +329,7 @@ const holdTouch = (page, selectors, down = true) => page.evaluate(([selectors, d
   n.dispatchEvent(new PointerEvent(down ? 'pointerdown' : 'pointerup', { pointerId: 40 + i, pointerType: 'touch', isPrimary: i === 0, clientX: b.left + b.width / 2, clientY: b.top + b.height / 2, bubbles: true, cancelable: true }));
 }), [selectors, down]);
 
-for (const [width, height] of [[390, 844], [844, 390]]) {
+for (const [width, height] of [[390, 844], [844, 390], [667, 375]]) {
   test(`layout qa: star circuit HUD holds steady under held boost and drift ${width}x${height}`, async t => {
     const { page, base } = await launch(t, { width, height });
     await home(page, base);
@@ -363,7 +364,7 @@ test('layout qa: the HUD watch catches flicker, colliding chips and a dropped pr
   assert.ok(problems.includes('.qa-held lost its pressed look while held'), problems.join('\n'));
 });
 
-for (const [width, height] of [[390, 844], [844, 390]]) {
+for (const [width, height] of [[390, 844], [844, 390], [667, 375]]) {
   test(`layout qa: arena HUD holds steady under held jump and pulse ${width}x${height}`, async t => {
     const { page, base } = await launch(t, { width, height });
     await home(page, base);
@@ -371,6 +372,8 @@ for (const [width, height] of [[390, 844], [844, 390]]) {
     await page.touchscreen.tap(width / 2, height / 2);
     await page.locator('.arena-touch-jump').waitFor();
     await page.waitForFunction(() => !document.querySelector('.arena-countdown')?.checkVisibility(), null, { timeout: 10000 });
+    // Every scoreboard card reads in full, the pilot's own tag included.
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('.arena-player-card *')].filter(n => !n.children.length && n.textContent.trim() && n.checkVisibility() && n.scrollWidth > n.clientWidth + 1).map(n => n.textContent)), [], 'scoreboard text is not truncated');
     const held = ['.arena-touch-jump', '.arena-touch-attack'];
     await holdTouch(page, held);
     const problems = await page.evaluate(watchHud, { root: '.arena-root', chips: '.arena-hud-top > *,.arena-roster,.arena-stick-zone,.arena-touch-button', held, pressed: '.arena-pressed', frames: 120 });

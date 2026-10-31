@@ -478,11 +478,15 @@
         sky.box(900 + Math.cos(a) * 2900, h - 22, 750 + Math.sin(a) * 2900, 72, 5, 62, k % 2 ? edge : accent, a);
       }
     } else if (c.id === "forge") {
-      // A ring of low furnace glows on the horizon, brighter than the dark sky,
-      // rising from below eye level like the Neon skyline.
+      // A ring of foundry silhouettes on the horizon, each topped by a furnace
+      // glow. Like the Neon skyline they rise from below eye level, and the
+      // bodies stay near the sky's color so only the glowing rims read; solid
+      // orange blocks out here looked like slabs hanging in the sky.
       for (let k = 0; k < 36; k++) {
         const a = k * Math.PI / 18 + (k % 3) * .03, h = 40 + ((k * 37) % 6) * 22;
-        sky.box(900 + Math.cos(a) * 3000, -400, 750 + Math.sin(a) * 3000, 90, h + 380, 70, shade(accent, k % 2 ? .45 : .3), a);
+        const x = 900 + Math.cos(a) * 3000, z = 750 + Math.sin(a) * 3000;
+        sky.box(x, -400, z, 150, h + 380, 110, shade(rgb(c.sky), 1.7), a);
+        sky.box(x, h - 34, z, 154, 16, 114, shade(accent, k % 2 ? 1 : .8), a);
       }
     } else if (c.id === "nebula") {
       // A banded ring around the sky planet, tilted so it reads from the road.
