@@ -11,7 +11,8 @@ cd tests/browser && SPACE_MAN_ENGINE=chromium ./ci-suite.sh layout-qa
 ```
 
 `tests/browser/layout-qa.test.cjs` opens home, Run, the Arena lobby, the Star Circuit lobby, Play
-Together, the wardrobe and records at 390x844, 844x390 (landscape phone), 768x1024 and 1280x800,
+Together, the wardrobe and records at 390x844, 844x390 and 667x375 (landscape phones), 768x1024
+and 1280x800,
 and fails on:
 
 - horizontal page overflow (including a mobile browser widening its layout to fit content),
@@ -29,7 +30,7 @@ overlaps the scoreboard (one slim row in landscape), the followed fighter is fra
 area, and arrow keys, a swipe, a card tap and Rematch all work.
 
 Held input gets its own pass: in a Star Circuit race (boost, steer and brake held) and an Arena match
-(jump and pulse held) at 390x844 and 844x390, every frame for two seconds, no HUD element blinks on
+(jump and pulse held) at 390x844, 844x390 and 667x375, every frame for two seconds, no HUD element blinks on
 and off more than twice, no HUD chips overlap, and held buttons keep their pressed look until
 released. Add a mode's in-match HUD to this pass when it gets touch controls.
 
