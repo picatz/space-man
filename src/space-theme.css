@@ -119,9 +119,6 @@ body.gamepad-active :is(.arena-root, .race-root) :is(button, summary, input):foc
 #ovAttract .mode-link::before { content: '›'; position: absolute; right: 17px; top: 50%; transform: translateY(-50%); color: var(--mode-accent); font: 500 25px/1 var(--sm-font-body); }
 #ovAttract .mode-link:hover:not(:disabled):not(:active) { background: #193049; border-color: var(--mode-accent); box-shadow: none; }
 #ovAttract .mode-link:active { transform: translateY(1px); }
-#ovAttract #btnDaily { margin: 12px 0 0; padding: 9px 12px; min-height: 50px; font-size: calc(11px * var(--ui-scale, 1)); background: rgba(9,20,37,.46); }
-#ovAttract #btnDaily .daily-theme { font-family: var(--sm-font-body); letter-spacing: .04em; color: var(--sm-copy); }
-#ovAttract #btnDaily .daily-info { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: .01em; color: var(--sm-gold); }
 #ovAttract .daily-blurb { margin: 6px 0 0; max-width: none; color: var(--sm-muted); opacity: 1; text-align: left; font-size: calc(11px * var(--ui-scale, 1)); }
 #ovAttract #attractMedals { margin: 0 0 10px !important; color: var(--sm-muted); }
 #ovAttract .medal-empty { font: 500 calc(10px * var(--ui-scale, 1))/1.5 var(--sm-font-body); letter-spacing: .05em; opacity: 1; }
@@ -171,7 +168,6 @@ body.gamepad-active :is(.arena-root, .race-root) :is(button, summary, input):foc
   #ovAttract .panel { --px: 12px; --py: 12px; }
   .launch-heading h1 { font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: .09em; }
   #ovAttract .mode-link { font-size: 12px; }
-  #ovAttract #btnDaily { font-size: calc(10px * var(--ui-scale, 1)); }
   #ovAttract #attractRow .btn { font-size: calc(10px * var(--ui-scale, 1)); }
 }
 @media (orientation: landscape) and (max-height: 560px) {
@@ -180,7 +176,6 @@ body.gamepad-active :is(.arena-root, .race-root) :is(button, summary, input):foc
   #ovAttract .mode-link { min-height: 52px; padding-top: 7px; padding-bottom: 7px; font-size: 12px; }
   #ovAttract .mode-link::after { font-size: calc(10px * var(--ui-scale, 1)); }
   #ovAttract .launch-heading { margin-bottom: 8px; }
-  #ovAttract #btnDaily { margin-top: 8px; min-height: 44px; padding: 6px 10px; }
   #ovAttract .daily-blurb { display: none !important; }
   .race-root .race-title { font-size: 34px; }
 }
@@ -640,13 +635,20 @@ body.keyboard-active :is(.arena-root, .race-root) :is(button, summary, input, te
 .race-root .race-track strong { font-size: 12px; line-height: 1.3; }
 .race-root .race-track small { font-size: calc(9px * var(--ui-scale, 1)); letter-spacing: .06em; }
 .race-root .race-launch-bar {
-  position: relative; flex: 0 0 auto; padding: 12px 0 2px;
+  position: relative; z-index: 1; flex: 0 0 auto; padding: 12px 0 2px;
   display: flex; flex-direction: column; align-items: stretch;
 }
-/* A short fade above the footer hints that the body scrolls; it paints only. */
+/* The footer is a solid dock: options scrolling beneath it (Audio on a phone)
+   must never show through around Launch. It bleeds sideways and down to the
+   screen edge so no strip of the body peeks past it; a short fade above it
+   hints that the body scrolls. Both paint only. */
+.race-root .race-launch-bar::after {
+  content: ''; position: absolute; z-index: -1; inset: 0 -24px calc(-1 * var(--race-bottom) - 24px); pointer-events: none;
+  background: #080f24; border-top: 1px solid #ffffff10;
+}
 .race-root .race-launch-bar::before {
-  content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 14px; pointer-events: none;
-  background: linear-gradient(0deg, #080f24c0, #080f2400);
+  content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 18px; pointer-events: none;
+  background: linear-gradient(0deg, #080f24, #080f2400);
 }
 .race-root .race-launch-bar .race-local-note { margin: 8px 0 0 auto; }
 .race-root .race-track:last-child:nth-child(odd) { grid-column: 1 / -1; }

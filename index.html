@@ -439,7 +439,6 @@
     .panel { --px: 18px; }
     .btn { letter-spacing: 1px; font-size: 13px; }
     .row .btn { padding: 12px 6px; }
-    #btnDaily .daily-info { font-size: calc(10px * var(--ui-scale, 1)); }
   }
   /* Short portrait (small phones): the title card sheds its teaching rows so the
      wordmark and the hero keep their sky — the first run teaches in-game anyway. */
@@ -643,10 +642,6 @@
   #attractRow .btn { flex: 1 1 42%; }
 
   /* ============ DAILY COURSE + CHALLENGE LINKS ============ */
-  #btnDaily { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  #btnDaily .daily-info { font-family: var(--font-num); font-size: calc(11px * var(--ui-scale, 1)); letter-spacing: 1px; color: var(--gold); text-transform: none; }
-  /* Today's Daily theme (world gen 2): a name on the button, one line of rules under it. */
-  #btnDaily .daily-theme { display: block; font-size: calc(10px * var(--ui-scale, 1)); letter-spacing: 1.5px; color: var(--gold); opacity: .9; }
   .daily-blurb { font-size: calc(11px * var(--ui-scale, 1)); line-height: 1.35; opacity: .72; text-align: center; margin: -4px auto 6px; max-width: 300px; text-transform: none; }
   .challenge-banner {
     font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--gold);
@@ -928,8 +923,22 @@
           <button class="btn ghost" id="btnExpeditionFriends" aria-label="Star Expedition with friends. Create, join or watch a shared adventure."><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></svg>With friends</button>
         </div>
       </section>
-      <button class="btn ghost" id="btnDaily" data-keys="attract" style="display:none;"><span class="home-daily-icon" aria-hidden="true">✧</span><span>Daily Course<span class="daily-theme" id="dailyTheme"></span></span><span class="daily-info"><span id="dailyInfo"></span><span class="daily-reset" id="dailyReset"></span></span><b aria-hidden="true">›</b></button>
-      <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
+      <!-- Today in the Reach (src/daily.js): one seeded daily per game, a streak and a result to share. -->
+      <section class="home-today" id="homeToday" aria-labelledby="homeTodayTitle" style="display:none;">
+        <div class="today-head">
+          <h2 id="homeTodayTitle"><span class="home-daily-icon" aria-hidden="true">✧</span>Today</h2>
+          <span class="today-streak" id="todayStreak" hidden></span>
+          <span class="daily-reset" id="dailyReset"></span>
+          <button class="today-share" id="btnTodayShare" hidden>Share</button>
+        </div>
+        <div class="today-grid" role="group" aria-label="Today’s dailies">
+          <button class="today-tile" id="btnDaily" data-mode="run" data-keys="attract"><span class="today-mode">Run</span><span class="daily-theme" id="dailyTheme"></span><span class="daily-info" id="dailyInfo"></span></button>
+          <button class="today-tile" id="btnDailyArena" data-mode="arena"><span class="today-mode">Arena</span><span class="daily-theme" id="dailyArenaTwist"></span><span class="daily-info" id="dailyArenaInfo"></span></button>
+          <button class="today-tile" id="btnDailyRace" data-mode="race"><span class="today-mode">Circuit</span><span class="daily-theme" id="dailyRaceTwist"></span><span class="daily-info" id="dailyRaceInfo"></span></button>
+          <button class="today-tile" id="btnDailyChart" data-mode="chart"><span class="today-mode">Chart</span><span class="daily-theme" id="dailyChartTwist"></span><span class="daily-info" id="dailyChartInfo"></span></button>
+        </div>
+        <div class="daily-blurb" id="dailyBlurb" style="display:none;"></div>
+      </section>
       <section class="home-arcade" aria-labelledby="homeArcadeTitle">
         <div class="home-section-heading"><h2 id="homeArcadeTitle">All games</h2><span>SOLO + FRIENDS</span></div>
         <div class="launch-modes" role="group" aria-label="Game modes">
@@ -1284,6 +1293,7 @@
 <script src="src/tabletop.js"></script>
 <script src="src/table-room.js"></script>
 <script src="src/table-ui.js"></script>
+<script src="src/daily.js"></script>
 
 <script>
 "use strict";
@@ -1426,7 +1436,7 @@ const rnd = (a, b) => a + (b - a) * rng();
 /* ---------------------------------------------------------------------------
    4. STORAGE — schema + legacy migration
    ------------------------------------------------------------------------- */
-const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries', achievements: 'sm2.achievements', autorunReset: 'sm2.autorunReset', daily: 'sm2.daily' };
+const LS = { best: 'sm2.best', stats: 'sm2.stats', settings: 'sm2.settings', top5: 'sm2.top5', flags: 'sm2.flags', schema: 'sm2.schema', cosmetics: 'sm2.cosmetics', discoveries: 'sm2.discoveries', achievements: 'sm2.achievements', autorunReset: 'sm2.autorunReset', daily: 'sm2.daily', today: 'sm2.today' };
 function loadJSON(key, fb) { try { const v = localStorage.getItem(BUILD.storageKey(key)); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
 function saveJSON(key, val) { try { localStorage.setItem(BUILD.storageKey(key), JSON.stringify(val)); } catch (e) {} }
 
@@ -2616,7 +2626,7 @@ function pollGamepad() {
     else if (G.mode === 'attract') startRun();
     else if (G.mode === 'dead') tryRestart();
     else togglePause();
-  } else if (just(3) && G.mode === 'attract' && topOverlayId() === 'ovAttract' && $('btnDaily').style.display !== 'none') {
+  } else if (just(3) && G.mode === 'attract' && topOverlayId() === 'ovAttract' && $('homeToday').style.display !== 'none') {
     startDaily();                                        // Y / △: today's Daily Course (never from under a sub-menu)
   } else if (!menuTook && just(0)) {
     if (G.mode === 'attract') startRun();
@@ -2992,6 +3002,7 @@ const DISCOVERIES = [
   // Across the Reach: Orbital Arena and Star Circuit log here too (SpaceManLogbook).
   { id: 'flawless', name: 'UNTOUCHED ORBIT', glyph: '◎', hint: 'win an arena match without losing a life.' },
   { id: 'photo',  name: 'PHOTO FINISH',    glyph: '⚑', hint: 'win a star circuit race by a whisker.' },
+  { id: 'sweep',  name: 'FULL SKY',        glyph: '☼', hint: 'settle all four of today’s dailies in one day.' },
   // Season stamps (src/seasons.js): finish any game while the Reach celebrates.
   { id: 'dusk',   name: 'HALLOWEEN',       glyph: '◈', hint: 'play while the pumpkins are out, late october.' },
   { id: 'harvest', name: 'THANKSGIVING',   glyph: '❦', hint: 'drop by for the harvest, late november.' },
@@ -4640,6 +4651,7 @@ function finalizeDeath(completed = false) {
       G.dailyPrev = d.runs ? d.best : -1;   // -1: first attempt today
       d.runs++; d.best = Math.max(d.best, fs); d.bestDist = Math.max(d.bestDist, G.dist);
       saveJSON(LS.daily, d);
+      recordDaily('run', { score: fs });
     }
   }
   if (!SHOT) persistAll();   // QA bot runs must never write scores/stats
@@ -6800,24 +6812,91 @@ function showAttract() {
   attractGreet();   // E13: welcome-back wave + anniversary confetti (one-shots, DELIGHT-gated)
 }
 
-// Daily Course entry + a pending challenge banner. Solo only, never under #shot
-// (goldens untouched) or in a room (the host owns the course there). textContent only.
+// Today in the Reach: the four dailies (Daily Course, Arena, Circuit, Chart), a streak
+// and a Share button. Solo only, never under #shot (goldens untouched) or in a room
+// (the host owns the course there). textContent only.
+const DAILY = window.SpaceManDaily;
+const SKILL_NAMES = { easy: 'Cadet', normal: 'Pilot', hard: 'Ace' }, PACE_LABELS = { easy: 'Chill', normal: 'Sport', hard: 'Expert' };
+function todayRec() { return DAILY.load(localStorage, BUILD.storageKey(LS.today), Date.now()); }
+// Today's rules for the three dailies src/daily.js picks (the Run's comes from src/course.js).
+function todaySpecs(day) {
+  const A = window.SpaceManArena, R = window.SpaceManRace;
+  const arena = A ? DAILY.arena(day, A.arenas.map(a => a.id)) : null, race = R ? DAILY.race(day, R.tracks.map(t => t.id)) : null;
+  return { arena, race, chart: DAILY.chart(day, window.SpaceManTabletop) };
+}
+// One finished daily: fold it into today's record, refresh the strip, and hand the UI the record.
+function recordDaily(mode, result) {
+  if (SHOT) return null;
+  const { rec, improved } = DAILY.record(todayRec(), mode, result, Date.now());
+  DAILY.save(localStorage, BUILD.storageKey(LS.today), rec);
+  if (DAILY.MODES.every(m => DAILY.settled(rec, m)) && window.SpaceManLogbook) window.SpaceManLogbook.discover('sweep');
+  renderDailyCard();
+  return Object.assign({}, rec, { improved });
+}
 function renderDailyCard() {
-  const solo = !SHOT && SHOT_SEED === null && !netLive(), d = loadDaily(), b = $('btnDaily');
+  const solo = !SHOT && SHOT_SEED === null && !netLive(), d = loadDaily(), rec = todayRec(), specs = todaySpecs(d.day);
   dailyCardDay = d.day;
-  b.style.display = solo ? '' : 'none';
+  $('homeToday').style.display = solo ? '' : 'none';
   updateHeroCta();
   $('dailyReset').textContent = window.SpaceManHome.resetsIn(Date.now());
-  $('dailyInfo').textContent = d.runs ? 'BEST ' + d.best.toLocaleString() + ' · ' + d.runs + (d.runs === 1 ? ' RUN' : ' RUNS') : 'NEW TODAY';
   const th = COURSE.theme(d.day);
-  $('dailyTheme').textContent = th.title; $('dailyBlurb').textContent = th.blurb; $('dailyBlurb').style.display = solo ? '' : 'none';
-  b.setAttribute('aria-label', 'Daily Course for ' + d.day + ': ' + th.title.toLowerCase() + '. ' + th.blurb + (d.runs ? ' Today’s best ' + d.best + '.' : '') + ' Same course for everyone today.');
+  // Each tile: mode, today's twist, then status. data-state drives the look: new, played, done.
+  const TILE_TEXT = { btnDaily: ['dailyTheme', 'dailyInfo'], btnDailyArena: ['dailyArenaTwist', 'dailyArenaInfo'], btnDailyRace: ['dailyRaceTwist', 'dailyRaceInfo'], btnDailyChart: ['dailyChartTwist', 'dailyChartInfo'] };
+  const tile = (id, state, twist, info, label) => {
+    const b = $(id); b.dataset.state = state; b.setAttribute('aria-label', label);
+    $(TILE_TEXT[id][0]).textContent = twist; $(TILE_TEXT[id][1]).textContent = info;
+  };
+  const title = w => w.toLowerCase().replace(/\b\w/g, ch => ch.toUpperCase());
+  tile('btnDaily', d.runs ? 'done' : 'new', title(th.title), d.runs ? 'BEST ' + d.best.toLocaleString() : 'NEW',
+    'Daily Course for ' + d.day + ': ' + th.title.toLowerCase() + '. ' + th.blurb + (d.runs ? ' Today’s best ' + d.best + ' in ' + d.runs + (d.runs === 1 ? ' run.' : ' runs.') : '') + ' Same course for everyone today.');
+  $('dailyBlurb').textContent = th.blurb; $('dailyBlurb').style.display = solo ? '' : 'none';
+  const A = window.SpaceManArena, R = window.SpaceManRace, ar = rec.arena, rr = rec.race, cr = rec.chart;
+  if (specs.arena && A) {
+    const name = A.getArena(specs.arena.arenaId).name, skill = SKILL_NAMES[specs.arena.difficulty], fmt = specs.arena.format === 'ffa' ? 'free-for-all' : 'duel';
+    tile('btnDailyArena', ar ? (ar.won ? 'done' : 'played') : 'new', name.split(' ')[0] + ' · ' + skill, ar ? (ar.won ? 'WON ' + '♥'.repeat(ar.lives) : 'NOT YET') : 'NEW',
+      'Daily Arena: a ' + fmt + ' on ' + name + ' against ' + skill + ' CPUs. ' + (ar ? (ar.won ? 'Won with ' + ar.lives + (ar.lives === 1 ? ' life' : ' lives') + ' left.' : 'Not won yet, ' + ar.tries + (ar.tries === 1 ? ' try.' : ' tries.')) : 'Not played yet.'));
+  }
+  if (specs.race && R) {
+    const c = R.course(specs.race.trackId), pace = PACE_LABELS[specs.race.difficulty];
+    tile('btnDailyRace', rr ? (rr.best !== null ? 'done' : 'played') : 'new', c.name.split(' ')[0] + ' · ' + pace, rr ? (rr.best !== null ? DAILY.clock(rr.best) : 'NO TIME') : 'NEW',
+      'Daily Circuit: three laps of ' + c.name + ' at ' + pace + ' pace. ' + (rr && rr.best !== null ? 'Today’s best ' + DAILY.clock(rr.best) + '.' : 'No time yet.'));
+  }
+  if (specs.chart) {
+    const left = DAILY.CHART_TRIES - (cr ? cr.tries : 0);
+    tile('btnDailyChart', cr ? (DAILY.settled(rec, 'chart') ? 'done' : 'played') : 'new', 'Line in ' + specs.chart.par, cr ? (cr.solved ? 'SOLVED' : left > 0 ? left + ' OF 3 LEFT' : 'MISSED') : 'NEW',
+      'Daily Chart: a Constellations puzzle. Light a line in ' + specs.chart.par + ' moves against Flare. ' + (cr ? (cr.solved ? 'Solved on try ' + cr.solved + '.' : left + ' of ' + DAILY.CHART_TRIES + ' tries left.') : 'Three tries.'));
+  }
+  const streak = rec.streak.last === d.day || rec.streak.last === DAILY.prevDay(d.day) ? rec.streak.count : 0;
+  $('todayStreak').hidden = streak < 2; $('todayStreak').textContent = streak + '-day streak';
+  $('btnTodayShare').hidden = !DAILY.played(rec);
+  $('btnTodayShare').setAttribute('aria-label', 'Share today’s results: ' + DAILY.played(rec) + ' of 4 played');
   const cb = $('challengeBanner'), c = solo ? challenge : null;
   // A link without a real score (beat=0) names the course but never a target of 0.
   if (c) cb.textContent = c.beat > 0 ? 'Beat ' + c.beat.toLocaleString() + (c.kind === 'daily' ? ' on the ' + c.day + ' Daily Course' : ' on this course')
     : (c.kind === 'daily' ? 'Daily Course ' + c.day : 'A friend’s course');
   if (c) cb.textContent += ' · Choose Endless Run to play';
   cb.style.display = c ? '' : 'none';
+}
+// The spoiler-free summary: native share sheet when there is one, else the clipboard.
+async function shareToday() {
+  const rec = todayRec(), url = appBaseUrl(), text = DAILY.shareText(rec, '');
+  const data = { title: 'Space Man · Today', text, url };
+  try { if (navigator.share && (!navigator.canShare || navigator.canShare(data))) { await navigator.share(data); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text + '\n' + url); queueToast('Today’s results copied', 'sys'); announce('Today’s results copied. Paste them in a chat.'); }
+  catch (e) { try { prompt('Copy today’s results', text + ' ' + url); } catch (_) {} }
+}
+function openDaily(mode) {
+  if (expedition || netLive() || G.mode !== 'attract') return;
+  const day = COURSE.dayKey(Date.now()), spec = todaySpecs(day)[mode], rec = todayRec();
+  if (!spec) return;
+  if (mode === 'arena') { if ((raceUI && raceUI.active) || !window.SpaceManArenaUI) return; clearInput(); Audio.suspend(); getArenaUI().daily(spec); }
+  else if (mode === 'race') { if ((arenaUI && arenaUI.active) || !window.SpaceManRaceUI) return; clearInput(); Audio.suspend(); getRaceUI().daily(Object.assign({}, spec, { best: rec.race && rec.race.best })); }
+  else if (mode === 'chart') {
+    if ((arenaUI && arenaUI.active) || (raceUI && raceUI.active) || !window.SpaceManTableUI) return;
+    clearInput(); Audio.suspend();
+    const tries = rec.chart ? rec.chart.tries : 0;
+    getTableUI().daily(Object.assign({}, spec, { tries, practice: DAILY.settled(rec, 'chart') }));
+  }
 }
 // Hero CTA (GD-06): one gold button bound to the last-played mode.
 const HERO_BTN = { run: 'btnPlay', arena: 'btnArena', race: 'btnRace' };
@@ -9341,6 +9420,7 @@ const arcadeResume = {
 function getArenaUI() {
   if (!arenaUI) arenaUI = window.SpaceManArenaUI.create({
     storageKey: BUILD.storageKey('sm2.arena.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
+    onDaily: recordDaily, onShareDaily: shareToday,
     net: TRANSPORT, build: BUILD, identity: arcadeIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent, buzz,
     hostOptions: relayHostOptions,
@@ -9366,6 +9446,7 @@ $('btnLanterns').onclick = () => {
 function getTableUI() {
   if (!tableUI) tableUI = window.SpaceManTableUI.create({
     storageKey: BUILD.storageKey('sm2.lanterns.v1'), net: TRANSPORT, build: BUILD, identity: arcadeIdentity, baseUrl: appBaseUrl,
+    onDaily: recordDaily, onShareDaily: shareToday,
     appearance: equippedAppearance, onReward: earnCosmeticEvent, buzz, hostOptions: relayHostOptions,
     settings: () => Object.assign({}, settings, { batterySaver: powerSaving() }),
     onClose() { closeModeOverlay('btnLanterns'); },
@@ -9375,6 +9456,7 @@ function getTableUI() {
 function getRaceUI() {
   if (!raceUI) raceUI = window.SpaceManRaceUI.create({
     storageKey: BUILD.storageKey('sm2.race.v1'), lastRoom: lastRoomStore, resume: arcadeResume,
+    onDaily: recordDaily, onShareDaily: shareToday,
     net: TRANSPORT, build: BUILD, identity: arcadeIdentity, baseUrl: appBaseUrl,
     appearance: equippedAppearance, onReward: earnCosmeticEvent,
     hostOptions: relayHostOptions,
@@ -9578,6 +9660,10 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sha
 // Pointer clicks drop focus so a later Space still means start/retry; keyboard
 // activation (detail 0) keeps it where the player put it.
 $('btnDaily').onclick = (e) => { e.currentTarget.blur(); startDaily(); };
+$('btnDailyArena').onclick = (e) => { if (e.detail) e.currentTarget.blur(); openDaily('arena'); };
+$('btnDailyRace').onclick = (e) => { if (e.detail) e.currentTarget.blur(); openDaily('race'); };
+$('btnDailyChart').onclick = (e) => { if (e.detail) e.currentTarget.blur(); openDaily('chart'); };
+$('btnTodayShare').onclick = (e) => { if (e.detail) e.currentTarget.blur(); shareToday(); };
 $('btnShare').onclick = (e) => { if (e.detail) e.currentTarget.blur(); shareRun(); };
 $('btnTrophy').onclick = () => { Audio.ensure(); hideAllOverlays(); showTrophy(); };
 $('btnSettings').onclick = () => openSettings('attract');

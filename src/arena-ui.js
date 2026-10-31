@@ -111,7 +111,7 @@
 .arena-segment[aria-pressed=true]{background:#20354C;color:#DEF0FF;border-color:#3D5870}
 .arena-launch{width:100%;font-size:14px}
 .arena-local-note{font:400 calc(10px * var(--ui-scale, 1))/1.6 system-ui,sans-serif;color:#7F9BB5;text-align:center;margin:16px auto 0;max-width:300px}
-.arena-help-grid p[data-help]{display:none;overflow-wrap:anywhere}body[data-input=keys] .arena-help-grid p[data-help=keys],body[data-input=pad] .arena-help-grid p[data-help=pad],body[data-input=touch] .arena-help-grid p[data-help=touch]{display:block}body:not([data-input]) .arena-help-grid p[data-help]{display:block}.arena-controls-help,.arena-online-panel{box-sizing:border-box;max-width:100%}
+.arena-help-grid p[data-help]{display:none;overflow-wrap:anywhere}body[data-input=keys] .arena-help-grid p[data-help=keys],body[data-input=pad] .arena-help-grid p[data-help=pad],body[data-input=touch] .arena-help-grid p[data-help=touch]{display:block}.arena-help-grid button[data-help=touch]{display:none}body[data-input=touch] .arena-help-grid button[data-help=touch],body:not([data-input]) .arena-help-grid button[data-help]{display:inline-flex}body:not([data-input]) .arena-help-grid p[data-help]{display:block}.arena-controls-help,.arena-online-panel{box-sizing:border-box;max-width:100%}
 .arena-controls-help{font:400 calc(11px * var(--ui-scale, 1))/1.6 system-ui,sans-serif;color:#8DAAC5;margin-top:24px;border-top:1px solid rgba(122,166,205,.13);padding-top:12px}
 .arena-controls-help summary{cursor:pointer;min-height:34px;width:fit-content;padding:5px 0;color:#B3CEE4}
 .arena-help-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:8px;padding-bottom:8px}
@@ -1031,7 +1031,7 @@
       // Only the current input's hints show (body[data-input]); a touch phone never sees keyboard or 2-player text.
       const tip = (kind, text) => { const p = el('p', '', text); p.dataset.help = kind; return p; };
       help.append(tip('keys', 'KEYBOARD · A/D or ←/→ move. Space/W/↑ jumps twice. F/J pulses. Shift/K dashes. Esc pauses.'), tip('pad', 'CONTROLLER · Stick or D-pad moves. A jumps. X pulses. B or either trigger dashes. Menu pauses.'), tip('touch', 'TOUCH · Drag the floating stick to move. Use JUMP, PULSE and DASH. Aim a pulse with the stick. Land to restore your jumps.'), tip('keys', '2 PLAYERS · One screen, offline. P1 uses A/D/W/S, F pulse, G dash; P2 uses the arrows, . pulse, / dash; pad 1 and pad 2 drive P1 and P2. It needs a keyboard or two controllers, so it is hidden on touch-only devices until two controllers connect.'));
-      mirrorButton = button('Mirror touch controls', 'arena-text-button', () => { leftyOverride = !(rootEl.dataset.lefty === 'true'); updatePrefs(); }); mirrorButton.setAttribute('aria-pressed', 'false'); help.append(mirrorButton); controls.append(summary, help);
+      mirrorButton = button('Mirror touch controls', 'arena-text-button', () => { leftyOverride = !(rootEl.dataset.lefty === 'true'); updatePrefs(); }); mirrorButton.setAttribute('aria-pressed', 'false'); mirrorButton.dataset.help = 'touch'; help.append(mirrorButton); controls.append(summary, help);
       lobby.append(lobbyTop, lobbyGrid, controls);
       lobbyFit = el('div', 'arena-lobby-fit'); lobbyFit.append(...lobby.childNodes); lobby.append(lobbyFit); modal.append(lobby);
       pausePanel = el('div', 'arena-small-panel arena-dialog'); pausePanel.setAttribute('role', 'dialog'); pausePanel.setAttribute('aria-labelledby', 'arena-pause-title');
@@ -1811,10 +1811,13 @@
       if (!frameId && active && !document.hidden) frameId = root.requestAnimationFrame(frame);
     }
     function ensureFrame() { if (active && !document.hidden && !frameId) { lastTime = 0; frameId = root.requestAnimationFrame(frame); } }
+    // Today's Arena (src/daily.js): it applies while its stage, format and skill are the ones picked, solo.
+    let dailySpec = null;
+    const isDaily = () => !!dailySpec && !onlineActive() && !localSession && !sharedSession && selections.arenaId === dailySpec.arenaId && selections.format === dailySpec.format && selections.difficulty === dailySpec.difficulty;
     function startMatch() {
       if (!active || sharedSession) return;
       if (onlineActive()) { if (room.isHost) { if (room.current && room.current.status !== 'lobby') room.lobby(); room.configure(selections); room.start(((Date.now() >>> 0) ^ (++matchSerial * 2654435761)) >>> 0); } return; }
-      unlockAudio(); resetInput(); saveSelection();
+      unlockAudio(); resetInput(); if (!isDaily()) saveSelection();   // the daily never overwrites your own picks
       // Seed ownership belongs to the pure simulation. No gameplay randomness
       // comes from frame time or presentation effects.
       matchSerial++; const seed = localSession ? localSession.seed : ((Date.now() >>> 0) ^ Math.imul(matchSerial, 2654435761)) >>> 0;
@@ -1825,7 +1828,7 @@
       cosmeticRound++;
       if (root.SpaceManCosmetics && typeof opts.appearance === 'function') { const human = state.actors.find(a => a.controller === 'human'); if (human) human.appearance = root.SpaceManCosmetics.normalizeAppearance(opts.appearance()); }
       view = 'match'; paused = false; resultAt = 0; accumulator = 0; lastTime = 0; lastHudTick = -1; lastCountdown = ''; effects = []; resetFeel(); spectatorId = null; camera.initialized = false;
-      rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION · ' : '') + selectedArena().name + ' · ' + FORMATS.find(f => f.id === state.format).name;
+      rootEl.dataset.format = state.format; matchTitle.textContent = (localSession ? 'EXPEDITION · ' : isDaily() && !local2 ? 'DAILY · ' : '') + selectedArena().name + ' · ' + FORMATS.find(f => f.id === state.format).name;
       buildRoster(); setModal(null); updateHud(true); paint(1); ensureFrame();
       if (typeof opts.onStart === 'function') opts.onStart({ arenaId: selections.arenaId, format: selections.format });
     }
@@ -1889,6 +1892,11 @@
       if (won && !result.tie && !onlineActive() && !local2 && !localSession && !sharedSession) {
         const medal = awardMedal(state.arenaId, state.difficulty);
         if (medal) { resultText.textContent += ' New ' + medal + ' medal on ' + arena.getArena(state.arenaId).name + '!'; syncChoices(); }
+      }
+      if (isDaily() && !local2 && human && typeof opts.onDaily === 'function') {
+        let rec = null;
+        try { rec = opts.onDaily('arena', { won: won && !result.tie, lives: human.stocks }); } catch (_) {}
+        if (rec && rec.arena) resultText.textContent += rec.arena.won ? (won && !result.tie ? ' Today’s Arena is yours.' : ' Today’s Arena is already won; this one was for fun.') : ' Today’s Arena is still open. Rematch?';
       }
       adaptSkill(won ? 'win' : result.tie || !human ? 'tie' : 'loss');
       syncRoomChoices(); setModal(resultPanel); sfx('win'); announce(resultTitle.textContent + ' ' + resultText.textContent + (suggestButton.hidden ? '' : ' ' + suggestButton.textContent + '.'));
@@ -2013,8 +2021,17 @@
       pausePanel.querySelector('#arenaExit').textContent = 'Finish expedition';
       syncChoices(); startMatch(); return true;
     }
+    // Home's Today strip: straight into today's stage, format and CPU skill. Rematches keep counting.
+    function daily(spec) {
+      if (destroyed || !spec || (opts.net && opts.net.active)) return false;
+      if (!active) open();
+      if (onlineActive() || localSession || sharedSession) return false;
+      dailySpec = { arenaId: arena.getArena(spec.arenaId).id, format: ['duel', 'ffa'].includes(spec.format) ? spec.format : 'duel', difficulty: ['easy', 'normal', 'hard'].includes(spec.difficulty) ? spec.difficulty : 'normal' };
+      selections = { ...dailySpec }; playerCount = 1; p2Joined = false;
+      syncChoices(); startMatch(); return true;
+    }
     function destroy() { close(); destroyed = true; if (clearRecoveryClick) clearRecoveryClick(); if (rootEl) rootEl.remove(); if (audio) { audio.close().catch(() => {}); audio = null; } }
-    return Object.freeze({ open, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role, resumeKey) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true, resumeKey); },
+    return Object.freeze({ open, daily, openSession, openSharedSession, closeSharedSession, close, destroy, joinInvite(payload, role, resumeKey) { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; return room.join(payload, role, true, resumeKey); },
       // Play Together hub: open the lobby with a fresh friend room already hosting (or the current one).
       hostRoom() { if (!active) open(); if (!room) return Promise.resolve(false); roomDetails.open = true; if (room.active || room.busy) return Promise.resolve(!!room.active); return room.hosting(selections); },
       // A host's page reload: reopen the same room (same invite, same code) in its lobby with the saved rules.
